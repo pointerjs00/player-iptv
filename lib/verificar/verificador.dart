@@ -48,7 +48,10 @@ Future<ResultadoVerificacao?> resolverDns(String host) async {
 
 class Verificador {
   Verificador({this.ler = lerStream, this.dns = resolverDns, this.espera = const Duration(seconds: 3),
-      this.pausaReteste = const Duration(seconds: 5)});
+      this.pausaReteste = const Duration(seconds: 5), this.limiteConta = const Duration(seconds: 120)});
+
+  /// Tempo máximo de uma volta por conta, por canal de teste (`limite_conta`).
+  final Duration limiteConta;
 
   final LerStream ler;
   final ResolverDns dns;
@@ -62,14 +65,45 @@ class Verificador {
   /// Verifica com uma 2.ª volta se o resultado for inconclusivo.
   Future<ResultadoVerificacao> verificar(Conta conta, List<String> canaisTeste,
       {Duration timeout = const Duration(seconds: 8), Cancelamento? cancelamento, Aviso? aviso}) async {
-    final r1 = await verificarUmaVez(conta, canaisTeste, timeout: timeout, cancelamento: cancelamento, aviso: aviso);
+    final r1 = await verificarComLimite(conta, canaisTeste, timeout: timeout, cancelamento: cancelamento, aviso: aviso);
     if (r1.estado != EstadoV.inconclusivo) return r1;
     aviso?.call('inconclusiva: a testar outra vez');
-    await Future<void>.delayed(pausaReteste);
-    cancelamento?.verificar();
-    final r2 = await verificarUmaVez(conta, canaisTeste, timeout: timeout * 2, cancelamento: cancelamento, aviso: aviso);
+    await esperarCancelavel(pausaReteste, cancelamento);
+    final r2 = await verificarComLimite(conta, canaisTeste, timeout: timeout * 2, cancelamento: cancelamento, aviso: aviso);
     return r2.validade.isEmpty && r1.validade.isNotEmpty ? r2.com(validade: r1.validade) : r2;
   }
+
+  /// Uma volta com o limite de tempo da conta (`limiteConta` × nº de canais de teste). O relógio
+  /// pára enquanto a conta espera a vez de um servidor; ao esgotar, os pedidos da conta são
+  /// cancelados e o resultado é INC.
+  Future<ResultadoVerificacao> verificarComLimite(Conta conta, List<String> canaisTeste,
+      {Duration timeout = const Duration(seconds: 8), Cancelamento? cancelamento, Aviso? aviso}) async {
+    final limite = limiteConta * perfisDe(canaisTeste).length;
+    final filho = cancelamento?.filho() ?? Cancelamento();
+    final esgotou = Completer<ResultadoVerificacao>();
+    final relogio = RelogioConta(limite, () {
+      if (!esgotou.isCompleted) {
+        esgotou.complete(ResultadoVerificacao(
+            EstadoV.inconclusivo, 'tempo esgotado (limite de ${_segundos(limite)}s por conta)'));
+      }
+      filho.cancelar();
+    });
+    relogio.iniciar();
+    try {
+      final trabalho = runZoned(
+          () => verificarUmaVez(conta, canaisTeste, timeout: timeout, cancelamento: filho, aviso: aviso),
+          zoneValues: {relogioZona: relogio});
+      return await Future.any([trabalho, esgotou.future]);
+    } on Cancelado {
+      if (esgotou.isCompleted && !(cancelamento?.cancelado ?? false)) return esgotou.future;
+      rethrow;
+    } finally {
+      relogio.parar();
+    }
+  }
+
+  static String _segundos(Duration d) =>
+      d.inMilliseconds % 1000 == 0 ? '${d.inSeconds}' : '${d.inMilliseconds / 1000}';
 
   Future<ResultadoVerificacao> verificarUmaVez(Conta conta, List<String> canaisTeste,
       {Duration timeout = const Duration(seconds: 8), Cancelamento? cancelamento, Aviso? aviso}) async {

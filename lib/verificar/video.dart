@@ -57,8 +57,9 @@ Future<_Leitura> _ler(Uri url, Map<String, String> headers, Duration timeout, Ca
     });
     final r = await p.close().timeout(timeout);
     if (r.statusCode >= 400) {
+      final retryAfter = r.headers.value('retry-after');
       unawaited(r.drain<void>().catchError((_) {}));
-      throw ErroHttp(r.statusCode, '$url');
+      throw ErroHttp(r.statusCode, '$url', retryAfter);
     }
     final corpo = <int>[];
     final fim = DateTime.now().add(segundos);
@@ -90,13 +91,15 @@ Future<ResultadoVerificacao> lerStream(String url, Map<String, String> headers,
   try {
     var nivel = 0;
     for (; nivel <= 4; nivel++) {
-      r = await _ler(u, headers, timeout, cancelamento);
-      if (!_ePlaylist(r.corpo)) break;
-      if (r.cortado != null) return classificarFalha(r.cortado!);
-      final linhas = utf8.decode(r.corpo, allowMalformed: true).split('\n')
+      final alvo = u;
+      final lido = await comRitmo(alvo, cancelamento, () => _ler(alvo, headers, timeout, cancelamento));
+      r = lido;
+      if (!_ePlaylist(lido.corpo)) break;
+      if (lido.cortado != null) return classificarFalha(lido.cortado!);
+      final linhas = utf8.decode(lido.corpo, allowMalformed: true).split('\n')
           .map((l) => l.trim().replaceAll('﻿', '')).where((l) => l.isNotEmpty && !l.startsWith('#'));
       if (linhas.isEmpty) return const ResultadoVerificacao(EstadoV.inconclusivo, 'playlist sem entradas');
-      u = r.urlFinal.resolve(linhas.first);
+      u = lido.urlFinal.resolve(linhas.first);
     }
     if (nivel > 4) return const ResultadoVerificacao(EstadoV.inconclusivo, 'playlist HLS com demasiados níveis');
   } on Cancelado {
