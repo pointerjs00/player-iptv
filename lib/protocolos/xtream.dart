@@ -38,10 +38,29 @@ class Xtream implements Protocolo {
     return '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
   }
 
+  static int? _numero(Object? v) => double.tryParse('${v ?? ''}'.trim())?.toInt();
+
+  /// "ativas/máximo" se `active_cons >= max_connections` (máximo > 0), senão "" (`_limite_atingido`).
+  static String limiteAtingido(Map userInfo) {
+    final ativas = _numero(userInfo['active_cons']), maximo = _numero(userInfo['max_connections']);
+    return ativas != null && maximo != null && maximo > 0 && ativas >= maximo ? '$ativas/$maximo' : '';
+  }
+
+  /// Uma resposta HTTP da API (401/403/404...) pode ser WAF, geo, IP ou proxy: não prova que
+  /// a conta morreu (`_falha_api`). Só o JSON `user_info` prova.
+  Future<Object?> _apiSemProva(Conta c, Map<String, String> extra, Cancelamento? cancelamento,
+      String Function(String motivo) mensagem) async {
+    try {
+      return await _api(c, extra, cancelamento);
+    } on ErroHttp catch (e) {
+      throw ErroLista(mensagem('a API respondeu ${e.status}'));
+    }
+  }
+
   @override
   Future<ConteudoLista> abrir(Conta conta, {Cancelamento? cancelamento, Aviso? aviso}) async {
     aviso?.call('a entrar na conta');
-    final info = await _api(conta, const {}, cancelamento);
+    final info = await _apiSemProva(conta, const {}, cancelamento, (m) => m);
     final user = info is Map ? info['user_info'] : null;
     if (user is! Map) throw ErroLista('o servidor não respondeu como um painel Xtream');
     if (!user.containsKey('auth')) throw ErroLista('resposta do servidor sem estado de autenticação');
@@ -58,7 +77,12 @@ class Xtream implements Protocolo {
     _extensoes[chave(conta)] = extensao(user);
 
     aviso?.call('a pedir as categorias');
-    final cats = await _api(conta, const {'action': 'get_live_categories'}, cancelamento);
+    Object? cats;
+    try {
+      cats = await _api(conta, const {'action': 'get_live_categories'}, cancelamento);
+    } on Cancelado {
+      rethrow;
+    } catch (_) {/* sem categorias: fica tudo em "Sem grupo" */}
     final nomes = <String, String>{};
     final grupos = <String>[];
     if (cats is List) {
@@ -69,7 +93,8 @@ class Xtream implements Protocolo {
       }
     }
     aviso?.call('a pedir os canais');
-    final streams = await _api(conta, const {'action': 'get_live_streams'}, cancelamento);
+    final streams = await _apiSemProva(conta, const {'action': 'get_live_streams'}, cancelamento,
+        (m) => 'não foi possível listar os canais ($m)');
     if (streams is! List) throw ErroLista('o servidor não devolveu a lista de canais');
     final canais = <Canal>[];
     final vistos = <String>{};
@@ -85,7 +110,7 @@ class Xtream implements Protocolo {
     for (final g in grupos) {
       if (!ordem.contains(g)) ordem.add(g);
     }
-    return ConteudoLista(ordem.toSet().toList(), canais, validade: validade);
+    return ConteudoLista(ordem.toSet().toList(), canais, validade: validade, limiteLigacoes: limiteAtingido(user));
   }
 
   @override

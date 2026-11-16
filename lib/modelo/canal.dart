@@ -41,7 +41,15 @@ class Canal {
 }
 
 class ConteudoLista {
-  ConteudoLista(this.grupos, this.canais, {this.validade = ''});
+  ConteudoLista(this.grupos, this.canais, {this.validade = '', this.completa = true, this.limiteLigacoes = ''});
+
+  /// False se o portal não deixou ler a lista inteira (limite de páginas, página vazia ou com
+  /// erro antes do fim, `total_items` maior do que os canais recebidos): um canal que não
+  /// aparece não prova nada.
+  final bool completa;
+
+  /// Xtream: "ativas/máximo" quando `active_cons >= max_connections` (explica uma falha).
+  final String limiteLigacoes;
 
   /// "AAAA-MM-DD", "sem limite" ou "" (desconhecida).
   final String validade;

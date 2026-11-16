@@ -85,7 +85,17 @@ class Verificador {
     } on ErroLista catch (e) {
       return ResultadoVerificacao(e.definitivo ? EstadoV.naoFunciona : EstadoV.inconclusivo, e.mensagem);
     } catch (e) {
+      // um erro HTTP de uma API ou lista não prova nada (`_falha_api`); só o download de uma
+      // M3U com 404/410 é prova (como em motor/m3u.py)
+      if (e is ErroHttp && conta.tipo != Tipo.m3u) {
+        return ResultadoVerificacao(EstadoV.inconclusivo, 'não foi possível listar os canais (a API respondeu ${e.status})');
+      }
       return classificarFalha(e);
+    }
+    if (conteudo.canais.isEmpty) {
+      return conta.tipo == Tipo.m3u
+          ? const ResultadoVerificacao(EstadoV.naoFunciona, 'lista vazia ou inválida')
+          : ResultadoVerificacao(EstadoV.inconclusivo, 'conta sem canais', validade: conteudo.validade);
     }
     final perfis = perfisDe(canaisTeste);
     final porCanal = <(PerfilCanal, ResultadoVerificacao)>[];
@@ -100,6 +110,9 @@ class Verificador {
       Duration timeout, Cancelamento? can, Aviso? aviso) async {
     final cands = candidatos(p, conteudo.canais, (c) => c.nome, (c) => c.id).take(maxCandidatos).toList();
     if (cands.isEmpty) {
+      if (!conteudo.completa) {
+        return ResultadoVerificacao(EstadoV.inconclusivo, '${p.nome} não encontrada (lista de canais incompleta)');
+      }
       return ResultadoVerificacao(EstadoV.naoFunciona,
           '${p.nome} não existe na ${conta.tipo == Tipo.m3u ? 'lista' : 'conta'}');
     }
@@ -111,7 +124,13 @@ class Verificador {
       if (r.estado == EstadoV.funciona) return r;
       resultados.add(r);
     }
-    return resultados.firstWhere((r) => r.estado == EstadoV.inconclusivo, orElse: () => resultados.first);
+    final r = resultados.firstWhere((r) => r.estado == EstadoV.inconclusivo, orElse: () => resultados.first);
+    // o active_cons não é fiável: testa-se sempre; o limite só explica uma falha
+    if (conteudo.limiteLigacoes.isNotEmpty) {
+      return ResultadoVerificacao(EstadoV.inconclusivo,
+          'limite de ligações atingido (${conteudo.limiteLigacoes}) — ${r.motivo}', canal: r.canal);
+    }
+    return r;
   }
 
   /// Lê; se falhar, espera e lê outra vez (pede o link de novo: no Stalker expira).

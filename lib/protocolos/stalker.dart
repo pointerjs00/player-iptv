@@ -139,15 +139,31 @@ class Stalker implements Protocolo {
 
     aviso?.call('a pedir a lista de canais');
     var dados = <Object?>[];
+    var completa = true;
+    Object? erro;
     try {
       final r = await s.get({'type': 'itv', 'action': 'get_all_channels'},
           cancelamento: cancelamento, timeout: const Duration(seconds: 60));
-      if (r is Map) dados = _comoLista(r['data']).cast<Object?>();
+      if (r is Map) {
+        dados = _comoLista(r['data']).cast<Object?>();
+        // R10: só é a lista inteira se não anunciar mais canais do que trouxe
+        completa = (int.tryParse('${r['total_items'] ?? 0}') ?? 0) <= dados.length;
+      }
     } on Cancelado {
       rethrow;
-    } catch (_) {/* há portais sem get_all_channels: lê-se página a página */}
-    if (dados.isEmpty) dados = await _paginas(s, cancelamento, aviso);
-    if (dados.isEmpty) throw ErroLista('o portal não devolveu canais');
+    } catch (e) {
+      erro = e; // há portais sem get_all_channels: lê-se página a página
+    }
+    if (dados.isEmpty) {
+      final (paginas, fim, erroPaginas) = await _paginas(s, cancelamento, aviso);
+      dados = paginas;
+      completa = fim;
+      erro = erroPaginas ?? erro;
+    }
+    if (dados.isEmpty) {
+      if (erro != null) throw ErroLista('não foi possível listar os canais (${descreverErro(erro)})');
+      throw ErroLista('o portal não devolveu canais');
+    }
 
     final canais = <Canal>[];
     final usados = <String>{};
@@ -164,7 +180,7 @@ class Stalker implements Protocolo {
     for (final g in usados) {
       if (!grupos.contains(g)) grupos.add(g);
     }
-    return ConteudoLista(grupos, canais, validade: validade);
+    return ConteudoLista(grupos, canais, validade: validade, completa: completa);
   }
 
   /// get_main_info: `end_date` (data) ou o campo `phone`, que muitos painéis usam para a
@@ -193,26 +209,41 @@ class Stalker implements Protocolo {
     return iso;
   }
 
-  Future<List<Object?>> _paginas(_Sessao s, Cancelamento? cancelamento, Aviso? aviso) async {
+  static const _maxPaginas = 400;
+
+  /// Os canais página a página, se a lista foi lida até ao fim (porta de `_listar`) e o erro
+  /// que a cortou.
+  Future<(List<Object?>, bool, Object?)> _paginas(_Sessao s, Cancelamento? cancelamento, Aviso? aviso) async {
     final todos = <Object?>[];
     var pagina = 1, totalPaginas = 1;
-    while (pagina <= totalPaginas && pagina <= 400) {
-      aviso?.call('a pedir os canais · página $pagina${totalPaginas > 1 ? '/$totalPaginas' : ''}');
-      final itv = await s.get({'type': 'itv', 'action': 'get_ordered_list', 'genre': '*',
-          'force_ch_link_check': '', 'fav': '0', 'sortby': 'number', 'p': '$pagina'},
-          cancelamento: cancelamento);
-      if (itv is! Map) break;
+    var totalConhecido = false;
+    while (pagina <= totalPaginas) {
+      if (pagina > _maxPaginas) return (todos, false, null);
+      aviso?.call('a pedir os canais · página $pagina${totalPaginas > 1 && totalConhecido ? '/$totalPaginas' : ''}');
+      final Object? itv;
+      try {
+        itv = await s.get({'type': 'itv', 'action': 'get_ordered_list', 'genre': '*',
+            'force_ch_link_check': '', 'fav': '0', 'sortby': 'number', 'p': '$pagina'},
+            cancelamento: cancelamento);
+      } on Cancelado {
+        rethrow;
+      } catch (e) {
+        return (todos, false, e);
+      }
+      if (itv is! Map) return (todos, false, null);
       final d = _comoLista(itv['data']);
-      if (d.isEmpty) break;
+      // página vazia antes do total anunciado: o portal cortou (ritmo, erro), não é o fim
+      if (d.isEmpty) return (todos, !totalConhecido, null);
       if (pagina == 1) {
         final total = int.tryParse('${itv['total_items'] ?? 0}') ?? 0;
         final porPagina = int.tryParse('${itv['max_page_items'] ?? 14}') ?? 14;
-        totalPaginas = total > 0 && porPagina > 0 ? (total / porPagina).ceil() : 400;
+        totalConhecido = total > 0 && porPagina > 0;
+        totalPaginas = totalConhecido ? (total / porPagina).ceil() : _maxPaginas + 1;
       }
       todos.addAll(d);
       pagina++;
     }
-    return todos;
+    return (todos, true, null);
   }
 
   @override
