@@ -30,6 +30,15 @@ class _TelaVerificarState extends State<TelaVerificar> {
   String _formato = 'json';
   late DateTime _inicio = _hoje(), _fim = _hoje();
   bool _pesquisando = false;
+
+  /// "Parar" desaparece quando carregado: o foco passa para "Verificar todas".
+  final _focoVerificarTodas = FocusNode();
+
+  @override
+  void dispose() {
+    _focoVerificarTodas.dispose();
+    super.dispose();
+  }
   String? _resultadoStb;
 
   static DateTime _hoje() {
@@ -61,6 +70,7 @@ class _TelaVerificarState extends State<TelaVerificar> {
   }
 
   Future<void> _pesquisarStb() async {
+    if (_pesquisando) return; // o botão fica ligado (não perde o foco do comando)
     setState(() {
       _pesquisando = true;
       _resultadoStb = null;
@@ -101,7 +111,7 @@ class _TelaVerificarState extends State<TelaVerificar> {
         _campoData('Data de início', _inicio, () => _escolherData(true)),
         _campoData('Data de fim', _fim, () => _escolherData(false)),
         FilledButton.icon(
-          onPressed: _pesquisando ? null : _pesquisarStb,
+          onPressed: _pesquisarStb,
           icon: _pesquisando
               ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
               : const Icon(Icons.search),
@@ -187,20 +197,35 @@ class _TelaVerificarState extends State<TelaVerificar> {
           ]),
           const SizedBox(height: 16),
           Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+            // ligados enquanto verifica (desligar um botão com o foco deixa o comando sem foco)
             FilledButton.icon(
-              onPressed: listas.isEmpty || s.ocupado ? null : () => s.verificarVarias(listas),
+              focusNode: _focoVerificarTodas,
+              onPressed: listas.isEmpty
+                  ? null
+                  : () {
+                      if (!s.ocupado) s.verificarVarias(listas);
+                    },
               icon: const Icon(Icons.playlist_add_check),
               label: Text('Verificar todas (${listas.length})'),
             ),
             OutlinedButton.icon(
-              onPressed: _selecao.isEmpty || s.ocupado
+              onPressed: _selecao.isEmpty
                   ? null
-                  : () => s.verificarVarias([for (final l in listas) if (_selecao.contains(l.id)) l]),
+                  : () {
+                      if (!s.ocupado) s.verificarVarias([for (final l in listas) if (_selecao.contains(l.id)) l]);
+                    },
               icon: const Icon(Icons.checklist),
               label: Text('Verificar as selecionadas (${_selecao.length})'),
             ),
             if (s.ocupado)
-              OutlinedButton.icon(onPressed: s.parar, icon: const Icon(Icons.stop), label: const Text('Parar')),
+              OutlinedButton.icon(
+                  onPressed: () {
+                    final tinhaFoco = FocusManager.instance.primaryFocus?.context?.widget is! EditableText;
+                    s.parar();
+                    if (tinhaFoco) _focoVerificarTodas.requestFocus();
+                  },
+                  icon: const Icon(Icons.stop),
+                  label: const Text('Parar')),
             if (s.ocupado) Text('${s.feitas} de ${s.total} verificadas'),
           ]),
           if (s.ocupado) ...[

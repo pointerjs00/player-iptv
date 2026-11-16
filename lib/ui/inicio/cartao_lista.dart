@@ -75,7 +75,9 @@ class CartaoLista extends StatelessWidget {
                 Align(
                   alignment: Alignment.centerLeft,
                   child: OutlinedButton.icon(
-                    onPressed: verificando ? null : aoVerificar,
+                    // fica ligado a verificar (um botão desligado perde o foco do comando);
+                    // verificar de novo uma lista que já está a ser verificada não faz nada
+                    onPressed: aoVerificar,
                     icon: verificando
                         ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                         : const Icon(Icons.refresh, size: 18),

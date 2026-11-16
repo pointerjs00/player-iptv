@@ -7,6 +7,7 @@ import '../../dados/biblioteca.dart';
 import '../../modelo/canal.dart';
 import '../../protocolos/protocolo.dart';
 import '../../rede/http.dart';
+import '../campo_tv.dart';
 import '../player/abrir_canal.dart';
 import '../tema.dart';
 
@@ -20,8 +21,8 @@ class TelaConteudo extends StatefulWidget {
   final Biblioteca biblioteca;
   final Lista lista;
 
-  /// Para testes: em vez de abrir o player.
-  final void Function(List<Canal> canais, int i)? abrir;
+  /// Para testes: em vez de abrir o player. Devolve o canal que estava a tocar ao sair.
+  final FutureOr<int?> Function(List<Canal> canais, int i)? abrir;
 
   @override
   State<TelaConteudo> createState() => _TelaConteudoState();
@@ -46,6 +47,12 @@ class _TelaConteudoState extends State<TelaConteudo> {
   String? _chaveVisiveis;
   List<Canal> _visiveis = const [];
 
+  // ao voltar do player: o canal que estava a tocar recebe o foco
+  final _scrollCanais = ScrollController();
+  final _focoRegresso = FocusNode();
+  Canal? _canalAFocar;
+  static const _alturaCanal = 56.0;
+
   @override
   void initState() {
     super.initState();
@@ -56,6 +63,8 @@ class _TelaConteudoState extends State<TelaConteudo> {
   void dispose() {
     _cancelamento?.cancelar();
     _atrasoPesquisa?.cancel();
+    _scrollCanais.dispose();
+    _focoRegresso.dispose();
     super.dispose();
   }
 
@@ -158,9 +167,34 @@ class _TelaConteudoState extends State<TelaConteudo> {
     return _visiveis;
   }
 
-  void _abrirCanal(List<Canal> canais, int i) {
-    if (widget.abrir != null) return widget.abrir!(canais, i);
-    abrirCanal(context, widget.lista, canais, i);
+  Future<void> _abrirCanal(List<Canal> canais, int i) async {
+    final volta = widget.abrir != null ? await widget.abrir!(canais, i) : await abrirCanal(context, widget.lista, canais, i);
+    if (volta == null || !mounted || volta < 0 || volta >= canais.length) return;
+    // a lista visível ainda é a mesma que foi para o player? Então foca o canal que tocava.
+    if (!identical(canais, _canaisVisiveis())) return;
+    setState(() => _canalAFocar = canais[volta]);
+    if (_scrollCanais.hasClients) {
+      final p = _scrollCanais.position;
+      _scrollCanais.jumpTo((volta * _alturaCanal - p.viewportDimension / 2 + _alturaCanal / 2)
+          .clamp(0.0, p.maxScrollExtent));
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _focoRegresso.requestFocus();
+    });
+  }
+
+  void _atualizar() {
+    if (_aCarregar) return; // fica ligado (não perde o foco); a meio do carregamento não faz nada
+    _carregar();
+  }
+
+  void _cancelarCarregamento() {
+    _cancelamento?.cancelar();
+    setState(() {
+      _aCarregar = false;
+      // sem canais, o corpo mostra "Tentar de novo" (com o foco), em vez de ficar vazio
+      if (_conteudo == null) _erro = 'carregamento cancelado';
+    });
   }
 
   @override
@@ -171,7 +205,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
         actions: [
           IconButton(
             tooltip: 'Atualizar a lista de canais',
-            onPressed: _aCarregar ? null : _carregar,
+            onPressed: _atualizar,
             icon: const Icon(Icons.refresh),
           ),
         ],
@@ -180,7 +214,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
         if (_aCarregar) _barraCarregar(),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-          child: TextField(
+          child: CampoTv(
             key: const Key('pesquisa-canais'),
             decoration: InputDecoration(
               prefixIcon: const Icon(Icons.search),
@@ -205,10 +239,9 @@ class _TelaConteudoState extends State<TelaConteudo> {
             const SizedBox(width: 12),
             Expanded(child: Text(_aviso, maxLines: 1, overflow: TextOverflow.ellipsis)),
             TextButton(
-              onPressed: () {
-                _cancelamento?.cancelar();
-                setState(() => _aCarregar = false);
-              },
+              // sem canais para mostrar, é o único sítio útil para o foco
+              autofocus: _conteudo == null,
+              onPressed: _cancelarCarregamento,
               child: const Text('Cancelar'),
             ),
           ]),
@@ -282,7 +315,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
     return Column(children: [
       Padding(
         padding: const EdgeInsets.all(12),
-        child: TextField(
+        child: CampoTv(
           key: const Key('filtro-grupos'),
           decoration: const InputDecoration(prefixIcon: Icon(Icons.filter_list), hintText: 'Filtrar grupos'),
           onChanged: (v) => setState(() => _qGrupos = v),
@@ -297,6 +330,8 @@ class _TelaConteudoState extends State<TelaConteudo> {
               final n = g == grupoFavoritos ? widget.lista.favoritos.length : (_contagens[g] ?? 0);
               return ListTile(
                 dense: true,
+                // o foco começa no grupo escolhido
+                autofocus: g == _grupo,
                 selected: g == _grupo && _qCanais.trim().isEmpty,
                 title: Text(g, maxLines: 1, overflow: TextOverflow.ellipsis),
                 trailing: Text('$n', style: const TextStyle(color: Cores.texto2)),
@@ -314,14 +349,19 @@ class _TelaConteudoState extends State<TelaConteudo> {
       return const Center(child: Text('Nenhum canal.', style: TextStyle(color: Cores.texto2)));
     }
     final pesquisa = _qCanais.trim().isNotEmpty;
+    // no ecrã estreito (sem coluna de grupos) o foco começa no 1.º canal
+    final focarPrimeiro = MediaQuery.sizeOf(context).width < 720;
     return FocusTraversalGroup(
       child: ListView.builder(
+        controller: _scrollCanais,
         itemCount: canais.length,
-        itemExtent: 56,
+        itemExtent: _alturaCanal,
         itemBuilder: (_, i) {
           final c = canais[i];
           final fav = widget.lista.favoritos.contains(c.id);
           return ListTile(
+            focusNode: identical(c, _canalAFocar) ? _focoRegresso : null,
+            autofocus: focarPrimeiro && i == 0,
             leading: _Logo(c.logo),
             title: Text(c.nome, maxLines: 1, overflow: TextOverflow.ellipsis),
             subtitle: pesquisa ? Text(c.grupo, maxLines: 1, style: const TextStyle(fontSize: 12)) : null,

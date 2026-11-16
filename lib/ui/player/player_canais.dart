@@ -24,7 +24,7 @@ typedef ResolverFonte = Future<FonteVideo> Function(Canal canal);
 /// OK mostra a informação, Voltar/Esc sai.
 class PlayerCanais extends StatefulWidget {
   const PlayerCanais({super.key, required this.canais, required this.indice, required this.resolver,
-      required this.nomeLista, required this.aoSair, this.alternarEcraInteiro});
+      required this.nomeLista, required this.aoSair, this.alternarEcraInteiro, this.aoMudarCanal});
 
   final List<Canal> canais;
   final int indice;
@@ -32,6 +32,9 @@ class PlayerCanais extends StatefulWidget {
   final String nomeLista;
   final VoidCallback aoSair;
   final VoidCallback? alternarEcraInteiro;
+
+  /// O canal que está a tocar mudou (cima/baixo): ao sair, a lista foca este.
+  final ValueChanged<int>? aoMudarCanal;
 
   @override
   State<PlayerCanais> createState() => PlayerCanaisState();
@@ -108,6 +111,7 @@ class PlayerCanaisState extends State<PlayerCanais> {
     if (_canais.length < 2) return;
     _i = (_i + delta) % _canais.length;
     if (_i < 0) _i += _canais.length;
+    widget.aoMudarCanal?.call(_i);
     _abrir();
   }
 

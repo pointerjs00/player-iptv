@@ -4,6 +4,7 @@ import '../../dados/biblioteca.dart';
 import '../../modelo/canal.dart';
 import '../../verificar/servico.dart';
 import '../adicionar.dart';
+import '../campo_tv.dart';
 import '../conteudo/tela_conteudo.dart';
 import '../tema.dart';
 import 'cartao_lista.dart';
@@ -76,7 +77,7 @@ class _TelaInicioState extends State<TelaInicio> {
               child: Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
                 SizedBox(
                   width: 280,
-                  child: TextField(
+                  child: CampoTv(
                     decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Pesquisar listas'),
                     onChanged: (v) => setState(() => _q = v),
                   ),

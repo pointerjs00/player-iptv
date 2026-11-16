@@ -1,0 +1,320 @@
+import 'dart:async';
+import 'dart:io';
+
+import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:material_ui/material_ui.dart';
+import 'package:player_iptv/dados/biblioteca.dart';
+import 'package:player_iptv/importar/importar.dart';
+import 'package:player_iptv/modelo/canal.dart';
+import 'package:player_iptv/modelo/conta.dart';
+import 'package:player_iptv/protocolos/protocolo.dart';
+import 'package:player_iptv/rede/http.dart';
+import 'package:player_iptv/ui/conteudo/tela_conteudo.dart';
+import 'package:player_iptv/ui/inicio/tela_inicio.dart';
+import 'package:player_iptv/ui/tema.dart';
+import 'package:player_iptv/ui/verificar/tela_verificar.dart';
+import 'package:player_iptv/verificar/estado.dart';
+import 'package:player_iptv/verificar/servico.dart';
+import 'package:player_iptv/verificar/verificador.dart';
+
+/// I6: tudo só com as setas, OK e Voltar (sem requestFocus nem toques).
+
+Widget _app(Widget w) => MaterialApp(theme: temaApp(), home: w);
+
+void _tamanho(WidgetTester t, double l, double a) {
+  t.view.physicalSize = Size(l, a);
+  t.view.devicePixelRatio = 1;
+  addTearDown(t.view.reset);
+}
+
+/// Os textos dentro do widget com o foco ('' se nada tem foco).
+String _focado() => _textosFocados().join(' | ');
+
+List<String> _textosFocados() {
+  final no = FocusManager.instance.primaryFocus;
+  final ctx = no?.context;
+  // o foco na página inteira (FocusScope) é o mesmo que nada focado
+  if (ctx == null || no is FocusScopeNode) return const [];
+  final textos = <String>[];
+  void visitar(Element e) {
+    final w = e.widget;
+    if (w is Text) textos.add(w.data ?? '');
+    if (w is EditableText) textos.add('[campo ${w.controller.text}]');
+    e.visitChildren(visitar);
+  }
+
+  (ctx as Element).visitChildren(visitar);
+  final campo = ctx.findAncestorWidgetOfExactType<EditableText>();
+  if (campo != null) textos.add('[campo ${campo.controller.text}]');
+  if (textos.isEmpty) {
+    final dica = ctx.findAncestorWidgetOfExactType<Tooltip>()?.message;
+    if (dica != null) textos.add(dica);
+  }
+  return textos;
+}
+
+/// Fecha o ecrã e deixa acabar os pedidos (e os seus tempos limite) que ficaram a meio.
+Future<void> _fechar(WidgetTester t) async {
+  await t.pumpWidget(const SizedBox());
+  await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 200)));
+  await t.pump(const Duration(minutes: 10));
+}
+
+Future<void> _tecla(WidgetTester t, LogicalKeyboardKey k) async {
+  await t.sendKeyEvent(k);
+  await t.pump();
+}
+
+/// Carrega em Tab até o foco estar no widget com `texto` (no máximo 40 vezes).
+/// (só um botão: um cartão inteiro, que também contém o texto, não conta)
+Future<void> _irPara(WidgetTester t, String texto) async {
+  bool chegou() {
+    final ts = _textosFocados();
+    return ts.length == 1 && ts.single.contains(texto);
+  }
+
+  for (var i = 0; i < 40 && !chegou(); i++) {
+    await _tecla(t, LogicalKeyboardKey.tab);
+  }
+  expect(chegou(), isTrue, reason: 'Tab até "$texto"; foco em: ${_focado()}');
+}
+
+/// Verificador que espera até `soltar`.
+class _Lento extends Verificador {
+  final soltar = Completer<void>();
+  @override
+  Future<ResultadoVerificacao> verificarUmaVez(Conta conta, List<String> canaisTeste,
+      {Duration timeout = const Duration(seconds: 8), Cancelamento? cancelamento, Aviso? aviso}) async {
+    await soltar.future;
+    return const ResultadoVerificacao(EstadoV.funciona, 'ok');
+  }
+}
+
+void main() {
+  late Directory pasta;
+  late Biblioteca bib;
+
+  setUp(() async {
+    pasta = Directory.systemTemp.createTempSync('foco');
+    bib = await Biblioteca.abrir(pasta);
+  });
+  tearDown(() async {
+    try {
+      pasta.deleteSync(recursive: true);
+    } on FileSystemException {/* Windows */}
+  });
+
+  Future<Lista> comCache(WidgetTester t, ConteudoLista c) async {
+    await t.runAsync(() async {
+      await bib.adicionar([Importada(contaDeLinha('http://x.com/l.m3u')!)]);
+      await bib.guardarCanais(bib.listas.single.id, c);
+    });
+    return bib.listas.single;
+  }
+
+  Future<void> mostrar(WidgetTester t, Lista l, {FutureOr<int?> Function(List<Canal>, int)? abrir}) async {
+    await t.runAsync(() async {
+      await t.pumpWidget(_app(TelaConteudo(biblioteca: bib, lista: l, abrir: abrir)));
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+    });
+    await t.pump();
+  }
+
+  final pequena = ConteudoLista(['Portugal', 'UK'], const [
+    Canal(id: '1', nome: 'PT: RTP 1 HD', grupo: 'Portugal', url: 'u1'),
+    Canal(id: '2', nome: 'PT: SIC', grupo: 'Portugal', url: 'u2'),
+    Canal(id: '3', nome: 'BBC One', grupo: 'UK', url: 'u3'),
+  ]);
+
+  testWidgets('I6: Conteúdo começa com o foco no grupo; setas até um canal e OK abre-o', (t) async {
+    _tamanho(t, 1200, 800);
+    final l = await comCache(t, pequena);
+    (List<Canal>, int)? aberto;
+    await mostrar(t, l, abrir: (c, i) {
+      aberto = (c, i);
+      return null;
+    });
+    expect(_focado(), contains('Portugal'));
+    await _tecla(t, LogicalKeyboardKey.arrowRight);
+    expect(_focado(), contains('PT: '), reason: 'a seta para a direita vai para os canais do grupo');
+    // cima/baixo até ao 1.º canal e de volta ao 2.º
+    for (var i = 0; i < 3 && !_focado().contains('PT: RTP 1 HD'); i++) {
+      await _tecla(t, LogicalKeyboardKey.arrowUp);
+    }
+    expect(_focado(), contains('PT: RTP 1 HD'));
+    await _tecla(t, LogicalKeyboardKey.arrowDown);
+    expect(_focado(), contains('PT: SIC'));
+    await _tecla(t, LogicalKeyboardKey.select);
+    expect(aberto?.$2, 1);
+  });
+
+  testWidgets('I6: no telemóvel/TV estreita o foco começa no 1.º canal', (t) async {
+    _tamanho(t, 500, 800);
+    final l = await comCache(t, pequena);
+    await mostrar(t, l);
+    expect(_focado(), contains('PT: RTP 1 HD'));
+  });
+
+  testWidgets('I6: Voltar do player devolve o foco ao canal que estava a tocar (depois de zapping)', (t) async {
+    _tamanho(t, 1200, 800);
+    final l = await comCache(t, ConteudoLista(['G'], [
+      for (var i = 0; i < 60; i++) Canal(id: '$i', nome: 'Canal $i', grupo: 'G', url: 'u$i'),
+    ]));
+    await mostrar(t, l, abrir: (c, i) async => 37); // o utilizador mudou para o canal 37
+    await _tecla(t, LogicalKeyboardKey.arrowRight);
+    expect(_focado(), startsWith('Canal '));
+    await _tecla(t, LogicalKeyboardKey.enter);
+    await t.pump();
+    await t.pump();
+    expect(_focado(), contains('Canal 37'));
+    expect(find.text('Canal 37').hitTestable(), findsOneWidget, reason: 'o canal fica visível');
+  });
+
+  testWidgets('I6: o campo de pesquisa não abre o teclado nem prende as setas; OK escreve', (t) async {
+    _tamanho(t, 1200, 800);
+    final l = await comCache(t, pequena);
+    await mostrar(t, l);
+    expect(_focado(), contains('Portugal'));
+    await _tecla(t, LogicalKeyboardKey.arrowUp);
+    expect(_focado(), contains('[campo'));
+    expect(t.testTextInput.isVisible, isFalse, reason: 'o foco sozinho não abre o teclado no ecrã');
+    await _tecla(t, LogicalKeyboardKey.arrowDown);
+    expect(_focado(), contains('Portugal'));
+    await _tecla(t, LogicalKeyboardKey.arrowUp);
+    await _tecla(t, LogicalKeyboardKey.select);
+    expect(t.testTextInput.isVisible, isTrue);
+  });
+
+  testWidgets('I6: Cancelar o carregamento (sem cache) deixa o foco em "Tentar de novo"', (t) async {
+    _tamanho(t, 1200, 800);
+    HttpOverrides.global = null;
+    late ServerSocket calado;
+    await t.runAsync(() async {
+      calado = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+      calado.listen((_) {}); // aceita e nunca responde
+      await bib.adicionar([Importada(Conta('x', Tipo.m3u, 'http://127.0.0.1:${calado.port}/l.m3u'))]);
+    });
+    addTearDown(() => t.runAsync(calado.close));
+    await t.pumpWidget(_app(TelaConteudo(biblioteca: bib, lista: bib.listas.single)));
+    await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 100)));
+    await t.pump();
+    expect(_focado(), contains('Cancelar'));
+    await _tecla(t, LogicalKeyboardKey.select);
+    expect(_focado(), contains('Tentar de novo'));
+    await _tecla(t, LogicalKeyboardKey.select);
+    expect(_focado(), contains('Cancelar'));
+    await _fechar(t);
+  });
+
+  testWidgets('I6: "Atualizar" não se desliga e não perde o foco', (t) async {
+    _tamanho(t, 1200, 800);
+    final l = await comCache(t, pequena);
+    await mostrar(t, l);
+    await _irPara(t, 'Atualizar');
+    await _tecla(t, LogicalKeyboardKey.select);
+    expect(_focado(), contains('Atualizar'));
+    // a meio do carregamento, OK outra vez não faz nada e o foco fica
+    await _tecla(t, LogicalKeyboardKey.select);
+    expect(_focado(), contains('Atualizar'));
+    await _fechar(t);
+  });
+
+  testWidgets('I6: "Verificar de novo" no cartão mantém o foco enquanto verifica', (t) async {
+    _tamanho(t, 1200, 800);
+    await t.runAsync(() => bib.adicionar([Importada(contaDeLinha('http://x.com/c/ 00:1A:79:00:00:01')!)]));
+    final f = _Lento();
+    final s = ServicoVerificacao(bib, verificador: f, ritmo: RitmoHost(intervalo: Duration.zero));
+    await t.pumpWidget(_app(TelaInicio(biblioteca: bib, servico: s)));
+    await t.pump();
+    await _irPara(t, 'Verificar de novo');
+    await _tecla(t, LogicalKeyboardKey.select);
+    await t.pump();
+    expect(s.ocupado, isTrue);
+    expect(_focado(), contains('A verificar'));
+    s.parar();
+    f.soltar.complete();
+    await t.pump();
+  });
+
+  testWidgets('I6: Voltar do Conteúdo regressa ao Início com o cartão focado', (t) async {
+    _tamanho(t, 1200, 800);
+    await t.runAsync(() async {
+      await bib.adicionar([
+        Importada(contaDeLinha('http://a.com/l.m3u')!),
+        Importada(contaDeLinha('http://b.com/l.m3u')!),
+      ]);
+      for (final l in bib.listas) {
+        await bib.guardarCanais(l.id, pequena);
+      }
+    });
+    await t.pumpWidget(_app(TelaInicio(biblioteca: bib)));
+    await t.pump();
+    expect(_focado(), contains('001A'));
+    await _tecla(t, LogicalKeyboardKey.arrowRight);
+    expect(_focado(), contains('002B'));
+    await t.runAsync(() async {
+      await _tecla(t, LogicalKeyboardKey.select);
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+    });
+    await t.pumpAndSettle();
+    expect(find.byType(TelaConteudo), findsOneWidget);
+    await t.binding.handlePopRoute(); // Voltar do comando
+    await t.pumpAndSettle();
+    expect(find.byType(TelaConteudo), findsNothing);
+    expect(_focado(), contains('002B'));
+  });
+
+  group('I6: Verificar', () {
+    Future<(ServicoVerificacao, _Lento)> abrirVerificar(WidgetTester t) async {
+      _tamanho(t, 1200, 1600);
+      await t.runAsync(() => bib.adicionar([Importada(contaDeLinha('http://x.com/c/ 00:1A:79:00:00:01')!)]));
+      final f = _Lento();
+      final s = ServicoVerificacao(bib, verificador: f, ritmo: RitmoHost(intervalo: Duration.zero));
+      await t.pumpWidget(_app(Scaffold(body: TelaVerificar(biblioteca: bib, servico: s))));
+      await t.pump();
+      return (s, f);
+    }
+
+    testWidgets('I6: "Verificar todas" mantém o foco; "Parar" devolve-o a "Verificar todas"', (t) async {
+      final (s, f) = await abrirVerificar(t);
+      await _irPara(t, 'Verificar todas');
+      await _tecla(t, LogicalKeyboardKey.select);
+      await t.pump();
+      expect(s.ocupado, isTrue);
+      expect(_focado(), contains('Verificar todas'));
+      await _irPara(t, 'Parar');
+      await _tecla(t, LogicalKeyboardKey.select);
+      await t.pump();
+      expect(_focado(), contains('Verificar todas'));
+      f.soltar.complete();
+      for (var i = 0; i < 10 && s.ocupado; i++) {
+        await t.pump();
+        await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 100)));
+      }
+      await t.pump();
+      expect(s.ocupado, isFalse);
+      expect(_focado(), contains('Verificar todas'));
+    });
+
+    testWidgets('I6: "Iniciar pesquisa" (stbstalker) mantém o foco', (t) async {
+      HttpOverrides.global = null;
+      late ServerSocket calado;
+      await t.runAsync(() async {
+        calado = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+        calado.listen((_) {});
+      });
+      addTearDown(() => t.runAsync(calado.close));
+      _tamanho(t, 1200, 1600);
+      await t.pumpWidget(_app(Scaffold(
+          body: TelaVerificar(biblioteca: bib, servico: ServicoVerificacao(bib), baseStb: 'http://127.0.0.1:${calado.port}/'))));
+      await t.pump();
+      await _irPara(t, 'Iniciar pesquisa');
+      await _tecla(t, LogicalKeyboardKey.select);
+      await t.pump();
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(_focado(), contains('Iniciar pesquisa'));
+      await _fechar(t);
+    });
+  });
+}
