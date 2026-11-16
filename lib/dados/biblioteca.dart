@@ -4,6 +4,7 @@ library;
 
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
@@ -11,6 +12,7 @@ import 'package:flutter/foundation.dart';
 import '../importar/importar.dart';
 import '../modelo/canal.dart';
 import '../modelo/conta.dart';
+import '../rede/http.dart' show limiteIsolate;
 
 class Lista {
   Lista({required this.id, required this.ordem, required this.conta, this.ultima,
@@ -152,15 +154,21 @@ class Biblioteca extends ChangeNotifier {
     final f = _ficheiroCanais(id);
     if (!await f.exists()) return null;
     try {
-      return ConteudoLista.deJson(jsonDecode(await f.readAsString()) as Map<String, dynamic>);
+      // uma lista grande (100 mil canais) lê-se fora da thread da interface
+      if (await f.length() < limiteIsolate) return _lerCanais(await f.readAsString());
+      return await _lerCanaisNumIsolate(f.path);
     } catch (_) {
       return null;
     }
   }
 
+
   Future<void> guardarCanais(String id, ConteudoLista c) async {
     await _pastaCanais.create(recursive: true);
-    final texto = jsonEncode(c.paraJson());
+    // o JSON de uma lista grande faz-se num isolate (só se mandam os mapas, já simples)
+    final texto = c.canais.length < 2000
+        ? jsonEncode(c.paraJson())
+        : await _codificarNumIsolate(c);
     await _emFila(() => _escreverAtomico(_ficheiroCanais(id), texto));
   }
 
@@ -194,3 +202,11 @@ class Biblioteca extends ChangeNotifier {
   static String _novoId() =>
       List.generate(6, (_) => _rnd.nextInt(256).toRadixString(16).padLeft(2, '0')).join();
 }
+
+ConteudoLista _lerCanais(String texto) => ConteudoLista.deJson(jsonDecode(texto) as Map<String, dynamic>);
+
+// funções de topo: a closure mandada para o isolate não pode levar o `this` da Biblioteca
+Future<ConteudoLista> _lerCanaisNumIsolate(String caminho) =>
+    Isolate.run(() => _lerCanais(File(caminho).readAsStringSync()));
+
+Future<String> _codificarNumIsolate(ConteudoLista c) => Isolate.run(() => jsonEncode(c.paraJson()));

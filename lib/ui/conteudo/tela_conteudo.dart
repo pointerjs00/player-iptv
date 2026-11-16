@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:isolate';
+
 import 'package:material_ui/material_ui.dart';
 
 import '../../dados/biblioteca.dart';
@@ -35,6 +38,14 @@ class _TelaConteudoState extends State<TelaConteudo> {
   String _qGrupos = '';
   Map<String, int> _contagens = const {};
 
+  // feitos uma vez por lista (com 100 mil canais, refazê-los a cada build congela a TV)
+  Map<String, List<Canal>> _porGrupo = const {};
+  List<String>? _nomes; // os nomes sem acentos, pela ordem de `canais`
+  Timer? _atrasoPesquisa;
+  int _versaoFavoritos = 0;
+  String? _chaveVisiveis;
+  List<Canal> _visiveis = const [];
+
   @override
   void initState() {
     super.initState();
@@ -44,6 +55,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
   @override
   void dispose() {
     _cancelamento?.cancelar();
+    _atrasoPesquisa?.cancel();
     super.dispose();
   }
 
@@ -57,12 +69,44 @@ class _TelaConteudoState extends State<TelaConteudo> {
     }
   }
 
-  void _mostrar(ConteudoLista c) => setState(() {
-        _conteudo = c;
-        _contagens = c.contagens();
-        _erro = null;
-        _grupo ??= widget.lista.favoritos.isNotEmpty ? grupoFavoritos : (c.grupos.isEmpty ? null : c.grupos.first);
-      });
+  void _mostrar(ConteudoLista c) {
+    final porGrupo = <String, List<Canal>>{};
+    for (final x in c.canais) {
+      (porGrupo[x.grupo] ??= []).add(x);
+    }
+    setState(() {
+      _conteudo = c;
+      _contagens = {for (final e in porGrupo.entries) e.key: e.value.length};
+      _porGrupo = porGrupo;
+      _nomes = null;
+      _chaveVisiveis = null;
+      _erro = null;
+      _grupo ??= widget.lista.favoritos.isNotEmpty ? grupoFavoritos : (c.grupos.isEmpty ? null : c.grupos.first);
+    });
+    _indexarNomes(c);
+  }
+
+  /// Os nomes sem acentos, para a pesquisa: numa lista grande, fora da thread da interface.
+  Future<void> _indexarNomes(ConteudoLista c) async {
+    final nomes = [for (final x in c.canais) x.nome];
+    final List<String> r;
+    if (nomes.length < 5000) {
+      r = [for (final n in nomes) semAcentos(n)];
+    } else {
+      r = await _normalizarNumIsolate(nomes);
+    }
+    if (!mounted || !identical(c, _conteudo)) return;
+    _nomes = r;
+    if (_qCanais.trim().isNotEmpty) setState(() => _chaveVisiveis = null);
+  }
+
+  void _pesquisar(String v) {
+    _atrasoPesquisa?.cancel();
+    // espera que se pare de escrever: cada tecla não refaz a pesquisa
+    _atrasoPesquisa = Timer(const Duration(milliseconds: 150), () {
+      if (mounted) setState(() => _qCanais = v);
+    });
+  }
 
   Future<void> _carregar() async {
     _cancelamento?.cancelar();
@@ -100,9 +144,18 @@ class _TelaConteudoState extends State<TelaConteudo> {
     final c = _conteudo;
     if (c == null) return const [];
     final q = semAcentos(_qCanais.trim());
-    if (q.isNotEmpty) return [for (final x in c.canais) if (semAcentos(x.nome).contains(q)) x];
-    if (_grupo == grupoFavoritos) return [for (final x in c.canais) if (widget.lista.favoritos.contains(x.id)) x];
-    return _grupo == null ? c.canais : c.doGrupo(_grupo!);
+    final chave = q.isNotEmpty ? 'q:$q' : (_grupo == grupoFavoritos ? 'f:$_versaoFavoritos' : 'g:$_grupo');
+    if (chave == _chaveVisiveis) return _visiveis;
+    _chaveVisiveis = chave;
+    if (q.isNotEmpty) {
+      final nomes = _nomes ??= [for (final x in c.canais) semAcentos(x.nome)];
+      _visiveis = [for (var i = 0; i < c.canais.length; i++) if (nomes[i].contains(q)) c.canais[i]];
+    } else if (_grupo == grupoFavoritos) {
+      _visiveis = [for (final x in c.canais) if (widget.lista.favoritos.contains(x.id)) x];
+    } else {
+      _visiveis = _grupo == null ? c.canais : (_porGrupo[_grupo] ?? const []);
+    }
+    return _visiveis;
   }
 
   void _abrirCanal(List<Canal> canais, int i) {
@@ -135,7 +188,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
                   ? 'Pesquisar canais'
                   : 'Pesquisar em ${_conteudo!.canais.length} canais de ${_conteudo!.grupos.length} grupos',
             ),
-            onChanged: (v) => setState(() => _qCanais = v),
+            onChanged: _pesquisar,
           ),
         ),
         Expanded(child: _corpo()),
@@ -278,7 +331,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
               onPressed: () {
                 // o conjunto muda logo; a gravação em disco segue em segundo plano
                 widget.biblioteca.alternarFavorito(widget.lista.id, c.id);
-                setState(() {});
+                setState(() => _versaoFavoritos++);
               },
             ),
             onTap: () => _abrirCanal(canais, i),
@@ -303,3 +356,7 @@ class _Logo extends StatelessWidget {
     );
   }
 }
+
+// função de topo: a closure mandada para o isolate não pode levar o estado do ecrã
+Future<List<String>> _normalizarNumIsolate(List<String> nomes) =>
+    Isolate.run(() => [for (final n in nomes) semAcentos(n)]);

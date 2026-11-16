@@ -4,6 +4,7 @@ library;
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:typed_data';
 
 class ErroHttp implements Exception {
@@ -297,8 +298,19 @@ Future<String> obterTexto(String url, {Map<String, String> headers = const {},
 Future<Object?> obterJson(String url, {Map<String, String> headers = const {},
     Duration timeout = const Duration(seconds: 15), int maxBytes = 96 * 1024 * 1024,
     Cancelamento? cancelamento}) async {
-  final t = await obterTexto(url, headers: headers, timeout: timeout, maxBytes: maxBytes,
+  final b = await obterBytes(url, headers: headers, timeout: timeout, maxBytes: maxBytes,
       cancelamento: cancelamento);
+  // uma lista de canais pode ter dezenas de MB: descodifica-se fora da thread da interface
+  if (b.length < limiteIsolate) return _json(b);
+  return Isolate.run(() => _json(b));
+}
+
+/// A partir deste tamanho (bytes), o JSON é tratado num isolate.
+const limiteIsolate = 256 * 1024;
+
+Object? _json(Uint8List b) {
+  var t = utf8.decode(b, allowMalformed: true);
+  if (t.startsWith('﻿')) t = t.substring(1);
   try {
     return jsonDecode(t.trim());
   } on FormatException {

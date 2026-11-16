@@ -116,19 +116,19 @@ void main() {
 
       // a pesquisa ignora acentos e o grupo escolhido
       await t.enterText(find.byKey(const Key('pesquisa-canais')), 'rtp acores');
-      await t.pump();
+      await t.pump(const Duration(milliseconds: 200));
       expect(find.text('1 canal encontrado'), findsOneWidget);
       await t.enterText(find.byKey(const Key('pesquisa-canais')), 'cnn');
-      await t.pump();
+      await t.pump(const Duration(milliseconds: 200));
       expect(find.text('0 canais encontrados'), findsOneWidget);
       await t.enterText(find.byKey(const Key('pesquisa-canais')), 'rtp');
-      await t.pump();
+      await t.pump(const Duration(milliseconds: 200));
       expect(find.text('2 canais encontrados'), findsOneWidget);
       expect(find.text('RTP Açores'), findsOneWidget);
 
       await t.enterText(find.byKey(const Key('pesquisa-canais')), '');
       await t.enterText(find.byKey(const Key('filtro-grupos')), 'desp');
-      await t.pump();
+      await t.pump(const Duration(milliseconds: 200));
       expect(find.widgetWithText(ListTile, 'Portugal'), findsNothing);
       expect(find.widgetWithText(ListTile, 'Desporto'), findsOneWidget);
     });
@@ -147,6 +147,48 @@ void main() {
       await t.tap(find.text('PT: SIC'));
       expect(aberto!.$1.map((c) => c.id), ['1', '2']);
       expect(aberto!.$2, 1);
+    });
+
+    testWidgets('I5: a pesquisa espera que se pare de escrever (150 ms) antes de filtrar', (t) async {
+      _tamanho(t, 1200, 800);
+      final l = await preparar(t);
+      await mostrar(t, l);
+      await t.enterText(find.byKey(const Key('pesquisa-canais')), 'rtp');
+      await t.pump(const Duration(milliseconds: 50));
+      expect(find.text('Portugal · 2 canais'), findsOneWidget);
+      await t.pump(const Duration(milliseconds: 150));
+      expect(find.text('2 canais encontrados'), findsOneWidget);
+    });
+
+    testWidgets('I5: com 100 mil canais, cada rebuild (favorito) não volta a percorrer os nomes', (t) async {
+      _tamanho(t, 1200, 800);
+      final grande = ConteudoLista(['G', 'H'], [
+        for (var i = 0; i < 100000; i++) Canal(id: '$i', nome: 'Canal Ação $i', grupo: i.isEven ? 'G' : 'H', url: 'u$i'),
+      ]);
+      await t.runAsync(() async {
+        await bib.adicionar([Importada(contaDeLinha('http://x.com/l.m3u')!)]);
+        await bib.guardarCanais(bib.listas.single.id, grande);
+      });
+      final l = bib.listas.single;
+      await t.runAsync(() async {
+        await t.pumpWidget(_app(TelaConteudo(biblioteca: bib, lista: l)));
+        await Future<void>.delayed(const Duration(seconds: 3));
+      });
+      await t.pump();
+      await t.enterText(find.byKey(const Key('pesquisa-canais')), 'acao 9999');
+      await t.pump(const Duration(milliseconds: 200));
+      await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 500)));
+      await t.pump();
+      expect(find.text('11 canais encontrados'), findsOneWidget);
+      final sw = Stopwatch()..start();
+      for (var k = 0; k < 5; k++) {
+        await t.tap(find.byTooltip(k.isEven ? 'Pôr nos favoritos' : 'Tirar dos favoritos').first);
+        await t.pump();
+      }
+      sw.stop();
+      // ignore: avoid_print
+      print('I5 rebuild médio: ${sw.elapsedMilliseconds / 5} ms');
+      expect(sw.elapsedMilliseconds / 5, lessThan(60));
     });
 
     testWidgets('no telemóvel os grupos são chips', (t) async {
