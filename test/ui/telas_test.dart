@@ -9,6 +9,7 @@ import 'package:player_iptv/modelo/canal.dart';
 import 'package:player_iptv/modelo/conta.dart';
 import 'package:player_iptv/ui/conteudo/tela_conteudo.dart';
 import 'package:player_iptv/ui/inicio/tela_inicio.dart';
+import 'package:player_iptv/ui/player/player_canais.dart';
 import 'package:player_iptv/ui/tema.dart';
 import 'package:player_iptv/verificar/servico.dart';
 
@@ -62,6 +63,11 @@ void main() {
     await t.pump();
     expect(find.text('001NXTBOX 161027'), findsOneWidget);
     expect(find.text('003NOVO'), findsNothing);
+  });
+
+  test('a mensagem de erro do player não mostra links (credenciais Xtream)', () {
+    expect(mensagemErroPlayer('Failed to open http://h:8080/live/user/pass/1.ts.'), 'o canal não abriu (Failed to open)');
+    expect(mensagemErroPlayer('http://h/live/u/p/1.ts'), 'o canal não abriu');
   });
 
   testWidgets('Início vazio convida a adicionar listas', (t) async {

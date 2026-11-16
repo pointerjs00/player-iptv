@@ -9,6 +9,13 @@ import '../../modelo/canal.dart';
 import '../../protocolos/protocolo.dart';
 import '../../rede/http.dart';
 
+/// A mensagem do leitor sem links: nas contas Xtream o link leva o utilizador e a password.
+String mensagemErroPlayer(String e) {
+  final limpo = e.replaceAll(RegExp(r'\S+://\S+'), '').replaceAll(RegExp(r'\s+'), ' ').trim();
+  final semPontuacao = limpo.replaceAll(RegExp(r'[^\p{L}\p{N}]', unicode: true), '');
+  return semPontuacao.isEmpty ? 'o canal não abriu' : 'o canal não abriu ($limpo)';
+}
+
 /// Dá o link (e os headers) de um canal. No Android chama o protocolo; na janela do player
 /// do Windows pede-o à janela principal.
 typedef ResolverFonte = Future<FonteVideo> Function(Canal canal);
@@ -47,7 +54,7 @@ class PlayerCanaisState extends State<PlayerCanais> {
   void initState() {
     super.initState();
     _subs.add(_player.stream.error.listen((e) {
-      if (mounted && e.isNotEmpty) setState(() { _erro = 'o canal não abriu ($e)'; _aAbrir = false; _info = true; });
+      if (mounted && e.isNotEmpty) setState(() { _erro = mensagemErroPlayer(e); _aAbrir = false; _info = true; });
     }));
     _subs.add(_player.stream.playing.listen((a) {
       if (mounted && a) setState(() { _aAbrir = false; _erro = null; });
@@ -115,8 +122,8 @@ class PlayerCanaisState extends State<PlayerCanais> {
     } else if (k == LogicalKeyboardKey.select || k == LogicalKeyboardKey.enter ||
         k == LogicalKeyboardKey.numpadEnter) {
       _erro != null ? _abrir() : _mostrarInfo();
-    } else if (k == LogicalKeyboardKey.escape || k == LogicalKeyboardKey.goBack ||
-        k == LogicalKeyboardKey.browserBack) {
+    } else if (k == LogicalKeyboardKey.escape) {
+      // o Voltar do Android/comando já fecha a página do player (o sistema trata dele)
       widget.aoSair();
     } else if (k == LogicalKeyboardKey.f11 && widget.alternarEcraInteiro != null) {
       widget.alternarEcraInteiro!();

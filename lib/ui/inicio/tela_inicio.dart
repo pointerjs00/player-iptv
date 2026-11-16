@@ -98,8 +98,10 @@ class _TelaInicioState extends State<TelaInicio> {
                       ? const Center(child: Text('Nenhuma lista com este filtro.'))
                       : GridView.builder(
                           padding: const EdgeInsets.all(16),
-                          gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                            maxCrossAxisExtent: 340, mainAxisExtent: 224, crossAxisSpacing: 12, mainAxisSpacing: 12,
+                          // no telemóvel, um cartão por linha (com o nome inteiro)
+                          gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                            maxCrossAxisExtent: MediaQuery.sizeOf(context).width < 600 ? 600 : 340,
+                            mainAxisExtent: 224, crossAxisSpacing: 12, mainAxisSpacing: 12,
                           ),
                           itemCount: vis.length,
                           itemBuilder: (_, i) => CartaoLista(
@@ -122,8 +124,11 @@ class _TelaInicioState extends State<TelaInicio> {
           const SizedBox(height: 12),
           const Text('Ainda não há listas.', style: TextStyle(fontSize: 18)),
           const SizedBox(height: 4),
-          const Text('Importe o Accounts.json, ficheiros .ini, listas M3U ou cole as linhas.',
-              style: TextStyle(color: Cores.texto2)),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 24),
+            child: Text('Importe o Accounts.json, ficheiros .ini, listas M3U ou cole as linhas.',
+                textAlign: TextAlign.center, style: TextStyle(color: Cores.texto2)),
+          ),
           const SizedBox(height: 16),
           FilledButton.icon(
             autofocus: true,
