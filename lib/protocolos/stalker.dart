@@ -120,7 +120,7 @@ class Stalker implements Protocolo {
     // só "todos 404" é prova: um 401/403 no handshake pode ser WAF ou bloqueio de IP
     if (todos404) throw ErroLista('portal não encontrado', definitivo: true);
     throw ErroLista('não foi possível entrar no portal: '
-        '${ultimoErro is ErroLista ? ultimoErro.mensagem : descreverErro(ultimoErro ?? 'sem resposta')}');
+        '${ultimoErro == null ? 'sem resposta' : descreverErro(ultimoErro)}');
   }
 
   @override

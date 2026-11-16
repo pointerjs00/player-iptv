@@ -53,6 +53,40 @@ void main() {
     expect(bib.listas.length, 2);
   });
 
+  testWidgets('I1: blog que corta a ligação mostra o erro em português e sem o link', (t) async {
+    HttpOverrides.global = null;
+    t.view.physicalSize = const Size(1200, 1600);
+    t.view.devicePixelRatio = 1;
+    addTearDown(t.view.reset);
+    final pasta = Directory.systemTemp.createTempSync('stb');
+    late Biblioteca bib;
+    late ServerSocket corta;
+    await t.runAsync(() async {
+      bib = await Biblioteca.abrir(pasta);
+      corta = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+      corta.listen((s) => s.destroy());
+    });
+    addTearDown(() async {
+      await t.runAsync(corta.close);
+      try {
+        pasta.deleteSync(recursive: true);
+      } on FileSystemException {/* Windows */}
+    });
+    await t.pumpWidget(MaterialApp(
+        theme: temaApp(),
+        home: Scaffold(
+            body: TelaVerificar(
+                biblioteca: bib, servico: ServicoVerificacao(bib), baseStb: 'http://127.0.0.1:${corta.port}/'))));
+    await t.runAsync(() async {
+      await t.tap(find.text('Iniciar pesquisa'));
+      await Future<void>.delayed(const Duration(milliseconds: 800));
+    });
+    await t.pump();
+    await t.pump();
+    expect(find.text('Não foi possível pesquisar: a ligação foi cortada pelo servidor'), findsOneWidget);
+    expect(find.textContaining('http'), findsNothing);
+  });
+
   testWidgets('o seletor de datas aparece em português', (t) async {
     t.view.physicalSize = const Size(1200, 1600);
     t.view.devicePixelRatio = 1;

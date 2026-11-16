@@ -84,7 +84,7 @@ class ServicoVerificacao extends ChangeNotifier {
     } on Cancelado {
       // parada: fica o resultado anterior
     } catch (e) {
-      await biblioteca.registarVerificacao(l.id, paraUltima(ResultadoVerificacao(EstadoV.inconclusivo, 'falha: $e')));
+      await biblioteca.registarVerificacao(l.id, paraUltima(ResultadoVerificacao(EstadoV.inconclusivo, 'falha: ${descreverErro(e)}')));
     }
   }
 }

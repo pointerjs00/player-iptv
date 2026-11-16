@@ -26,8 +26,9 @@ abstract class Protocolo {
       };
 }
 
-class ErroLista implements Exception {
+class ErroLista implements Exception, ErroLegivel {
   ErroLista(this.mensagem, {this.definitivo = false});
+  @override
   final String mensagem;
 
   /// Prova de que a lista não funciona (conta recusada, expirada, portal inexistente).

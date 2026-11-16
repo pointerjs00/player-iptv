@@ -119,8 +119,27 @@ Future<Object?> obterJson(String url, {Map<String, String> headers = const {},
   }
 }
 
-/// Mensagem legível para um erro de rede.
+/// Um erro cuja mensagem já é para o utilizador (p.ex. `ErroLista`).
+abstract interface class ErroLegivel {
+  String get mensagem;
+}
+
+final _reLink = RegExp(r'\S+://\S+');
+final _reMac = RegExp(r'(?:[0-9A-Fa-f]{2}(?::|-|%3A|%3a)){5}[0-9A-Fa-f]{2}');
+final _reUri = RegExp(r',?\s*uri\s*=\s*');
+
+/// Tira de um texto os links (nas contas Xtream levam o utilizador e a password) e os MACs.
+String semSegredos(String t) => t
+    .replaceAll(_reLink, '')
+    .replaceAll(_reMac, '')
+    .replaceAll(_reUri, ' ')
+    .replaceAll(RegExp(r'\s+'), ' ')
+    .trim();
+
+/// Mensagem legível (em português, sem links nem MACs) para qualquer erro: é o que se mostra
+/// e o que se guarda.
 String descreverErro(Object e) {
+  if (e is ErroLegivel) return semSegredos(e.mensagem);
   if (e is ErroHttp) {
     return switch (e.status) {
       401 || 403 => 'acesso recusado (${e.status})',
@@ -130,7 +149,11 @@ String descreverErro(Object e) {
     };
   }
   if (e is TimeoutException) return 'o servidor não respondeu a tempo';
+  if (e is TlsException) return 'falha na ligação segura (certificado ou TLS)';
   if (e is SocketException) return 'não foi possível ligar ao servidor';
+  if (e is HttpException) return 'a ligação foi cortada pelo servidor';
+  if (e is FormatException) return 'endereço ou resposta inválidos';
+  if (e is FileSystemException) return 'não foi possível ler o ficheiro';
   if (e is Cancelado) return 'cancelado';
-  return '$e';
+  return 'falha inesperada';
 }

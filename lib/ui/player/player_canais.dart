@@ -11,7 +11,7 @@ import '../../rede/http.dart';
 
 /// A mensagem do leitor sem links: nas contas Xtream o link leva o utilizador e a password.
 String mensagemErroPlayer(String e) {
-  final limpo = e.replaceAll(RegExp(r'\S+://\S+'), '').replaceAll(RegExp(r'\s+'), ' ').trim();
+  final limpo = semSegredos(e);
   final semPontuacao = limpo.replaceAll(RegExp(r'[^\p{L}\p{N}]', unicode: true), '');
   return semPontuacao.isEmpty ? 'o canal não abriu' : 'o canal não abriu ($limpo)';
 }

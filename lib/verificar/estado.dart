@@ -54,8 +54,8 @@ ResultadoVerificacao classificarFalha(Object e) {
   }
   if (e is TimeoutException) return const ResultadoVerificacao(EstadoV.inconclusivo, 'tempo esgotado');
   if (e is SocketException) {
-    return ResultadoVerificacao(EstadoV.inconclusivo, 'ligação falhou (${e.osError?.message ?? e.message})');
+    return ResultadoVerificacao(EstadoV.inconclusivo, 'ligação falhou (${semSegredos(e.osError?.message ?? e.message)})');
   }
-  if (e is HttpException) return ResultadoVerificacao(EstadoV.inconclusivo, 'ligação cortada (${e.message})');
-  return ResultadoVerificacao(EstadoV.inconclusivo, 'falha: $e');
+  if (e is HttpException) return const ResultadoVerificacao(EstadoV.inconclusivo, 'ligação cortada pelo servidor');
+  return ResultadoVerificacao(EstadoV.inconclusivo, descreverErro(e));
 }

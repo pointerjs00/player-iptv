@@ -5,6 +5,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../dados/biblioteca.dart';
 import '../importar/importar.dart';
+import '../rede/http.dart';
 import '../modelo/conta.dart';
 
 /// Importa ficheiros (Accounts.json, .ini, .m3u, .txt, historico.json) para a biblioteca.
@@ -20,7 +21,7 @@ Future<String> importarFicheiros(Biblioteca b) async {
     } on ErroImportacao catch (e) {
       erros.add('${f.name}: ${e.mensagem}');
     } catch (e) {
-      erros.add('${f.name}: $e');
+      erros.add('${f.name}: ${descreverErro(e)}');
     }
   }
   final novas = await b.adicionar(importadas);

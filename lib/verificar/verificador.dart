@@ -144,7 +144,7 @@ class Verificador {
         rethrow;
       } catch (e) {
         // uma recusa do create_link é problema de sessão, não prova sobre o stream
-        return ResultadoVerificacao(EstadoV.inconclusivo, 'o link do canal falhou: $e');
+        return ResultadoVerificacao(EstadoV.inconclusivo, 'o link do canal falhou: ${descreverErro(e)}');
       }
       return ler(f.url, f.headers, timeout: timeout, cancelamento: can, stream401Inc: conta.tipo == Tipo.xtream);
     }
