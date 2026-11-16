@@ -80,7 +80,7 @@ class _TelaVerificarState extends State<TelaVerificar> {
         msg = '$periodo: ${r.total} ${r.total == 1 ? 'linha' : 'linhas'} em $np '
             '${np == 1 ? 'post' : 'posts'}, $novas ${novas == 1 ? 'lista nova' : 'listas novas'}.';
       }
-    } on Exception catch (e) {
+    } catch (e) {
       msg = 'Não foi possível pesquisar: ${descreverErro(e)}';
     }
     if (!mounted) return;

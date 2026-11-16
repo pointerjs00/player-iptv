@@ -30,6 +30,8 @@ Future<void> main(List<String> args) async {
   runApp(AppPlayerIptv(biblioteca: biblioteca));
 }
 
+const _pt = Locale('pt', 'PT');
+
 class AppPlayerIptv extends StatefulWidget {
   const AppPlayerIptv({super.key, required this.biblioteca});
   final Biblioteca biblioteca;
@@ -52,6 +54,9 @@ class _AppPlayerIptvState extends State<AppPlayerIptv> {
         title: 'Player IPTV',
         debugShowCheckedModeBanner: false,
         theme: temaApp(),
+        locale: _pt,
+        supportedLocales: const [_pt],
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
         home: TelaInicio(
           biblioteca: widget.biblioteca,
           servico: _servico,
@@ -100,6 +105,9 @@ class _AppJanelaPlayerState extends State<AppJanelaPlayer> {
   Widget build(BuildContext context) => MaterialApp(
         debugShowCheckedModeBanner: false,
         theme: temaApp(),
+        locale: _pt,
+        supportedLocales: const [_pt],
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
         home: Scaffold(
           backgroundColor: Colors.black,
           body: _canais.isEmpty

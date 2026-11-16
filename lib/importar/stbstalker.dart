@@ -30,9 +30,13 @@ class ResultadoStb {
 Future<String> _ler(String url, Duration timeout) =>
     obterTexto(url, headers: {'User-Agent': _ua}, timeout: timeout, maxBytes: 16 * 1024 * 1024);
 
+String _codigo(int? n) => n == null || n < 0 || n > 0x10FFFF || (n >= 0xD800 && n <= 0xDFFF)
+    ? '�'
+    : String.fromCharCode(n);
+
 String _desescapar(String t) => t
-    .replaceAllMapped(RegExp(r'&#(\d+);'), (m) => String.fromCharCode(int.parse(m[1]!)))
-    .replaceAllMapped(RegExp(r'&#[xX]([0-9a-fA-F]+);'), (m) => String.fromCharCode(int.parse(m[1]!, radix: 16)))
+    .replaceAllMapped(RegExp(r'&#(\d+);'), (m) => _codigo(int.tryParse(m[1]!)))
+    .replaceAllMapped(RegExp(r'&#[xX]([0-9a-fA-F]+);'), (m) => _codigo(int.tryParse(m[1]!, radix: 16)))
     .replaceAll('&nbsp;', ' ')
     .replaceAll('&lt;', '<')
     .replaceAll('&gt;', '>')

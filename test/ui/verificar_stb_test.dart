@@ -52,4 +52,27 @@ void main() {
     expect(find.text('Em ${_dd(hoje)}: 2 linhas em 1 post, 2 listas novas.'), findsOneWidget);
     expect(bib.listas.length, 2);
   });
+
+  testWidgets('o seletor de datas aparece em português', (t) async {
+    t.view.physicalSize = const Size(1200, 1600);
+    t.view.devicePixelRatio = 1;
+    addTearDown(t.view.reset);
+    final pasta = Directory.systemTemp.createTempSync('stb');
+    late Biblioteca bib;
+    await t.runAsync(() async => bib = await Biblioteca.abrir(pasta));
+    addTearDown(() {
+      try {
+        pasta.deleteSync(recursive: true);
+      } on FileSystemException {/* Windows */}
+    });
+    await t.pumpWidget(MaterialApp(
+        theme: temaApp(),
+        locale: const Locale('pt', 'PT'),
+        supportedLocales: const [Locale('pt', 'PT')],
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        home: Scaffold(body: TelaVerificar(biblioteca: bib, servico: ServicoVerificacao(bib)))));
+    await t.tap(find.byType(OutlinedButton).first);
+    await t.pumpAndSettle();
+    expect(find.text('Cancelar'), findsOneWidget);
+  });
 }

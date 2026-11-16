@@ -81,4 +81,12 @@ void main() {
     expect([for (final p in r) p.data], [DateTime(2026, 11, 14), DateTime(2026, 11, 5)]);
     expect(srv.pedidos.length, 2); // parou ao passar o início
   });
+
+  test('entidade numérica fora do intervalo não aborta a importação', () async {
+    rotas['/2026/11/stb-14-11-2026.html'] =
+        '<p>http://p.exemplo/c/&#x110000;&#1114112;&#99999999999999999999;</p><p>00:1A:79:00:00:05</p>';
+    final r = await importarEntre(DateTime(2026, 11, 1), DateTime(2026, 11, 30), base: '${srv.url}/');
+    expect(r.linhas, contains('http://outro.exemplo/c/ 00:1A:79:00:00:09'));
+    expect(r.posts.length, 2);
+  });
 }
