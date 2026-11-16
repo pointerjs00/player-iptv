@@ -5,3 +5,4 @@ build/
 Accounts*.json
 *.ini
 historico.json
+.superpowers/
