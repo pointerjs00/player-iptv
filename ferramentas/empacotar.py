@@ -114,6 +114,23 @@ def falta_symlinks(texto: str) -> bool:
     return MSG_SYMLINK in texto
 
 
+def limpar_saidas(dist: Path, android: bool, windows: bool) -> None:
+    """Apaga saidas antigas dos alvos a construir, para nunca partilhar ficheiros velhos."""
+    nomes = ["LEIA-ME.txt"]
+    if android:
+        nomes += list(APKS.values())
+    if windows:
+        nomes.append("PlayerIPTV-windows.zip")
+    for n in nomes:
+        (Path(dist) / n).unlink(missing_ok=True)
+
+
+def configurar_saida(*fluxos) -> None:
+    """UTF-8 com substituicao, para a saida do Flutter nunca rebentar em cp1252."""
+    for f in fluxos:
+        f.reconfigure(encoding="utf-8", errors="replace")
+
+
 def _flutter() -> str:
     return shutil.which("flutter") or "flutter"
 
@@ -144,8 +161,10 @@ def main(argv=None) -> int:
     g.add_argument("--so-android", action="store_true")
     g.add_argument("--so-windows", action="store_true")
     a = p.parse_args(argv)
+    configurar_saida(sys.stdout, sys.stderr)
     dist = RAIZ / "dist"
     dist.mkdir(exist_ok=True)
+    limpar_saidas(dist, android=not a.so_windows, windows=not a.so_android)
     avisos = []
     gerados = []
 
