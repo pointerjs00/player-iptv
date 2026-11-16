@@ -37,6 +37,24 @@ String preencherStream(String link, Canal canal) {
   return link.replaceFirstMapped(_reStreamVazio, (m) => '${m[1]}${Uri.encodeComponent(sid)}');
 }
 
+const _meses = {
+  'january': 1, 'february': 2, 'march': 3, 'april': 4, 'may': 5, 'june': 6, 'july': 7,
+  'august': 8, 'september': 9, 'october': 10, 'november': 11, 'december': 12,
+};
+
+/// "February 3, 2027, 12:42 am" -> "2027-02-03"; "Unlimited" -> "sem limite"; outra coisa -> "".
+String validadeDoTexto(String texto) {
+  final s = texto.trim();
+  if (const {'unlimited', 'ilimitado', 'unlimited plan'}.contains(s.toLowerCase())) return 'sem limite';
+  final m = RegExp(r'^([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})').firstMatch(s);
+  final mes = m == null ? null : _meses[m[1]!.toLowerCase()];
+  if (m == null || mes == null) return '';
+  final dia = int.parse(m[2]!), ano = int.parse(m[3]!);
+  final d = DateTime(ano, mes, dia);
+  if (d.month != mes || d.day != dia) return '';
+  return '${ano.toString().padLeft(4, '0')}-${mes.toString().padLeft(2, '0')}-${dia.toString().padLeft(2, '0')}';
+}
+
 List _comoLista(Object? d) => d is Map ? d.values.toList() : (d is List ? d : const []);
 
 class _Sessao {
@@ -69,6 +87,7 @@ class Stalker implements Protocolo {
 
   Future<_Sessao> _entrar(Conta conta, Cancelamento? cancelamento, Aviso? aviso) async {
     Object? ultimoErro;
+    var todos404 = true;
     for (final base in endpointsStalker(conta.endereco)) {
       final s = _Sessao(base, conta.mac);
       aviso?.call('a ligar ao portal (${Uri.parse(base).path})');
@@ -90,12 +109,16 @@ class Stalker implements Protocolo {
           return s;
         }
         ultimoErro = ErroLista('o portal respondeu sem token');
+        todos404 = false;
       } on Cancelado {
         rethrow;
       } catch (e) {
         ultimoErro = e;
+        if (!(e is ErroHttp && e.status == 404)) todos404 = false;
       }
     }
+    // só "todos 404" é prova: um 401/403 no handshake pode ser WAF ou bloqueio de IP
+    if (todos404) throw ErroLista('portal não encontrado', definitivo: true);
     throw ErroLista('não foi possível entrar no portal: '
         '${ultimoErro is ErroLista ? ultimoErro.mensagem : descreverErro(ultimoErro ?? 'sem resposta')}');
   }
@@ -103,6 +126,7 @@ class Stalker implements Protocolo {
   @override
   Future<ConteudoLista> abrir(Conta conta, {Cancelamento? cancelamento, Aviso? aviso}) async {
     final s = await _entrar(conta, cancelamento, aviso);
+    final validade = await _validade(s, cancelamento);
     aviso?.call('a pedir as categorias');
     final generos = <String, String>{};
     try {
@@ -140,7 +164,33 @@ class Stalker implements Protocolo {
     for (final g in usados) {
       if (!grupos.contains(g)) grupos.add(g);
     }
-    return ConteudoLista(grupos, canais);
+    return ConteudoLista(grupos, canais, validade: validade);
+  }
+
+  /// get_main_info: `end_date` (data) ou o campo `phone`, que muitos painéis usam para a
+  /// validade ("February 3, 2027, 12:42 am" / "Unlimited"). Uma conta expirada é prova.
+  Future<String> _validade(_Sessao s, Cancelamento? cancelamento) async {
+    Object? info;
+    try {
+      info = await s.get({'type': 'account_info', 'action': 'get_main_info'}, cancelamento: cancelamento);
+    } on Cancelado {
+      rethrow;
+    } catch (_) {
+      return '';
+    }
+    if (info is! Map) return '';
+    var validade = validadeDoTexto('${info['phone'] ?? ''}');
+    final fim = '${info['end_date'] ?? ''}'.trim();
+    if (fim.startsWith('0000')) return validade.isEmpty ? 'sem limite' : validade;
+    final data = DateTime.tryParse(fim.length >= 10 ? fim.substring(0, 10) : fim);
+    if (data == null) return validade;
+    if (data.year < 2000) return validade.isEmpty ? 'sem limite' : validade;
+    final iso = fim.substring(0, 10);
+    final hoje = DateTime.now();
+    if (data.isBefore(DateTime(hoje.year, hoje.month, hoje.day))) {
+      throw ErroLista('conta expirada em $iso', definitivo: true);
+    }
+    return iso;
   }
 
   Future<List<Object?>> _paginas(_Sessao s, Cancelamento? cancelamento, Aviso? aviso) async {

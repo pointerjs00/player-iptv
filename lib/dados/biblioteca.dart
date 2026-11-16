@@ -59,6 +59,9 @@ class Biblioteca extends ChangeNotifier {
   final Directory _pasta;
   final List<Lista> _listas;
 
+  /// Os canais que a verificação testa ("rtp1", "sporttv1", "dazn1").
+  List<String> canaisTeste = const ['rtp1'];
+
   List<Lista> get listas => List.unmodifiable(_listas);
 
   File get _ficheiro => File('${_pasta.path}${Platform.pathSeparator}biblioteca.json');
@@ -76,6 +79,8 @@ class Biblioteca extends ChangeNotifier {
           final l = Lista.deJson(j);
           if (l != null) b._listas.add(l);
         }
+        final ct = dados['canais_teste'];
+        if (ct is List && ct.isNotEmpty) b.canaisTeste = [for (final c in ct) '$c'];
       } catch (_) {
         await b._ficheiro.copy('${b._ficheiro.path}.bak');
       }
@@ -128,6 +133,12 @@ class Biblioteca extends ChangeNotifier {
     await guardar();
   }
 
+  Future<void> definirCanaisTeste(List<String> ids) async {
+    if (ids.isEmpty) return;
+    canaisTeste = List.unmodifiable(ids);
+    await guardar();
+  }
+
   Future<void> alternarFavorito(String id, String canalId) async {
     final l = porId(id);
     if (l == null) return;
@@ -149,17 +160,32 @@ class Biblioteca extends ChangeNotifier {
 
   Future<void> guardarCanais(String id, ConteudoLista c) async {
     await _pastaCanais.create(recursive: true);
-    await _escreverAtomico(_ficheiroCanais(id), jsonEncode(c.paraJson()));
+    final texto = jsonEncode(c.paraJson());
+    await _emFila(() => _escreverAtomico(_ficheiroCanais(id), texto));
   }
 
-  Future<void> guardar() async {
-    await _escreverAtomico(_ficheiro,
-        const JsonEncoder.withIndent(' ').convert({'versao': 1, 'listas': [for (final l in _listas) l.paraJson()]}));
+  /// As gravações fazem-se uma de cada vez (várias verificações podem acabar juntas).
+  Future<void> _gravacoes = Future.value();
+
+  Future<void> guardar() {
+    // o texto é tirado agora (o estado deste momento); a escrita espera pela anterior
+    final texto = const JsonEncoder.withIndent(' ').convert({
+      'versao': 1, 'canais_teste': canaisTeste, 'listas': [for (final l in _listas) l.paraJson()],
+    });
     notifyListeners();
+    return _emFila(() => _escreverAtomico(_ficheiro, texto));
   }
+
+  Future<void> _emFila(Future<void> Function() f) {
+    final r = _gravacoes.then((_) => f());
+    _gravacoes = r.catchError((_) {});
+    return r;
+  }
+
+  static int _seq = 0;
 
   static Future<void> _escreverAtomico(File f, String texto) async {
-    final tmp = File('${f.path}.tmp');
+    final tmp = File('${f.path}.${_seq++}.tmp');
     await tmp.writeAsString(texto, flush: true);
     await tmp.rename(f.path);
   }

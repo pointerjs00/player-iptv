@@ -2,20 +2,20 @@ import 'package:material_ui/material_ui.dart';
 
 import '../../dados/biblioteca.dart';
 import '../../modelo/canal.dart';
+import '../../verificar/servico.dart';
 import '../adicionar.dart';
 import '../conteudo/tela_conteudo.dart';
 import '../tema.dart';
 import 'cartao_lista.dart';
 
-/// Verifica uma lista e guarda o resultado (ligado na Fase 6).
-typedef Verificar = Future<void> Function(Lista lista);
-
 /// Início: as listas guardadas em cartões, com pesquisa e filtro por estado.
 class TelaInicio extends StatefulWidget {
-  const TelaInicio({super.key, required this.biblioteca, this.verificar, this.separadorVerificar});
+  const TelaInicio({super.key, required this.biblioteca, this.servico, this.separadorVerificar});
 
   final Biblioteca biblioteca;
-  final Verificar? verificar;
+
+  /// Verifica listas e guarda o resultado; sem ele não há botões de verificar.
+  final ServicoVerificacao? servico;
 
   /// O separador "Verificar" (a interface do verificador).
   final Widget? separadorVerificar;
@@ -27,7 +27,6 @@ class TelaInicio extends StatefulWidget {
 class _TelaInicioState extends State<TelaInicio> {
   String _q = '';
   String? _filtro; // null = todas; 'por_verificar' = sem resultado
-  final _aVerificar = <String>{};
 
   static const _filtros = [
     (null, 'Todas'),
@@ -45,15 +44,6 @@ class _TelaInicioState extends State<TelaInicio> {
             (q.isEmpty || semAcentos('${l.nomeMostrado} ${l.conta.endereco} ${l.conta.nome}').contains(q)))
           l,
     ];
-  }
-
-  Future<void> _verificar(Lista l) async {
-    setState(() => _aVerificar.add(l.id));
-    try {
-      await widget.verificar!(l);
-    } finally {
-      if (mounted) setState(() => _aVerificar.remove(l.id));
-    }
   }
 
   Future<void> _remover(Lista l) async {
@@ -76,7 +66,7 @@ class _TelaInicioState extends State<TelaInicio> {
       ));
 
   Widget _listas() => ListenableBuilder(
-        listenable: widget.biblioteca,
+        listenable: Listenable.merge([widget.biblioteca, ?widget.servico]),
         builder: (context, _) {
           final todas = widget.biblioteca.listas;
           final vis = _visiveis();
@@ -93,14 +83,9 @@ class _TelaInicioState extends State<TelaInicio> {
                 ),
                 for (final (v, t) in _filtros)
                   ChoiceChip(label: Text(t), selected: _filtro == v, onSelected: (_) => setState(() => _filtro = v)),
-                if (widget.verificar != null && todas.isNotEmpty)
+                if (widget.servico != null && todas.isNotEmpty)
                   OutlinedButton.icon(
-                    onPressed: () async {
-                      for (final l in vis) {
-                        if (!mounted) return;
-                        await _verificar(l);
-                      }
-                    },
+                    onPressed: () => widget.servico!.verificarVarias(vis),
                     icon: const Icon(Icons.playlist_add_check),
                     label: Text('Verificar ${vis.length == todas.length ? 'todas' : 'as ${vis.length} visíveis'}'),
                   ),
@@ -121,8 +106,8 @@ class _TelaInicioState extends State<TelaInicio> {
                             lista: vis[i],
                             autofocus: i == 0,
                             aoAbrir: () => _abrir(vis[i]),
-                            aoVerificar: widget.verificar == null ? null : () => _verificar(vis[i]),
-                            verificando: _aVerificar.contains(vis[i].id),
+                            aoVerificar: widget.servico == null ? null : () => widget.servico!.verificar(vis[i]),
+                            verificando: widget.servico?.aVerificar(vis[i].id) ?? false,
                             aoRemover: () => _remover(vis[i]),
                           ),
                         ),

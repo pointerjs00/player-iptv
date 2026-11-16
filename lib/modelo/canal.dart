@@ -41,7 +41,10 @@ class Canal {
 }
 
 class ConteudoLista {
-  ConteudoLista(this.grupos, this.canais);
+  ConteudoLista(this.grupos, this.canais, {this.validade = ''});
+
+  /// "AAAA-MM-DD", "sem limite" ou "" (desconhecida).
+  final String validade;
 
   /// Pela ordem do portal/lista.
   final List<String> grupos;
@@ -58,12 +61,13 @@ class ConteudoLista {
   }
 
   Map<String, dynamic> paraJson() => {
-        'grupos': grupos, 'canais': [for (final c in canais) c.paraJson()],
+        'grupos': grupos, 'canais': [for (final c in canais) c.paraJson()], 'validade': validade,
       };
 
   static ConteudoLista deJson(Map<String, dynamic> j) => ConteudoLista(
         [for (final g in (j['grupos'] as List? ?? const [])) '$g'],
         [for (final c in (j['canais'] as List? ?? const [])) Canal.deJson(Map<String, dynamic>.from(c as Map))],
+        validade: '${j['validade'] ?? ''}',
       );
 }
 

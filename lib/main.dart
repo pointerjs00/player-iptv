@@ -11,6 +11,8 @@ import 'modelo/canal.dart';
 import 'ui/inicio/tela_inicio.dart';
 import 'ui/player/player_canais.dart';
 import 'ui/tema.dart';
+import 'ui/verificar/tela_verificar.dart';
+import 'verificar/servico.dart';
 
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -28,16 +30,33 @@ Future<void> main(List<String> args) async {
   runApp(AppPlayerIptv(biblioteca: biblioteca));
 }
 
-class AppPlayerIptv extends StatelessWidget {
+class AppPlayerIptv extends StatefulWidget {
   const AppPlayerIptv({super.key, required this.biblioteca});
   final Biblioteca biblioteca;
+
+  @override
+  State<AppPlayerIptv> createState() => _AppPlayerIptvState();
+}
+
+class _AppPlayerIptvState extends State<AppPlayerIptv> {
+  late final _servico = ServicoVerificacao(widget.biblioteca);
+
+  @override
+  void dispose() {
+    _servico.parar();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) => MaterialApp(
         title: 'Player IPTV',
         debugShowCheckedModeBanner: false,
         theme: temaApp(),
-        home: TelaInicio(biblioteca: biblioteca),
+        home: TelaInicio(
+          biblioteca: widget.biblioteca,
+          servico: _servico,
+          separadorVerificar: TelaVerificar(biblioteca: widget.biblioteca, servico: _servico),
+        ),
       );
 }
 

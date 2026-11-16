@@ -10,6 +10,7 @@ import 'package:player_iptv/modelo/conta.dart';
 import 'package:player_iptv/ui/conteudo/tela_conteudo.dart';
 import 'package:player_iptv/ui/inicio/tela_inicio.dart';
 import 'package:player_iptv/ui/tema.dart';
+import 'package:player_iptv/verificar/servico.dart';
 
 Widget _app(Widget w) => MaterialApp(theme: temaApp(), home: w);
 
@@ -42,7 +43,7 @@ void main() {
           Importada(contaDeLinha('http://novo.com/x.m3u')!),
         ]));
     _tamanho(t, 1200, 800);
-    await t.pumpWidget(_app(TelaInicio(biblioteca: bib, verificar: (_) async {})));
+    await t.pumpWidget(_app(TelaInicio(biblioteca: bib, servico: ServicoVerificacao(bib))));
     await t.pump();
     expect(find.text('001NXTBOX 161027'), findsOneWidget);
     expect(find.text('até 16/10/2027'), findsOneWidget);

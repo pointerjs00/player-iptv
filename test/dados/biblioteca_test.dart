@@ -43,6 +43,17 @@ void main() {
     expect(r.listas.last.nome, '004D');
   });
 
+  test('gravações ao mesmo tempo não se atropelam', () async {
+    final b = await Biblioteca.abrir(pasta);
+    await b.adicionar([for (var i = 0; i < 20; i++) _imp('http://h$i.com/c/ 00:1A:79:00:00:01')]);
+    await Future.wait([
+      for (final l in b.listas)
+        b.registarVerificacao(l.id, UltimaVerificacao(estado: 'funciona', data: DateTime(2026))),
+    ]);
+    final r = await Biblioteca.abrir(pasta);
+    expect(r.listas.where((l) => l.ultima?.estado == 'funciona'), hasLength(20));
+  });
+
   test('ficheiro estragado: começa vazia e guarda uma cópia', () async {
     await File('${pasta.path}/biblioteca.json').writeAsString('{estragado');
     final b = await Biblioteca.abrir(pasta);

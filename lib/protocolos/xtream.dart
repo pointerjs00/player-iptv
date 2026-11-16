@@ -27,17 +27,34 @@ class Xtream implements Protocolo {
     return !fs.contains('ts') && fs.contains('m3u8') ? 'm3u8' : 'ts';
   }
 
+  /// "AAAA-MM-DD", "sem limite" (exp_date nulo/0) ou "" (sem campo ou ilegível).
+  static String validadeXtream(Map userInfo) {
+    if (!userInfo.containsKey('exp_date')) return '';
+    final exp = '${userInfo['exp_date'] ?? ''}'.trim();
+    final epoch = exp.isEmpty ? 0 : double.tryParse(exp)?.toInt();
+    if (epoch == null) return '';
+    if (epoch <= 0) return 'sem limite';
+    final d = DateTime.fromMillisecondsSinceEpoch(epoch * 1000);
+    return '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+  }
+
   @override
   Future<ConteudoLista> abrir(Conta conta, {Cancelamento? cancelamento, Aviso? aviso}) async {
     aviso?.call('a entrar na conta');
     final info = await _api(conta, const {}, cancelamento);
     final user = info is Map ? info['user_info'] : null;
     if (user is! Map) throw ErroLista('o servidor não respondeu como um painel Xtream');
+    if (!user.containsKey('auth')) throw ErroLista('resposta do servidor sem estado de autenticação');
     if (!const {'1', 'true'}.contains('${user['auth']}'.toLowerCase())) {
-      throw ErroLista('autenticação recusada');
+      throw ErroLista('autenticação recusada', definitivo: true);
     }
     final status = '${user['status'] ?? 'active'}'.toLowerCase();
-    if (status != 'active') throw ErroLista('conta $status');
+    if (status != 'active') throw ErroLista('conta ${user['status']}', definitivo: true);
+    final validade = validadeXtream(user);
+    final fim = DateTime.tryParse(validade);
+    if (fim != null && fim.isBefore(DateTime.now().subtract(const Duration(days: 1)))) {
+      throw ErroLista('conta expirada em $validade', definitivo: true);
+    }
     _extensoes[chave(conta)] = extensao(user);
 
     aviso?.call('a pedir as categorias');
@@ -68,7 +85,7 @@ class Xtream implements Protocolo {
     for (final g in grupos) {
       if (!ordem.contains(g)) ordem.add(g);
     }
-    return ConteudoLista(ordem.toSet().toList(), canais);
+    return ConteudoLista(ordem.toSet().toList(), canais, validade: validade);
   }
 
   @override
