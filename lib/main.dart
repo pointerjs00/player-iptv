@@ -21,7 +21,8 @@ Future<void> main(List<String> args) async {
   if (Platform.isWindows && i >= 0 && i + 1 < args.length) {
     // esta é a janela do player (Windows): liga-se à janela principal
     final porta = int.parse(args[i + 1]);
-    final ligacao = await LigacaoPrincipal.ligar(porta);
+    final ligacao =
+        await LigacaoPrincipal.ligar(porta, token: Platform.environment[JanelaPlayer.variavelToken] ?? '');
     runApp(AppJanelaPlayer(ligacao: ligacao));
     return;
   }

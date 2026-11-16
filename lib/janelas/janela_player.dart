@@ -3,6 +3,9 @@
 ///   principal → player: {"tipo":"abrir","lista":"001X","canais":[...],"i":3}
 ///   player → principal: {"tipo":"fonte","pedido":7,"i":4}
 ///   principal → player: {"tipo":"fonte","pedido":7,"url":"…","headers":{…}} ou {"…","erro":"…"}
+/// O player, lançado com um token aleatório numa variável de ambiente, tem de mandar
+/// primeiro {"tipo":"ola","token":"…"} (em 2 s); depois disso a principal deixa de aceitar
+/// ligações até o player fechar. Outro processo da máquina não consegue pedir links.
 /// Assim o link do canal (que no Stalker precisa da sessão do portal) é sempre pedido pela
 /// janela principal, e trocar de canal na principal muda o canal na janela do player.
 library;
@@ -10,6 +13,10 @@ library;
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
+import 'dart:typed_data';
+
+import 'package:flutter/foundation.dart';
 
 import '../dados/biblioteca.dart';
 import '../modelo/canal.dart';
@@ -17,13 +24,26 @@ import '../protocolos/protocolo.dart';
 import '../rede/http.dart';
 
 /// Lado da janela principal.
+typedef LancarPlayer = Future<void> Function(int porta, String token);
+
 class JanelaPlayer {
-  JanelaPlayer._();
-  static final instancia = JanelaPlayer._();
+  JanelaPlayer._(this._lancar);
+  static final instancia = JanelaPlayer._(_lancarProcesso);
+
+  /// Para os testes: em vez de lançar o .exe, chama `lancar`.
+  @visibleForTesting
+  factory JanelaPlayer.paraTestes(LancarPlayer lancar) => JanelaPlayer._(lancar);
+
+  final LancarPlayer _lancar;
+  bool _aLancar = false;
+
+  /// A variável de ambiente com o token do player (não vai no argv, que outros processos veem).
+  static const variavelToken = 'PLAYER_IPTV_TOKEN';
+  static const _maxLinha = 1024 * 1024;
+  String _token = '';
 
   ServerSocket? _servidor;
   Socket? _ligacao;
-  Process? _processo;
   Lista? _lista;
   List<Canal> _canais = const [];
   Map<String, dynamic>? _pendente;
@@ -41,37 +61,85 @@ class JanelaPlayer {
       return;
     }
     _pendente = msg;
-    if (_processo != null) return; // a abrir: a mensagem vai quando ligar
+    if (_aLancar) return; // a abrir: a mensagem vai quando ligar
+    _aLancar = true;
+    _token = _novoToken();
     final srv = _servidor ??= await _abrirServidor();
-    _processo = await Process.start(Platform.resolvedExecutable, ['--player', '${srv.port}'],
-        mode: ProcessStartMode.detached);
+    await _lancar(srv.port, _token);
     // se a janela não ligar em 20 s, desiste-se (o próximo clique tenta de novo)
     Timer(const Duration(seconds: 20), () {
-      if (_ligacao == null) _processo = null;
+      if (_ligacao == null) _aLancar = false;
     });
+  }
+
+  static Future<void> _lancarProcesso(int porta, String token) async {
+    await Process.start(Platform.resolvedExecutable, ['--player', '$porta'],
+        mode: ProcessStartMode.detached, environment: {variavelToken: token});
+  }
+
+  static String _novoToken() {
+    final r = Random.secure();
+    return base64Url.encode(List.generate(32, (_) => r.nextInt(256)));
+  }
+
+  static bool _iguais(String a, String b) {
+    if (a.length != b.length) return false;
+    var d = 0;
+    for (var i = 0; i < a.length; i++) {
+      d |= a.codeUnitAt(i) ^ b.codeUnitAt(i);
+    }
+    return d == 0;
   }
 
   Future<ServerSocket> _abrirServidor() async {
     final s = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
-    s.listen((sock) {
-      _ligacao?.destroy();
+    s.listen(_aceitar);
+    return s;
+  }
+
+  void _aceitar(Socket sock) {
+    if (_ligacao != null) {
+      sock.destroy();
+      return;
+    }
+    var autenticado = false;
+    final prazo = Timer(const Duration(seconds: 2), () {
+      if (!autenticado) sock.destroy();
+    });
+    void fim() {
+      prazo.cancel();
+      sock.destroy();
+      if (identical(_ligacao, sock)) {
+        _ligacao = null;
+        _aLancar = false;
+      }
+    }
+
+    sock.cast<List<int>>().transform(linhasAte(_maxLinha)).listen((linha) {
+      if (autenticado) {
+        _receber(linha);
+        return;
+      }
+      prazo.cancel();
+      Object? m;
+      try {
+        m = jsonDecode(linha);
+      } catch (_) {}
+      if (_ligacao != null || _token.isEmpty || m is! Map || m['tipo'] != 'ola' || !_iguais('${m['token']}', _token)) {
+        sock.destroy();
+        return;
+      }
+      autenticado = true;
+      _token = ''; // só serve uma vez
       _ligacao = sock;
+      // o player entrou: deixa de se aceitar ligações (volta a abrir-se para o próximo player)
+      _servidor?.close();
+      _servidor = null;
       if (_pendente != null) {
         _enviar(_pendente!);
         _pendente = null;
       }
-      sock.cast<List<int>>().transform(utf8.decoder).transform(const LineSplitter()).listen(
-        _receber,
-        onDone: () {
-          if (identical(_ligacao, sock)) {
-            _ligacao = null;
-            _processo = null;
-          }
-        },
-        onError: (_) {},
-      );
-    });
-    return s;
+    }, onDone: fim, onError: (_) => fim(), cancelOnError: true);
   }
 
   Future<void> _receber(String linha) async {
@@ -96,7 +164,35 @@ class JanelaPlayer {
     }
   }
 
+  /// Fecha o servidor e a ligação (testes).
+  @visibleForTesting
+  Future<void> fechar() async {
+    _ligacao?.destroy();
+    _ligacao = null;
+    await _servidor?.close();
+    _servidor = null;
+  }
+
   void _enviar(Map<String, dynamic> m) => _ligacao?.write('${jsonEncode(m)}\n');
+}
+
+/// Linhas de texto (UTF-8) de no máximo `max` bytes: uma linha maior é um erro.
+StreamTransformer<List<int>, String> linhasAte(int max) {
+  final pendente = BytesBuilder(copy: true);
+  return StreamTransformer.fromHandlers(handleData: (bloco, sink) {
+    var inicio = 0;
+    for (var i = 0; i < bloco.length; i++) {
+      if (bloco[i] != 10) continue;
+      pendente.add(bloco.sublist(inicio, i));
+      sink.add(utf8.decode(pendente.takeBytes(), allowMalformed: true).trimRight());
+      inicio = i + 1;
+    }
+    pendente.add(bloco.sublist(inicio));
+    if (pendente.length > max) {
+      pendente.clear();
+      sink.addError(const FormatException('linha grande demais'));
+    }
+  });
 }
 
 /// Lado da janela do player.
@@ -110,11 +206,14 @@ class LigacaoPrincipal {
   /// Recebe {"lista", "canais", "i"} sempre que a principal manda um canal.
   final aberturas = StreamController<(String, List<Canal>, int)>.broadcast();
 
-  static Future<LigacaoPrincipal> ligar(int porta) async {
+  /// `aoFechar`: a principal fechou (por omissão a janela do player fecha-se também).
+  static Future<LigacaoPrincipal> ligar(int porta, {String token = '', void Function()? aoFechar}) async {
+    final fechar = aoFechar ?? () => exit(0);
     final s = await Socket.connect(InternetAddress.loopbackIPv4, porta);
+    s.write('${jsonEncode({'tipo': 'ola', 'token': token})}\n');
     final l = LigacaoPrincipal._(s);
     s.cast<List<int>>().transform(utf8.decoder).transform(const LineSplitter()).listen(l._receber,
-        onDone: () => exit(0), onError: (_) => exit(0)); // a principal fechou: fecha-se também
+        onDone: fechar, onError: (_) => fechar());
     return l;
   }
 

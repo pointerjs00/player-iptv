@@ -1,0 +1,100 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:player_iptv/dados/biblioteca.dart';
+import 'package:player_iptv/janelas/janela_player.dart';
+import 'package:player_iptv/modelo/canal.dart';
+import 'package:player_iptv/modelo/conta.dart';
+
+const _link = 'http://h/live/UTILIZADOR/SEGREDO/1.ts';
+final _lista = Lista(id: '1', ordem: 1, conta: Conta('x', Tipo.m3u, 'http://h/l.m3u'));
+const _canais = [Canal(id: '1', nome: 'RTP 1', grupo: 'g', url: _link)];
+
+/// Lê as linhas que chegam ao socket durante `d` (ou até fechar).
+Future<(List<String>, bool)> _escutar(Socket s, Duration d) async {
+  final linhas = <String>[];
+  var fechou = false;
+  final fim = Completer<void>();
+  void acabar() {
+    fechou = true;
+    if (!fim.isCompleted) fim.complete();
+  }
+
+  s.cast<List<int>>().transform(utf8.decoder).transform(const LineSplitter()).listen(linhas.add,
+      onDone: acabar, onError: (_) => acabar());
+  await Future.any([fim.future, Future<void>.delayed(d)]);
+  return (linhas, fechou);
+}
+
+void main() {
+  late JanelaPlayer janela;
+  int? porta;
+  String? token;
+  setUp(() async {
+    porta = token = null;
+    janela = JanelaPlayer.paraTestes((p, t) async {
+      porta = p;
+      token = t;
+    });
+    await janela.mostrar(_lista, _canais, 0);
+  });
+  tearDown(() => janela.fechar());
+
+  test('I2: o player recebe um token aleatório (não vai no argv)', () {
+    expect(token, isNotNull);
+    expect(base64Url.decode(token!), hasLength(32));
+  });
+
+  test('I2: um processo sem token não recebe canais nem links e é desligado', () async {
+    final intruso = await Socket.connect(InternetAddress.loopbackIPv4, porta!);
+    intruso.write('${jsonEncode({'tipo': 'fonte', 'pedido': 1, 'i': 0})}\n');
+    final (linhas, fechou) = await _escutar(intruso, const Duration(seconds: 4));
+    intruso.destroy();
+    expect(linhas.join(), isNot(contains('SEGREDO')));
+    expect(linhas, isEmpty);
+    expect(fechou, isTrue);
+  });
+
+  test('I2: quem não diz nada em 2 s é desligado', () async {
+    final calado = await Socket.connect(InternetAddress.loopbackIPv4, porta!);
+    final (linhas, fechou) = await _escutar(calado, const Duration(seconds: 4));
+    calado.destroy();
+    expect(linhas, isEmpty);
+    expect(fechou, isTrue);
+  });
+
+  test('I2: uma linha sem fim (mais de 1 MB) desliga o socket', () async {
+    final s = await Socket.connect(InternetAddress.loopbackIPv4, porta!);
+    final escuta = _escutar(s, const Duration(seconds: 1));
+    s.add(List.filled(2 * 1024 * 1024, 0x61));
+    final (_, fechou) = await escuta;
+    s.destroy();
+    expect(fechou, isTrue);
+  });
+
+  test('I2: o player com o token fica; uma 2.ª ligação não o substitui', () async {
+    final fechada = Completer<void>();
+    final l = await LigacaoPrincipal.ligar(porta!, token: token!, aoFechar: () {
+      if (!fechada.isCompleted) fechada.complete();
+    });
+    final abertura = await l.aberturas.stream.first.timeout(const Duration(seconds: 5));
+    expect(abertura.$2.single.nome, 'RTP 1');
+    expect((await l.fonte(0)).url, _link);
+
+    // depois de o player entrar, a principal deixa de aceitar ligações
+    try {
+      final outro = await Socket.connect(InternetAddress.loopbackIPv4, porta!);
+      outro.write('${jsonEncode({'tipo': 'ola', 'token': token})}\n');
+      outro.write('${jsonEncode({'tipo': 'fonte', 'pedido': 1, 'i': 0})}\n');
+      final (linhas, _) = await _escutar(outro, const Duration(seconds: 3));
+      outro.destroy();
+      expect(linhas.join(), isNot(contains('SEGREDO')));
+    } on SocketException {
+      // recusada: é o esperado
+    }
+    expect(fechada.isCompleted, isFalse, reason: 'o player verdadeiro não pode ser desligado');
+    expect((await l.fonte(0)).url, _link);
+  });
+}
