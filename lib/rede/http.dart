@@ -4,6 +4,7 @@ library;
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 class ErroHttp implements Exception {
   ErroHttp(this.status, [this.url = '', this.retryAfter]);
@@ -12,6 +13,15 @@ class ErroHttp implements Exception {
   final String? retryAfter;
   @override
   String toString() => 'o servidor respondeu $status';
+}
+
+/// A resposta passou do tamanho máximo: não se devolve um corpo cortado como se estivesse
+/// completo (uma lista de canais cortada faria um canal "não existir").
+class ErroTamanho implements Exception {
+  ErroTamanho(this.maxBytes);
+  final int maxBytes;
+  @override
+  String toString() => 'resposta grande demais';
 }
 
 class Cancelado implements Exception {
@@ -180,7 +190,7 @@ Future<T> comRitmo<T>(Uri uri, Cancelamento? cancelamento, Future<T> Function() 
 
 /// GET que devolve o corpo em bytes (no máximo `maxBytes`). Lança [ErroHttp] para status
 /// >= 400, [TimeoutException], [SocketException] ou [Cancelado].
-Future<List<int>> obterBytes(String url, {Map<String, String> headers = const {},
+Future<Uint8List> obterBytes(String url, {Map<String, String> headers = const {},
     Duration timeout = const Duration(seconds: 15), int maxBytes = 64 * 1024 * 1024,
     Cancelamento? cancelamento}) async {
   cancelamento?.verificar();
@@ -188,51 +198,88 @@ Future<List<int>> obterBytes(String url, {Map<String, String> headers = const {}
   return comRitmo(uri, cancelamento, () => _obterBytes(uri, url, headers, timeout, maxBytes, cancelamento));
 }
 
-Future<List<int>> _obterBytes(Uri uri, String url, Map<String, String> headers, Duration timeout, int maxBytes,
+/// Um cliente partilhado: as ligações ficam abertas uns segundos e são reutilizadas
+/// (keep-alive), em vez de uma ligação TCP/TLS nova por pedido. O tempo de espera fica abaixo
+/// dos 5 s de keep-alive comuns nos servidores, para não se reutilizar uma ligação já fechada.
+final _cliente = HttpClient()
+  ..autoUncompress = true
+  ..userAgent = null
+  ..connectionTimeout = const Duration(seconds: 30)
+  ..idleTimeout = const Duration(seconds: 4);
+
+/// O prazo total de um pedido: `timeout` é só o tempo máximo sem receber nada.
+const _prazoPorTimeout = 8;
+
+Future<Uint8List> _obterBytes(Uri uri, String url, Map<String, String> headers, Duration timeout, int maxBytes,
     Cancelamento? cancelamento) async {
   if (uri.scheme == 'file') {
     final f = File.fromUri(uri);
-    if (await f.length() > maxBytes) throw ErroHttp(413, url);
+    if (await f.length() > maxBytes) throw ErroTamanho(maxBytes);
     return f.readAsBytes();
   }
-  final cliente = HttpClient()
-    ..connectionTimeout = timeout
-    ..autoUncompress = true
-    ..userAgent = null;
-  final parar = cancelamento?._ouvir(() => cliente.close(force: true));
+  HttpClientRequest? pedido;
+  StreamSubscription<List<int>>? leitura;
+  Object? motivo; // porque é que o pedido foi abortado (cancelamento ou prazo total)
+  final abortado = Completer<HttpClientRequest>();
+  void abortar(Object e) {
+    if (motivo != null) return;
+    motivo = e;
+    pedido?.abort(e);
+    abortado.completeError(e);
+  }
+
+  final parar = cancelamento?._ouvir(() => abortar(Cancelado()));
+  final prazo = Timer(timeout * _prazoPorTimeout,
+      () => abortar(TimeoutException('o servidor não acabou de responder a tempo', timeout * _prazoPorTimeout)));
   try {
-    final pedido = await cliente.getUrl(uri).timeout(timeout);
-    pedido.followRedirects = true;
-    pedido.maxRedirects = 5;
+    final aLigar = _cliente.getUrl(uri);
+    try {
+      pedido = await Future.any([aLigar, abortado.future]).timeout(timeout);
+    } catch (_) {
+      // a ligação pode ainda acabar de se fazer: não fica presa no cliente
+      unawaited(aLigar.then((p) => p.abort(), onError: (_) {}));
+      rethrow;
+    }
+    final p = pedido;
+    p.followRedirects = true;
+    p.maxRedirects = 5;
     headers.forEach((k, v) {
       // o HttpClient trata da compressão; um Accept-Encoding manual estraga o autoUncompress
-      if (k.toLowerCase() != 'accept-encoding') pedido.headers.set(k, v, preserveHeaderCase: true);
+      if (k.toLowerCase() != 'accept-encoding') p.headers.set(k, v, preserveHeaderCase: true);
     });
     if (!headers.keys.any((k) => k.toLowerCase() == 'user-agent')) {
-      pedido.headers.set('User-Agent', uaVlc);
+      p.headers.set('User-Agent', uaVlc);
     }
-    final resp = await pedido.close().timeout(timeout);
+    final resp = await p.close().timeout(timeout);
     if (resp.statusCode >= 400) {
       final retryAfter = resp.headers.value('retry-after');
       await resp.drain<void>().catchError((_) {});
       throw ErroHttp(resp.statusCode, url, retryAfter);
     }
-    final corpo = <int>[];
-    await for (final bloco in resp.timeout(timeout)) {
-      cancelamento?.verificar();
-      corpo.addAll(bloco);
-      if (corpo.length > maxBytes) break;
-    }
-    return corpo;
-  } on HttpException {
-    cancelamento?.verificar();
-    rethrow;
-  } on SocketException {
-    cancelamento?.verificar();
+    // BytesBuilder: 1 byte por byte (uma List<int> gasta 8)
+    final corpo = BytesBuilder(copy: false);
+    final lido = Completer<void>();
+    leitura = resp.timeout(timeout).listen((bloco) {
+      corpo.add(bloco);
+      if (corpo.length > maxBytes && !lido.isCompleted) lido.completeError(ErroTamanho(maxBytes));
+    }, onError: (Object e) {
+      if (!lido.isCompleted) lido.completeError(e);
+    }, onDone: () {
+      if (!lido.isCompleted) lido.complete();
+    }, cancelOnError: true);
+    // o abort não fecha a resposta já recebida: espera-se pelo fim da leitura ou pelo abortar
+    await Future.any([lido.future, abortado.future]);
+    return corpo.takeBytes();
+  } catch (e) {
+    if (cancelamento?.cancelado ?? false) throw Cancelado();
+    final m = motivo;
+    if (m != null && e is! ErroHttp && e is! ErroTamanho) throw m;
     rethrow;
   } finally {
+    prazo.cancel();
     parar?.call();
-    cliente.close(force: true);
+    // cancelar a leitura a meio fecha a ligação (não volta ao cliente partilhado)
+    unawaited(leitura?.cancel());
   }
 }
 
@@ -289,6 +336,7 @@ String descreverErro(Object e) {
     };
   }
   if (e is TimeoutException) return 'o servidor não respondeu a tempo';
+  if (e is ErroTamanho) return 'a resposta do servidor é grande demais';
   if (e is TlsException) return 'falha na ligação segura (certificado ou TLS)';
   if (e is SocketException) return 'não foi possível ligar ao servidor';
   if (e is HttpException) return 'a ligação foi cortada pelo servidor';

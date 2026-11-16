@@ -53,6 +53,9 @@ ResultadoVerificacao classificarFalha(Object e) {
     return ResultadoVerificacao(EstadoV.inconclusivo, _httpInconclusivos[e.status] ?? 'erro do servidor (${e.status})');
   }
   if (e is TimeoutException) return const ResultadoVerificacao(EstadoV.inconclusivo, 'tempo esgotado');
+  if (e is ErroTamanho) {
+    return ResultadoVerificacao(EstadoV.inconclusivo, 'resposta grande demais (mais de ${e.maxBytes ~/ (1024 * 1024)} MB)');
+  }
   if (e is SocketException) {
     return ResultadoVerificacao(EstadoV.inconclusivo, 'ligação falhou (${semSegredos(e.osError?.message ?? e.message)})');
   }

@@ -4,6 +4,7 @@ library;
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import '../rede/http.dart';
 import 'estado.dart';
@@ -61,13 +62,13 @@ Future<_Leitura> _ler(Uri url, Map<String, String> headers, Duration timeout, Ca
       unawaited(r.drain<void>().catchError((_) {}));
       throw ErroHttp(r.statusCode, '$url', retryAfter);
     }
-    final corpo = <int>[];
+    final corpo = BytesBuilder(copy: false);
     final fim = DateTime.now().add(segundos);
     Object? cortado;
     try {
       await for (final bloco in r.timeout(timeout)) {
         can?.verificar();
-        corpo.addAll(bloco);
+        corpo.add(bloco);
         if (corpo.length >= maxBytes || DateTime.now().isAfter(fim)) break;
       }
     } on Cancelado {
@@ -76,7 +77,7 @@ Future<_Leitura> _ler(Uri url, Map<String, String> headers, Duration timeout, Ca
       cortado = e;
     }
     final redir = r.redirects.isEmpty ? url : url.resolveUri(r.redirects.last.location);
-    return _Leitura(corpo, redir, cortado);
+    return _Leitura(corpo.takeBytes(), redir, cortado);
   } finally {
     cliente.close(force: true);
   }
