@@ -168,3 +168,19 @@ com `FonteVideo {url, headers}`.
 0 → 1 → 2 → 3 → 4 → 5 dão a **primeira versão utilizável** (listas, conteúdo, player). 6 e 7 trazem a
 verificação para dentro da app; até lá, o Início mostra os resultados importados do
 `historico.json` do verificador. 8 no fim de cada marco (v0.1 depois da Fase 5, v0.2 depois da 7).
+
+---
+
+## Registo de decisões durante a implementação
+
+- **Fase 5.3 — janela do player no Windows:** em vez de `desktop_multi_window`, a janela do player é
+  o mesmo .exe lançado com `--player <porta>`, ligado à janela principal por um socket em 127.0.0.1
+  (linhas JSON). O link de cada canal é sempre pedido pela janela principal (no Stalker precisa da
+  sessão do portal). Custo se estiver errado: trocar para outra forma de janela não mexe no player.
+- **Fase 6 — verificação:** reaproveita os protocolos que abrem as listas (o mesmo código lista os
+  canais para ver e para verificar). Diferença para o Python: a procura do canal de teste usa a
+  lista completa de canais (não pesquisa por páginas primeiro).
+- **Fase 7 — separador Verificar:** canais de teste, verificar todas/selecionadas, selecionar e exportar
+  (Accounts.json ou zip de .ini). A importação do stbstalker entre datas ainda não foi portada.
+- **Gravações da biblioteca** passam a ser feitas em fila (várias verificações a acabar juntas
+  estragavam o ficheiro temporário).
