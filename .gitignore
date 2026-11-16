@@ -6,3 +6,4 @@ Accounts*.json
 *.ini
 historico.json
 .superpowers/
+dist/
