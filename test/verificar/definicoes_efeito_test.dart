@@ -7,7 +7,6 @@ import 'package:player_iptv/importar/importar.dart';
 import 'package:player_iptv/modelo/canal.dart';
 import 'package:player_iptv/modelo/conta.dart';
 import 'package:player_iptv/protocolos/m3u_remoto.dart';
-import 'package:player_iptv/protocolos/protocolo.dart';
 import 'package:player_iptv/protocolos/stalker.dart';
 import 'package:player_iptv/protocolos/xtream.dart';
 import 'package:player_iptv/rede/http.dart';

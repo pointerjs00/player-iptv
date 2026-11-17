@@ -19,11 +19,10 @@ import 'verificador.dart';
 class ServicoVerificacao extends ChangeNotifier {
   ServicoVerificacao(this.biblioteca,
       {ColecaoListas? colecao, Verificador? verificador, this.workers = 4, RitmoHost? ritmo,
-      Preferencias? preferencias})
+      this.preferencias})
       : colecao = colecao ?? biblioteca,
         verificador = verificador ?? Verificador(),
-        ritmo = ritmo ?? RitmoHost(),
-        _preferencias = preferencias;
+        ritmo = ritmo ?? RitmoHost();
 
   /// Dá os canais de teste.
   final Biblioteca biblioteca;
@@ -36,10 +35,11 @@ class ServicoVerificacao extends ChangeNotifier {
   /// Um pedido de cada vez por servidor, partilhado por todas as verificações.
   final RitmoHost ritmo;
 
-  final Preferencias? _preferencias;
+  /// As definições (por omissão as da app).
+  final Preferencias? preferencias;
 
   /// O tempo limite de cada canal, das Definições (lido a cada volta: mudar vale logo).
-  Duration get _timeout => Duration(seconds: (_preferencias ?? Preferencias.atual).timeoutVerificacao);
+  Duration get _timeout => Duration(seconds: (preferencias ?? Preferencias.atual).timeoutVerificacao);
 
   /// id da lista -> o passo em curso ("a pedir os canais", "na fila"...).
   final passos = <String, String>{};
