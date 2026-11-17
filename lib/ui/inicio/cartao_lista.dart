@@ -23,8 +23,8 @@ class CartaoLista extends StatelessWidget {
     Tipo.m3u: Icons.playlist_play_rounded,
   };
 
-  /// A altura do cartão na grelha (maior na TV).
-  static double altura(bool tv) => tv ? 264 : 232;
+  /// A altura do cartão na grelha (maior na TV); sem botões em baixo (verificar é no Gestor).
+  static double altura(bool tv) => tv ? 216 : 188;
 
   @override
   Widget build(BuildContext context) {

@@ -282,6 +282,28 @@ void main() {
       expect(player(), ['nova.com', 'outra.com']);
     });
 
+    testWidgets('na TV (960×540) as três opções da 2.ª pergunta cabem sem deslizar', (t) async {
+      await preparar(t);
+      await t.tap(find.widgetWithText(ActionChip, 'Todas'));
+      await t.pump();
+      await t.tap(find.textContaining('Enviar para o Player'));
+      await t.pumpAndSettle();
+      await t.tap(find.text('Esmagar as listas do Player'));
+      await t.pumpAndSettle();
+      _tamanho(t, 960, 540);
+      await t.pumpAndSettle();
+      final ecra = Offset.zero & const Size(960, 540);
+      for (final o in ['Manter as que funcionam', 'Manter as que funcionam e as inconclusivas', 'Esmagar todas',
+        'O Player fica só com as enviadas.', 'Cancelar']) {
+        final r = t.getRect(find.text(o));
+        expect(ecra.contains(r.topLeft) && ecra.contains(r.bottomRight), isTrue, reason: '$o em $r');
+        // e não fica escondido por baixo do fim da área que desliza
+        expect(find.text(o).hitTestable(), findsOneWidget, reason: o);
+      }
+      final pos = Scrollable.of(t.element(find.text('Esmagar todas'))).position;
+      expect(pos.maxScrollExtent, 0, reason: 'sem nada escondido');
+    });
+
     testWidgets('Remover do Gestor e Limpar o Gestor pedem confirmação', (t) async {
       await preparar(t);
       await t.tap(find.widgetWithText(ActionChip, 'Funcionam'));

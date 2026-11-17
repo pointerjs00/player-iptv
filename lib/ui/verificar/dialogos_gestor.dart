@@ -20,32 +20,38 @@ Future<T?> escolherOpcao<T>(BuildContext context,
     context: context,
     builder: (ctx) {
       final tv = ecraTv(ctx);
+      // ecrã baixo (a TV a 1080p tem 540 lógicos): sem o ícone de cima e cartões mais baixos,
+      // para as opções caberem todas sem deslizar
+      final baixo = MediaQuery.sizeOf(ctx).height < 640;
       return AlertDialog(
-        icon: Icon(icone, color: Tokens.acento2, size: 32),
+        icon: baixo ? null : Icon(icone, color: Tokens.acento2, size: 32),
+        insetPadding: EdgeInsets.symmetric(horizontal: 40, vertical: baixo ? 8 : 24),
         title: Text(titulo),
         content: SizedBox(
           width: tv ? 560 : 480,
           child: SingleChildScrollView(
             // margem para o cartão focado crescer sem ser cortado
-            padding: const EdgeInsets.all(Tokens.e8),
+            padding: EdgeInsets.symmetric(horizontal: Tokens.e8, vertical: baixo ? Tokens.e4 : Tokens.e8),
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               Text(texto, style: const TextStyle(color: Tokens.texto2)),
-              const SizedBox(height: Tokens.e16),
+              SizedBox(height: baixo ? Tokens.e12 : Tokens.e16),
               for (final (i, o) in opcoes.indexed) ...[
-                if (i > 0) const SizedBox(height: Tokens.e12),
+                if (i > 0) SizedBox(height: baixo ? Tokens.e8 : Tokens.e12),
                 CartaoModerno(
                   autofocus: i == 0,
                   escalaFoco: 1.02,
                   raio: Tokens.raioBotao,
+                  padding: EdgeInsets.symmetric(horizontal: Tokens.e16, vertical: baixo ? 10 : Tokens.e16),
                   onTap: () => Navigator.pop(ctx, o.valor),
                   child: Row(children: [
                     Icon(o.icone, color: Tokens.acento2, size: tv ? 30 : 26),
                     const SizedBox(width: Tokens.e16),
                     Expanded(
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text(o.titulo, style: TextStyle(fontSize: tv ? 17 : 15, fontWeight: FontWeight.w600)),
+                        Text(o.titulo, style: TextStyle(fontSize: tv && !baixo ? 17 : 15, fontWeight: FontWeight.w600)),
                         const SizedBox(height: 2),
-                        Text(o.descricao, style: TextStyle(color: Tokens.texto2, fontSize: tv ? 14 : 12.5)),
+                        Text(o.descricao,
+                            style: TextStyle(color: Tokens.texto2, fontSize: tv && !baixo ? 14 : 12.5)),
                       ]),
                     ),
                   ]),
