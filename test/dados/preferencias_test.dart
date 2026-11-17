@@ -1,0 +1,140 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:player_iptv/dados/preferencias.dart';
+import 'package:player_iptv/ui/player/configuracao_mpv.dart';
+
+void main() {
+  late Directory pasta;
+  setUp(() => pasta = Directory.systemTemp.createTempSync('prefs'));
+  tearDown(() => pasta.deleteSync(recursive: true));
+
+  File ficheiro([String nome = 'preferencias.json']) => File('${pasta.path}${Platform.pathSeparator}$nome');
+
+  test('sem ficheiro: desentrelaçamento ligado, Ajustar, hardware, volume 100, direto; taxa do ecrã só na TV',
+      () async {
+    final tv = await Preferencias.abrir(pasta, tv: true);
+    expect(tv.desentrelacar, isTrue);
+    expect(tv.formato, FormatoImagem.ajustar);
+    expect(tv.hardware, isTrue);
+    expect(tv.volume, 100);
+    expect(tv.modoAndroid, ModoDescodificacao.direto);
+    expect(tv.ajustarTaxaEcra, isTrue);
+    final tele = await Preferencias.abrir(pasta);
+    expect(tele.ajustarTaxaEcra, isFalse);
+  });
+
+  test('guarda e volta a ler todos os campos', () async {
+    final p = await Preferencias.abrir(pasta, tv: true);
+    p
+      ..desentrelacar = false
+      ..formato = FormatoImagem.r4x3
+      ..hardware = false
+      ..volume = 35
+      ..modoAndroid = ModoDescodificacao.compativel
+      ..ajustarTaxaEcra = false;
+    await p.guardar();
+    final q = await Preferencias.abrir(pasta, tv: true);
+    expect(q.desentrelacar, isFalse);
+    expect(q.formato, FormatoImagem.r4x3);
+    expect(q.hardware, isFalse);
+    expect(q.volume, 35);
+    expect(q.modoAndroid, ModoDescodificacao.compativel);
+    expect(q.ajustarTaxaEcra, isFalse);
+  });
+
+  test('a velocidade não é uma preferência (não vai para o ficheiro)', () async {
+    final p = await Preferencias.abrir(pasta);
+    await p.guardar();
+    final m = jsonDecode(ficheiro().readAsStringSync()) as Map;
+    expect(m.keys.where((k) => k.toString().contains('veloc')), isEmpty);
+  });
+
+  test('mudar um campo avisa quem ouve (ChangeNotifier); o mesmo valor não', () async {
+    final p = await Preferencias.abrir(pasta);
+    var avisos = 0;
+    p.addListener(() => avisos++);
+    p.formato = FormatoImagem.zoom;
+    p.volume = 50;
+    p.volume = 50;
+    expect(avisos, 2);
+  });
+
+  test('volume fora de 0..100 fica nos limites', () async {
+    final p = await Preferencias.abrir(pasta);
+    p.volume = 140;
+    expect(p.volume, 100);
+    p.volume = -3;
+    expect(p.volume, 0);
+  });
+
+  test('gravações seguidas não se atropelam (a última fica)', () async {
+    final p = await Preferencias.abrir(pasta);
+    final futuros = <Future<void>>[];
+    for (var v = 0; v <= 20; v++) {
+      p.volume = v.toDouble();
+      futuros.add(p.guardar());
+    }
+    await Future.wait(futuros);
+    expect((await Preferencias.abrir(pasta)).volume, 20);
+  });
+
+  test('migra o ficheiro antigo do player (preferencias_player.json)', () async {
+    ficheiro('preferencias_player.json')
+        .writeAsStringSync('{"modoAndroid": "compativel", "ajustarTaxaEcra": false}');
+    final p = await Preferencias.abrir(pasta, tv: true);
+    expect(p.modoAndroid, ModoDescodificacao.compativel);
+    expect(p.ajustarTaxaEcra, isFalse);
+    expect(p.desentrelacar, isTrue);
+  });
+
+  test('o ficheiro novo ganha ao antigo', () async {
+    ficheiro('preferencias_player.json').writeAsStringSync('{"modoAndroid": "compativel"}');
+    ficheiro().writeAsStringSync('{"modoAndroid": "direto"}');
+    expect((await Preferencias.abrir(pasta)).modoAndroid, ModoDescodificacao.direto);
+  });
+
+  test('valores com o tipo errado: só esses ficam por omissão, .bak guardado, nunca exceção', () async {
+    ficheiro().writeAsStringSync('{"desentrelacar": "sim", "formato": "zoom", "volume": "alto", "hardware": false}');
+    final p = await Preferencias.abrir(pasta);
+    expect(p.desentrelacar, isTrue);
+    expect(p.formato, FormatoImagem.zoom);
+    expect(p.volume, 100);
+    expect(p.hardware, isFalse);
+    expect(File('${ficheiro().path}.bak').readAsStringSync(), contains('"alto"'));
+  });
+
+  test('JSON estragado ou com outra forma: valores por omissão e .bak', () async {
+    ficheiro().writeAsStringSync('[1, 2]');
+    expect((await Preferencias.abrir(pasta)).formato, FormatoImagem.ajustar);
+    expect(File('${ficheiro().path}.bak').existsSync(), isTrue);
+    ficheiro().writeAsStringSync('{nao json');
+    expect((await Preferencias.abrir(pasta)).desentrelacar, isTrue);
+    expect(File('${ficheiro().path}.bak').readAsStringSync(), '{nao json');
+  });
+
+  test('bytes que não são UTF-8: valores por omissão', () async {
+    ficheiro().writeAsBytesSync([0xff, 0xfe, 0x7b]);
+    expect((await Preferencias.abrir(pasta)).volume, 100);
+  });
+
+  test('formato desconhecido: Ajustar', () async {
+    ficheiro().writeAsStringSync('{"formato": "21:9"}');
+    expect((await Preferencias.abrir(pasta)).formato, FormatoImagem.ajustar);
+  });
+
+  test('a pasta nem existe: valores por omissão; guardar não lança', () async {
+    final p = await Preferencias.abrir(Directory('${pasta.path}${Platform.pathSeparator}nao_existe'), tv: true);
+    expect(p.desentrelacar, isTrue);
+    await p.guardar();
+  });
+
+  test('formatos de imagem: nomes e rótulos', () {
+    expect(FormatoImagem.values.map((f) => f.rotulo),
+        ['Ajustar', 'Preencher', 'Esticar', '16:9', '4:3', 'Zoom']);
+    for (final f in FormatoImagem.values) {
+      expect(FormatoImagem.deNome(f.nome), f);
+    }
+  });
+}

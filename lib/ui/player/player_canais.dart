@@ -5,7 +5,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
-import '../../dados/preferencias_player.dart';
+import '../../dados/preferencias.dart';
 import '../../modelo/canal.dart';
 import '../../protocolos/protocolo.dart';
 import '../../rede/http.dart';
@@ -59,7 +59,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
 
   // a configuração do mpv para direto (buffer, reconexão, descodificação por plataforma); o
   // player é recriado se um canal precisar do modo "Compatível" (o vo fixa-se ao criar)
-  ModoDescodificacao _modo = PreferenciasPlayer.atual.modoAndroid;
+  ModoDescodificacao _modo = Preferencias.atual.modoAndroid;
   late ConfiguracaoMpv _config;
   late Player _player;
   late VideoController _video;
@@ -194,7 +194,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       // ao mudar de canal, o anterior para já: senão continuava a tocar (e a mandar imagem e
       // posição) enquanto o link novo se resolve
       final modo =
-          _android ? CompativelNaSessao.instancia.modoPara(_chave(canal), PreferenciasPlayer.atual.modoAndroid) : _modo;
+          _android ? CompativelNaSessao.instancia.modoPara(_chave(canal), Preferencias.atual.modoAndroid) : _modo;
       if (modo != _modo) {
         await _trocarModo(modo);
       } else if (pedido > 1) {
@@ -232,7 +232,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   Future<void> _ajustarTaxa(int pedido) async {
     if (!_android) return;
     await _lerHzEcra();
-    if (!PreferenciasPlayer.atual.ajustarTaxaEcra) return;
+    if (!Preferencias.atual.ajustarTaxaEcra) return;
     final mpv = _player.platform;
     if (mpv is! NativePlayer) return;
     // o container-fps costuma vir logo; senão o medido, que demora uns segundos

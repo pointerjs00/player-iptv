@@ -7,7 +7,7 @@ import 'package:window_manager/window_manager.dart';
 
 import 'dados/area_gestor.dart';
 import 'dados/biblioteca.dart';
-import 'dados/preferencias_player.dart';
+import 'dados/preferencias.dart';
 import 'janelas/janela_player.dart';
 import 'modelo/canal.dart';
 import 'rede/http.dart';
@@ -29,6 +29,8 @@ Future<void> main(List<String> args) async {
     final porta = int.parse(args[i + 1]);
     final ligacao =
         await LigacaoPrincipal.ligar(porta, token: Platform.environment[JanelaPlayer.variavelToken] ?? '');
+    // as mesmas preferências do player que no Android (o ficheiro da janela principal)
+    Preferencias.atual = await Preferencias.abrir(await getApplicationSupportDirectory());
     runApp(AppJanelaPlayer(ligacao: ligacao));
     return;
   }
@@ -50,8 +52,8 @@ Future<void> main(List<String> args) async {
     return;
   }
   await configurarRealceFoco(); // Android TV: o realce do foco sempre visível
-  // o player: descodificação/taxa do ecrã escolhidas pelo utilizador
-  PreferenciasPlayer.atual = await PreferenciasPlayer.carregar(pasta, tv: EcraTv.nativo);
+  // o player: desentrelaçamento, formato, descodificação, volume, taxa do ecrã
+  Preferencias.atual = await Preferencias.abrir(pasta, tv: EcraTv.nativo);
   runApp(AppPlayerIptv(biblioteca: biblioteca, area: area));
 }
 
