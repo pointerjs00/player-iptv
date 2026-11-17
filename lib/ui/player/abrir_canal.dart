@@ -11,12 +11,14 @@ import 'player_canais.dart';
 
 /// Abre o canal: no Windows numa janela separada; no Android em ecrã inteiro. No Android
 /// devolve, ao sair do player, o índice do canal que estava a tocar (pode ter mudado).
-Future<int?> abrirCanal(BuildContext context, Lista lista, List<Canal> canais, int i) async {
+/// `aoVer` é chamado com cada canal que o player abre (o primeiro e os do zapping).
+Future<int?> abrirCanal(BuildContext context, Lista lista, List<Canal> canais, int i,
+    {ValueChanged<Canal>? aoVer}) async {
   if (Platform.isWindows) {
     final avisos = ScaffoldMessenger.maybeOf(context);
     void avisar(String m) => avisos?.showSnackBar(SnackBar(content: Text(m)));
     try {
-      await JanelaPlayer.instancia.mostrar(lista, canais, i, aoFalhar: avisar);
+      await JanelaPlayer.instancia.mostrar(lista, canais, i, aoFalhar: avisar, aoVer: aoVer);
     } on ErroLista catch (e) {
       avisar(e.mensagem);
     }
@@ -24,15 +26,16 @@ Future<int?> abrirCanal(BuildContext context, Lista lista, List<Canal> canais, i
   }
   final atual = ValueNotifier(i);
   await Navigator.of(context).push(PageRouteBuilder(
-    pageBuilder: (_, _, _) => _PaginaPlayer(lista: lista, canais: canais, i: i, atual: atual),
+    pageBuilder: (_, _, _) => _PaginaPlayer(lista: lista, canais: canais, i: i, atual: atual, aoVer: aoVer),
     transitionDuration: Duration.zero,
   ));
   return atual.value;
 }
 
 class _PaginaPlayer extends StatefulWidget {
-  const _PaginaPlayer({required this.lista, required this.canais, required this.i, required this.atual});
+  const _PaginaPlayer({required this.lista, required this.canais, required this.i, required this.atual, this.aoVer});
   final ValueNotifier<int> atual;
+  final ValueChanged<Canal>? aoVer;
   final Lista lista;
   final List<Canal> canais;
   final int i;
@@ -66,7 +69,10 @@ class _PaginaPlayerState extends State<_PaginaPlayer> {
         canais: widget.canais,
         indice: widget.i,
         nomeLista: widget.lista.nomeMostrado,
-        resolver: (c) => Protocolo.para(conta).fonte(conta, c),
+        resolver: (c) {
+          widget.aoVer?.call(c);
+          return Protocolo.para(conta).fonte(conta, c);
+        },
         aoSair: () => Navigator.of(context).maybePop(),
         aoMudarCanal: (i) => widget.atual.value = i,
       ),
