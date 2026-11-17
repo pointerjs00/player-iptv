@@ -145,10 +145,22 @@ class _TelaInicioState extends State<TelaInicio> {
     final temVerificar = widget.separadorVerificar != null;
     final corpo = Scaffold(
       appBar: AppBar(
-        title: const Text('Player IPTV'),
-        bottom: temVerificar
-            ? const TabBar(tabs: [Tab(text: 'Listas'), Tab(text: 'Verificar')])
-            : null,
+        // as abas ficam na mesma linha do "+": CIMA a partir do conteúdo para nas abas (nada
+        // por cima delas) e ESQUERDA/DIREITA trocam Listas, Verificar e o "+"
+        title: temVerificar
+            ? Row(children: [
+                // no telemóvel não há espaço para o nome e as abas
+                if (MediaQuery.sizeOf(context).width >= 600) ...const [Text('Player IPTV'), SizedBox(width: 16)],
+                const Expanded(
+                  child: TabBar(
+                    isScrollable: true,
+                    tabAlignment: TabAlignment.start,
+                    dividerColor: Colors.transparent,
+                    tabs: [Tab(text: 'Listas'), Tab(text: 'Verificar')],
+                  ),
+                ),
+              ])
+            : const Text('Player IPTV'),
         actions: [
           IconButton(
             tooltip: 'Adicionar listas',

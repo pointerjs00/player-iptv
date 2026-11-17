@@ -317,4 +317,66 @@ void main() {
       await _fechar(t);
     });
   });
+
+  group('Tarefa C', () {
+    // Android TV a 1080p: 960×540 lógicos (densidade 2)
+    Future<void> inicioComVerificar(WidgetTester t) async {
+      _tamanho(t, 960, 540);
+      await t.runAsync(() => bib.adicionar([
+            Importada(contaDeLinha('http://a.com/l.m3u')!),
+            Importada(contaDeLinha('http://b.com/l.m3u')!),
+          ]));
+      await t.pumpWidget(_app(TelaInicio(
+        biblioteca: bib,
+        servico: ServicoVerificacao(bib),
+        separadorVerificar: const Center(child: Text('ECRÃ VERIFICAR')),
+      )));
+      await t.pump();
+    }
+
+    testWidgets('T3: do 1.º cartão, CIMA chega às abas e DIREITA+OK mostra o Verificar', (t) async {
+      await inicioComVerificar(t);
+      expect(_focado(), contains('001A'));
+      // no emulador: CIMA ×4 + DIREITA + OK abria o "+"; carregar CIMA a mais não pode passar das abas
+      final caminho = <String>[];
+      for (var i = 0; i < 6; i++) {
+        await _tecla(t, LogicalKeyboardKey.arrowUp);
+        caminho.add(_focado());
+      }
+      expect(_focado(), 'Listas', reason: 'CIMA a partir dos cartões: $caminho');
+      await _tecla(t, LogicalKeyboardKey.arrowRight);
+      expect(_focado(), 'Verificar');
+      await _tecla(t, LogicalKeyboardKey.select);
+      await t.pumpAndSettle();
+      expect(find.text('ECRÃ VERIFICAR').hitTestable(), findsOneWidget);
+      // e de volta às Listas com ESQUERDA+OK
+      await _tecla(t, LogicalKeyboardKey.arrowLeft);
+      expect(_focado(), 'Listas');
+      await _tecla(t, LogicalKeyboardKey.select);
+      await t.pumpAndSettle();
+      expect(find.text('ECRÃ VERIFICAR').hitTestable(), findsNothing);
+    });
+
+    testWidgets('T3: as abas na barra de cima cabem no telemóvel', (t) async {
+      await inicioComVerificar(t);
+      _tamanho(t, 360, 740);
+      await t.pump();
+      expect(t.takeException(), isNull);
+      expect(find.text('Verificar').hitTestable(), findsOneWidget);
+      expect(find.byTooltip('Adicionar listas').hitTestable(), findsOneWidget);
+    });
+
+    testWidgets('T3: o "+" (Adicionar listas) continua alcançável: à direita das abas', (t) async {
+      await inicioComVerificar(t);
+      for (var i = 0; i < 6; i++) {
+        await _tecla(t, LogicalKeyboardKey.arrowUp);
+      }
+      final caminho = <String>[];
+      for (var i = 0; i < 2; i++) {
+        await _tecla(t, LogicalKeyboardKey.arrowRight);
+        caminho.add(_focado());
+      }
+      expect(caminho, ['Verificar', 'Adicionar listas']);
+    });
+  });
 }
