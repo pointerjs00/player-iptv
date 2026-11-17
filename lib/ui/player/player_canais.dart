@@ -26,6 +26,10 @@ String mensagemErroPlayer(String e) {
   return semPontuacao.isEmpty ? 'o canal não abriu' : 'o canal não abriu ($limpo)';
 }
 
+/// O erro do mpv faz o canal falhar? Não quando é só a queixa do seek que o media_kit faz ao
+/// ligar a superfície de vídeo do Android (num direto não se pode recuar, mas continua a tocar).
+bool erroFatalPlayer(String e) => !e.contains('force-seekable') && !e.startsWith('Cannot seek');
+
 /// Dá o link (e os headers) de um canal. No Android chama o protocolo; na janela do player
 /// do Windows pede-o à janela principal.
 typedef ResolverFonte = Future<FonteVideo> Function(Canal canal);
@@ -108,7 +112,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     _config = ConfiguracaoMpv.para(PlataformaVideo.atual, modo: _modo);
     _player = Player(configuration: _config.configuracaoPlayer);
     _subsPlayer.add(_player.stream.error.listen((e) {
-      if (mounted && e.isNotEmpty) {
+      if (mounted && e.isNotEmpty && erroFatalPlayer(e)) {
         _vigia.parar();
         _taxa.repor();
         setState(() { _erro = mensagemErroPlayer(e); _aAbrir = false; _info = true; });
