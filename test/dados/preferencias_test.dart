@@ -137,4 +137,78 @@ void main() {
       expect(FormatoImagem.deNome(f.nome), f);
     }
   });
+
+  group('definições (Tarefa 7)', () {
+    test('tempo limite da verificação: 8 s por omissão, entre 5 e 30, guardado', () async {
+      final p = await Preferencias.abrir(pasta);
+      expect(p.timeoutVerificacao, 8);
+      p.timeoutVerificacao = 2;
+      expect(p.timeoutVerificacao, 5);
+      p.timeoutVerificacao = 99;
+      expect(p.timeoutVerificacao, 30);
+      p.timeoutVerificacao = 20;
+      await p.guardar();
+      expect((await Preferencias.abrir(pasta)).timeoutVerificacao, 20);
+    });
+
+    test('user-agent personalizado: vazio por omissão, aparado, sem quebras de linha, guardado', () async {
+      final p = await Preferencias.abrir(pasta);
+      expect(p.userAgent, '');
+      p.userAgent = '  MeuPlayer/1.0${String.fromCharCodes([13, 10])}X-Falso: 1  ';
+      expect(p.userAgent, 'MeuPlayer/1.0X-Falso: 1');
+      p.userAgent = 'MeuPlayer/1.0';
+      await p.guardar();
+      expect((await Preferencias.abrir(pasta)).userAgent, 'MeuPlayer/1.0');
+    });
+
+    test('duas janelas: cada uma grava só o que mudou e a outra não perde nada', () async {
+      final principal = await Preferencias.abrir(pasta);
+      final janela = await Preferencias.abrir(pasta);
+      principal.userAgent = 'UA-principal';
+      janela.volume = 40;
+      await Future.wait([principal.guardar(), janela.guardar()]);
+      final lido = await Preferencias.abrir(pasta);
+      expect(lido.userAgent, 'UA-principal');
+      expect(lido.volume, 40);
+      // a gravação seguinte da janela não repõe o que ela não mudou
+      janela.volume = 30;
+      await janela.guardar();
+      expect((await Preferencias.abrir(pasta)).userAgent, 'UA-principal');
+    });
+
+    test('chaves desconhecidas do ficheiro (outra versão) não se perdem ao gravar', () async {
+      ficheiro().writeAsStringSync('{"futura": 7}');
+      final p = await Preferencias.abrir(pasta);
+      p.volume = 10;
+      await p.guardar();
+      expect(jsonDecode(ficheiro().readAsStringSync())['futura'], 7);
+    });
+
+    test('recarregar apanha o que outra janela gravou, sem perder alterações por gravar', () async {
+      final principal = await Preferencias.abrir(pasta);
+      final janela = await Preferencias.abrir(pasta);
+      principal.formato = FormatoImagem.zoom;
+      principal.timeoutVerificacao = 25;
+      await principal.guardar();
+      janela.volume = 12; // por gravar
+      await janela.recarregar();
+      expect(janela.formato, FormatoImagem.zoom);
+      expect(janela.timeoutVerificacao, 25);
+      expect(janela.volume, 12);
+    });
+
+    test('o ficheiro temporário é único por gravação (nenhum fica para trás)', () async {
+      final p = await Preferencias.abrir(pasta);
+      await Future.wait([for (var v = 0; v < 8; v++) (p..volume = v.toDouble()).guardar()]);
+      expect(pasta.listSync().map((e) => e.path).where((c) => c.endsWith('.tmp')), isEmpty);
+    });
+
+    test('aplicar: só as chaves válidas do mapa mudam e ficam por gravar', () async {
+      final p = await Preferencias.abrir(pasta);
+      p.aplicar({'volume': 20, 'formato': 'zoom', 'hardware': 'nao', 'userAgent': 'X/1'});
+      expect((p.volume, p.formato, p.hardware, p.userAgent), (20.0, FormatoImagem.zoom, true, 'X/1'));
+      await p.guardar();
+      expect((await Preferencias.abrir(pasta)).userAgent, 'X/1');
+    });
+  });
 }
