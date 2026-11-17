@@ -9,6 +9,7 @@ import 'dados/biblioteca.dart';
 import 'janelas/janela_player.dart';
 import 'modelo/canal.dart';
 import 'rede/http.dart';
+import 'ui/design/componentes.dart';
 import 'ui/inicio/tela_inicio.dart';
 import 'ui/player/player_canais.dart';
 import 'ui/realce_foco.dart';
@@ -58,7 +59,7 @@ class _Aviso extends StatelessWidget {
   Widget build(BuildContext context) => MaterialApp(
         debugShowCheckedModeBanner: false,
         theme: temaApp(),
-        builder: (_, w) => TemaConformeRealce(child: w!),
+        builder: (_, w) => TemaConformeRealce(child: FundoCinema(child: w!)),
         home: Scaffold(
           body: Center(
             child: Padding(
@@ -98,7 +99,8 @@ class _AppPlayerIptvState extends State<AppPlayerIptv> {
         title: 'Player IPTV',
         debugShowCheckedModeBanner: false,
         theme: temaApp(),
-        builder: (_, w) => TemaConformeRealce(child: w!),
+        // o fundo azul-noite por trás de todos os ecrãs (os Scaffold são transparentes)
+        builder: (_, w) => TemaConformeRealce(child: FundoCinema(child: w!)),
         locale: _pt,
         supportedLocales: const [_pt],
         localizationsDelegates: GlobalMaterialLocalizations.delegates,

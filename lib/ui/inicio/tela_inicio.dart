@@ -53,6 +53,7 @@ class _TelaInicioState extends State<TelaInicio> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
+        icon: const Icon(Icons.delete_outline_rounded, color: Tokens.mau, size: 32),
         title: const Text('Remover lista?'),
         content: Text('A lista ${l.nomeMostrado} sai da app (os favoritos e a cache de canais também).'),
         actions: [

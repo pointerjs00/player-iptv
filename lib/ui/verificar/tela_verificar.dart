@@ -9,6 +9,7 @@ import '../../rede/http.dart';
 import '../../verificar/canais_teste.dart';
 import '../../verificar/exportar.dart';
 import '../../verificar/servico.dart';
+import '../design/design.dart';
 import '../realce_foco.dart';
 import '../tema.dart';
 
@@ -103,12 +104,12 @@ class _TelaVerificarState extends State<TelaVerificar> {
 
   Widget _secaoStb() {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const Text('Listas do stbstalker', style: TextStyle(fontWeight: FontWeight.w700)),
-      const SizedBox(height: 4),
-      const Text('Junta as listas publicadas no blog entre duas datas.',
-          style: TextStyle(color: Cores.texto2, fontSize: 12)),
-      const SizedBox(height: 8),
-      Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+      const CabecalhoSeccao(
+        titulo: 'Listas do stbstalker',
+        subtitulo: 'Junta as listas publicadas no blog entre duas datas.',
+        icone: Icons.travel_explore,
+      ),
+      Wrap(spacing: Tokens.e8, runSpacing: Tokens.e8, crossAxisAlignment: WrapCrossAlignment.end, children: [
         _campoData('Data de início', _inicio, () => _escolherData(true)),
         _campoData('Data de fim', _fim, () => _escolherData(false)),
         FilledButton.icon(
@@ -120,18 +121,24 @@ class _TelaVerificarState extends State<TelaVerificar> {
         ),
       ]),
       if (_resultadoStb != null) ...[
-        const SizedBox(height: 8),
+        const SizedBox(height: Tokens.e12),
         Text(_resultadoStb!),
       ],
-      const Divider(height: 32),
     ]);
   }
+
+  /// Uma secção do ecrã num painel de vidro (entra em cascata).
+  Widget _seccao(int i, Widget filho) => Padding(
+        padding: const EdgeInsets.only(bottom: Tokens.e16),
+        child: entradaEmCascata(i, SuperficieVidro(padding: const EdgeInsets.all(Tokens.e16 + 4), child: filho)),
+      );
 
   Widget _campoData(String rotulo, DateTime d, VoidCallback aoTocar) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(rotulo, style: const TextStyle(color: Cores.texto2, fontSize: 12)),
+          Text(rotulo, style: const TextStyle(color: Tokens.texto2, fontSize: 12)),
+          const SizedBox(height: 4),
           OutlinedButton.icon(
             onPressed: _pesquisando ? null : aoTocar,
             icon: const Icon(Icons.calendar_today, size: 16),
@@ -175,94 +182,112 @@ class _TelaVerificarState extends State<TelaVerificar> {
         final s = widget.servico;
         final listas = _b.listas;
         _selecao.removeWhere((id) => _b.porId(id) == null);
-        return ListView(padding: const EdgeInsets.all(16), children: [
-          _secaoStb(),
-          const Text('Canais a testar', style: TextStyle(fontWeight: FontWeight.w700)),
-          const SizedBox(height: 4),
-          const Text('A lista funciona se um deles abrir.', style: TextStyle(color: Cores.texto2, fontSize: 12)),
-          const SizedBox(height: 8),
-          Wrap(spacing: 8, children: [
-            for (final p in perfisCanais.values)
-              FilterChip(
-                label: Text(p.nome),
-                selected: _b.canaisTeste.contains(p.id),
-                onSelected: s.ocupado
-                    ? null
-                    : (on) {
-                        final novo = [for (final id in perfisCanais.keys)
-                          if (id == p.id ? on : _b.canaisTeste.contains(id)) id];
-                        if (novo.isEmpty) return _aviso('Escolha pelo menos um canal.');
-                        _b.definirCanaisTeste(novo);
-                      },
+        return ListView(padding: const EdgeInsets.all(Tokens.e16), children: [
+          _seccao(0, _secaoStb()),
+          _seccao(1, Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const CabecalhoSeccao(
+                titulo: 'Canais a testar',
+                subtitulo: 'A lista funciona se um deles abrir.',
+                icone: Icons.live_tv_outlined,
               ),
-          ]),
-          const SizedBox(height: 16),
-          Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
-            // ligados enquanto verifica (desligar um botão com o foco deixa o comando sem foco)
-            FilledButton.icon(
-              focusNode: _focoVerificarTodas,
-              onPressed: listas.isEmpty
-                  ? null
-                  : () {
-                      if (!s.ocupado) s.verificarVarias(listas);
-                    },
-              icon: const Icon(Icons.playlist_add_check),
-              label: Text('Verificar todas (${listas.length})'),
+              Wrap(spacing: Tokens.e8, runSpacing: Tokens.e8, children: [
+                for (final p in perfisCanais.values)
+                  FilterChip(
+                    label: Text(p.nome),
+                    selected: _b.canaisTeste.contains(p.id),
+                    onSelected: s.ocupado
+                        ? null
+                        : (on) {
+                            final novo = [for (final id in perfisCanais.keys)
+                              if (id == p.id ? on : _b.canaisTeste.contains(id)) id];
+                            if (novo.isEmpty) return _aviso('Escolha pelo menos um canal.');
+                            _b.definirCanaisTeste(novo);
+                          },
+                  ),
+              ]),
+              const SizedBox(height: Tokens.e16),
+              Wrap(spacing: Tokens.e8, runSpacing: Tokens.e8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+                // ligados enquanto verifica (desligar um botão com o foco deixa o comando sem foco)
+                FilledButton.icon(
+                  focusNode: _focoVerificarTodas,
+                  onPressed: listas.isEmpty
+                      ? null
+                      : () {
+                          if (!s.ocupado) s.verificarVarias(listas);
+                        },
+                  icon: const Icon(Icons.playlist_add_check),
+                  label: Text('Verificar todas (${listas.length})'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: _selecao.isEmpty
+                      ? null
+                      : () {
+                          if (!s.ocupado) s.verificarVarias([for (final l in listas) if (_selecao.contains(l.id)) l]);
+                        },
+                  icon: const Icon(Icons.checklist),
+                  label: Text('Verificar as selecionadas (${_selecao.length})'),
+                ),
+                if (s.ocupado)
+                  OutlinedButton.icon(
+                      onPressed: () {
+                        final tinhaFoco = FocusManager.instance.primaryFocus?.context?.widget is! EditableText;
+                        s.parar();
+                        if (tinhaFoco) _focoVerificarTodas.requestFocus();
+                      },
+                      icon: const Icon(Icons.stop),
+                      label: const Text('Parar')),
+                if (s.ocupado)
+                  Text('${s.feitas} de ${s.total} verificadas', style: const TextStyle(color: Tokens.texto2)),
+              ]),
+              if (s.ocupado) ...[
+                const SizedBox(height: Tokens.e12),
+                LinearProgressIndicator(value: s.total == 0 ? null : s.feitas / s.total, minHeight: 6),
+              ],
+          ])),
+          _seccao(2, Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const CabecalhoSeccao(
+                titulo: 'Exportar',
+                subtitulo: 'Escolha as listas e o formato.',
+                icone: Icons.ios_share,
+              ),
+              Wrap(spacing: Tokens.e8, runSpacing: Tokens.e8, children: [
+                ActionChip(label: const Text('Funcionam + INC'),
+                    onPressed: () => _selecionar((l) => const {'funciona', 'inconclusivo'}.contains(l.ultima?.estado))),
+                ActionChip(label: const Text('Só as que funcionam'), onPressed: () => _selecionar((l) => l.ultima?.estado == 'funciona')),
+                ActionChip(label: const Text('Todas'), onPressed: () => _selecionar((_) => true)),
+                ActionChip(label: const Text('Nenhuma'), onPressed: () => _selecionar((_) => false)),
+              ]),
+              const SizedBox(height: Tokens.e12),
+              // chips (e não um SegmentedButton): com o comando, cada opção mostra o seu realce de foco
+              Wrap(spacing: Tokens.e8, runSpacing: Tokens.e8, children: [
+                for (final (v, t) in const [
+                  ('json', 'Accounts.json (sfvip player)'),
+                  ('ini', 'Ficheiros .ini (Stalker Portal Player)'),
+                ])
+                  ChoiceChip(label: Text(t), selected: _formato == v, onSelected: (_) => setState(() => _formato = v)),
+              ]),
+              const SizedBox(height: Tokens.e16),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: FilledButton.icon(
+                  onPressed: _selecao.isEmpty ? null : _exportar,
+                  icon: const Icon(Icons.download),
+                  label: Text('Exportar ${_selecao.length} selecionadas'),
+                ),
+              ),
+          ])),
+          if (listas.isNotEmpty)
+            SuperficieVidro(
+              padding: const EdgeInsets.all(Tokens.e8),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                CabecalhoSeccao(
+                  titulo: 'Listas',
+                  subtitulo: '${listas.length} na app · ${_selecao.length} selecionadas',
+                  padding: const EdgeInsets.fromLTRB(Tokens.e12, Tokens.e8, Tokens.e12, Tokens.e8),
+                ),
+                for (final l in listas) _linha(l, s),
+              ]),
             ),
-            OutlinedButton.icon(
-              onPressed: _selecao.isEmpty
-                  ? null
-                  : () {
-                      if (!s.ocupado) s.verificarVarias([for (final l in listas) if (_selecao.contains(l.id)) l]);
-                    },
-              icon: const Icon(Icons.checklist),
-              label: Text('Verificar as selecionadas (${_selecao.length})'),
-            ),
-            if (s.ocupado)
-              OutlinedButton.icon(
-                  onPressed: () {
-                    final tinhaFoco = FocusManager.instance.primaryFocus?.context?.widget is! EditableText;
-                    s.parar();
-                    if (tinhaFoco) _focoVerificarTodas.requestFocus();
-                  },
-                  icon: const Icon(Icons.stop),
-                  label: const Text('Parar')),
-            if (s.ocupado) Text('${s.feitas} de ${s.total} verificadas'),
-          ]),
-          if (s.ocupado) ...[
-            const SizedBox(height: 8),
-            LinearProgressIndicator(value: s.total == 0 ? null : s.feitas / s.total),
-          ],
-          const Divider(height: 32),
-          const Text('Exportar', style: TextStyle(fontWeight: FontWeight.w700)),
-          const SizedBox(height: 8),
-          Wrap(spacing: 8, runSpacing: 8, children: [
-            ActionChip(label: const Text('Funcionam + INC'),
-                onPressed: () => _selecionar((l) => const {'funciona', 'inconclusivo'}.contains(l.ultima?.estado))),
-            ActionChip(label: const Text('Só as que funcionam'), onPressed: () => _selecionar((l) => l.ultima?.estado == 'funciona')),
-            ActionChip(label: const Text('Todas'), onPressed: () => _selecionar((_) => true)),
-            ActionChip(label: const Text('Nenhuma'), onPressed: () => _selecionar((_) => false)),
-          ]),
-          const SizedBox(height: 8),
-          // chips (e não um SegmentedButton): com o comando, cada opção mostra o seu realce de foco
-          Wrap(spacing: 8, runSpacing: 8, children: [
-            for (final (v, t) in const [
-              ('json', 'Accounts.json (sfvip player)'),
-              ('ini', 'Ficheiros .ini (Stalker Portal Player)'),
-            ])
-              ChoiceChip(label: Text(t), selected: _formato == v, onSelected: (_) => setState(() => _formato = v)),
-          ]),
-          const SizedBox(height: 8),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: FilledButton.icon(
-              onPressed: _selecao.isEmpty ? null : _exportar,
-              icon: const Icon(Icons.download),
-              label: Text('Exportar ${_selecao.length} selecionadas'),
-            ),
-          ),
-          const SizedBox(height: 12),
-          for (final l in listas) _linha(l, s),
         ]);
       },
     );
@@ -277,9 +302,9 @@ class _TelaVerificarState extends State<TelaVerificar> {
         value: _selecao.contains(l.id),
         onChanged: (v) => setState(() => v == true ? _selecao.add(l.id) : _selecao.remove(l.id)),
         secondary: Icon(icone, color: cor),
-        title: Text(l.nomeMostrado),
+        title: Text(l.nomeMostrado, style: const TextStyle(fontWeight: FontWeight.w600)),
         subtitle: Text(passo ?? (l.ultima == null ? rotulo : '$rotulo · ${l.ultima!.motivo}'),
-            maxLines: 1, overflow: TextOverflow.ellipsis),
+            maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: passo == null ? Tokens.texto2 : cor)),
         controlAffinity: ListTileControlAffinity.leading,
         dense: true,
       ),

@@ -5,6 +5,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../dados/biblioteca.dart';
 import 'campo_tv.dart';
+import 'design/tokens.dart';
 import '../importar/importar.dart';
 import '../rede/http.dart';
 import '../modelo/conta.dart';
@@ -52,6 +53,7 @@ Future<void> mostrarAdicionar(BuildContext context, Biblioteca b) async {
   final mensagem = await showDialog<String>(
     context: context,
     builder: (ctx) => AlertDialog(
+      icon: const Icon(Icons.playlist_add_rounded, color: Tokens.acento2, size: 32),
       title: const Text('Adicionar listas'),
       content: SizedBox(
         width: 520,
@@ -65,7 +67,17 @@ Future<void> mostrarAdicionar(BuildContext context, Biblioteca b) async {
             icon: const Icon(Icons.file_open_outlined),
             label: const Text('Escolher ficheiros (Accounts.json, .ini, .m3u, .txt)'),
           ),
-          const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Text('ou cole aqui, uma por linha:')),
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: Tokens.e16),
+            child: Row(children: [
+              Expanded(child: Divider()),
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: Tokens.e12),
+                child: Text('ou cole aqui, uma por linha:', style: TextStyle(color: Tokens.texto2)),
+              ),
+              Expanded(child: Divider()),
+            ]),
+          ),
           // o comando da TV não fica preso no campo: o teclado só abre com OK (ver CampoTv)
           CampoTv(
             controller: ctrl,
