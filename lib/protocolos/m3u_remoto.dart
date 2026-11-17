@@ -18,9 +18,7 @@ class M3uRemoto implements Protocolo {
       rethrow;
     }
     // R13: HTML, login ou captive portal é o ambiente, não prova sobre a lista
-    if (!texto.replaceFirst('﻿', '').trimLeft().toUpperCase().startsWith('#EXTM3U')) {
-      throw ErroLista('o endereço não devolveu uma lista M3U');
-    }
+    if (!pareceListaM3u(texto)) throw ErroLista('o endereço não devolveu uma lista M3U');
     aviso?.call('a ler os canais');
     return lerM3uAsync(texto);
   }
@@ -31,4 +29,12 @@ class M3uRemoto implements Protocolo {
         'User-Agent': canal.userAgent ?? uaVlc,
         if (canal.referer != null) 'Referer': canal.referer!,
       });
+}
+
+/// Aceita o mesmo que a importação ([pareceM3u]: `#EXTM3U` ou `#EXTINF`), mas recusa o que
+/// claramente não é uma lista: vazio, HTML ou JSON (mesmo que tragam "#EXTINF" no texto).
+bool pareceListaM3u(String texto) {
+  final t = texto.replaceFirst('﻿', '').trimLeft();
+  if (t.isEmpty || t.startsWith('<') || t.startsWith('{') || t.startsWith('[')) return false;
+  return pareceM3u(t);
 }
