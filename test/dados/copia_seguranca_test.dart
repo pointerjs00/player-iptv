@@ -178,19 +178,92 @@ void main() {
     expect(copia.player, hasLength(2));
   });
 
-  test('uma falha a gravar o Gestor desfaz o que já tinha mudado no Player', () async {
+  test('uma falha a gravar o Gestor desfaz o que já tinha mudado no Player (memória e disco)', () async {
     await encher();
     final copia = lerCopia(utf8.decode(codificarCopia(bib, area, prefs)));
     final bib2 = await Biblioteca.abrir(pasta2);
+    await bib2.adicionar([Importada(contaDeLinha('http://local.com/c/ 00:1A:79:00:00:05')!)]);
     final antes = forma(bib2.listas);
+    final ficheiroAntes = File('${pasta2.path}${Platform.pathSeparator}biblioteca.json').readAsStringSync();
     final area2 = await AreaGestor.abrir(pasta2);
     // o ficheiro do Gestor passa a ser uma pasta: gravar falha
     Directory('${pasta2.path}${Platform.pathSeparator}gestor.json').createSync();
+    final prefs2 = Preferencias.omissao()..volume = 80;
     await expectLater(
-        restaurarCopia(copia, ModoRestauro.substituir,
-            biblioteca: bib2, area: area2, preferencias: Preferencias.omissao()),
-        throwsA(anything));
+        restaurarCopia(copia, ModoRestauro.substituir, biblioteca: bib2, area: area2, preferencias: prefs2),
+        throwsA(isA<ErroCopia>().having((e) => e.alterou, 'alterou', isFalse)));
     expect(forma(bib2.listas), antes);
-    expect(const <Canal>[], isEmpty);
+    expect(bib2.canaisTeste, ['rtp1']);
+    expect(area2.listas, isEmpty);
+    expect(prefs2.volume, 80);
+    expect(File('${pasta2.path}${Platform.pathSeparator}biblioteca.json').readAsStringSync(), ficheiroAntes);
+    expect(forma((await Biblioteca.abrir(pasta2)).listas), antes);
+  });
+
+  test('I1: substituir com um ficheiro só com a secção do Player não toca no Gestor', () async {
+    await encher();
+    final m = jsonDecode(utf8.decode(codificarCopia(bib, area, prefs))) as Map<String, dynamic>..remove('gestor');
+    final copia = lerCopia(jsonEncode(m));
+    final bib2 = await Biblioteca.abrir(pasta2);
+    final area2 = await AreaGestor.abrir(pasta2);
+    await area2.adicionar([Importada(contaDeLinha('http://meu-gestor.com/c/ 00:1A:79:00:00:07')!)]);
+    final gestorAntes = forma(area2.listas);
+    final r = await restaurarCopia(copia, ModoRestauro.substituir,
+        biblioteca: bib2, area: area2, preferencias: Preferencias.omissao());
+    expect(forma(area2.listas), gestorAntes);
+    expect(bib2.listas, hasLength(2));
+    expect(r.listasGestor, 0);
+    expect(r.removidas, 0);
+  });
+
+  test('I1: o mesmo para um ficheiro só com o Gestor (o Player e a cache ficam)', () async {
+    await encher();
+    final m = jsonDecode(utf8.decode(codificarCopia(bib, area, prefs))) as Map<String, dynamic>..remove('biblioteca');
+    final copia = lerCopia(jsonEncode(m));
+    final bib2 = await Biblioteca.abrir(pasta2);
+    await bib2.adicionar([Importada(contaDeLinha('http://local.com/c/ 00:1A:79:00:00:05')!)]);
+    final id = bib2.listas.single.id;
+    await bib2.guardarCanais(id, ConteudoLista(['G'], const []));
+    final area2 = await AreaGestor.abrir(pasta2);
+    await restaurarCopia(copia, ModoRestauro.substituir,
+        biblioteca: bib2, area: area2, preferencias: Preferencias.omissao());
+    expect(bib2.listas, hasLength(1));
+    expect(await bib2.canaisEmCache(id), isNotNull);
+    expect(area2.listas, hasLength(1));
+  });
+
+  test('I2: se as definições não se gravam, as listas voltam atrás e o erro diz que nada mudou', () async {
+    await encher();
+    final copia = lerCopia(utf8.decode(codificarCopia(bib, area, prefs)));
+    final bib2 = await Biblioteca.abrir(pasta2);
+    await bib2.adicionar([Importada(contaDeLinha('http://local.com/c/ 00:1A:79:00:00:05')!)]);
+    final antes = forma(bib2.listas);
+    final id = bib2.listas.single.id;
+    await bib2.guardarCanais(id, ConteudoLista(['G'], const []));
+    final area2 = await AreaGestor.abrir(pasta2);
+    final prefs2 = await Preferencias.abrir(pasta2)
+      ..volume = 80;
+    await prefs2.guardar();
+    final espera = Preferencias.esperaBloqueio;
+    Preferencias.esperaBloqueio = const Duration(milliseconds: 300);
+    addTearDown(() => Preferencias.esperaBloqueio = espera);
+    final lock = File('${pasta2.path}${Platform.pathSeparator}preferencias.lock').openSync(mode: FileMode.append)
+      ..lockSync(FileLock.exclusive);
+    try {
+      await expectLater(
+          restaurarCopia(copia, ModoRestauro.substituir, biblioteca: bib2, area: area2, preferencias: prefs2),
+          throwsA(isA<ErroCopia>().having((e) => e.alterou, 'alterou', isFalse)));
+    } finally {
+      lock.unlockSync();
+      lock.closeSync();
+    }
+    expect(forma(bib2.listas), antes);
+    expect(bib2.canaisTeste, ['rtp1']);
+    expect(area2.listas, isEmpty);
+    expect(prefs2.volume, 80);
+    expect(prefs2.userAgent, '');
+    expect(await bib2.canaisEmCache(id), isNotNull, reason: 'a cache só se apaga depois de tudo gravado');
+    expect(forma((await Biblioteca.abrir(pasta2)).listas), antes);
+    expect(forma((await AreaGestor.abrir(pasta2)).listas), isEmpty);
   });
 }

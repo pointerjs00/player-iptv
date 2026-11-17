@@ -55,6 +55,9 @@ class Preferencias extends ChangeNotifier {
 
   static const nomeFicheiro = 'preferencias.json';
 
+  /// Quanto se espera pelo bloqueio do ficheiro (outra janela a gravar) antes de desistir.
+  static Duration esperaBloqueio = const Duration(seconds: 5);
+
   /// O tempo limite da verificação por omissão e os seus limites, em segundos.
   static const padraoTimeoutVerificacao = 8, minTimeoutVerificacao = 5, maxTimeoutVerificacao = 30;
 
@@ -216,9 +219,10 @@ class Preferencias extends ChangeNotifier {
     if (lidas.contains('userAgent')) userAgent = outro._userAgent;
   }
 
-  /// O mapa do ficheiro (vazio se não existe ou está estragado). Lança [FileSystemException] se
-  /// o ficheiro existe mas está bloqueado (a outra janela a trocá-lo): quem chama repete.
-  static Future<Map<String, Object?>> _lerFicheiro(File f) async {
+  /// O mapa do ficheiro: vazio se não existe, null se existe mas está estragado (não é um mapa
+  /// JSON). Lança [FileSystemException] se está bloqueado (a outra janela a trocá-lo): quem
+  /// chama repete.
+  static Future<Map<String, Object?>?> _lerFicheiro(File f) async {
     final List<int> bytes;
     try {
       bytes = await f.readAsBytes();
@@ -229,9 +233,9 @@ class Preferencias extends ChangeNotifier {
       final lido = jsonDecode(utf8.decode(bytes));
       if (lido is Map) return {for (final e in lido.entries) '${e.key}': e.value};
     } on FormatException {
-      // estragado: parte-se do zero
+      // estragado
     }
-    return {};
+    return null;
   }
 
   /// Repete [f] enquanto o ficheiro estiver bloqueado pela outra janela (Windows).
@@ -253,7 +257,7 @@ class Preferencias extends ChangeNotifier {
     if (pasta == null) return;
     final Map<String, Object?> m;
     try {
-      m = await _repetir(() => _lerFicheiro(_ficheiro(pasta, nomeFicheiro)));
+      m = await _repetir(() => _lerFicheiro(_ficheiro(pasta, nomeFicheiro))) ?? {};
     } on FileSystemException {
       return; // bloqueado de vez: fica-se com o que se tem
     }
@@ -267,32 +271,70 @@ class Preferencias extends ChangeNotifier {
 
   Future<void> _gravacao = Future.value();
 
-  /// Grava (atómico: escreve ao lado, com um nome único por gravação, e troca). Relê o ficheiro
-  /// e escreve só as chaves mudadas aqui (a outra janela pode ter gravado as dela); confirma
-  /// depois que as suas chaves lá ficaram e repete se uma gravação em simultâneo as apagou.
-  /// As gravações desta instância correm uma de cada vez; uma falha não impede as seguintes.
+  /// Fecha o ficheiro de bloqueio `preferencias.lock` (exclusivo, entre processos) à volta de
+  /// [f]; espera até [esperaBloqueio] e lança [FileSystemException] se não o conseguir.
+  static Future<T> _comBloqueio<T>(Directory pasta, Future<T> Function() f) async {
+    await pasta.create(recursive: true);
+    final raf = await _ficheiro(pasta, 'preferencias.lock').open(mode: FileMode.append);
+    try {
+      final limite = DateTime.now().add(esperaBloqueio);
+      while (true) {
+        try {
+          await raf.lock(FileLock.exclusive);
+          break;
+        } on FileSystemException {
+          if (DateTime.now().isAfter(limite)) {
+            throw const FileSystemException('as preferências estão a ser gravadas por outra janela');
+          }
+          await Future<void>.delayed(const Duration(milliseconds: 25));
+        }
+      }
+      try {
+        return await f();
+      } finally {
+        try {
+          await raf.unlock();
+        } on FileSystemException {
+          // fechar o ficheiro também larga o bloqueio
+        }
+      }
+    } finally {
+      await raf.close();
+    }
+  }
+
+  /// Grava (atómico: escreve ao lado, com um nome único por gravação, e troca), com o ficheiro
+  /// bloqueado para os outros processos: lê, junta só as chaves mudadas aqui (a outra janela
+  /// pode ter gravado as dela) e escreve. Se o ficheiro está estragado, guarda-o como `.bak` e
+  /// escreve o estado completo. Se não consegue (bloqueio, disco), lança e as chaves continuam
+  /// por gravar. As gravações desta instância correm uma de cada vez.
   Future<void> guardar() {
     final pasta = _pasta;
     if (pasta == null) return Future.value();
-    final chaves = Set.of(_sujas);
-    final valores = Map<String, Object>.of(_mapa())..removeWhere((k, _) => !chaves.contains(k));
     final feito = _gravacao.then((_) async {
-      await pasta.create(recursive: true);
-      final f = _ficheiro(pasta, nomeFicheiro);
-      for (var tentativa = 0; tentativa < 4; tentativa++) {
-        final m = await _repetir(() => _lerFicheiro(f))
-          ..addAll(valores);
+      final chaves = Set.of(_sujas);
+      final valores = Map<String, Object>.of(_mapa())..removeWhere((k, _) => !chaves.contains(k));
+      await _comBloqueio(pasta, () async {
+        final f = _ficheiro(pasta, nomeFicheiro);
+        var m = await _repetir(() => _lerFicheiro(f));
+        if (m == null) {
+          try {
+            await f.copy('${f.path}.bak');
+          } on FileSystemException {
+            // sem cópia: escreve-se na mesma o estado completo
+          }
+          m = Map<String, Object?>.of(_mapa());
+        }
+        m.addAll(valores);
         await _repetir(() => escreverAtomico(f, jsonEncode(m)));
-        final depois = await _repetir(() => _lerFicheiro(f));
-        if (valores.entries.every((e) => depois[e.key] == e.value)) break;
-      }
+      });
       // deixam de estar por gravar só as que ninguém mudou entretanto
       final agora = _mapa();
       for (final k in chaves) {
         if (agora[k] == valores[k]) _sujas.remove(k);
       }
     });
-    _gravacao = feito.catchError((Object e) => debugPrint('preferências não gravadas ($e)'));
+    _gravacao = feito.then<void>((_) {}, onError: (Object e) => debugPrint('preferências não gravadas ($e)'));
     return feito;
   }
 

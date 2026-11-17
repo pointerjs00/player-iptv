@@ -18,6 +18,34 @@ import 'package:player_iptv/ui/tema.dart';
 
 Widget _app(Widget w) => MaterialApp(theme: temaApp(), builder: (_, c) => TemaConformeRealce(child: c!), home: w);
 
+/// Os textos dentro do widget com o foco (ou a dica, num botão só com ícone).
+String _focado() {
+  final no = FocusManager.instance.primaryFocus;
+  final ctx = no?.context;
+  if (ctx == null || no is FocusScopeNode) return '';
+  final textos = <String>[];
+  void visitar(Element e) {
+    if (e.widget case Text(:final data?)) textos.add(data);
+    e.visitChildren(visitar);
+  }
+
+  (ctx as Element).visitChildren(visitar);
+  return textos.join(' | ');
+}
+
+/// O foco está dentro do widget que o [finder] encontra?
+bool _focoEm(WidgetTester t, Finder finder) {
+  final ctx = FocusManager.instance.primaryFocus?.context;
+  if (ctx == null || finder.evaluate().isEmpty) return false;
+  final alvo = t.element(finder.first);
+  var dentro = false;
+  ctx.visitAncestorElements((a) {
+    if (a == alvo) dentro = true;
+    return !dentro;
+  });
+  return dentro;
+}
+
 void main() {
   late Directory pasta;
   late Biblioteca bib;
@@ -64,7 +92,7 @@ void main() {
     final v = prefs.timeoutVerificacao;
     expect(v, inInclusiveRange(5, 30));
     // a gravação é IO real com continuações na zona do teste: alterna-se entre as duas
-    for (var i = 0; i < 6; i++) {
+    for (var i = 0; i < 25; i++) {
       await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 60)));
       await t.pump();
     }
@@ -136,12 +164,20 @@ void main() {
     t.view.physicalSize = const Size(1280, 800);
     t.view.devicePixelRatio = 1;
     addTearDown(t.view.reset);
-    await t.pumpWidget(_app(TelaInicio(
+    final textoCopia = (await t.runAsync(() async {
+      final o = await Biblioteca.abrir(Directory.systemTemp.createTempSync('defs3'));
+      await o.adicionar([Importada(contaDeLinha('http://outro.com/c/ 00:1A:79:00:00:02')!)]);
+      return utf8.decode(codificarCopia(o, area, prefs));
+    }))!;
+    await t.pumpWidget(MediaQuery(
+        data: const MediaQueryData(size: Size(1280, 800), navigationMode: NavigationMode.directional),
+        child: _app(TelaInicio(
       biblioteca: bib,
       area: area,
       separadorGestor: const SizedBox(),
-      definicoes: (_) => TelaDefinicoes(biblioteca: bib, area: area, preferencias: prefs),
-    )));
+      definicoes: (_) => TelaDefinicoes(
+          biblioteca: bib, area: area, preferencias: prefs, escolherCopia: () async => textoCopia),
+    ))));
     await t.pump(const Duration(milliseconds: 400));
     expect(find.byTooltip('Definições'), findsOneWidget);
     // Tab até à roda dentada e OK
@@ -154,8 +190,35 @@ void main() {
     await t.sendKeyEvent(LogicalKeyboardKey.enter);
     await t.pumpAndSettle();
     expect(find.text('Canais de teste'), findsOneWidget);
-    // o foco entra no ecrã (primeiro controlo)
+    // o foco entra no ecrã, no primeiro controlo (DAZN 1 / RTP 1 são chips)
+    expect(_focado(), anyOf(startsWith('RTP 1'), startsWith('SportTV 1'), startsWith('DAZN 1')));
+    // só com setas: até "Importar cópia" e OK
+    final botaoImportar = find.widgetWithText(OutlinedButton, 'Importar cópia');
+    for (var i = 0; i < 40 && !_focoEm(t, find.widgetWithText(FilledButton, 'Exportar cópia')); i++) {
+      await t.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await t.pump();
+    }
+    // "Exportar cópia" e "Importar cópia" estão lado a lado: DIREITA
+    expect(_focoEm(t, find.widgetWithText(FilledButton, 'Exportar cópia')), isTrue);
+    await t.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await t.pump();
+    expect(_focoEm(t, botaoImportar), isTrue);
+    await t.sendKeyEvent(LogicalKeyboardKey.select);
+    await t.pumpAndSettle();
+    // o diálogo abre com o foco em "Cancelar" (o mais seguro)
+    expect(find.text('Importar cópia de segurança'), findsOneWidget);
+    expect(_focoEm(t, find.widgetWithText(TextButton, 'Cancelar')), isTrue);
+    await t.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await t.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await t.pump();
+    expect(_focoEm(t, find.widgetWithText(FilledButton, 'Juntar')), isTrue);
+    await t.sendKeyEvent(LogicalKeyboardKey.select);
+    await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 300)));
+    await t.pumpAndSettle();
+    expect(bib.listas, hasLength(1));
+    // depois do diálogo o foco volta ao ecrã (não se perde)
     expect(FocusManager.instance.primaryFocus?.context, isNotNull);
+    expect(_focoEm(t, botaoImportar), isTrue);
     await t.pageBack();
     await t.pumpAndSettle();
     expect(find.text('Canais de teste'), findsNothing);

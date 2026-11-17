@@ -12,8 +12,10 @@
 library;
 
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
+import '../rede/http.dart' show descreverErro;
 import 'area_gestor.dart';
 import 'biblioteca.dart';
 import 'preferencias.dart';
@@ -25,8 +27,11 @@ const versaoCopia = 1;
 
 /// O ficheiro não serve como cópia de segurança; [mensagem] já é para o utilizador.
 class ErroCopia implements Exception {
-  ErroCopia(this.mensagem);
+  ErroCopia(this.mensagem, {this.alterou = false});
   final String mensagem;
+
+  /// Alguma coisa ficou alterada (só se uma reversão falhou); por omissão nada mudou.
+  final bool alterou;
   @override
   String toString() => mensagem;
 }
@@ -139,28 +144,57 @@ CopiaLida lerCopia(String texto) {
   );
 }
 
-/// Aplica a cópia. Ou fica tudo feito ou nada muda: se o Gestor não se grava depois do Player,
-/// o Player volta ao que era. As definições aplicam-se (e gravam-se) no fim.
+/// Aplica a cópia, só nas secções que o ficheiro tem (uma secção em falta não apaga nada).
+/// Do ponto de vista do utilizador é tudo ou nada: grava-se o Player, o Gestor e as definições
+/// por esta ordem e, se um passo falhar, os anteriores são repostos (memória e disco) e o erro
+/// diz que nada mudou. Só se a própria reposição falhar o erro diz que ficou algo alterado
+/// ([ErroCopia.alterou]). A cache de canais só se apaga no fim, depois de tudo gravado.
+/// Nota: são ficheiros separados (biblioteca.json, gestor.json, preferencias.json) sem
+/// transação: um encerramento do sistema a meio pode deixar só alguns trocados.
 Future<ResumoRestauro> restaurarCopia(CopiaLida copia, ModoRestauro modo,
     {required Biblioteca biblioteca, required AreaGestor area, required Preferencias preferencias}) async {
   final substituir = modo == ModoRestauro.substituir;
-  final p = await biblioteca.restaurar(copia.player, substituir: substituir, canaisTeste: copia.canaisTeste);
-  final PlanoRestauro g;
+  final desfazer = <Future<void> Function()>[];
+  final prefsAntes = preferencias.paraJson();
+  PlanoRestauro? p, g;
   try {
-    g = (await area.restaurar(copia.gestor, substituir: substituir)).plano;
-  } catch (_) {
-    await p.desfazer();
-    rethrow;
+    if (copia.temPlayer) {
+      final r = await biblioteca.restaurar(copia.player, substituir: substituir, canaisTeste: copia.canaisTeste);
+      desfazer.add(r.desfazer);
+      p = r.plano;
+    }
+    if (copia.temGestor) {
+      final r = await area.restaurar(copia.gestor, substituir: substituir);
+      desfazer.add(r.desfazer);
+      g = r.plano;
+    }
+    if (copia.preferencias != null) {
+      // as definições são o último passo: se não se gravam o ficheiro não mudou, basta repor a memória
+      desfazer.add(() async => preferencias.aplicar(prefsAntes));
+      preferencias.aplicar(copia.preferencias!);
+      await preferencias.guardar();
+    }
+  } catch (e) {
+    var falhou = false;
+    for (final d in desfazer.reversed) {
+      try {
+        await d();
+      } catch (_) {
+        falhou = true;
+      }
+    }
+    final causa = e is FileSystemException || e is Exception ? descreverErro(e) : '$e';
+    throw ErroCopia(
+        falhou
+            ? 'A importação falhou ($causa) e não foi possível repor tudo: confira as listas e as definições.'
+            : 'Não foi possível importar ($causa).',
+        alterou: falhou);
   }
-  await biblioteca.apagarCaches(p.plano.idsSemCache);
-  if (copia.preferencias != null) {
-    preferencias.aplicar(copia.preferencias!);
-    await preferencias.guardar();
-  }
+  if (p != null) await biblioteca.apagarCaches(p.idsSemCache);
   return ResumoRestauro(
-    listasPlayer: p.plano.novas,
-    listasGestor: g.novas,
-    atualizadas: p.plano.atualizadas + g.atualizadas,
-    removidas: p.plano.removidas + g.removidas,
+    listasPlayer: p?.novas ?? 0,
+    listasGestor: g?.novas ?? 0,
+    atualizadas: (p?.atualizadas ?? 0) + (g?.atualizadas ?? 0),
+    removidas: (p?.removidas ?? 0) + (g?.removidas ?? 0),
   );
 }

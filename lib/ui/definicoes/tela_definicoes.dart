@@ -85,7 +85,7 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
 
   void _mudou(VoidCallback f) {
     f();
-    _p.guardar();
+    _p.guardar().catchError((Object _) {}); // as chaves ficam por gravar e voltam a tentar-se
   }
 
   Future<void> _exportar() async {
@@ -120,7 +120,7 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
           '${r.removidas > 0 ? ', ${r.removidas} removidas' : ''}.');
       _ua.text = _p.userAgent;
     } on ErroCopia catch (e) {
-      _aviso('${e.mensagem} Nada foi alterado.');
+      _aviso(e.alterou ? e.mensagem : '${e.mensagem} Nada foi alterado.');
     } catch (e) {
       _aviso('Não foi possível importar (${descreverErro(e)}). Nada foi alterado.');
     } finally {
