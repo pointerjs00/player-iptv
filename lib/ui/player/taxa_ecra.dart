@@ -38,25 +38,54 @@ typedef InvocarNativo = Future<Object?> Function(String metodo, [Object? argumen
 /// Pede ao Android TV / Fire TV o modo de ecrã que combina com o canal, e repõe-no ao sair.
 /// Usa o canal nativo `player_iptv/ecra` (MainActivity): `taxas` -> {atual, suportadas}
 /// (para a resolução atual), `pedir` {hz}, `repor`.
+///
+/// Nunca deixa a TV presa no modo pedido: [repor] (canal com erro, app em segundo plano) e
+/// [fechar] (o player saiu) são idempotentes, e um pedido que só responde depois de repor/fechar
+/// é desfeito logo.
 class TaxaEcra {
   TaxaEcra({InvocarNativo? invocar}) : _invocar = invocar ?? _canal.invokeMethod;
 
   static const _canal = MethodChannel('player_iptv/ecra');
   final InvocarNativo _invocar;
-  bool _pediu = false;
 
-  /// Pede o modo para `fps`; devolve os Hz pedidos (null se não pediu nada: já estava certo,
-  /// nenhum modo serve ou o canal nativo falhou).
-  Future<double?> ajustarPara(double fps) async {
+  /// Há (ou pode haver, se ainda não respondeu) um modo pedido por nós.
+  bool _pediu = false;
+  bool _fechado = false;
+
+  /// Muda a cada repor/fechar: um pedido de uma geração anterior que responda tarde é desfeito.
+  int _geracao = 0;
+
+  /// Os Hz atuais do ecrã segundo o sistema (null se não se sabe).
+  Future<double?> hzAtual() async {
     try {
       final r = await _invocar('taxas');
-      if (r is! Map) return null;
+      return r is Map ? (r['atual'] as num?)?.toDouble() : null;
+    } catch (e) {
+      debugPrint('taxa do ecrã: $e');
+      return null;
+    }
+  }
+
+  /// Pede o modo para `fps`; devolve os Hz pedidos (null se não pediu nada: já estava certo,
+  /// nenhum modo serve, o player já fechou ou o canal nativo falhou).
+  Future<double?> ajustarPara(double fps) async {
+    if (_fechado) return null;
+    final geracao = _geracao;
+    try {
+      final r = await _invocar('taxas');
+      if (_fechado || geracao != _geracao || r is! Map) return null;
       final atual = (r['atual'] as num?)?.toDouble();
       final suportadas = [for (final v in (r['suportadas'] as List? ?? const [])) (v as num).toDouble()];
       final hz = escolherTaxa(fps, suportadas);
       if (hz == null || (atual != null && (atual - hz).abs() < 0.05)) return null;
+      _pediu = true; // antes do await: um repor/fechar a meio já sabe que tem de desfazer
       await _invocar('pedir', {'hz': hz});
-      _pediu = true;
+      if (_fechado || geracao != _geracao) {
+        // saiu-se (ou repôs-se) enquanto o pedido estava a caminho: desfaz
+        _pediu = true;
+        await _reporNativo();
+        return null;
+      }
       return hz;
     } catch (e) {
       debugPrint('taxa do ecrã: $e');
@@ -64,8 +93,19 @@ class TaxaEcra {
     }
   }
 
-  /// Volta ao modo que o sistema escolher (só se tiver pedido algum).
+  /// Volta ao modo que o sistema escolher (só se tiver pedido algum). Pode voltar a pedir depois.
   Future<void> repor() async {
+    _geracao++;
+    await _reporNativo();
+  }
+
+  /// O player saiu: repõe e não volta a pedir.
+  Future<void> fechar() async {
+    _fechado = true;
+    await repor();
+  }
+
+  Future<void> _reporNativo() async {
     if (!_pediu) return;
     _pediu = false;
     try {

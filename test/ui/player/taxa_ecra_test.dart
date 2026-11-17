@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:player_iptv/ui/player/taxa_ecra.dart';
 
@@ -59,6 +61,67 @@ void main() {
       final f = TaxaEcra(invocar: (m, [a]) async => throw Exception('sem canal'));
       expect(await f.ajustarPara(50), isNull);
       await f.repor();
+    });
+  });
+
+  group('TaxaEcra: saídas e corridas (M1)', () {
+    test('Voltar a meio do pedido: o modo pedido depois de sair é reposto', () async {
+      final chamadas = <String>[];
+      final pedir = Completer<Object?>();
+      final t = TaxaEcra(invocar: (m, [a]) {
+        chamadas.add(m);
+        if (m == 'taxas') return Future.value({'atual': 60.0, 'suportadas': [50.0, 60.0]});
+        if (m == 'pedir') return pedir.future;
+        return Future.value(true);
+      });
+      final f = t.ajustarPara(50);
+      await Future<void>.delayed(Duration.zero);
+      expect(chamadas, ['taxas', 'pedir']);
+      await t.fechar(); // dispose do player enquanto o "pedir" ainda não respondeu
+      pedir.complete(true);
+      await f;
+      expect(chamadas.last, 'repor', reason: 'nunca fica preso no modo pedido');
+    });
+
+    test('fechado antes de responder às taxas: não pede nada', () async {
+      final chamadas = <String>[];
+      final taxas = Completer<Object?>();
+      final t = TaxaEcra(invocar: (m, [a]) {
+        chamadas.add(m);
+        return m == 'taxas' ? taxas.future : Future.value(true);
+      });
+      final f = t.ajustarPara(50);
+      await t.fechar();
+      taxas.complete({'atual': 60.0, 'suportadas': [50.0, 60.0]});
+      expect(await f, isNull);
+      expect(chamadas, ['taxas']);
+    });
+
+    test('repor é idempotente; depois de fechar não volta a pedir', () async {
+      final chamadas = <String>[];
+      final t = TaxaEcra(invocar: (m, [a]) async {
+        chamadas.add(m);
+        return m == 'taxas' ? {'atual': 60.0, 'suportadas': [50.0, 60.0]} : true;
+      });
+      await t.ajustarPara(50);
+      await t.repor();
+      await t.repor();
+      expect(chamadas.where((c) => c == 'repor').length, 1);
+      // a app voltou ao primeiro plano: pode pedir de novo
+      await t.ajustarPara(50);
+      expect(chamadas.where((c) => c == 'pedir').length, 2);
+      await t.fechar();
+      await t.fechar();
+      expect(chamadas.where((c) => c == 'repor').length, 2);
+      expect(await t.ajustarPara(50), isNull);
+      expect(chamadas.where((c) => c == 'pedir').length, 2);
+    });
+
+    test('hzAtual: os Hz do ecrã segundo o sistema', () async {
+      final t = TaxaEcra(invocar: (m, [a]) async => {'atual': 59.94, 'suportadas': [59.94]});
+      expect(await t.hzAtual(), 59.94);
+      final f = TaxaEcra(invocar: (m, [a]) async => throw Exception('x'));
+      expect(await f.hzAtual(), isNull);
     });
   });
 }
