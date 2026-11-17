@@ -16,14 +16,9 @@ class SaltosDireto {
   final Duration esperar;
   static const salto = Duration(seconds: 10);
 
-  /// Depois de um salto o cache ainda se está a ajustar: não se acerta o atraso por ele.
-  static const _calma = Duration(seconds: 2);
-  DateTime? _ultimoSalto;
-
   Future<double?> _posicao() async => double.tryParse(await mpv.getProperty('time-pos'));
 
   Future<void> _seek(String segundos) async {
-    _ultimoSalto = relogio.agora;
     await mpv.command(['seek', segundos, 'relative']);
   }
 
@@ -54,35 +49,49 @@ class SaltosDireto {
     final d = relogio.avancoPossivel(salto);
     if (d < const Duration(milliseconds: 500)) return 'Já está em direto';
     try {
+      final antes = await _posicao();
       await _seek(_s(d));
-      relogio.avancou(d);
+      if (esperar > Duration.zero) await Future<void>.delayed(esperar);
+      final depois = await _posicao();
+      var avancou = d;
+      if (antes != null && depois != null) {
+        // o mpv não passa do fim do cache: conta só o que avançou de facto
+        final tocou = relogio.pausado ? 0.0 : esperar.inMicroseconds / 1e6 * relogio.velocidade;
+        final s = (depois - antes - tocou).clamp(0.0, d.inMicroseconds / 1e6);
+        avancou = Duration(milliseconds: (s * 1000).round());
+      }
+      relogio.avancou(avancou);
+      if (avancou < const Duration(milliseconds: 500)) return 'Para chegar ao direto use "Voltar ao direto"';
     } catch (e) {
       debugPrint('mpv: avançar falhou ($e)');
     }
     return null;
   }
 
-  Future<void> voltarAoDireto() async {
+  /// Volta ao direto. Pelo seek só se o atraso todo estiver no buffer à frente; senão (pausa
+  /// longa: o buffer encheu, o mpv deixou de ler e o canal ficou mesmo para trás; ou o buffer não
+  /// se sabe) devolve [VoltaAoDireto.reabrir]: quem chama reabre o canal (link novo), a única
+  /// forma de chegar ao direto verdadeiro.
+  Future<VoltaAoDireto> voltarAoDireto() async {
     final d = relogio.atraso;
-    if (d < const Duration(milliseconds: 500)) return;
+    if (d < const Duration(milliseconds: 500)) return VoltaAoDireto.jaEmDireto;
     try {
+      final aFrente = double.tryParse(await mpv.getProperty('demuxer-cache-duration'));
+      if (aFrente == null || d.inMicroseconds / 1e6 - aFrente > margemReabrir.inSeconds) {
+        return VoltaAoDireto.reabrir;
+      }
       await _seek(_s(d));
       relogio.voltouAoDireto();
+      return VoltaAoDireto.porSeek;
     } catch (e) {
       debugPrint('mpv: voltar ao direto falhou ($e)');
+      return VoltaAoDireto.reabrir;
     }
   }
 
-  /// O atraso não passa do que há no buffer à frente (depois de a rede parar, por exemplo).
-  Future<void> acertarPeloBuffer() async {
-    final ultimo = _ultimoSalto;
-    if (ultimo != null && relogio.agora.difference(ultimo) < _calma) return;
-    try {
-      final s = double.tryParse(await mpv.getProperty('demuxer-cache-duration'));
-      if (s == null || s <= 0.5) return; // a abrir/sem dados: não diz nada
-      relogio.limitar(Duration(milliseconds: (s * 1000).round()));
-    } catch (_) {
-      // o player fechou entretanto
-    }
-  }
+  /// Quanto do atraso pode faltar no buffer à frente e ainda se voltar pelo seek (o buffer
+  /// normal de um direto).
+  static const margemReabrir = Duration(seconds: 3);
 }
+
+enum VoltaAoDireto { jaEmDireto, porSeek, reabrir }

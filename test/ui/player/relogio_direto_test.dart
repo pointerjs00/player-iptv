@@ -65,10 +65,12 @@ void main() {
     expect(r.atraso, const Duration(seconds: 1));
   });
 
-  test('o atraso nunca passa do buffer que há à frente (é o que se pode avançar)', () {
-    r.recuou(const Duration(seconds: 30));
-    r.limitar(const Duration(seconds: 12));
-    expect(r.atraso, const Duration(seconds: 12));
+  test('pausa de minutos: o atraso é o real (o direto não espera pelo buffer)', () {
+    r.pausou();
+    passar(4 * 60 * 1000);
+    r.retomou();
+    expect(r.atraso, const Duration(minutes: 4));
+    expect(r.emDireto, isFalse);
   });
 
   test('voltar ao direto e trocar de canal recomeçam em direto', () {

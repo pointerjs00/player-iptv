@@ -55,7 +55,9 @@ class ConfiguracaoMpv {
 
   /// Quanto o mpv continua a ler à frente (limitado pelos 64 MiB). Num direto só há à frente o
   /// que já chegou, por isso a tocar normalmente não muda nada; depois de recuar ou pausar, o
-  /// mpv continua a receber o canal (até aos 64 MiB) e "Voltar ao direto" chega mesmo ao direto.
+  /// mpv continua a receber o canal (até aos 64 MiB) e "Voltar ao direto" chega lá com um seek.
+  /// Numa pausa mais longa do que os 64 MiB (~1–2 min em HD) o mpv deixa de ler; aí "Voltar ao
+  /// direto" reabre o canal (`SaltosDireto.voltarAoDireto`).
   /// Com os 20 s de antes, ao recuar mais de ~20 s o mpv deixava de ler e o canal ficava para trás.
   static const segundosAFrente = 300;
 

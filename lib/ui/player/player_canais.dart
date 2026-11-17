@@ -88,7 +88,6 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   double? _hzEcra;
   String? _aviso;
   Timer? _esconderAviso;
-  Timer? _acertarAtraso;
   bool _estatisticas = false;
   bool _buffering = false;
   double? _percentagemBuffer;
@@ -125,10 +124,6 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     WidgetsBinding.instance.addObserver(this);
     _criarPlayer();
     _abrir();
-    // o atraso ao direto não passa do que há no buffer (ex.: a rede parou)
-    _acertarAtraso = Timer.periodic(const Duration(seconds: 2), (_) {
-      if (!_relogio.emDireto) _saltos.acertarPeloBuffer();
-    });
   }
 
   void _criarPlayer() {
@@ -387,7 +382,8 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       case AcaoPlayer.voltarAoDireto:
         _saltar(() async {
           if (!_aTocar) await _tocar(true);
-          await _saltos.voltarAoDireto();
+          // longe demais para o buffer: reabre o canal (link novo) — o seek ficava minutos atrás
+          if (await _saltos.voltarAoDireto() == VoltaAoDireto.reabrir && mounted) _abrir();
           return null;
         });
       case AcaoPlayer.playPausa:
@@ -560,7 +556,6 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _esconderAviso?.cancel();
-    _acertarAtraso?.cancel();
     _vigia.parar();
     _taxa.fechar();
     for (final s in _subsPlayer) {

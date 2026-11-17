@@ -68,34 +68,47 @@ void main() {
     expect(relogio.emDireto, isTrue);
   });
 
-  test('voltar ao direto: seek pelo atraso todo', () async {
+  test('voltar ao direto: com o atraso todo no buffer à frente, seek pelo atraso todo', () async {
     await saltos.recuar();
     await saltos.recuar();
     mpv.comandos.clear();
-    await saltos.voltarAoDireto();
+    expect(await saltos.voltarAoDireto(), VoltaAoDireto.porSeek);
     expect(mpv.comandos, ['seek 20.000 relative']);
     expect(relogio.emDireto, isTrue);
     expect(mpv.posicao, 100);
   });
 
   test('em direto, "voltar ao direto" não faz nada', () async {
-    await saltos.voltarAoDireto();
+    expect(await saltos.voltarAoDireto(), VoltaAoDireto.jaEmDireto);
     expect(mpv.comandos, isEmpty);
   });
 
-  test('o atraso fica limitado ao buffer à frente (ex.: depois de a rede parar)', () async {
-    await saltos.recuar();
-    mpv.fimCache = mpv.posicao + 3;
-    t = t.add(const Duration(seconds: 5));
-    await saltos.acertarPeloBuffer();
-    expect(relogio.atraso, const Duration(seconds: 3));
+  test('pausa longa (o buffer à frente encheu e o mpv deixou de ler): reabre o canal, não diz "em direto"',
+      () async {
+    relogio.pausou();
+    t = t.add(const Duration(minutes: 3));
+    relogio.retomou();
+    mpv.fimCache = mpv.posicao + 67; // 64 MiB a ~8 Mb/s
+    expect(await saltos.voltarAoDireto(), VoltaAoDireto.reabrir);
+    expect(mpv.comandos, isEmpty, reason: 'o seek só chegava ao fim do cache, ainda ~2 min atrás');
+    expect(relogio.emDireto, isFalse);
+    expect(relogio.atraso, const Duration(minutes: 3), reason: 'o atraso real não é cortado pelo buffer');
   });
 
-  test('logo a seguir a um salto não se acerta pelo buffer (o cache ainda está a mexer)', () async {
-    await saltos.recuar();
-    mpv.fimCache = mpv.posicao + 1;
-    await saltos.acertarPeloBuffer();
-    expect(relogio.atraso, const Duration(seconds: 10));
+  test('buffer à frente desconhecido: reabre (só assim é certo chegar ao direto)', () async {
+    final s = SaltosDireto(_SemPosicao(), relogio, esperar: Duration.zero);
+    relogio.recuou(const Duration(seconds: 20));
+    expect(await s.voltarAoDireto(), VoltaAoDireto.reabrir);
+  });
+
+  test('avançar conta só o que o mpv avançou de facto (fim do cache à frente)', () async {
+    relogio.pausou();
+    t = t.add(const Duration(seconds: 30));
+    relogio.retomou();
+    mpv.fimCache = mpv.posicao + 4;
+    expect(await saltos.avancar(), isNull);
+    expect(relogio.atraso, const Duration(seconds: 26));
+    expect(relogio.emDireto, isFalse);
   });
 
   test('sem time-pos (mpv a abrir): conta o pedido', () async {
@@ -107,6 +120,7 @@ void main() {
   test('um mpv que falha não lança', () async {
     final s = SaltosDireto(_SemPosicao(falha: true), relogio, esperar: Duration.zero);
     await s.recuar();
+    await s.avancar();
     await s.voltarAoDireto();
   });
 }

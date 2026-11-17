@@ -1,7 +1,8 @@
 /// Quanto se está atrás do direto. O direto anda ao ritmo do relógio; o que se vê anda à
 /// velocidade escolhida (parado na pausa). Recuar/avançar mudam o atraso pelo que o mpv
-/// recuou/avançou de facto. O atraso nunca passa do buffer que há à frente (não se pode estar
-/// mais atrás do que aquilo que já chegou) e nunca fica negativo (à frente do direto).
+/// recuou/avançou de facto. É o atraso real: não é cortado pelo buffer à frente (numa pausa
+/// longa o buffer enche, o mpv deixa de ler e o canal fica mesmo minutos atrás; ver
+/// [SaltosDireto.voltarAoDireto]). Nunca fica negativo (à frente do direto).
 ///
 /// Recuar no direto usa o cache do mpv para trás (`demuxer-max-back-bytes`, 64 MiB: cerca de
 /// 1 min num canal HD a 8 Mb/s, vários minutos num SD) — ver `configuracao_mpv.dart`.
@@ -71,12 +72,6 @@ class RelogioDireto {
   Duration avancoPossivel(Duration pedido) {
     final a = atraso;
     return pedido < a ? pedido : a;
-  }
-
-  /// O buffer que há à frente (o mpv): o atraso não passa dele.
-  void limitar(Duration bufferAFrente) {
-    _marcar();
-    if (_base > bufferAFrente) _base = bufferAFrente;
   }
 
   void voltouAoDireto() {
