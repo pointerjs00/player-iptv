@@ -31,10 +31,11 @@ Que ficheiro escolher
 ---------------------
 - Windows:  PlayerIPTV-windows.zip
 - Android (telemóvel, tablet, Fire TV, Android TV):
-  * PlayerIPTV-android-arm64.apk  -> a escolha certa para quase todos os
-    aparelhos recentes, incluindo o Fire TV Stick 4K Max.
-  * PlayerIPTV-android-armv7.apk  -> aparelhos mais antigos (Fire TV Stick
-    antigos, telemóveis muito velhos). Se o arm64 não instalar, use este.
+  * PlayerIPTV-android-arm64.apk  -> a escolha certa para a maioria dos
+    telemóveis, tablets e boxes Android TV recentes.
+  * PlayerIPTV-android-armv7.apk  -> Fire TV e aparelhos mais antigos.
+    No Fire TV Stick 4K Max use o armv7 (o Fire OS 7 só instala 32 bits).
+    Se o arm64 não instalar ("App não instalada"), use este.
 
 Windows
 -------
@@ -59,7 +60,7 @@ Opção A - app Downloader:
 Opção B - adb, a partir de um computador na mesma rede:
 1. Ative "Depuração ADB" nas opções de programador do aparelho.
 2. adb connect ENDEREÇO_IP_DO_APARELHO
-3. adb install PlayerIPTV-android-arm64.apk
+3. adb install PlayerIPTV-android-armv7.apk   (Fire TV; arm64 noutros aparelhos)
 
 Importar as listas
 ------------------
@@ -67,7 +68,7 @@ A aplicação não traz listas nem contas. Na primeira abertura importe as suas:
 - Accounts.json  (ficheiro de contas exportado)
 - ficheiros .ini (um por lista)
 - ficheiros .m3u / .m3u8
-- ou cole o endereço / conteudo da lista diretamente na aplicação.
+- ou cole o endereço / conteúdo da lista diretamente na aplicação.
 """
 
 

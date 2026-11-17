@@ -138,5 +138,20 @@ class Codificacao(unittest.TestCase):
         self.assertIn("ok".encode(), bruto.getvalue())
 
 
+class LeiaMe(unittest.TestCase):
+    def test_fire_tv_4k_max_aponta_para_o_armv7(self):
+        # Minor B: o Fire TV Stick 4K Max (Fire OS 7) tem userland de 32 bits
+        texto = empacotar.LEIA_ME
+        linha = next(l for l in texto.splitlines() if "4K Max" in l)
+        bloco = texto[texto.index(linha) - 200:texto.index(linha) + 200]
+        self.assertIn("armv7", bloco)
+        arm64 = texto[texto.index("arm64.apk  ->"):texto.index("armv7.apk  ->")]
+        self.assertNotIn("4K Max", arm64)
+
+    def test_acentos(self):
+        self.assertNotIn("conteudo", empacotar.LEIA_ME)
+        self.assertIn("conteúdo", empacotar.LEIA_ME)
+
+
 if __name__ == "__main__":
     unittest.main()
