@@ -21,20 +21,34 @@ class PreferenciasPlayer {
 
   final Directory? pasta;
 
+  /// Nunca lança: ficheiro em falta, estragado ou com valores de outro tipo dá os valores por
+  /// omissão (um ficheiro estragado fica guardado como preferencias_player.json.bak).
   static Future<PreferenciasPlayer> carregar(Directory pasta, {required bool tv}) async {
-    Map<String, Object?> j = const {};
+    Object? modo;
+    Object? taxa;
+    final f = _ficheiro(pasta);
     try {
-      final f = _ficheiro(pasta);
       if (await f.exists()) {
-        final lido = jsonDecode(await f.readAsString());
-        if (lido is Map<String, Object?>) j = lido;
+        var estragado = false;
+        try {
+          final lido = jsonDecode(await f.readAsString());
+          if (lido is Map) {
+            modo = lido['modoAndroid'];
+            taxa = lido['ajustarTaxaEcra'];
+            if ((modo != null && modo is! String) || (taxa != null && taxa is! bool)) estragado = true;
+          } else {
+            estragado = true;
+          }
+        } on FormatException {
+          estragado = true;
+        }
+        if (estragado) await f.copy('${f.path}.bak');
       }
     } catch (_) {
-      // estragado: valores por omissão
+      // não se lê/copia: fica-se pelos valores por omissão
     }
-    final taxa = j['ajustarTaxaEcra'];
     return PreferenciasPlayer(
-      modoAndroid: ModoDescodificacao.deNome(j['modoAndroid'] as String?),
+      modoAndroid: ModoDescodificacao.deNome(modo is String ? modo : null),
       ajustarTaxaEcra: taxa is bool ? taxa : tv,
       pasta: pasta,
     );

@@ -32,4 +32,28 @@ void main() {
     final p = await PreferenciasPlayer.carregar(pasta, tv: false);
     expect(p.modoAndroid, ModoDescodificacao.direto);
   });
+
+  test('valores com o tipo errado: valores por omissão, sem exceção, e guarda uma cópia .bak', () async {
+    final f = File('${pasta.path}${Platform.pathSeparator}preferencias_player.json')
+      ..writeAsStringSync('{"modoAndroid": 1, "ajustarTaxaEcra": "sim"}');
+    final p = await PreferenciasPlayer.carregar(pasta, tv: true);
+    expect(p.modoAndroid, ModoDescodificacao.direto);
+    expect(p.ajustarTaxaEcra, isTrue);
+    expect(File('${f.path}.bak').readAsStringSync(), contains('"modoAndroid": 1'));
+  });
+
+  test('JSON inválido ou outra forma (lista): .bak e valores por omissão', () async {
+    final f = File('${pasta.path}${Platform.pathSeparator}preferencias_player.json')..writeAsStringSync('[1, 2]');
+    final p = await PreferenciasPlayer.carregar(pasta, tv: false);
+    expect(p.ajustarTaxaEcra, isFalse);
+    expect(File('${f.path}.bak').existsSync(), isTrue);
+    f.writeAsStringSync('{nao json');
+    await PreferenciasPlayer.carregar(pasta, tv: false);
+    expect(File('${f.path}.bak').readAsStringSync(), '{nao json');
+  });
+
+  test('a pasta nem existe / não se lê: valores por omissão, nunca exceção', () async {
+    final p = await PreferenciasPlayer.carregar(Directory('${pasta.path}${Platform.pathSeparator}nao_existe'), tv: true);
+    expect(p.modoAndroid, ModoDescodificacao.direto);
+  });
 }
