@@ -55,7 +55,36 @@ class Lista {
   }
 }
 
-class Biblioteca extends ChangeNotifier {
+/// Um conjunto de listas cuja verificação se pode gravar: as do Player ([Biblioteca]) ou as do
+/// Gestor (`AreaGestor`). O `ServicoVerificacao` grava os resultados na coleção que verifica.
+abstract interface class ColecaoListas implements Listenable {
+  List<Lista> get listas;
+  Lista? porId(String id);
+  Future<void> registarVerificacao(String id, UltimaVerificacao v);
+}
+
+/// Como juntar as listas enviadas pelo Gestor às do Player.
+enum ModoEnvio {
+  /// Junta (sem duplicar) e atualiza o resultado das que já existiam.
+  adicionar,
+
+  /// Do Player ficam só as que funcionam, mais as enviadas.
+  esmagarMantendoFuncionais,
+
+  /// Do Player ficam as que funcionam e as inconclusivas, mais as enviadas.
+  esmagarMantendoFuncionaisEInc,
+
+  /// O Player fica só com as enviadas.
+  esmagarTodas,
+}
+
+/// O que um envio para o Player mudou.
+class ResumoEnvio {
+  const ResumoEnvio({this.adicionadas = 0, this.atualizadas = 0, this.removidas = 0});
+  final int adicionadas, atualizadas, removidas;
+}
+
+class Biblioteca extends ChangeNotifier implements ColecaoListas {
   Biblioteca._(this._pasta, this._listas);
 
   final Directory _pasta;
@@ -64,6 +93,7 @@ class Biblioteca extends ChangeNotifier {
   /// Os canais que a verificação testa ("rtp1", "sporttv1", "dazn1").
   List<String> canaisTeste = const ['rtp1'];
 
+  @override
   List<Lista> get listas => List.unmodifiable(_listas);
 
   File get _ficheiro => File('${_pasta.path}${Platform.pathSeparator}biblioteca.json');
@@ -108,7 +138,7 @@ class Biblioteca extends ChangeNotifier {
   /// O nome do ficheiro temporário de uma gravação: com o pid e bytes aleatórios, para duas
   /// gravações (mesmo de dois processos) nunca escreverem no mesmo ficheiro.
   @visibleForTesting
-  static String nomeTemporario(File f) => '${f.path}.$pid.${_novoId()}.tmp';
+  static String nomeTemporario(File f) => '${f.path}.$pid.${novoIdLista()}.tmp';
 
   /// Bloqueia a pasta de dados para esta instância da app (fica bloqueada enquanto o
   /// ficheiro devolvido estiver aberto). null = outra instância já a tem.
@@ -124,6 +154,7 @@ class Biblioteca extends ChangeNotifier {
     }
   }
 
+  @override
   Lista? porId(String id) {
     for (final l in _listas) {
       if (l.id == id) return l;
@@ -162,6 +193,44 @@ class Biblioteca extends ChangeNotifier {
     await guardar();
   }
 
+  /// Recebe as listas enviadas pelo Gestor. Nos modos de esmagar, as listas do Player que não
+  /// foram enviadas e não passam no critério saem (com os favoritos e a cache de canais).
+  /// As enviadas que já existiam (pela chave) ficam com o resultado do Gestor.
+  Future<ResumoEnvio> receber(Iterable<Lista> doGestor, ModoEnvio modo) async {
+    final enviadas = {for (final l in doGestor) chave(l.conta): l};
+    bool mantem(Lista l) => switch (modo) {
+          ModoEnvio.adicionar => true,
+          ModoEnvio.esmagarMantendoFuncionais => l.ultima?.estado == 'funciona',
+          ModoEnvio.esmagarMantendoFuncionaisEInc => const {'funciona', 'inconclusivo'}.contains(l.ultima?.estado),
+          ModoEnvio.esmagarTodas => false,
+        };
+    final sair = [for (final l in _listas) if (!enviadas.containsKey(chave(l.conta)) && !mantem(l)) l];
+    for (final l in sair) {
+      _listas.remove(l);
+      final f = _ficheiroCanais(l.id);
+      if (await f.exists()) await f.delete();
+    }
+    final porChave = {for (final l in _listas) chave(l.conta): l};
+    var adicionadas = 0, atualizadas = 0;
+    var proxima = _listas.fold<int>(0, (m, l) => max(m, l.ordem)) + 1;
+    for (final MapEntry(key: k, value: g) in enviadas.entries) {
+      final existente = porChave[k];
+      if (existente == null) {
+        _listas.add(Lista(id: _novoId(), ordem: proxima++, conta: g.conta, ultima: g.ultima));
+        adicionadas++;
+      } else if (g.ultima != null && !_mesmoResultado(existente.ultima, g.ultima!)) {
+        existente.ultima = g.ultima;
+        atualizadas++;
+      }
+    }
+    await guardar();
+    return ResumoEnvio(adicionadas: adicionadas, atualizadas: atualizadas, removidas: sair.length);
+  }
+
+  static bool _mesmoResultado(UltimaVerificacao? a, UltimaVerificacao b) =>
+      a != null && a.estado == b.estado && a.data == b.data && a.validade == b.validade && a.motivo == b.motivo;
+
+  @override
   Future<void> registarVerificacao(String id, UltimaVerificacao v) async {
     final l = porId(id);
     if (l == null) return;
@@ -224,16 +293,22 @@ class Biblioteca extends ChangeNotifier {
     return r;
   }
 
-  static Future<void> _escreverAtomico(File f, String texto) async {
-    final tmp = File(nomeTemporario(f));
-    await tmp.writeAsString(texto, flush: true);
-    await tmp.rename(f.path);
-  }
+  static Future<void> _escreverAtomico(File f, String texto) => escreverAtomico(f, texto);
 
-  static final _rnd = Random.secure();
-  static String _novoId() =>
-      List.generate(6, (_) => _rnd.nextInt(256).toRadixString(16).padLeft(2, '0')).join();
+  static String _novoId() => novoIdLista();
 }
+
+/// Escreve `texto` em `f` de forma atómica (ficheiro temporário + rename).
+Future<void> escreverAtomico(File f, String texto) async {
+  final tmp = File(Biblioteca.nomeTemporario(f));
+  await tmp.writeAsString(texto, flush: true);
+  await tmp.rename(f.path);
+}
+
+final _rnd = Random.secure();
+
+/// Um id aleatório para uma lista nova.
+String novoIdLista() => List.generate(6, (_) => _rnd.nextInt(256).toRadixString(16).padLeft(2, '0')).join();
 
 ConteudoLista _lerCanais(String texto) => ConteudoLista.deJson(jsonDecode(texto) as Map<String, dynamic>);
 

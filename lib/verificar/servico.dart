@@ -9,18 +9,24 @@ import '../rede/http.dart';
 import 'estado.dart';
 import 'verificador.dart';
 
-/// Corre verificações e guarda os resultados na biblioteca, como a `Analise` do Python:
+/// Corre verificações e guarda os resultados na coleção verificada, como a `Analise` do Python:
 /// - 1.ª volta com no máximo `workers` ao mesmo tempo, um MAC de cada vez, preferindo
 ///   servidores que não estejam já a ser testados, e um pedido de cada vez por servidor;
 /// - as inconclusivas voltam a ser testadas (com o dobro do tempo) depois da 1.ª volta,
 ///   uma de cada vez, com uma pausa antes de cada uma;
 /// - cada volta de uma conta tem um limite de tempo.
 class ServicoVerificacao extends ChangeNotifier {
-  ServicoVerificacao(this.biblioteca, {Verificador? verificador, this.workers = 4, RitmoHost? ritmo})
-      : verificador = verificador ?? Verificador(),
+  ServicoVerificacao(this.biblioteca,
+      {ColecaoListas? colecao, Verificador? verificador, this.workers = 4, RitmoHost? ritmo})
+      : colecao = colecao ?? biblioteca,
+        verificador = verificador ?? Verificador(),
         ritmo = ritmo ?? RitmoHost();
 
+  /// Dá os canais de teste.
   final Biblioteca biblioteca;
+
+  /// Onde se gravam os resultados (o Gestor na app; a biblioteca por omissão).
+  final ColecaoListas colecao;
   final Verificador verificador;
   final int workers;
 
@@ -169,12 +175,12 @@ class ServicoVerificacao extends ChangeNotifier {
     notifyListeners();
     try {
       final r = await _umaVolta(l, can, _timeout);
-      await biblioteca.registarVerificacao(l.id, paraUltima(r));
+      await colecao.registarVerificacao(l.id, paraUltima(r));
       return r;
     } on Cancelado {
       return null; // parada: fica o resultado anterior
     } catch (e) {
-      await biblioteca.registarVerificacao(
+      await colecao.registarVerificacao(
           l.id, paraUltima(ResultadoVerificacao(EstadoV.inconclusivo, 'falha: ${descreverErro(e)}')));
       return null;
     }
@@ -188,7 +194,7 @@ class ServicoVerificacao extends ChangeNotifier {
       final r2 = await _umaVolta(l, can, _timeout * 2);
       // o reteste pode não chegar à data
       final r = r2.validade.isEmpty && r1.validade.isNotEmpty ? r2.com(validade: r1.validade) : r2;
-      await biblioteca.registarVerificacao(l.id, paraUltima(r));
+      await colecao.registarVerificacao(l.id, paraUltima(r));
     } on Cancelado {
       // parada: fica o resultado da 1.ª volta
     } catch (_) {
