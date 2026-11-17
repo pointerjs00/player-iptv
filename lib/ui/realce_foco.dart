@@ -95,3 +95,41 @@ class _RealceFocoState extends State<RealceFoco> {
         child: widget.construir(context, _mudou),
       );
 }
+
+/// Para o `builder` do MaterialApp: o tema com o realce de foco só no modo de realce do
+/// teclado/comando. No telemóvel ou com o rato (modo toque), um botão com foco automático não
+/// ganha borda; ao carregar numa tecla, o tema muda e os widgets focados mostram o realce.
+class TemaConformeRealce extends StatefulWidget {
+  const TemaConformeRealce({super.key, required this.child});
+  final Widget child;
+
+  @override
+  State<TemaConformeRealce> createState() => _TemaConformeRealceState();
+}
+
+class _TemaConformeRealceState extends State<TemaConformeRealce> {
+  static final _comRealce = temaApp();
+  static final _semRealce = temaApp(realceFoco: false);
+
+  void _mudou(FocusHighlightMode _) {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    FocusManager.instance.addHighlightModeListener(_mudou);
+  }
+
+  @override
+  void dispose() {
+    FocusManager.instance.removeHighlightModeListener(_mudou);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Theme(
+        data: FocusManager.instance.highlightMode == FocusHighlightMode.traditional ? _comRealce : _semRealce,
+        child: widget.child,
+      );
+}

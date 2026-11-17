@@ -21,7 +21,9 @@ import 'package:player_iptv/verificar/verificador.dart';
 
 /// I6: tudo só com as setas, OK e Voltar (sem requestFocus nem toques).
 
-Widget _app(Widget w) => MaterialApp(theme: temaApp(), home: w);
+// como a app (main.dart): o tema segue o modo de realce do foco
+Widget _app(Widget w) =>
+    MaterialApp(theme: temaApp(), builder: (_, c) => TemaConformeRealce(child: c!), home: w);
 
 void _tamanho(WidgetTester t, double l, double a) {
   t.view.physicalSize = Size(l, a);
@@ -477,6 +479,79 @@ void main() {
       await t.pumpAndSettle();
       expect(bib.listas, hasLength(1));
       expect(find.text('1 lista nova.'), findsOneWidget);
+    });
+
+    testWidgets('T2 (emulador): o Voltar do sistema a escrever acaba a edição sem fechar o diálogo; '
+        'depois as setas chegam a "Adicionar" e OK adiciona', (t) async {
+      _tamanho(t, 960, 540);
+      await t.pumpWidget(_app(TelaInicio(biblioteca: bib)));
+      await t.pump();
+      await _tecla(t, LogicalKeyboardKey.select);
+      await t.pumpAndSettle();
+      await _tecla(t, LogicalKeyboardKey.arrowDown);
+      expect(_focado(), contains('[campo'));
+      await _tecla(t, LogicalKeyboardKey.select);
+      expect(t.testTextInput.isVisible, isTrue);
+      t.testTextInput.enterText('http://x.com/l.m3u');
+      await t.pump();
+      // no Android TV o IME come a tecla BACK e o Flutter só recebe o "voltar" do sistema (popRoute)
+      await t.binding.handlePopRoute();
+      await t.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsOneWidget, reason: 'o diálogo continua aberto');
+      expect(t.testTextInput.isVisible, isFalse);
+      expect(_focado(), contains('[campo http://x.com/l.m3u'), reason: 'o texto fica');
+      await _tecla(t, LogicalKeyboardKey.arrowDown);
+      for (var i = 0; i < 2 && _focado() != 'Adicionar'; i++) {
+        await _tecla(t, LogicalKeyboardKey.arrowRight);
+      }
+      expect(_focado(), 'Adicionar');
+      await t.runAsync(() async {
+        await _tecla(t, LogicalKeyboardKey.select);
+        await Future<void>.delayed(const Duration(milliseconds: 300));
+      });
+      await t.pumpAndSettle();
+      expect(bib.listas, hasLength(1));
+    });
+
+    testWidgets('T2: sem estar a escrever, o Voltar do sistema fecha o diálogo', (t) async {
+      _tamanho(t, 960, 540);
+      await t.pumpWidget(_app(TelaInicio(biblioteca: bib)));
+      await t.pump();
+      await _tecla(t, LogicalKeyboardKey.select);
+      await t.pumpAndSettle();
+      await _tecla(t, LogicalKeyboardKey.arrowDown);
+      expect(_focado(), contains('[campo'));
+      await t.binding.handlePopRoute();
+      await t.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsNothing);
+    });
+
+    testWidgets('T1 (I1): no telemóvel/rato (modo toque) o foco automático não desenha a borda; '
+        'com o comando desenha', (t) async {
+      FocusManager.instance.highlightStrategy = FocusHighlightStrategy.alwaysTouch;
+      addTearDown(() => FocusManager.instance.highlightStrategy = FocusHighlightStrategy.automatic);
+      Future<void> mostrarBotao(Widget w) async {
+        await t.pumpWidget(_app(Scaffold(body: Center(child: w))));
+        await t.pump();
+        await t.pump();
+      }
+
+      for (final w in <Widget>[
+        FilledButton(autofocus: true, onPressed: () {}, child: const Text('Cheio')),
+        OutlinedButton(autofocus: true, onPressed: () {}, child: const Text('Contorno')),
+        IconButton(autofocus: true, tooltip: 'Ícone', onPressed: () {}, icon: const Icon(Icons.add)),
+        ChoiceChip(autofocus: true, label: const Text('Chip'), selected: false, onSelected: (_) {}),
+      ]) {
+        FocusManager.instance.highlightStrategy = FocusHighlightStrategy.alwaysTouch;
+        await mostrarBotao(w);
+        expect(FocusManager.instance.primaryFocus?.context, isNotNull);
+        expect(_semRealce(), isNotNull, reason: 'modo toque: ${w.runtimeType} sem borda');
+        FocusManager.instance.highlightStrategy = FocusHighlightStrategy.alwaysTraditional;
+        await t.pump();
+        await t.pump();
+        expect(_semRealce(), isNull, reason: 'modo comando: ${w.runtimeType} com borda');
+        await t.pumpWidget(const SizedBox());
+      }
     });
 
     testWidgets('T1: no Android TV o realce do foco fica sempre ligado (mesmo depois de um toque)', (t) async {

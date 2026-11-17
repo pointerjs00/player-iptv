@@ -58,6 +58,7 @@ class _Aviso extends StatelessWidget {
   Widget build(BuildContext context) => MaterialApp(
         debugShowCheckedModeBanner: false,
         theme: temaApp(),
+        builder: (_, w) => TemaConformeRealce(child: w!),
         home: Scaffold(
           body: Center(
             child: Padding(
@@ -97,6 +98,7 @@ class _AppPlayerIptvState extends State<AppPlayerIptv> {
         title: 'Player IPTV',
         debugShowCheckedModeBanner: false,
         theme: temaApp(),
+        builder: (_, w) => TemaConformeRealce(child: w!),
         locale: _pt,
         supportedLocales: const [_pt],
         localizationsDelegates: GlobalMaterialLocalizations.delegates,
@@ -148,6 +150,7 @@ class _AppJanelaPlayerState extends State<AppJanelaPlayer> {
   Widget build(BuildContext context) => MaterialApp(
         debugShowCheckedModeBanner: false,
         theme: temaApp(),
+        builder: (_, w) => TemaConformeRealce(child: w!),
         locale: _pt,
         supportedLocales: const [_pt],
         localizationsDelegates: GlobalMaterialLocalizations.delegates,

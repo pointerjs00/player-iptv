@@ -16,7 +16,9 @@ abstract final class Cores {
   static const aviso = Color(0xFFD29922);
 }
 
-ThemeData temaApp() {
+/// O tema da app. `realceFoco`: as bordas/fundos de foco para o comando (ver [TemaConformeRealce],
+/// que troca entre os dois conforme o modo de realce: no telemóvel/rato não há borda).
+ThemeData temaApp({bool realceFoco = true}) {
   final base = ThemeData(
     brightness: Brightness.dark,
     colorScheme: ColorScheme.fromSeed(
@@ -35,37 +37,41 @@ ThemeData temaApp() {
       margin: EdgeInsets.zero,
     ),
     // o foco tem de se ver bem na TV: borda de 3 px e fundo mais claro em tudo o que é focável
-    focusColor: _fundoFoco,
-    filledButtonTheme: FilledButtonThemeData(style: _focoBotao(_bordaFocoClara)),
-    elevatedButtonTheme: ElevatedButtonThemeData(style: _focoBotao(_bordaFoco)),
-    outlinedButtonTheme: OutlinedButtonThemeData(style: _focoBotao(_bordaFoco)),
-    textButtonTheme: TextButtonThemeData(style: _focoBotao(_bordaFoco)),
-    iconButtonTheme: IconButtonThemeData(style: _focoBotao(_bordaFoco)),
-    segmentedButtonTheme: SegmentedButtonThemeData(style: _focoBotao(_bordaFoco)),
-    chipTheme: ChipThemeData(
-      side: WidgetStateBorderSide.resolveWith((s) => s.contains(WidgetState.focused) ? _bordaFoco : null),
-    ),
-    tabBarTheme: TabBarThemeData(overlayColor: _seFocado(_fundoFoco)),
-    inputDecorationTheme: const InputDecorationTheme(
+    focusColor: realceFoco ? _fundoFoco : null,
+    filledButtonTheme: realceFoco ? FilledButtonThemeData(style: _focoBotao(_bordaFocoClara)) : null,
+    elevatedButtonTheme: realceFoco ? ElevatedButtonThemeData(style: _focoBotao(_bordaFoco)) : null,
+    outlinedButtonTheme: realceFoco ? OutlinedButtonThemeData(style: _focoBotao(_bordaFoco)) : null,
+    textButtonTheme: realceFoco ? TextButtonThemeData(style: _focoBotao(_bordaFoco)) : null,
+    iconButtonTheme: realceFoco ? IconButtonThemeData(style: _focoBotao(_bordaFoco)) : null,
+    segmentedButtonTheme: realceFoco ? SegmentedButtonThemeData(style: _focoBotao(_bordaFoco)) : null,
+    // o mesmo objeto nos dois temas: o ChipThemeData.lerp falha com um side que resolve a null
+    // (só não interpola se for idêntico); o resolvedor já vê o modo de realce
+    chipTheme: _temaChips,
+    tabBarTheme: realceFoco ? TabBarThemeData(overlayColor: _seFocado(_fundoFoco)) : null,
+    inputDecorationTheme: InputDecorationTheme(
       filled: true,
       fillColor: Cores.superficie2,
       isDense: true,
-      border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.all(Radius.circular(10)),
-        borderSide: _bordaFoco,
-      ),
+      border: const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
+      focusedBorder: realceFoco
+          ? const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10)), borderSide: _bordaFoco)
+          : null,
     ),
   );
 }
 
 const _bordaFoco = Realce.borda;
+final _temaChips =
+    ChipThemeData(side: WidgetStateBorderSide.resolveWith((s) => _focoVisivel(s) ? _bordaFoco : null));
 const _bordaFocoClara = Realce.bordaClara;
 final _fundoFoco = Realce.fundo;
 
-/// `v` só no estado focado; nos outros estados fica o valor por omissão do botão.
-WidgetStateProperty<T?> _seFocado<T>(T v) =>
-    WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.focused) ? v : null);
+/// `v` só no estado focado e com o realce do teclado/comando (no telemóvel ou com o rato, um
+/// botão com foco automático não ganha borda); nos outros casos fica o valor por omissão.
+bool _focoVisivel(Set<WidgetState> s) =>
+    s.contains(WidgetState.focused) && FocusManager.instance.highlightMode == FocusHighlightMode.traditional;
+
+WidgetStateProperty<T?> _seFocado<T>(T v) => WidgetStateProperty.resolveWith((s) => _focoVisivel(s) ? v : null);
 
 ButtonStyle _focoBotao(BorderSide borda) => ButtonStyle(side: _seFocado(borda), overlayColor: _seFocado(_fundoFoco));
 

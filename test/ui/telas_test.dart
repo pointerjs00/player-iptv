@@ -11,10 +11,13 @@ import 'package:player_iptv/modelo/conta.dart';
 import 'package:player_iptv/ui/conteudo/tela_conteudo.dart';
 import 'package:player_iptv/ui/inicio/tela_inicio.dart';
 import 'package:player_iptv/ui/player/player_canais.dart';
+import 'package:player_iptv/ui/realce_foco.dart';
 import 'package:player_iptv/ui/tema.dart';
 import 'package:player_iptv/verificar/servico.dart';
 
-Widget _app(Widget w) => MaterialApp(theme: temaApp(), home: w);
+// como a app (main.dart): o tema segue o modo de realce do foco
+Widget _app(Widget w) =>
+    MaterialApp(theme: temaApp(), builder: (_, c) => TemaConformeRealce(child: c!), home: w);
 
 void _tamanho(WidgetTester t, double l, double a) {
   t.view.physicalSize = Size(l, a);

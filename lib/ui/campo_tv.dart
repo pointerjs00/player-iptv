@@ -4,7 +4,7 @@ import 'package:material_ui/material_ui.dart';
 /// Um campo de texto que se usa com o comando da TV: receber o foco não abre o teclado no
 /// ecrã (fica só de leitura até carregar em OK ou tocar), e as setas cima/baixo saem do campo
 /// em vez de ficarem presas nele. Num campo de várias linhas, a escrever, cima/baixo movem o
-/// cursor; Voltar (ou fechar o teclado) acaba a edição e as setas voltam a mudar o foco.
+/// cursor; Voltar (a tecla ou o "voltar" do sistema) acaba a edição e as setas voltam a mudar o foco.
 class CampoTv extends StatefulWidget {
   const CampoTv({
     super.key,
@@ -28,7 +28,6 @@ class CampoTv extends StatefulWidget {
 class _CampoTvState extends State<CampoTv> {
   final _foco = FocusNode();
   bool _aEscrever = false;
-  bool _tecladoVisivel = false;
 
   @override
   void initState() {
@@ -80,29 +79,28 @@ class _CampoTvState extends State<CampoTv> {
 
   @override
   Widget build(BuildContext context) {
-    // no Android o Voltar com o teclado aberto só fecha o teclado (a app não vê a tecla):
-    // quando o teclado desaparece, a edição acaba
-    final teclado = MediaQuery.viewInsetsOf(context).bottom > 0;
-    if (_tecladoVisivel && !teclado && _aEscrever) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && _aEscrever) setState(() => _aEscrever = false);
-      });
-    }
-    _tecladoVisivel = teclado;
-    return Focus(
-      onKeyEvent: _tecla,
-      skipTraversal: true,
-      canRequestFocus: false,
-      child: TextField(
-        focusNode: _foco,
-        controller: widget.controller,
-        minLines: widget.minLines,
-        maxLines: widget.maxLines,
-        readOnly: !_aEscrever,
-        decoration: widget.decoration,
-        onTap: _aEscrever ? null : _escrever,
-        onChanged: widget.onChanged,
-        onSubmitted: (_) => setState(() => _aEscrever = false),
+    // a escrever, o Voltar do sistema (no Android TV o IME come a tecla BACK e a app só recebe o
+    // "voltar") acaba a edição em vez de fechar a página/diálogo; sem escrever, volta normalmente
+    return PopScope(
+      canPop: !_aEscrever,
+      onPopInvokedWithResult: (fechou, _) {
+        if (!fechou && _aEscrever) _pararDeEscrever();
+      },
+      child: Focus(
+        onKeyEvent: _tecla,
+        skipTraversal: true,
+        canRequestFocus: false,
+        child: TextField(
+          focusNode: _foco,
+          controller: widget.controller,
+          minLines: widget.minLines,
+          maxLines: widget.maxLines,
+          readOnly: !_aEscrever,
+          decoration: widget.decoration,
+          onTap: _aEscrever ? null : _escrever,
+          onChanged: widget.onChanged,
+          onSubmitted: (_) => setState(() => _aEscrever = false),
+        ),
       ),
     );
   }
