@@ -184,7 +184,7 @@ final _fundoFoco = Realce.fundo;
 /// desligado, vidro.
 Widget _fundoGradiente(BuildContext context, Set<WidgetState> s, Widget? filho) {
   if (s.contains(WidgetState.disabled)) {
-    return DecoratedBox(decoration: const BoxDecoration(color: Tokens.vidroForte), child: filho);
+    return DecoratedBox(decoration: const BoxDecoration(color: Tokens.vidroForte, borderRadius: _raioBotao), child: filho);
   }
   final claro = s.contains(WidgetState.pressed)
       ? .22
@@ -192,8 +192,12 @@ Widget _fundoGradiente(BuildContext context, Set<WidgetState> s, Widget? filho) 
   final cores = [
     for (final c in Tokens.gradienteAcento.colors) Color.lerp(c, Colors.white, claro)!,
   ];
-  return DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(colors: cores)), child: filho);
+  return DecoratedBox(
+      decoration: BoxDecoration(gradient: LinearGradient(colors: cores), borderRadius: _raioBotao), child: filho);
 }
+
+// os cantos também no fundo: o recorte pela forma do botão só vale para o estilo do próprio widget
+const _raioBotao = BorderRadius.all(Radius.circular(Tokens.raioBotao));
 
 /// `v` só no estado focado e com o realce do teclado/comando (no telemóvel ou com o rato, um
 /// botão com foco automático não ganha borda); nos outros casos fica o valor por omissão.

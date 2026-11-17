@@ -4,4 +4,5 @@ library;
 export 'componentes.dart';
 export 'ecra.dart';
 export 'movimento.dart';
+export 'sombra.dart';
 export 'tokens.dart';

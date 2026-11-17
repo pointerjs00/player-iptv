@@ -29,11 +29,12 @@ void main() {
     double escala(WidgetTester t) => t
         .widget<AnimatedScale>(find.descendant(of: find.byType(CartaoModerno), matching: find.byType(AnimatedScale)))
         .scale;
-    List<BoxShadow> sombra(WidgetTester t) => (t
-            .widget<AnimatedContainer>(
-                find.descendant(of: find.byType(CartaoModerno), matching: find.byType(AnimatedContainer)))
-            .decoration! as BoxDecoration)
-        .boxShadow!;
+    // a sombra do cartão (a primeira SombraExterior é o brilho do realce, a de dentro a do cartão)
+    List<BoxShadow> sombra(WidgetTester t) => t
+        .widgetList<SombraExterior>(
+            find.descendant(of: find.byType(CartaoModerno), matching: find.byType(SombraExterior)))
+        .last
+        .sombras;
 
     Widget cartao() => SizedBox(
         width: 200, height: 120, child: CartaoModerno(autofocus: true, onTap: () {}, child: const Text('Lista')));

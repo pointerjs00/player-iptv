@@ -5,6 +5,7 @@ import 'package:material_ui/material_ui.dart';
 
 import 'design/ecra.dart';
 import 'design/movimento.dart';
+import 'design/sombra.dart';
 import 'design/tokens.dart';
 import 'tema.dart';
 
@@ -20,8 +21,8 @@ abstract final class Realce {
   static final fundo = Cores.acento.withValues(alpha: .22);
   static const duracao = Tokens.duracaoRapida;
 
-  /// O brilho violeta à volta de quem tem o foco (só por fora: não tapa o conteúdo).
-  static const brilho = [BoxShadow(color: Color(0x8C9B6CFF), blurRadius: 16, blurStyle: BlurStyle.outer)];
+  /// O brilho violeta à volta de quem tem o foco (pintado só por fora: não tapa o conteúdo).
+  static const brilho = [BoxShadow(color: Color(0x8C9B6CFF), blurRadius: 16)];
 }
 
 const _canalTv = MethodChannel('player_iptv/tv');
@@ -63,14 +64,20 @@ class MolduraFoco extends StatelessWidget {
       scale: ver ? escala : 1,
       duration: duracaoAnimada(context, Realce.duracao),
       curve: Tokens.curva,
-      child: DecoratedBox(
-        position: DecorationPosition.foreground,
-        decoration: ver
-            // só a borda: o fundo mais claro é o focusColor do tema (o InkWell pinta-o; uma cor
-            // aqui esconderia o ink do ListTile)
-            ? BoxDecoration(borderRadius: r, border: Border.fromBorderSide(Realce.borda), boxShadow: Realce.brilho)
-            : BoxDecoration(borderRadius: r),
-        child: child,
+      // o brilho só por fora (por baixo pintaria de violeta um cartão de vidro)
+      child: SombraExterior(
+        duration: duracaoAnimada(context, Realce.duracao),
+        raio: raio,
+        sombras: ver ? Realce.brilho : const [],
+        child: DecoratedBox(
+          position: DecorationPosition.foreground,
+          decoration: ver
+              // só a borda: o fundo mais claro é o focusColor do tema (o InkWell pinta-o; uma cor
+              // aqui esconderia o ink do ListTile)
+              ? BoxDecoration(borderRadius: r, border: Border.fromBorderSide(Realce.borda))
+              : BoxDecoration(borderRadius: r),
+          child: child,
+        ),
       ),
     );
   }

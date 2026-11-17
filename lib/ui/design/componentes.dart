@@ -3,6 +3,7 @@ import 'package:material_ui/material_ui.dart';
 import '../realce_foco.dart';
 import '../tema.dart';
 import 'movimento.dart';
+import 'sombra.dart';
 import 'tokens.dart';
 
 /// O fundo de todos os ecrãs: azul-noite com um gradiente radial subtil.
@@ -39,18 +40,17 @@ class SuperficieVidro extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final r = BorderRadius.circular(raio);
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: cor,
-        borderRadius: r,
-        border: Border.all(color: Tokens.bordaVidro),
-        boxShadow: Tokens.sombra(elevacao),
-      ),
-      child: Material(
-        type: MaterialType.transparency,
-        shape: RoundedRectangleBorder(borderRadius: r),
-        clipBehavior: Clip.antiAlias,
-        child: Padding(padding: padding, child: child),
+    return SombraExterior(
+      sombras: Tokens.sombra(elevacao),
+      raio: raio,
+      child: DecoratedBox(
+        decoration: BoxDecoration(color: cor, borderRadius: r, border: Border.all(color: Tokens.bordaVidro)),
+        child: Material(
+          type: MaterialType.transparency,
+          shape: RoundedRectangleBorder(borderRadius: r),
+          clipBehavior: Clip.antiAlias,
+          child: Padding(padding: padding, child: child),
+        ),
       ),
     );
   }
@@ -93,30 +93,35 @@ class _CartaoModernoState extends State<CartaoModerno> {
     Theme.of(context); // reconstrói quando o modo de realce muda (TemaConformeRealce troca o tema)
     final verFoco = _focado && FocusManager.instance.highlightMode == FocusHighlightMode.traditional;
     final r = BorderRadius.circular(widget.raio);
+    final d = duracaoAnimada(context, Tokens.duracaoRapida);
     return MolduraFoco(
       focado: _focado,
       raio: widget.raio,
       escala: widget.escalaFoco,
-      child: AnimatedContainer(
-        duration: duracaoAnimada(context, Tokens.duracaoRapida),
-        curve: Tokens.curva,
-        decoration: BoxDecoration(
-          color: verFoco || _rato ? Tokens.vidroForte : Tokens.vidro,
-          borderRadius: r,
-          border: Border.all(color: Tokens.bordaVidro),
-          boxShadow: verFoco ? Tokens.sombraFoco : (_rato ? Tokens.sombra2 : Tokens.sombra1),
-        ),
-        child: Material(
-          type: MaterialType.transparency,
-          shape: RoundedRectangleBorder(borderRadius: r),
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            onTap: widget.onTap,
-            autofocus: widget.autofocus,
-            focusNode: widget.focusNode,
-            onFocusChange: _foco,
-            onHover: _hover,
-            child: Padding(padding: widget.padding, child: widget.child),
+      child: SombraExterior(
+        duration: d,
+        raio: widget.raio,
+        sombras: verFoco ? Tokens.sombraFoco : (_rato ? Tokens.sombra2 : Tokens.sombra1),
+        child: AnimatedContainer(
+          duration: d,
+          curve: Tokens.curva,
+          decoration: BoxDecoration(
+            color: verFoco || _rato ? Tokens.vidroForte : Tokens.vidro,
+            borderRadius: r,
+            border: Border.all(color: Tokens.bordaVidro),
+          ),
+          child: Material(
+            type: MaterialType.transparency,
+            shape: RoundedRectangleBorder(borderRadius: r),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: widget.onTap,
+              autofocus: widget.autofocus,
+              focusNode: widget.focusNode,
+              onFocusChange: _foco,
+              onHover: _hover,
+              child: Padding(padding: widget.padding, child: widget.child),
+            ),
           ),
         ),
       ),

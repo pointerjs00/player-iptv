@@ -52,25 +52,25 @@ abstract final class Tokens {
   static const e24 = 24.0;
   static const e32 = 32.0;
 
-  // --- sombras (em camadas: uma curta e nítida + uma longa e difusa). Só por fora (outer):
-  // por baixo do vidro translúcido escureceriam o cartão ---
+  // --- sombras (em camadas: uma curta e nítida + uma longa e difusa); pintadas só por fora
+  // das superfícies de vidro (ver SombraExterior) ---
   static const sombra1 = [
-    BoxShadow(color: Color(0x33000000), blurRadius: 2, offset: Offset(0, 1), blurStyle: BlurStyle.outer),
-    BoxShadow(color: Color(0x26000000), blurRadius: 12, offset: Offset(0, 4), blurStyle: BlurStyle.outer),
+    BoxShadow(color: Color(0x33000000), blurRadius: 2, offset: Offset(0, 1)),
+    BoxShadow(color: Color(0x26000000), blurRadius: 12, offset: Offset(0, 4)),
   ];
   static const sombra2 = [
-    BoxShadow(color: Color(0x40000000), blurRadius: 4, offset: Offset(0, 2), blurStyle: BlurStyle.outer),
-    BoxShadow(color: Color(0x40000000), blurRadius: 24, offset: Offset(0, 10), blurStyle: BlurStyle.outer),
+    BoxShadow(color: Color(0x40000000), blurRadius: 4, offset: Offset(0, 2)),
+    BoxShadow(color: Color(0x40000000), blurRadius: 24, offset: Offset(0, 10)),
   ];
   static const sombra3 = [
-    BoxShadow(color: Color(0x4D000000), blurRadius: 6, offset: Offset(0, 3), blurStyle: BlurStyle.outer),
-    BoxShadow(color: Color(0x59000000), blurRadius: 40, offset: Offset(0, 18), blurStyle: BlurStyle.outer),
+    BoxShadow(color: Color(0x4D000000), blurRadius: 6, offset: Offset(0, 3)),
+    BoxShadow(color: Color(0x59000000), blurRadius: 40, offset: Offset(0, 18)),
   ];
 
   /// Com o foco do comando: a sombra mais alta e um brilho violeta.
   static const sombraFoco = [
     ...sombra3,
-    BoxShadow(color: Color(0x739B6CFF), blurRadius: 28, spreadRadius: 1, blurStyle: BlurStyle.outer),
+    BoxShadow(color: Color(0x739B6CFF), blurRadius: 28, spreadRadius: 1),
   ];
 
   /// As sombras de uma elevação (0 = nenhuma, 1–3).
