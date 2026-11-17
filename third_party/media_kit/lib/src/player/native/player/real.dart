@@ -103,7 +103,8 @@ class NativePlayer extends PlatformPlayer {
       final lib = NativeLibrary.path;
       final address = ctx.address;
       Future.delayed(const Duration(seconds: 5), () {
-        foraDaUi(ffiTerminateDestroy, lib, address, const []);
+        // só quando já não houver chamadas deste mpv a correr noutro isolate
+        destruirQuandoLivre(ffiTerminateDestroy, lib, address);
       });
     }
 

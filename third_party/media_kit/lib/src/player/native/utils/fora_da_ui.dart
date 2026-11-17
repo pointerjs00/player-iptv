@@ -5,6 +5,7 @@
 // a thread que chamou fica presa. No Android a UI do Flutter corre na thread principal: presa mais
 // de 5 s, o sistema mata a app (ANR). Por isso estas chamadas correm aqui, cada uma num isolate
 // próprio (`Isolate.run`): um mpv preso só prende esse isolate, nunca a UI nem os outros players.
+import 'dart:async';
 import 'dart:ffi';
 import 'dart:isolate';
 
@@ -14,9 +15,43 @@ import 'package:media_kit/generated/libmpv/bindings.dart' as generated;
 /// Uma chamada ao libmpv: `lib` é o caminho do libmpv, `ctx` o endereço do `mpv_handle`.
 typedef ChamadaMpv<R> = R Function(String lib, int ctx, List<String> args);
 
+/// As chamadas de cada mpv (endereço) que estão a correr noutro isolate.
+final _emCurso = <int, int>{};
+final _livre = <int, List<Completer<void>>>{};
+
 /// Corre `f(lib, ctx, args)` noutro isolate (nunca na thread que chama).
-Future<R> foraDaUi<R>(ChamadaMpv<R> f, String lib, int ctx, List<String> args) =>
+Future<R> foraDaUi<R>(ChamadaMpv<R> f, String lib, int ctx, List<String> args) async {
+  _emCurso[ctx] = (_emCurso[ctx] ?? 0) + 1;
+  try {
+    return await _correr(f, lib, ctx, args);
+  } finally {
+    final n = _emCurso[ctx]! - 1;
+    if (n == 0) {
+      _emCurso.remove(ctx);
+      for (final c in _livre.remove(ctx) ?? const <Completer<void>>[]) {
+        c.complete();
+      }
+    } else {
+      _emCurso[ctx] = n;
+    }
+  }
+}
+
+// num função de topo: a closure só leva estes argumentos para o outro isolate
+Future<R> _correr<R>(ChamadaMpv<R> f, String lib, int ctx, List<String> args) =>
     Isolate.run(() => f(lib, ctx, args), debugName: 'mpv');
+
+/// Destrói o mpv (`destruir`, normalmente [ffiTerminateDestroy]) só quando não houver chamadas
+/// dele a correr: destruí-lo com uma chamada ainda no libmpv seria usar memória libertada (crash).
+/// Se uma chamada nunca acabar (mpv preso), o mpv fica por destruir.
+Future<R> destruirQuandoLivre<R>(ChamadaMpv<R> destruir, String lib, int ctx) async {
+  if ((_emCurso[ctx] ?? 0) > 0) {
+    final c = Completer<void>();
+    (_livre[ctx] ??= []).add(c);
+    await c.future;
+  }
+  return foraDaUi(destruir, lib, ctx, const []);
+}
 
 generated.MPV _mpv(String lib) => generated.MPV(DynamicLibrary.open(lib));
 

@@ -11,6 +11,8 @@ int _demorado(String lib, int ctx, List<String> args) {
   return ctx + 1;
 }
 
+int _registar(String lib, int ctx, List<String> args) => ctx + 1;
+
 /// As chamadas síncronas ao libmpv (set/get/command/hook/criar/destruir) só podem estar em
 /// funções de topo `ffi…` (que correm num isolate com [foraDaUi]) ou nas que o media_kit já corria
 /// em isolates (`_screenshot`, `_getPlaylist`).
@@ -48,6 +50,24 @@ void main() {
     t.cancel();
     expect(r, 42);
     expect(tiques, greaterThanOrEqualTo(5), reason: 'a UI continuou a correr durante a chamada');
+  });
+
+  test('o mpv só é destruído quando não há chamadas dele a correr noutro isolate', () async {
+    // com a chamada (ex.: um hook, um setProperty) ainda no libmpv, o terminate_destroy libertava
+    // a memória que ela estava a usar (crash nativo)
+    final lento = foraDaUi(_demorado, 'lib', 7, const ['400']);
+    final outro = foraDaUi(_demorado, 'lib', 8, const ['0']);
+    var destruido = <int>[];
+    final d7 = destruirQuandoLivre(_registar, 'lib', 7).then((r) => destruido.add(r));
+    final d8 = destruirQuandoLivre(_registar, 'lib', 8).then((r) => destruido.add(r));
+    await outro;
+    await d8;
+    expect(destruido, [9], reason: 'o 8 não tinha nada a correr');
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    expect(destruido, [9], reason: 'o 7 ainda tem uma chamada no libmpv');
+    await lento;
+    await d7;
+    expect(destruido, [9, 8]);
   });
 
   test('nenhuma chamada síncrona ao libmpv na thread da UI (media_kit e media_kit_video locais)', () {
