@@ -188,38 +188,73 @@ void main() {
   });
 
   test('o isolate do mpv morre: os pedidos pendentes falham (não ficam pendurados) e o seguinte arranca outro', () async {
-    final e = ExecutorIsolate.paraTestes(isolateDeTeste);
+    final e = ExecutorIsolate.paraTestes(chamadaDeTeste);
     await expectLater(e.getProperty(1, 'morrer').timeout(const Duration(seconds: 5)), throwsA(isA<StateError>()));
     expect(await e.getProperty(1, 'x').timeout(const Duration(seconds: 5)), 'eco:x');
   });
 
   test('erro dentro do isolate (mensagem estragada) responde com erro', () async {
-    final e = ExecutorIsolate.paraTestes(isolateDeTeste);
+    final e = ExecutorIsolate.paraTestes(chamadaDeTeste);
     await expectLater(e.getProperty(1, 'lancar').timeout(const Duration(seconds: 5)), throwsA(isA<StateError>()));
     expect(await e.getProperty(1, 'y').timeout(const Duration(seconds: 5)), 'eco:y');
   });
 
-  test('uma chamada pendurada no isolate (não morre) é abandonada: os pedidos seguintes vão para um isolate novo',
+  test('uma chamada pendurada (o mpv preso) não atrasa as dos outros mpv: cada chamada corre no seu isolate',
       () async {
-    final e = ExecutorIsolate.paraTestes(isolateDeTeste, limiteAbandono: const Duration(milliseconds: 200));
-    expect(await e.getProperty(1, 'a').timeout(const Duration(seconds: 5)), 'eco:a');
+    final e = ExecutorIsolate.paraTestes(chamadaDeTeste);
     unawaited(e.getProperty(1, 'pendurar').then((_) {}, onError: (_) {}));
-    await Future<void>.delayed(const Duration(milliseconds: 400));
-    expect(await e.getProperty(1, 'b').timeout(const Duration(seconds: 2)), 'eco:b');
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    for (final p in ['a', 'b', 'c']) {
+      expect(await e.getProperty(2, p).timeout(const Duration(seconds: 1)), 'eco:$p');
+    }
+  });
+
+  test('as chamadas do mesmo mpv correm pela ordem em que chegam (ex.: mute ligado e desligado depressa)',
+      () async {
+    final e = ExecutorIsolate.paraTestes(chamadaDeTeste);
+    final ordem = <String>[];
+    await Future.wait([
+      e.getProperty(1, 'lento').then((v) => ordem.add(v)),
+      e.getProperty(1, 'rapido').then((v) => ordem.add(v)),
+    ]);
+    expect(ordem, ['eco:lento', 'eco:rapido']);
+  });
+
+  test('o mpv preso de um player não prende os pedidos de outro player saudável (nem o marca nem o perde)',
+      () async {
+    final e = ExecutorIsolate.paraTestes(chamadaDeTeste);
+    MotorForaDaUi motor(int h) => MotorForaDaUi(
+        handle: () async => h,
+        executor: e,
+        setRate: (_) async {},
+        setVolume: (_) async {},
+        limite: const Duration(milliseconds: 500));
+    final preso = motor(1), saudavel = motor(2);
+    expect(await preso.getProperty('pendurar'), '');
+    expect(preso.semResposta, isTrue);
+    // o player novo, depois do zap: as preferências, as estatísticas, a destruição
+    expect(await saudavel.getProperty('width'), 'eco:width');
+    await saudavel.setProperty('mute', 'no');
+    expect(saudavel.semResposta, isFalse, reason: 'o player novo responde: não pode ser marcado');
+    var destruido = false;
+    await saudavel.fecharEDestruir(() async => destruido = true).timeout(const Duration(seconds: 2));
+    expect(destruido, isTrue, reason: 'sem pedidos dele no mpv: destrói-se já (não fica perdido)');
   });
 }
 
-/// Um isolate de mpv de mentira: "morrer" sai sem responder; "lancar" lança fora de qualquer
-/// try (morre com erro); o resto responde "eco:...".
-void isolateDeTeste(SendPort respostas) {
-  final pedidos = ReceivePort();
-  respostas.send(pedidos.sendPort);
-  pedidos.listen((m) {
-    final (int id, String _, int _, List<String> args) = m as (int, String, int, List<String>);
-    if (args.first == 'morrer') Isolate.exit();
-    if (args.first == 'lancar') throw StateError('estragado');
-    // como uma chamada nativa que não volta: o isolate fica preso (sem morrer)
-    if (args.first == 'pendurar') sleep(const Duration(seconds: 6));
-    respostas.send((id, 'eco:${args.first}', null));
-  });
+/// Uma chamada de mpv de mentira (corre no isolate): "morrer" sai sem responder; "lancar" lança;
+/// "pendurar" fica presa (como uma chamada nativa que não volta); "lento" demora; o resto responde
+/// "eco:...".
+Object? chamadaDeTeste(String op, int handle, List<String> args) {
+  switch (args.first) {
+    case 'morrer':
+      Isolate.exit();
+    case 'lancar':
+      throw StateError('estragado');
+    case 'pendurar':
+      sleep(const Duration(seconds: 4));
+    case 'lento':
+      sleep(const Duration(milliseconds: 300));
+  }
+  return 'eco:${args.first}';
 }

@@ -61,7 +61,7 @@ class MotorForaDaUi implements MotorMpv {
   bool _semResposta = false;
 
   /// O mpv deste player deixou de responder (um pedido passou o [limite]): não se lhe pede mais
-  /// nada (cada pedido novo ficava também preso e enchia a fila do isolate).
+  /// nada (cada pedido novo ficava também preso, na fila atrás do que não voltou).
   bool get semResposta => _semResposta;
 
   /// O handle do mpv, se já se soube (para parar o player sem esperar por nada).
@@ -161,93 +161,38 @@ typedef _Free = void Function(Pointer<Void>);
 typedef _CommandNativo = Int32 Function(Pointer<Void>, Pointer<Pointer<Utf8>>);
 typedef _Command = int Function(Pointer<Void>, Pointer<Pointer<Utf8>>);
 
-/// O [ExecutorMpv] verdadeiro: um isolate que chama o libmpv (o mesmo que o media_kit carregou),
-/// um pedido de cada vez, pela ordem em que chegam.
+/// Uma chamada ao libmpv feita noutro isolate: `op` ('set', 'get', 'cmd'), o endereço do mpv e
+/// os argumentos. Tem de ser uma função de topo (vai para o isolate).
+typedef ChamadaNoIsolate = Object? Function(String op, int handle, List<String> args);
+
+/// O [ExecutorMpv] verdadeiro: cada chamada ao libmpv (o mesmo que o media_kit carregou) corre
+/// no seu próprio isolate (`Isolate.run`, como o `foraDaUi` do media_kit). Um mpv que deixe de
+/// responder só prende o isolate dessa chamada: os pedidos dos outros players nunca ficam na fila
+/// atrás dele (nem são marcados sem resposta, nem ficam por destruir por causa dele). As chamadas
+/// do mesmo mpv correm uma de cada vez, pela ordem em que chegam (ex.: `mute` ligado e desligado
+/// depressa); as de um mpv preso ficam atrás da presa, e o [MotorForaDaUi] desiste delas no limite.
 class ExecutorIsolate implements ExecutorMpv {
-  ExecutorIsolate._(this._entrada, this.limiteAbandono);
-  static final instancia = ExecutorIsolate._(_principal, const Duration(seconds: 30));
+  ExecutorIsolate._(this._chamada);
+  static final instancia = ExecutorIsolate._(_executar);
 
-  /// Com outra função no isolate (testes: um isolate que morre, lança ou fica preso).
+  /// Com outra função no isolate (testes: uma chamada que faz o isolate sair, lança ou fica presa).
   @visibleForTesting
-  factory ExecutorIsolate.paraTestes(void Function(SendPort) entrada,
-          {Duration limiteAbandono = const Duration(seconds: 30)}) =>
-      ExecutorIsolate._(entrada, limiteAbandono);
+  factory ExecutorIsolate.paraTestes(ChamadaNoIsolate chamada) => ExecutorIsolate._(chamada);
 
-  final void Function(SendPort) _entrada;
+  final ChamadaNoIsolate _chamada;
 
-  /// Um pedido sem resposta há tanto tempo prendeu o isolate (uma chamada nativa que não volta
-  /// não o faz morrer): esse isolate é abandonado e os pedidos seguintes vão para um novo, para
-  /// os players seguintes não ficarem na fila atrás dele. Os pedidos dele continuam à espera
-  /// (o player deles só é destruído se acabarem).
-  final Duration limiteAbandono;
+  /// A última chamada de cada mpv (a seguinte só começa quando ela acabar).
+  final _ultima = <int, Future<void>>{};
 
-  Future<SendPort>? _porta;
-  int _geracao = 0;
-  int _proximo = 0;
-  final _pendentes = <int, (int, Completer<Object?>)>{};
-
-  void _abandonar(int geracao) {
-    if (geracao != _geracao) return;
-    _geracao++;
-    _porta = null;
-  }
-
-  Future<SendPort> _iniciar() async {
-    final geracao = _geracao;
-    final respostas = ReceivePort('mpv-respostas');
-    final pronto = Completer<SendPort>();
-    void morreu(Object motivo) {
-      // os pedidos que lá estavam nunca terão resposta: falham já; o próximo arranca outro
-      _abandonar(geracao);
-      respostas.close();
-      final ids = [for (final e in _pendentes.entries) if (e.value.$1 == geracao) e.key];
-      for (final id in ids) {
-        _pendentes.remove(id)!.$2.completeError(StateError('o isolate do mpv parou ($motivo)'));
-      }
-      if (!pronto.isCompleted) pronto.completeError(StateError('o isolate do mpv não arrancou ($motivo)'));
-    }
-
-    respostas.listen((m) {
-      if (m is SendPort) {
-        if (!pronto.isCompleted) pronto.complete(m);
-      } else if (m is (int, Object?, String?)) {
-        final (id, valor, erro) = m;
-        final c = _pendentes.remove(id)?.$2;
-        if (c == null) return;
-        erro == null ? c.complete(valor) : c.completeError(StateError(erro));
-      } else if (m is List) {
-        morreu(m.isEmpty ? 'erro' : m.first); // onError: [erro, pilha]
-      } else if (m == null) {
-        morreu('saiu'); // onExit
-      }
-    });
-    try {
-      await Isolate.spawn(_entrada, respostas.sendPort,
-          debugName: 'mpv', onError: respostas.sendPort, onExit: respostas.sendPort);
-    } catch (e) {
-      morreu(e);
-    }
-    return pronto.future;
-  }
-
-  Future<Object?> _pedir(String op, int handle, List<String> args) async {
-    final iniciar = _porta ??= _iniciar();
-    final SendPort porta;
-    try {
-      porta = await iniciar;
-    } catch (_) {
-      if (identical(_porta, iniciar)) _porta = null;
-      rethrow;
-    }
-    final id = _proximo++;
-    final c = Completer<Object?>();
-    final geracao = _geracao;
-    _pendentes[id] = (geracao, c);
-    porta.send((id, op, handle, args));
-    final vigia = Timer(limiteAbandono, () {
-      if (!c.isCompleted) _abandonar(geracao);
-    });
-    return c.future.whenComplete(vigia.cancel);
+  Future<Object?> _pedir(String op, int handle, List<String> args) {
+    final anterior = _ultima[handle] ?? Future<void>.value();
+    final pedido = anterior.then((_) => _noIsolate(_chamada, op, handle, args));
+    final acabou = pedido.then<void>((_) {}, onError: (_) {});
+    _ultima[handle] = acabou;
+    unawaited(acabou.whenComplete(() {
+      if (identical(_ultima[handle], acabou)) _ultima.remove(handle);
+    }));
+    return pedido;
   }
 
   @override
@@ -274,56 +219,49 @@ class ExecutorIsolate implements ExecutorMpv {
     throw StateError('libmpv não encontrado ($erro)');
   }
 
-  /// O isolate: abre o libmpv e responde a cada pedido (id, op, handle, args).
-  static void _principal(SendPort respostas) {
-    final pedidos = ReceivePort('mpv-pedidos');
-    respostas.send(pedidos.sendPort);
-    DynamicLibrary? lib;
-    late _Set set;
-    late _Get get;
-    late _Free free;
-    late _Command command;
-    pedidos.listen((m) {
-      int? id;
-      try {
-        final (int i, String op, int handle, List<String> args) = m as (int, String, int, List<String>);
-        id = i;
-        if (lib == null) {
-          lib = _libmpv();
-          set = lib!.lookupFunction<_SetNativo, _Set>('mpv_set_property_string');
-          get = lib!.lookupFunction<_GetNativo, _Get>('mpv_get_property_string');
-          free = lib!.lookupFunction<_FreeNativo, _Free>('mpv_free');
-          command = lib!.lookupFunction<_CommandNativo, _Command>('mpv_command');
-        }
-        final ctx = Pointer<Void>.fromAddress(handle);
-        Object? valor;
-        using((arena) {
-          switch (op) {
-            case 'set':
-              set(ctx, args[0].toNativeUtf8(allocator: arena), args[1].toNativeUtf8(allocator: arena));
-            case 'get':
-              final r = get(ctx, args[0].toNativeUtf8(allocator: arena));
-              if (r != nullptr) {
-                try {
-                  valor = r.toDartString();
-                } finally {
-                  free(r.cast());
-                }
-              }
-            case 'cmd':
-              final arr = arena<Pointer<Utf8>>(args.length + 1);
-              for (var i = 0; i < args.length; i++) {
-                arr[i] = args[i].toNativeUtf8(allocator: arena);
-              }
-              arr[args.length] = nullptr;
-              command(ctx, arr);
+  /// No isolate: uma chamada ao libmpv.
+  static Object? _executar(String op, int handle, List<String> args) {
+    final lib = _libmpv();
+    final ctx = Pointer<Void>.fromAddress(handle);
+    return using((arena) {
+      switch (op) {
+        case 'set':
+          lib.lookupFunction<_SetNativo, _Set>('mpv_set_property_string')(
+              ctx, args[0].toNativeUtf8(allocator: arena), args[1].toNativeUtf8(allocator: arena));
+          return null;
+        case 'get':
+          final r = lib.lookupFunction<_GetNativo, _Get>('mpv_get_property_string')(
+              ctx, args[0].toNativeUtf8(allocator: arena));
+          if (r == nullptr) return null;
+          try {
+            return r.toDartString();
+          } finally {
+            lib.lookupFunction<_FreeNativo, _Free>('mpv_free')(r.cast());
           }
-        });
-        respostas.send((id, valor, null));
-      } catch (e) {
-        if (id != null) respostas.send((id, null, '$e'));
+        case 'cmd':
+          final arr = arena<Pointer<Utf8>>(args.length + 1);
+          for (var i = 0; i < args.length; i++) {
+            arr[i] = args[i].toNativeUtf8(allocator: arena);
+          }
+          arr[args.length] = nullptr;
+          lib.lookupFunction<_CommandNativo, _Command>('mpv_command')(ctx, arr);
+          return null;
+        default:
+          throw StateError('pedido desconhecido: $op');
       }
     });
+  }
+}
+
+/// Corre `chamada` num isolate novo (função de topo: a closure só leva estes argumentos). Um
+/// isolate que lança ou sai sem responder dá um [StateError].
+Future<Object?> _noIsolate(ChamadaNoIsolate chamada, String op, int handle, List<String> args) async {
+  try {
+    return await Isolate.run(() => chamada(op, handle, args), debugName: 'mpv');
+  } on StateError {
+    rethrow;
+  } catch (e) {
+    throw StateError('o isolate do mpv falhou ($e)');
   }
 }
 
