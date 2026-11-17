@@ -3,19 +3,21 @@ import 'package:material_ui/material_ui.dart';
 
 import '../../dados/area_gestor.dart';
 import '../../dados/biblioteca.dart';
+import '../../importar/importar.dart';
 import '../../modelo/canal.dart';
 import '../adicionar.dart';
 import '../campo_tv.dart';
 import '../conteudo/tela_conteudo.dart';
 import '../design/design.dart';
 import '../realce_foco.dart';
+import 'acoes_lista.dart';
 import 'cartao_lista.dart';
 
 /// Início com os separadores "Player" e "Gestor". O Player mostra as listas em cartões (com o
 /// estado da última verificação, pesquisa e filtro por estado) e não gere nada: adicionar,
 /// verificar, exportar e enviar listas para o Player faz-se no Gestor.
 class TelaInicio extends StatefulWidget {
-  const TelaInicio({super.key, required this.biblioteca, this.area, this.separadorGestor});
+  const TelaInicio({super.key, required this.biblioteca, this.area, this.separadorGestor, this.abrirLista});
 
   /// As listas do Player.
   final Biblioteca biblioteca;
@@ -25,6 +27,9 @@ class TelaInicio extends StatefulWidget {
 
   /// O separador "Gestor".
   final Widget? separadorGestor;
+
+  /// Para testes: pede os canais de uma lista (em vez do protocolo da conta).
+  final AbrirLista? abrirLista;
 
   @override
   State<TelaInicio> createState() => _TelaInicioState();
@@ -37,9 +42,17 @@ class _TelaInicioState extends State<TelaInicio> {
   /// O "+": recebe o foco depois de "Ir para o Gestor" (o botão do ecrã vazio desaparece).
   final _focoMais = FocusNode(debugLabel: 'Adicionar listas');
 
+  /// O foco de cada cartão (pelo id da lista): depois de eliminar, o foco passa ao cartão ao lado.
+  final _focos = <String, FocusNode>{};
+
+  FocusNode _focoCartao(String id) => _focos.putIfAbsent(id, () => FocusNode(debugLabel: 'Cartão $id'));
+
   @override
   void dispose() {
     _focoMais.dispose();
+    for (final f in _focos.values) {
+      f.dispose();
+    }
     super.dispose();
   }
   String? _filtro; // null = todas; 'por_verificar' = sem resultado
@@ -62,24 +75,54 @@ class _TelaInicioState extends State<TelaInicio> {
     ];
   }
 
-  Future<void> _remover(Lista l) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        icon: const Icon(Icons.delete_outline_rounded, color: Tokens.mau, size: 32),
-        title: const Text('Remover lista?'),
-        content: Text('A lista ${l.nomeMostrado} sai da app (os favoritos e a cache de canais também).'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Remover')),
-        ],
-      ),
-    );
-    if (ok == true) await widget.biblioteca.remover(l.id);
+  void _avisar(String texto) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(texto)));
   }
 
-  void _abrir(Lista l) => Navigator.of(context).push(rotaSuave<void>(
-        TelaConteudo(biblioteca: widget.biblioteca, lista: l),
+  Future<void> _eliminar(Lista l) async {
+    if (!await confirmarEliminar(context, l)) return;
+    final i = _visiveis().indexWhere((x) => x.id == l.id);
+    await widget.biblioteca.remover(l.id);
+    _focos.remove(l.id)?.dispose();
+    // o cartão com o foco desapareceu: o foco passa ao que ficou no lugar dele (ou ao anterior)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final vis = _visiveis();
+      if (vis.isEmpty || i < 0) return;
+      _focos[vis[i.clamp(0, vis.length - 1)].id]?.requestFocus();
+    });
+  }
+
+  /// O menu de ações do cartão (pressão longa, clique direito, OK mantido ou "Mais opções").
+  Future<void> _menu(Lista l) async {
+    final area = widget.area;
+    final acao = await mostrarMenuLista(context, l, comGestor: area != null);
+    if (acao == null || !mounted) return;
+    switch (acao) {
+      case AcaoLista.abrir:
+        _abrir(l);
+      case AcaoLista.atualizar:
+        _abrir(l, atualizar: true);
+      case AcaoLista.editar:
+        final m = await mostrarEditarLista(context, widget.biblioteca, l);
+        if (m != null) _avisar(m);
+      case AcaoLista.copiarLink:
+        // nunca se mostra o link (pode ter credenciais)
+        await Clipboard.setData(ClipboardData(text: linkParaCopiar(l.conta)));
+        _avisar('Link copiado');
+      case AcaoLista.enviarGestor:
+        final novas = await area!.adicionar([Importada(l.conta, l.ultima)]);
+        _avisar(novas > 0 ? 'Enviada para o Gestor' : 'Já estava no Gestor');
+      case AcaoLista.eliminar:
+        await _eliminar(l);
+    }
+  }
+
+  void _abrir(Lista l, {bool atualizar = false}) => Navigator.of(context).push(rotaSuave<void>(
+        TelaConteudo(biblioteca: widget.biblioteca, lista: l, atualizar: atualizar, abrirLista: widget.abrirLista),
       ));
 
   /// "Ir para o Gestor": muda de separador e põe o foco no "+" (que só aparece no Gestor).
@@ -133,7 +176,8 @@ class _TelaInicioState extends State<TelaInicio> {
                             lista: vis[i],
                             autofocus: i == 0,
                             aoAbrir: () => _abrir(vis[i]),
-                            aoRemover: () => _remover(vis[i]),
+                            focusNode: _focoCartao(vis[i].id),
+                            aoMenu: () => _menu(vis[i]),
                           )),
                         ),
             ),

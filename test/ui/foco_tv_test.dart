@@ -287,16 +287,19 @@ void main() {
     await _fechar(t);
   });
 
-  testWidgets('I6: "Atualizar" não se desliga e não perde o foco', (t) async {
+  testWidgets('I6/Task 8: "Atualizar" abre o loader com o foco em "Cancelar"; Cancelar devolve o foco ao '
+      '"Atualizar"', (t) async {
     _tamanho(t, 1200, 800);
     final l = await comCache(t, pequena);
     await mostrar(t, l);
     await _irPara(t, 'Atualizar');
     await _tecla(t, LogicalKeyboardKey.select);
-    expect(_focado(), contains('Atualizar'));
-    // a meio do carregamento, OK outra vez não faz nada e o foco fica
+    await t.pump();
+    expect(_focado(), contains('Cancelar'));
     await _tecla(t, LogicalKeyboardKey.select);
+    await t.pump();
     expect(_focado(), contains('Atualizar'));
+    expect(find.text('PT: RTP 1 HD'), findsOneWidget, reason: 'os canais da cache continuam');
     await _fechar(t);
   });
 

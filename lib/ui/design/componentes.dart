@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
@@ -57,6 +59,15 @@ class SuperficieVidro extends StatelessWidget {
   }
 }
 
+/// As teclas que "carregam" no widget com o foco (OK do comando, Enter, espaço, A do comando de jogos).
+final teclasOk = <LogicalKeyboardKey>{
+  LogicalKeyboardKey.select, LogicalKeyboardKey.enter, LogicalKeyboardKey.numpadEnter,
+  LogicalKeyboardKey.gameButtonA, LogicalKeyboardKey.space,
+};
+
+/// Quanto tempo o OK tem de ficar em baixo para contar como pressão longa.
+const duracaoOkMantido = Duration(milliseconds: 500);
+
 /// Um cartão de vidro que se toca/abre (InkWell). Com o foco do comando (modo "traditional"):
 /// aumenta para 1.04, ganha a borda de realce, um brilho violeta e a sombra sobe. Com o rato por
 /// cima só a sombra sobe. No toque (telemóvel), o foco automático não muda nada.
@@ -64,13 +75,17 @@ class SuperficieVidro extends StatelessWidget {
 /// O realce é só do cartão em si (não quando o foco está num botão de dentro). Os botões de
 /// dentro só entram na navegação com as setas quando o foco já está no cartão: ESQUERDA/DIREITA
 /// entre cartões vão de cartão em cartão e BAIXO, no cartão, entra nos botões.
+///
+/// [onLongPress]: toque longo, clique direito do rato ou OK mantido no comando (o menu abre
+/// ao fim de [duracaoOkMantido], ainda com o OK em baixo). Com ele, o OK curto abre ao soltar.
 class CartaoModerno extends StatefulWidget {
-  const CartaoModerno({super.key, required this.child, this.onTap, this.autofocus = false,
+  const CartaoModerno({super.key, required this.child, this.onTap, this.onLongPress, this.autofocus = false,
       this.focusNode, this.padding = const EdgeInsets.all(Tokens.e16), this.raio = Tokens.raioCartao,
       this.escalaFoco = 1.04});
 
   final Widget child;
   final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
   final bool autofocus;
   final FocusNode? focusNode;
   final EdgeInsetsGeometry padding;
@@ -92,6 +107,11 @@ class _CartaoModernoState extends State<CartaoModerno> {
   bool _dentro = false;
   bool _rato = false;
 
+  /// O OK foi carregado com o foco neste cartão e ainda não foi solto.
+  bool _okEmBaixo = false;
+  bool _okLongo = false;
+  Timer? _relogioOk;
+
   FocusNode get _no => widget.focusNode ?? (_proprio ??= FocusNode(debugLabel: 'CartaoModerno'));
 
   @override
@@ -112,6 +132,7 @@ class _CartaoModernoState extends State<CartaoModerno> {
 
   @override
   void dispose() {
+    _relogioOk?.cancel();
     _no.removeListener(_mudouFoco);
     _proprio?.dispose();
     _interior.dispose();
@@ -120,6 +141,7 @@ class _CartaoModernoState extends State<CartaoModerno> {
 
   void _mudouFoco() {
     final f = _no.hasPrimaryFocus, d = _no.hasFocus;
+    if (!f) _largarOk();
     if (mounted && (f != _focado || d != _dentro)) {
       setState(() {
         _focado = f;
@@ -130,7 +152,37 @@ class _CartaoModernoState extends State<CartaoModerno> {
 
   /// BAIXO com o foco no cartão: entra no primeiro botão de dentro (a navegação direcional só
   /// procura abaixo do cartão inteiro e saltaria para a fila de baixo).
+  void _largarOk() {
+    _relogioOk?.cancel();
+    _okEmBaixo = false;
+  }
+
+  /// O OK com pressão longa: em baixo arranca o relógio; mantido abre o menu (uma vez); solto
+  /// antes disso abre o cartão. As repetições nunca abrem nada (o OK que fechou o menu e
+  /// continua em baixo não abre a lista).
+  KeyEventResult _teclaOk(KeyEvent e) {
+    if (e is KeyRepeatEvent) return KeyEventResult.handled;
+    if (e is KeyDownEvent) {
+      _largarOk();
+      _okEmBaixo = true;
+      _okLongo = false;
+      _relogioOk = Timer(duracaoOkMantido, () {
+        if (!mounted || !_okEmBaixo) return;
+        _okLongo = true;
+        widget.onLongPress?.call();
+      });
+      return KeyEventResult.handled;
+    }
+    // soltou
+    if (!_okEmBaixo) return KeyEventResult.handled;
+    final longo = _okLongo;
+    _largarOk();
+    if (!longo) widget.onTap?.call();
+    return KeyEventResult.handled;
+  }
+
   KeyEventResult _tecla(FocusNode _, KeyEvent e) {
+    if (widget.onLongPress != null && _no.hasPrimaryFocus && teclasOk.contains(e.logicalKey)) return _teclaOk(e);
     if (e is KeyUpEvent || e.logicalKey != LogicalKeyboardKey.arrowDown || !_no.hasPrimaryFocus) {
       return KeyEventResult.ignored;
     }
@@ -177,6 +229,8 @@ class _CartaoModernoState extends State<CartaoModerno> {
               onKeyEvent: _tecla,
               child: InkWell(
                 onTap: widget.onTap,
+                onLongPress: widget.onLongPress,
+                onSecondaryTap: widget.onLongPress,
                 autofocus: widget.autofocus,
                 focusNode: _no,
                 // o fundo de foco só com o foco no próprio cartão (não num botão de dentro)
