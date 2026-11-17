@@ -65,6 +65,30 @@ void main() {
       expect(File('${pasta.path}${Platform.pathSeparator}gestor.json.bak').existsSync(), isTrue);
     });
 
+    test('M1: um bloqueio passageiro ao ler (antivírus) é repetido e as listas abrem', () async {
+      final g = await AreaGestor.abrir(pasta);
+      await g.adicionar([_imp('http://a.com/c/ 00:1A:79:00:00:01')]);
+      var tentativas = 0;
+      final r = await AreaGestor.abrir(pasta, ler: (f) async {
+        if (++tentativas < 3) throw const FileSystemException('bloqueado');
+        return f.readAsString();
+      });
+      expect(tentativas, 3);
+      expect(r.listas, hasLength(1));
+    });
+
+    test('M1: bloqueado de vez, abre vazio sem lançar e não apaga o ficheiro bom', () async {
+      final g = await AreaGestor.abrir(pasta);
+      await g.adicionar([_imp('http://a.com/c/ 00:1A:79:00:00:01')]);
+      final original = File('${pasta.path}${Platform.pathSeparator}gestor.json').readAsStringSync();
+      final r = await AreaGestor.abrir(pasta, ler: (_) async => throw const FileSystemException('bloqueado'));
+      expect(r.listas, isEmpty);
+      // a 1.ª gravação guarda o ficheiro que não se conseguiu ler em .bak (nada se perde)
+      await r.adicionar([_imp('http://b.com/c/ 00:1A:79:00:00:01')]);
+      expect(File('${pasta.path}${Platform.pathSeparator}gestor.json.bak').readAsStringSync(), original);
+      expect((await AreaGestor.abrir(pasta)).listas.map((l) => l.nome), ['001B']);
+    });
+
     test('Importar do Player copia as listas com o último resultado, sem duplicar', () async {
       final b = await Biblioteca.abrir(pasta);
       await b.adicionar([_imp('http://a.com/c/ 00:1A:79:00:00:01', _u('funciona')), _imp('http://b.com/x.m3u')]);
@@ -142,6 +166,22 @@ void main() {
       expect((r.adicionadas, r.atualizadas, r.removidas), (1, 1, 2));
       expect(await hosts(b), ['a.com', 'b.com', 'e.com']);
       expect(b.listas[1].favoritos, {'fav'});
+    });
+
+    test('M2: se a gravação falhar, o Player fica como estava (memória = disco) e o erro chega', () async {
+      final antes = [for (final l in b.listas) (hostDe(l.conta.endereco), l.ultima?.estado)];
+      // o ficheiro passa a ser uma pasta: a troca atómica (rename) falha
+      final f = File('${pasta.path}${Platform.pathSeparator}biblioteca.json');
+      f.deleteSync();
+      Directory(f.path).createSync();
+      var avisos = 0;
+      b.addListener(() => avisos++);
+      await expectLater(b.receber(g.listas, ModoEnvio.esmagarTodas), throwsA(isA<FileSystemException>()));
+      expect([for (final l in b.listas) (hostDe(l.conta.endereco), l.ultima?.estado)], antes);
+      expect(avisos, greaterThan(0), reason: 'a interface volta a desenhar o estado antigo');
+      for (final l in b.listas) {
+        expect(await b.canaisEmCache(l.id), isNotNull, reason: 'a cache fica');
+      }
     });
 
     test('esmagar todas: o Player fica só com as enviadas; favoritos e cache das removidas saem', () async {

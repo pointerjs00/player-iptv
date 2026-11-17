@@ -186,15 +186,26 @@ Widget _fundoGradiente(BuildContext context, Set<WidgetState> s, Widget? filho) 
   if (s.contains(WidgetState.disabled)) {
     return DecoratedBox(decoration: const BoxDecoration(color: Tokens.vidroForte, borderRadius: _raioBotao), child: filho);
   }
+  final foco = _focoVisivel(s);
   final claro = s.contains(WidgetState.pressed)
       ? .22
-      : (s.contains(WidgetState.hovered) || _focoVisivel(s) ? .12 : 0.0);
+      : (s.contains(WidgetState.hovered) || foco ? .12 : 0.0);
   final cores = [
     for (final c in Tokens.gradienteAcento.colors) Color.lerp(c, Colors.white, claro)!,
   ];
+  // com o comando, o foco tem de se ver num botão que já é da cor de acento: anel claro de 3 px
+  // (por cima do gradiente; o `side` do Material ficava por baixo dele) e brilho por fora
   return DecoratedBox(
-      decoration: BoxDecoration(gradient: LinearGradient(colors: cores), borderRadius: _raioBotao), child: filho);
+      decoration: BoxDecoration(
+        gradient: LinearGradient(colors: cores),
+        borderRadius: _raioBotao,
+        border: foco ? Border.fromBorderSide(_bordaFocoClara) : null,
+        boxShadow: foco ? _brilhoFocoBotao : null,
+      ),
+      child: filho);
 }
+
+const _brilhoFocoBotao = [BoxShadow(color: Color(0xB39B6CFF), blurRadius: 16, spreadRadius: 4)];
 
 // os cantos também no fundo: o recorte pela forma do botão só vale para o estilo do próprio widget
 const _raioBotao = BorderRadius.all(Radius.circular(Tokens.raioBotao));

@@ -24,14 +24,30 @@ class AreaGestor extends ChangeNotifier implements ColecaoListas {
 
   File get _ficheiro => File('${_pasta.path}${Platform.pathSeparator}gestor.json');
 
-  /// Abre (ou cria) o Gestor em `pasta`. Um ficheiro estragado fica guardado como
-  /// gestor.json.bak e o Gestor começa vazio. Um erro ao ler é lançado (nunca se começa vazio
-  /// por cima de um ficheiro bom).
-  static Future<AreaGestor> abrir(Directory pasta) async {
+  /// O ficheiro existia mas não se conseguiu ler: a 1.ª gravação guarda-o primeiro em .bak.
+  bool _porLer = false;
+
+  /// Abre (ou cria) o Gestor em `pasta`; nunca lança (o Gestor não impede a app de abrir).
+  /// - um bloqueio passageiro ao ler (antivírus, cópia de segurança) é repetido, como na biblioteca;
+  /// - bloqueado de vez: começa vazio e a 1.ª gravação muda o ficheiro antigo para .bak (nada se perde);
+  /// - estragado: fica guardado como gestor.json.bak e o Gestor começa vazio.
+  static Future<AreaGestor> abrir(Directory pasta,
+      {@visibleForTesting Future<String> Function(File f) ler = _lerTexto}) async {
     await pasta.create(recursive: true);
     final g = AreaGestor._(pasta);
     if (await g._ficheiro.exists()) {
-      final texto = await g._ficheiro.readAsString();
+      String? texto;
+      for (var tentativa = 1; texto == null; tentativa++) {
+        try {
+          texto = await ler(g._ficheiro);
+        } on FileSystemException {
+          if (tentativa >= 5) {
+            g._porLer = true;
+            return g;
+          }
+          await Future<void>.delayed(Duration(milliseconds: 200 * tentativa));
+        }
+      }
       try {
         for (final j in (jsonDecode(texto)['listas'] as List)) {
           final l = Lista.deJson(j);
@@ -39,11 +55,17 @@ class AreaGestor extends ChangeNotifier implements ColecaoListas {
         }
       } catch (_) {
         g._listas.clear();
-        await g._ficheiro.copy('${g._ficheiro.path}.bak');
+        try {
+          await g._ficheiro.copy('${g._ficheiro.path}.bak');
+        } on FileSystemException {
+          g._porLer = true; // não se copiou: a 1.ª gravação tenta outra vez
+        }
       }
     }
     return g;
   }
+
+  static Future<String> _lerTexto(File f) => f.readAsString();
 
   @override
   Lista? porId(String id) {
@@ -109,7 +131,14 @@ class AreaGestor extends ChangeNotifier implements ColecaoListas {
       'listas': [for (final l in _listas) l.paraJson()],
     });
     notifyListeners();
-    final r = _gravacoes.then((_) => escreverAtomico(_ficheiro, texto));
+    final r = _gravacoes.then((_) async {
+      if (_porLer) {
+        // o ficheiro que não se leu não é reescrito por cima: vai para .bak
+        await _ficheiro.rename('${_ficheiro.path}.bak');
+        _porLer = false;
+      }
+      await escreverAtomico(_ficheiro, texto);
+    });
     _gravacoes = r.catchError((_) {});
     return r;
   }

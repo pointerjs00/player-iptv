@@ -204,7 +204,10 @@ class Biblioteca extends ChangeNotifier implements ColecaoListas {
           ModoEnvio.esmagarMantendoFuncionaisEInc => const {'funciona', 'inconclusivo'}.contains(l.ultima?.estado),
           ModoEnvio.esmagarTodas => false,
         };
-    // as listas mudam todas de uma vez (a interface nunca vê um envio a meio); a cache depois
+    // as listas mudam todas de uma vez (a interface nunca vê um envio a meio); a cache depois.
+    // Se a gravação falhar, tudo volta a como estava (o que se vê é sempre o que está no disco)
+    final antes = List.of(_listas);
+    final ultimasAntes = {for (final l in _listas) l: l.ultima};
     final sair = [for (final l in _listas) if (!enviadas.containsKey(chave(l.conta)) && !mantem(l)) l];
     _listas.removeWhere(sair.contains);
     final porChave = {for (final l in _listas) chave(l.conta): l};
@@ -220,7 +223,16 @@ class Biblioteca extends ChangeNotifier implements ColecaoListas {
         atualizadas++;
       }
     }
-    await guardar();
+    try {
+      await guardar();
+    } catch (_) {
+      _listas
+        ..clear()
+        ..addAll(antes);
+      ultimasAntes.forEach((l, u) => l.ultima = u);
+      notifyListeners();
+      rethrow;
+    }
     for (final l in sair) {
       try {
         final f = _ficheiroCanais(l.id);

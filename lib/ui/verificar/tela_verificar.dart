@@ -188,7 +188,7 @@ class _TelaVerificarState extends State<TelaVerificar> {
     try {
       _aviso(textoResumoEnvio(await _b.receber(listas, modo)));
     } catch (e) {
-      _aviso('Não foi possível enviar: ${descreverErro(e)}');
+      _aviso('Não foi possível enviar (${descreverErro(e)}). As listas do Player não mudaram.');
     }
   }
 
