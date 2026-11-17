@@ -8,6 +8,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 import '../../modelo/canal.dart';
 import '../../protocolos/protocolo.dart';
 import '../../rede/http.dart';
+import 'vigia_abertura.dart';
 
 /// A mensagem do leitor sem links: nas contas Xtream o link leva o utilizador e a password.
 String mensagemErroPlayer(String e) {
@@ -53,15 +54,30 @@ class PlayerCanaisState extends State<PlayerCanais> {
   final _subs = <StreamSubscription>[];
   final _foco = FocusNode();
 
+  // nunca ecrã preto mudo: o "a abrir" só sai com imagem; sem ela em 20 s, erro
+  late final _vigia = VigiaAbertura(
+    aoAbrir: () {
+      if (mounted) setState(() { _aAbrir = false; _erro = null; });
+    },
+    aoFalhar: (motivo) {
+      if (!mounted) return;
+      _player.stop();
+      setState(() { _erro = motivo; _aAbrir = false; _info = true; });
+    },
+  );
+
   @override
   void initState() {
     super.initState();
     _subs.add(_player.stream.error.listen((e) {
-      if (mounted && e.isNotEmpty) setState(() { _erro = mensagemErroPlayer(e); _aAbrir = false; _info = true; });
+      if (mounted && e.isNotEmpty) {
+        _vigia.parar();
+        setState(() { _erro = mensagemErroPlayer(e); _aAbrir = false; _info = true; });
+      }
     }));
-    _subs.add(_player.stream.playing.listen((a) {
-      if (mounted && a) setState(() { _aAbrir = false; _erro = null; });
-    }));
+    _subs.add(_player.stream.buffering.listen(_vigia.buffering));
+    _subs.add(_player.stream.width.listen(_vigia.largura));
+    _subs.add(_player.stream.position.listen(_vigia.tempo));
     _abrir();
   }
 
@@ -86,11 +102,13 @@ class PlayerCanaisState extends State<PlayerCanais> {
     setState(() { _aAbrir = true; _erro = null; });
     _mostrarInfo();
     try {
+      _vigia.comecar(); // o prazo conta desde o pedido do link
       final f = await widget.resolver(canal);
       if (!mounted || pedido != _pedido) return;
       await _player.open(Media(f.url, httpHeaders: f.headers));
     } catch (e) {
       if (!mounted || pedido != _pedido) return;
+      _vigia.parar();
       setState(() {
         _erro = e is ErroLista ? e.mensagem : descreverErro(e);
         _aAbrir = false;
@@ -140,6 +158,7 @@ class PlayerCanaisState extends State<PlayerCanais> {
   @override
   void dispose() {
     _esconder?.cancel();
+    _vigia.parar();
     for (final s in _subs) {
       s.cancel();
     }
