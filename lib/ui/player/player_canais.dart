@@ -225,7 +225,13 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       _velocidade = 1;
     });
     _relogio.reiniciar();
-    _controlos.currentState?.mostrarInfoCanal();
+    // o nome do canal uns segundos (no primeiro canal a barra ainda não foi construída)
+    final controlos = _controlos.currentState;
+    if (controlos != null) {
+      controlos.mostrarInfoCanal();
+    } else {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _controlos.currentState?.mostrarInfoCanal());
+    }
     try {
       _vigia.comecar(); // o prazo conta desde o pedido do link
       // ao mudar de canal, o anterior para já: senão continuava a tocar (e a mandar imagem e
@@ -456,14 +462,15 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
         'Qualidade / faixa de vídeo',
         opcoes: video.opcoes,
         atual: video.atual,
-        aoMudar: (i) => _player.setVideoTrack(video.faixa(i)),
+        // só com mais de uma faixa (escolher entre "Automática" e a única não muda nada)
+        aoMudar: video.opcoes.length > 2 ? (i) => _player.setVideoTrack(video.faixa(i)) : null,
         nota: video.opcoes.length <= 2 ? 'Este canal só tem uma' : null,
       ),
       DefinicaoEscolha(
         'Faixa de áudio',
         opcoes: audio.opcoes,
         atual: audio.atual,
-        aoMudar: (i) => _player.setAudioTrack(audio.faixa(i)),
+        aoMudar: audio.opcoes.length > 2 ? (i) => _player.setAudioTrack(audio.faixa(i)) : null,
         nota: audio.opcoes.length <= 2 ? 'Este canal só tem uma' : null,
       ),
       DefinicaoEscolha(

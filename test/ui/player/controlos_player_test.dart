@@ -2,6 +2,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:player_iptv/ui/design/ecra.dart';
 import 'package:player_iptv/ui/player/controlos_player.dart';
 import 'package:player_iptv/ui/player/maquina_controlos.dart';
 import 'package:player_iptv/ui/player/painel_definicoes.dart';
@@ -22,11 +23,13 @@ class _Ensaio {
 
 final _chave = GlobalKey<ControlosPlayerState>();
 
-Future<_Ensaio> _montar(WidgetTester t, {bool ecraInteiro = false, bool semAnimacoes = false}) async {
+Future<_Ensaio> _montar(WidgetTester t, {bool ecraInteiro = false, bool semAnimacoes = false, bool tv = false}) async {
+  EcraTv.nativo = tv;
+  addTearDown(() => EcraTv.nativo = false);
   FocusManager.instance.highlightStrategy = FocusHighlightStrategy.alwaysTraditional;
   addTearDown(() => FocusManager.instance.highlightStrategy = FocusHighlightStrategy.automatic);
   t.view.physicalSize = const Size(1920, 1080);
-  t.view.devicePixelRatio = 1;
+  t.view.devicePixelRatio = tv ? 2 : 1;
   addTearDown(t.view.reset);
   final e = _Ensaio()..ecraInteiro = ecraInteiro;
   await t.pumpWidget(
@@ -75,6 +78,12 @@ Future<_Ensaio> _montar(WidgetTester t, {bool ecraInteiro = false, bool semAnima
   );
   await t.pumpAndSettle();
   return e;
+}
+
+/// O "voltar" do sistema (Android: a tecla BACK, o gesto).
+Future<void> _voltarSistema(WidgetTester t) async {
+  await t.binding.handlePopRoute();
+  await t.pumpAndSettle();
 }
 
 Future<void> _tecla(WidgetTester t, LogicalKeyboardKey k) async {
@@ -184,7 +193,7 @@ void main() {
     expect(_barraVisivel(t), isFalse);
   });
 
-  testWidgets('Voltar por camadas: painel → barra (foco em Definições) → escondida → sair', (t) async {
+  testWidgets('Voltar (Esc) por camadas: painel → barra (foco em Definições) → escondida → sair', (t) async {
     final e = await _montar(t);
     await _tecla(t, LogicalKeyboardKey.select);
     await t.tap(find.byTooltip('Definições'));
@@ -196,15 +205,35 @@ void main() {
     expect(_focado(), 'Formato de imagem');
     await _tecla(t, LogicalKeyboardKey.arrowDown);
     expect(_focado(), 'Formato de imagem');
-    await _tecla(t, LogicalKeyboardKey.goBack);
+    await _tecla(t, LogicalKeyboardKey.escape);
     expect(find.text('Silêncio'), findsNothing);
     expect(_barraVisivel(t), isTrue);
     expect(_focado(), 'Definições');
-    await _tecla(t, LogicalKeyboardKey.goBack);
+    await _tecla(t, LogicalKeyboardKey.escape);
     expect(_barraVisivel(t), isFalse);
     expect(e.acoes, isEmpty);
-    await _tecla(t, LogicalKeyboardKey.goBack);
+    await _tecla(t, LogicalKeyboardKey.escape);
     expect(e.acoes.last, AcaoPlayer.sair);
+  });
+
+  testWidgets('Android: o Voltar do comando conta uma vez só (a tecla segue para o Voltar do sistema)', (t) async {
+    // no Android a tecla BACK chega como tecla E como "voltar" do sistema: tratar as duas
+    // fechava o painel e a barra de uma vez (e depois saía do player e da lista)
+    final e = await _montar(t);
+    await _tecla(t, LogicalKeyboardKey.select);
+    await t.tap(find.byTooltip('Definições'));
+    await t.pumpAndSettle();
+    await _tecla(t, LogicalKeyboardKey.goBack);
+    expect(find.text('Silêncio'), findsOneWidget, reason: 'a tecla sozinha não faz nada');
+    await _voltarSistema(t);
+    expect(find.text('Silêncio'), findsNothing);
+    expect(_barraVisivel(t), isTrue);
+    expect(_focado(), 'Definições');
+    await _voltarSistema(t);
+    expect(_barraVisivel(t), isFalse);
+    // escondida: o Voltar do sistema já fecha a página do player
+    expect(t.widget<PopScope<Object?>>(find.byWidgetPredicate((w) => w is PopScope)).canPop, isTrue);
+    expect(e.acoes, isEmpty);
   });
 
   testWidgets('o painel não se esconde sozinho e muda as definições', (t) async {
@@ -312,4 +341,22 @@ void main() {
     expect(e.acoes, [AcaoPlayer.tentarDeNovo]);
     expect(_barraVisivel(t), isFalse);
   });
+
+  for (final tv in [false, true]) {
+    testWidgets('com o direto atrasado, as setas chegam a "Voltar ao direto" e às Definições (TV: $tv)', (t) async {
+      final e = await _montar(t, tv: tv);
+      await _tecla(t, LogicalKeyboardKey.select);
+      e.reconstruir!(() => e.atraso = const Duration(seconds: 20));
+      await t.pumpAndSettle();
+      final vistos = <String?>[];
+      for (var i = 0; i < 5; i++) {
+        await _tecla(t, LogicalKeyboardKey.arrowRight);
+        vistos.add(_focado());
+      }
+      expect(vistos, ['Avançar 10 s', 'Canal seguinte', 'Velocidade', 'Voltar ao direto', 'Definições']);
+      await _tecla(t, LogicalKeyboardKey.arrowLeft);
+      await _tecla(t, LogicalKeyboardKey.select);
+      expect(e.acoes.last, AcaoPlayer.voltarAoDireto);
+    });
+  }
 }

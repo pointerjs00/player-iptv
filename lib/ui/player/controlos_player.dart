@@ -70,7 +70,8 @@ class ControlosPlayer extends StatefulWidget {
 
 class ControlosPlayerState extends State<ControlosPlayer> {
   final _m = MaquinaControlos();
-  final _raiz = FocusNode(debugLabel: 'player');
+  // fora da navegação com as setas: com o ecrã todo, era o "vizinho" de qualquer botão da barra
+  final _raiz = FocusNode(debugLabel: 'player', skipTraversal: true);
   final _play = FocusNode(debugLabel: 'play/pausa');
   final _botaoDefinicoes = FocusNode(debugLabel: 'definições');
   final _painel = FocusNode(debugLabel: 'painel', skipTraversal: true);
@@ -180,6 +181,9 @@ class ControlosPlayerState extends State<ControlosPlayer> {
 
   KeyEventResult _tecla(FocusNode _, KeyEvent e) {
     if (e is KeyUpEvent) return KeyEventResult.ignored;
+    // o Voltar do comando no Android chega como tecla E como "voltar" do sistema (mesmo com a
+    // tecla tratada): fica só o do sistema (PopScope), senão cada Voltar contava duas vezes
+    if (e.logicalKey == LogicalKeyboardKey.goBack) return KeyEventResult.ignored;
     _agendar();
     if (e is KeyRepeatEvent) {
       // tecla presa: com a barra/painel é a navegação; escondida não muda de canal em rajada
