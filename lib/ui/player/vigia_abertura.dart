@@ -15,14 +15,19 @@ class VigiaAbertura {
 
   Timer? _prazo;
   bool _aVigiar = false;
+  // só depois do open() deste canal: até lá os eventos são do canal anterior
+  bool _aceitar = false;
   bool _anda = false;
   int _largura = 0;
 
-  /// Um canal novo começou a abrir.
+  /// Um canal novo começou a abrir (o link ainda se está a resolver: o canal anterior pode
+  /// continuar a tocar e a mandar eventos, que não contam para este).
   void comecar() {
     _prazo?.cancel();
     _aVigiar = true;
+    _aceitar = false;
     _anda = false;
+    _largura = 0;
     _prazo = Timer(limite, () {
       if (!_aVigiar) return;
       _aVigiar = false;
@@ -30,20 +35,31 @@ class VigiaAbertura {
     });
   }
 
+  /// O player vai abrir este canal (chamado mesmo antes do `open()`): daqui em diante os
+  /// eventos são dele.
+  void abrindo() {
+    _aceitar = true;
+    _anda = false;
+    _largura = 0;
+  }
+
   /// Ignorado de propósito (ver a descrição da classe).
   void tocando(bool a) {}
 
   void buffering(bool b) {
+    if (!_aceitar) return;
     if (!b) _anda = true;
     _verificar();
   }
 
   void largura(int? w) {
+    if (!_aceitar) return;
     _largura = w ?? 0;
     _verificar();
   }
 
   void tempo(Duration p) {
+    if (!_aceitar) return;
     if (p > Duration.zero) _anda = true;
     _verificar();
   }
@@ -58,6 +74,7 @@ class VigiaAbertura {
   /// O canal falhou por outra razão ou o player fechou.
   void parar() {
     _aVigiar = false;
+    _aceitar = false;
     _prazo?.cancel();
   }
 

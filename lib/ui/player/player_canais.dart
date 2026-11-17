@@ -103,8 +103,13 @@ class PlayerCanaisState extends State<PlayerCanais> {
     _mostrarInfo();
     try {
       _vigia.comecar(); // o prazo conta desde o pedido do link
+      // ao mudar de canal, o anterior para já: senão continuava a tocar (e a mandar imagem e
+      // posição) enquanto o link novo se resolve
+      if (pedido > 1) await _player.stop();
+      if (!mounted || pedido != _pedido) return;
       final f = await widget.resolver(canal);
       if (!mounted || pedido != _pedido) return;
+      _vigia.abrindo();
       await _player.open(Media(f.url, httpHeaders: f.headers));
     } catch (e) {
       if (!mounted || pedido != _pedido) return;
