@@ -9,6 +9,8 @@ library;
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 import '../importar/importar.dart';
 import '../modelo/canal.dart';
 import '../modelo/conta.dart';
@@ -30,20 +32,64 @@ typedef ResolverDns = Future<ResultadoVerificacao?> Function(String host);
 // Só "o host não existe" é prova (11001 no Windows; EAI_NONAME/EAI_NODATA no Linux/Android).
 const _dnsInexistente = {11001, -2, 7, 8};
 
-Future<ResultadoVerificacao?> resolverDns(String host) async {
-  if (host.isEmpty || InternetAddress.tryParse(host) != null) return null;
+/// Nomes conhecidos que existem sempre: se nenhum resolve, o aparelho não tem rede (ou o DNS
+/// está em baixo) e "o host não existe" não prova nada. Só se pergunta o nome (sem dados da conta).
+const nomesControloDns = ['example.com', 'cloudflare.com', 'google.com'];
+
+const _semRede = ResultadoVerificacao(EstadoV.inconclusivo, 'sem rede (o DNS não confirmou o endereço)');
+
+/// Há uma interface de rede (sem ser a de loopback) com endereço? Na dúvida, sim (o nome de
+/// controlo decide).
+Future<bool> _temInterface() async {
   try {
-    await InternetAddress.lookup(host).timeout(const Duration(seconds: 5));
-    return null;
-  } on SocketException catch (e) {
-    final codigo = e.osError?.errorCode;
-    if (codigo != null && _dnsInexistente.contains(codigo)) {
-      return ResultadoVerificacao(EstadoV.naoFunciona, 'DNS: $host não existe');
-    }
-    return const ResultadoVerificacao(EstadoV.inconclusivo, 'DNS sem resposta');
-  } on TimeoutException {
-    return const ResultadoVerificacao(EstadoV.inconclusivo, 'DNS sem resposta');
+    final ifs = await NetworkInterface.list();
+    return ifs.any((i) => i.addresses.isNotEmpty);
+  } catch (_) {
+    return true;
   }
+}
+
+/// O host existe? null = existe; senão o resultado. "Não existe" só é prova com o aparelho em
+/// linha: sem rede, o Android responde EAI_NODATA (7) e o Windows 11001 a qualquer nome. Por isso,
+/// depois de "não existe": tem de haver uma interface de rede, um nome de controlo tem de resolver
+/// e o host tem de falhar outra vez da mesma maneira.
+Future<ResultadoVerificacao?> resolverDns(String host,
+    {@visibleForTesting Future<List<InternetAddress>> Function(String host) procurar = InternetAddress.lookup,
+    @visibleForTesting Future<bool> Function() temInterface = _temInterface,
+    @visibleForTesting List<String> nomesControlo = nomesControloDns}) async {
+  if (host.isEmpty || InternetAddress.tryParse(host) != null) return null;
+  const limite = Duration(seconds: 5);
+
+  /// null = resolve; o código do erro "não existe"; ou -1 para outra falha.
+  Future<int?> tentar(String h) async {
+    try {
+      await procurar(h).timeout(limite);
+      return null;
+    } on SocketException catch (e) {
+      final codigo = e.osError?.errorCode;
+      return codigo != null && _dnsInexistente.contains(codigo) ? codigo : -1;
+    } on TimeoutException {
+      return -1;
+    }
+  }
+
+  final r1 = await tentar(host);
+  if (r1 == null) return null;
+  if (r1 == -1) return const ResultadoVerificacao(EstadoV.inconclusivo, 'DNS sem resposta');
+  if (!await temInterface()) return _semRede;
+  var emLinha = false;
+  for (final n in nomesControlo) {
+    if (await tentar(n) == null) {
+      emLinha = true;
+      break;
+    }
+  }
+  if (!emLinha) return _semRede;
+  // a rede pode ter voltado a meio: o host tem de falhar outra vez
+  final r2 = await tentar(host);
+  if (r2 == null) return null;
+  if (r2 == -1) return const ResultadoVerificacao(EstadoV.inconclusivo, 'DNS sem resposta');
+  return ResultadoVerificacao(EstadoV.naoFunciona, 'DNS: $host não existe');
 }
 
 class Verificador {
