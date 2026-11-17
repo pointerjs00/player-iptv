@@ -9,6 +9,7 @@ import '../../rede/http.dart';
 import '../../verificar/canais_teste.dart';
 import '../../verificar/exportar.dart';
 import '../../verificar/servico.dart';
+import '../realce_foco.dart';
 import '../tema.dart';
 
 /// Separador "Verificar": canais de teste, verificar listas, selecionar e exportar
@@ -243,14 +244,14 @@ class _TelaVerificarState extends State<TelaVerificar> {
             ActionChip(label: const Text('Nenhuma'), onPressed: () => _selecionar((_) => false)),
           ]),
           const SizedBox(height: 8),
-          SegmentedButton<String>(
-            segments: const [
-              ButtonSegment(value: 'json', label: Text('Accounts.json (sfvip player)')),
-              ButtonSegment(value: 'ini', label: Text('Ficheiros .ini (Stalker Portal Player)')),
-            ],
-            selected: {_formato},
-            onSelectionChanged: (v) => setState(() => _formato = v.first),
-          ),
+          // chips (e não um SegmentedButton): com o comando, cada opção mostra o seu realce de foco
+          Wrap(spacing: 8, runSpacing: 8, children: [
+            for (final (v, t) in const [
+              ('json', 'Accounts.json (sfvip player)'),
+              ('ini', 'Ficheiros .ini (Stalker Portal Player)'),
+            ])
+              ChoiceChip(label: Text(t), selected: _formato == v, onSelected: (_) => setState(() => _formato = v)),
+          ]),
           const SizedBox(height: 8),
           Align(
             alignment: Alignment.centerLeft,
@@ -270,15 +271,18 @@ class _TelaVerificarState extends State<TelaVerificar> {
   Widget _linha(Lista l, ServicoVerificacao s) {
     final (cor, rotulo, icone) = visualEstado(l.ultima?.estado);
     final passo = s.passos[l.id];
-    return CheckboxListTile(
-      value: _selecao.contains(l.id),
-      onChanged: (v) => setState(() => v == true ? _selecao.add(l.id) : _selecao.remove(l.id)),
-      secondary: Icon(icone, color: cor),
-      title: Text(l.nomeMostrado),
-      subtitle: Text(passo ?? (l.ultima == null ? rotulo : '$rotulo · ${l.ultima!.motivo}'),
-          maxLines: 1, overflow: TextOverflow.ellipsis),
-      controlAffinity: ListTileControlAffinity.leading,
-      dense: true,
+    return RealceFoco(
+      construir: (_, aoMudarFoco) => CheckboxListTile(
+        onFocusChange: aoMudarFoco,
+        value: _selecao.contains(l.id),
+        onChanged: (v) => setState(() => v == true ? _selecao.add(l.id) : _selecao.remove(l.id)),
+        secondary: Icon(icone, color: cor),
+        title: Text(l.nomeMostrado),
+        subtitle: Text(passo ?? (l.ultima == null ? rotulo : '$rotulo · ${l.ultima!.motivo}'),
+            maxLines: 1, overflow: TextOverflow.ellipsis),
+        controlAffinity: ListTileControlAffinity.leading,
+        dense: true,
+      ),
     );
   }
 }

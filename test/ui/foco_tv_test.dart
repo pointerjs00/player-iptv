@@ -12,6 +12,7 @@ import 'package:player_iptv/protocolos/protocolo.dart';
 import 'package:player_iptv/rede/http.dart';
 import 'package:player_iptv/ui/conteudo/tela_conteudo.dart';
 import 'package:player_iptv/ui/inicio/tela_inicio.dart';
+import 'package:player_iptv/ui/realce_foco.dart';
 import 'package:player_iptv/ui/tema.dart';
 import 'package:player_iptv/ui/verificar/tela_verificar.dart';
 import 'package:player_iptv/verificar/estado.dart';
@@ -78,6 +79,62 @@ Future<void> _irPara(WidgetTester t, String texto) async {
     await _tecla(t, LogicalKeyboardKey.tab);
   }
   expect(chegou(), isTrue, reason: 'Tab até "$texto"; foco em: ${_focado()}');
+}
+
+/// Porque é que o widget com o foco não tem realce visível (null = tem). O realce é uma borda
+/// de pelo menos 2 px (acento ou clara) no próprio widget ou num antepassado próximo.
+String? _semRealce() {
+  final no = FocusManager.instance.primaryFocus;
+  final ctx = no?.context;
+  if (ctx == null || no is FocusScopeNode) return 'nada focado';
+  bool forte(BorderSide s) =>
+      s.width >= 2 && s.style != BorderStyle.none && (s.color == Cores.acento || s.color == Cores.texto);
+  bool caixa(Decoration? d) => d is BoxDecoration && d.border is Border && forte((d.border! as Border).top);
+  var ok = false;
+  void ver(Widget w) {
+    if (w is Material && w.shape is OutlinedBorder && forte((w.shape! as OutlinedBorder).side)) ok = true;
+    if (w is DecoratedBox && caixa(w.decoration)) ok = true;
+    if (w is InputDecorator && w.isFocused) {
+      final b = w.decoration.focusedBorder;
+      if (b is OutlineInputBorder && forte(b.borderSide)) ok = true;
+    }
+  }
+
+  var n = 0;
+  ver(ctx.widget);
+  (ctx as Element).visitAncestorElements((e) {
+    ver(e.widget);
+    return !ok && ++n < 45;
+  });
+  // ou dentro dele (o realce das abas fica no conteúdo da aba)
+  void descer(Element e, int nivel) {
+    if (ok || nivel > 40) return;
+    ver(e.widget);
+    e.visitChildren((f) => descer(f, nivel + 1));
+  }
+
+  ctx.visitChildren((f) => descer(f, 0));
+  return ok ? null : 'sem realce: ${_focado()} (${ctx.widget.runtimeType})';
+}
+
+/// Carrega em Tab `n` vezes e devolve os elementos focados sem realce visível.
+Future<Set<String>> _semRealceAoPercorrer(WidgetTester t, int n, {Set<String>? vistos}) async {
+  final falhas = <String>{};
+  await t.pump(); // o realce do foco inicial (autofocus) chega um frame depois
+  for (var i = 0; i < n; i++) {
+    final f = _semRealce();
+    if (f != null && f != 'nada focado') falhas.add(f);
+    vistos?.add(_focado());
+    await _tecla(t, LogicalKeyboardKey.tab);
+    await t.pump(); // o estado "focado" dos botões chega um frame depois
+  }
+  return falhas;
+}
+
+/// O realce como no comando da TV (nos testes o FocusManager começa em modo "toque").
+void _realceTv() {
+  FocusManager.instance.highlightStrategy = FocusHighlightStrategy.alwaysTraditional;
+  addTearDown(() => FocusManager.instance.highlightStrategy = FocusHighlightStrategy.automatic);
 }
 
 /// Verificador que espera até `soltar`.
@@ -420,6 +477,96 @@ void main() {
       await t.pumpAndSettle();
       expect(bib.listas, hasLength(1));
       expect(find.text('1 lista nova.'), findsOneWidget);
+    });
+
+    testWidgets('T1: no Android TV o realce do foco fica sempre ligado (mesmo depois de um toque)', (t) async {
+      addTearDown(() => FocusManager.instance.highlightStrategy = FocusHighlightStrategy.automatic);
+      await configurarRealceFoco(eTv: () async => true);
+      expect(FocusManager.instance.highlightStrategy, FocusHighlightStrategy.alwaysTraditional);
+      FocusManager.instance.highlightStrategy = FocusHighlightStrategy.automatic;
+      await configurarRealceFoco(eTv: () async => false);
+      expect(FocusManager.instance.highlightStrategy, FocusHighlightStrategy.automatic);
+      await configurarRealceFoco(eTv: () async => throw Exception('sem canal'));
+      expect(FocusManager.instance.highlightStrategy, FocusHighlightStrategy.automatic);
+    });
+
+    testWidgets('T1: Início — tudo o que tem foco tem realce; o cartão focado cresce', (t) async {
+      _realceTv();
+      _tamanho(t, 1920, 1080);
+      await t.runAsync(() => bib.adicionar([
+            Importada(contaDeLinha('http://a.com/c/ 00:1A:79:00:00:01')!),
+            Importada(contaDeLinha('http://b.com/l.m3u')!),
+          ]));
+      final s = ServicoVerificacao(bib);
+      await t.pumpWidget(_app(TelaInicio(
+          biblioteca: bib, servico: s, separadorVerificar: TelaVerificar(biblioteca: bib, servico: s))));
+      await t.pump();
+      expect(_focado(), contains('001A'));
+      expect(_semRealce(), isNull);
+      var escala = 1.0;
+      (FocusManager.instance.primaryFocus!.context! as Element).visitAncestorElements((e) {
+        final w = e.widget;
+        if (w is AnimatedScale) escala = w.scale;
+        return w is! GridView;
+      });
+      expect(escala, greaterThan(1), reason: 'o cartão focado aumenta um pouco');
+      final vistos = <String>{};
+      final falhas = await _semRealceAoPercorrer(t, 30, vistos: vistos);
+      expect(falhas, isEmpty);
+      for (final v in ['Listas', 'Verificar', 'Adicionar listas', 'Todas', 'Verificar todas', 'Verificar de novo',
+        'Mais opções', '[campo ]']) {
+        expect(vistos, contains(v), reason: 'percorreu: $vistos');
+      }
+    });
+
+    testWidgets('T1: Conteúdo — grupos, canais, estrela, pesquisa e Atualizar com realce', (t) async {
+      _realceTv();
+      _tamanho(t, 1200, 800);
+      final l = await comCache(t, pequena);
+      await mostrar(t, l);
+      final vistos = <String>{};
+      final falhas = await _semRealceAoPercorrer(t, 14, vistos: vistos);
+      expect(falhas, isEmpty);
+      expect(vistos, containsAll(['Portugal | 2', 'PT: RTP 1 HD', 'Pôr nos favoritos', 'Atualizar a lista de canais']),
+          reason: '$vistos');
+    });
+
+    testWidgets('T1: Conteúdo estreito — os grupos em chips têm realce', (t) async {
+      _realceTv();
+      _tamanho(t, 500, 800);
+      final l = await comCache(t, pequena);
+      await mostrar(t, l);
+      final vistos = <String>{};
+      final falhas = await _semRealceAoPercorrer(t, 12, vistos: vistos);
+      expect(falhas, isEmpty);
+      expect(vistos, contains('UK'), reason: '$vistos');
+    });
+
+    testWidgets('T1: Verificar — botões, chips, caixas e formato com realce', (t) async {
+      _realceTv();
+      _tamanho(t, 1200, 1600);
+      await t.runAsync(() => bib.adicionar([Importada(contaDeLinha('http://x.com/c/ 00:1A:79:00:00:01')!)]));
+      await t.pumpWidget(_app(Scaffold(body: TelaVerificar(biblioteca: bib, servico: ServicoVerificacao(bib)))));
+      await t.pump();
+      final vistos = <String>{};
+      final falhas = await _semRealceAoPercorrer(t, 25, vistos: vistos);
+      expect(falhas, isEmpty);
+      expect(vistos.join(' / '), allOf(contains('Iniciar pesquisa'), contains('Verificar todas'), contains('Todas'),
+          contains('001X'), contains('Accounts.json')));
+    });
+
+    testWidgets('T1: diálogo "Adicionar listas" — botões e campo com realce', (t) async {
+      _realceTv();
+      _tamanho(t, 960, 540);
+      await t.pumpWidget(_app(TelaInicio(biblioteca: bib)));
+      await t.pump();
+      expect(_semRealce(), isNull);
+      await _tecla(t, LogicalKeyboardKey.select);
+      await t.pumpAndSettle();
+      final vistos = <String>{};
+      final falhas = await _semRealceAoPercorrer(t, 5, vistos: vistos);
+      expect(falhas, isEmpty);
+      expect(vistos.join(' / '), allOf(contains('Escolher ficheiros'), contains('Cancelar'), contains('Adicionar')));
     });
   });
 }

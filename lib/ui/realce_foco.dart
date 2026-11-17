@@ -1,0 +1,97 @@
+import 'dart:io';
+
+import 'package:flutter/services.dart';
+import 'package:material_ui/material_ui.dart';
+
+import 'tema.dart';
+
+/// O realce do foco para o comando da TV: uma borda de 3 px na cor de acento e um fundo
+/// ligeiramente mais claro (e, nos cartões, um ligeiro aumento).
+abstract final class Realce {
+  static const borda = BorderSide(color: Cores.acento, width: 3);
+
+  /// Nos botões cheios (já da cor de acento) a borda clara vê-se melhor.
+  static const bordaClara = BorderSide(color: Cores.texto, width: 3);
+
+  /// O fundo de quem tem o foco (o `focusColor` do tema e o overlay dos botões).
+  static final fundo = Cores.acento.withValues(alpha: .22);
+  static const duracao = Duration(milliseconds: 120);
+}
+
+const _canalTv = MethodChannel('player_iptv/tv');
+
+/// Android TV (ou sem ecrã tátil)? Pergunta-se ao Android (MainActivity).
+Future<bool> _eTvAndroid() async =>
+    Platform.isAndroid && (await _canalTv.invokeMethod<bool>('eTv') ?? false);
+
+/// Na TV o realce do foco fica sempre ligado: no modo automático, um toque (por exemplo no
+/// emulador ou num comando com rato) escondia-o e com as setas não voltava.
+Future<void> configurarRealceFoco({Future<bool> Function()? eTv}) async {
+  bool tv;
+  try {
+    tv = await (eTv ?? _eTvAndroid)();
+  } catch (_) {
+    tv = false;
+  }
+  if (tv) FocusManager.instance.highlightStrategy = FocusHighlightStrategy.alwaysTraditional;
+}
+
+/// Mostra o realce à volta de `child` quando `focado` (e o modo de realce é o do teclado/comando).
+class MolduraFoco extends StatelessWidget {
+  const MolduraFoco({super.key, required this.focado, required this.child, this.raio = 10, this.escala = 1});
+
+  final bool focado;
+  final Widget child;
+  final double raio;
+
+  /// O tamanho com o foco (1 = não cresce).
+  final double escala;
+
+  @override
+  Widget build(BuildContext context) {
+    final ver = focado && FocusManager.instance.highlightMode == FocusHighlightMode.traditional;
+    final r = BorderRadius.circular(raio);
+    return AnimatedScale(
+      scale: ver ? escala : 1,
+      duration: Realce.duracao,
+      child: DecoratedBox(
+        position: DecorationPosition.foreground,
+        decoration: ver
+            // só a borda: o fundo mais claro é o focusColor do tema (o InkWell pinta-o; uma cor
+            // aqui esconderia o ink do ListTile)
+            ? BoxDecoration(borderRadius: r, border: Border.fromBorderSide(Realce.borda))
+            : BoxDecoration(borderRadius: r),
+        child: child,
+      ),
+    );
+  }
+}
+
+/// Para widgets que dizem quando ganham/perdem o foco (`onFocusChange` do ListTile, InkWell...):
+/// `construir(context, aoMudarFoco)` passa `aoMudarFoco` ao widget e o realce fica à volta dele.
+class RealceFoco extends StatefulWidget {
+  const RealceFoco({super.key, required this.construir, this.raio = 10, this.escala = 1});
+
+  final Widget Function(BuildContext context, ValueChanged<bool> aoMudarFoco) construir;
+  final double raio;
+  final double escala;
+
+  @override
+  State<RealceFoco> createState() => _RealceFocoState();
+}
+
+class _RealceFocoState extends State<RealceFoco> {
+  bool _focado = false;
+
+  void _mudou(bool f) {
+    if (mounted && f != _focado) setState(() => _focado = f);
+  }
+
+  @override
+  Widget build(BuildContext context) => MolduraFoco(
+        focado: _focado,
+        raio: widget.raio,
+        escala: widget.escala,
+        child: widget.construir(context, _mudou),
+      );
+}

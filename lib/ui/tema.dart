@@ -1,5 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 
+import 'realce_foco.dart';
+
 /// Cores do verificador (tema escuro).
 abstract final class Cores {
   static const fundo = Color(0xFF0E1116);
@@ -32,16 +34,40 @@ ThemeData temaApp() {
       ),
       margin: EdgeInsets.zero,
     ),
-    // o foco tem de se ver bem na TV
-    focusColor: Cores.acento.withValues(alpha: .25),
+    // o foco tem de se ver bem na TV: borda de 3 px e fundo mais claro em tudo o que é focável
+    focusColor: _fundoFoco,
+    filledButtonTheme: FilledButtonThemeData(style: _focoBotao(_bordaFocoClara)),
+    elevatedButtonTheme: ElevatedButtonThemeData(style: _focoBotao(_bordaFoco)),
+    outlinedButtonTheme: OutlinedButtonThemeData(style: _focoBotao(_bordaFoco)),
+    textButtonTheme: TextButtonThemeData(style: _focoBotao(_bordaFoco)),
+    iconButtonTheme: IconButtonThemeData(style: _focoBotao(_bordaFoco)),
+    segmentedButtonTheme: SegmentedButtonThemeData(style: _focoBotao(_bordaFoco)),
+    chipTheme: ChipThemeData(
+      side: WidgetStateBorderSide.resolveWith((s) => s.contains(WidgetState.focused) ? _bordaFoco : null),
+    ),
+    tabBarTheme: TabBarThemeData(overlayColor: _seFocado(_fundoFoco)),
     inputDecorationTheme: const InputDecorationTheme(
       filled: true,
       fillColor: Cores.superficie2,
       isDense: true,
       border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.all(Radius.circular(10)),
+        borderSide: _bordaFoco,
+      ),
     ),
   );
 }
+
+const _bordaFoco = Realce.borda;
+const _bordaFocoClara = Realce.bordaClara;
+final _fundoFoco = Realce.fundo;
+
+/// `v` só no estado focado; nos outros estados fica o valor por omissão do botão.
+WidgetStateProperty<T?> _seFocado<T>(T v) =>
+    WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.focused) ? v : null);
+
+ButtonStyle _focoBotao(BorderSide borda) => ButtonStyle(side: _seFocado(borda), overlayColor: _seFocado(_fundoFoco));
 
 /// Cor e texto de um estado da verificação.
 (Color, String, IconData) visualEstado(String? estado) => switch (estado) {

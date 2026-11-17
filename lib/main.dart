@@ -11,6 +11,7 @@ import 'modelo/canal.dart';
 import 'rede/http.dart';
 import 'ui/inicio/tela_inicio.dart';
 import 'ui/player/player_canais.dart';
+import 'ui/realce_foco.dart';
 import 'ui/tema.dart';
 import 'ui/verificar/tela_verificar.dart';
 import 'verificar/servico.dart';
@@ -42,6 +43,7 @@ Future<void> main(List<String> args) async {
         'Feche outros programas que as possam ter abertas e abra a app de novo.'));
     return;
   }
+  await configurarRealceFoco(); // Android TV: o realce do foco sempre visível
   runApp(AppPlayerIptv(biblioteca: biblioteca));
 }
 

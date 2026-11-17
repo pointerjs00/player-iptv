@@ -9,6 +9,7 @@ import '../../protocolos/protocolo.dart';
 import '../../rede/http.dart';
 import '../campo_tv.dart';
 import '../player/abrir_canal.dart';
+import '../realce_foco.dart';
 import '../tema.dart';
 
 const grupoFavoritos = '★ Favoritos';
@@ -328,14 +329,17 @@ class _TelaConteudoState extends State<TelaConteudo> {
             itemBuilder: (_, i) {
               final g = grupos[i];
               final n = g == grupoFavoritos ? widget.lista.favoritos.length : (_contagens[g] ?? 0);
-              return ListTile(
-                dense: true,
-                // o foco começa no grupo escolhido
-                autofocus: g == _grupo,
-                selected: g == _grupo && _qCanais.trim().isEmpty,
-                title: Text(g, maxLines: 1, overflow: TextOverflow.ellipsis),
-                trailing: Text('$n', style: const TextStyle(color: Cores.texto2)),
-                onTap: () => setState(() => _grupo = g),
+              return RealceFoco(
+                construir: (_, aoMudarFoco) => ListTile(
+                  onFocusChange: aoMudarFoco,
+                  dense: true,
+                  // o foco começa no grupo escolhido
+                  autofocus: g == _grupo,
+                  selected: g == _grupo && _qCanais.trim().isEmpty,
+                  title: Text(g, maxLines: 1, overflow: TextOverflow.ellipsis),
+                  trailing: Text('$n', style: const TextStyle(color: Cores.texto2)),
+                  onTap: () => setState(() => _grupo = g),
+                ),
               );
             },
           ),
@@ -359,22 +363,25 @@ class _TelaConteudoState extends State<TelaConteudo> {
         itemBuilder: (_, i) {
           final c = canais[i];
           final fav = widget.lista.favoritos.contains(c.id);
-          return ListTile(
-            focusNode: identical(c, _canalAFocar) ? _focoRegresso : null,
-            autofocus: focarPrimeiro && i == 0,
-            leading: _Logo(c.logo),
-            title: Text(c.nome, maxLines: 1, overflow: TextOverflow.ellipsis),
-            subtitle: pesquisa ? Text(c.grupo, maxLines: 1, style: const TextStyle(fontSize: 12)) : null,
-            trailing: IconButton(
-              tooltip: fav ? 'Tirar dos favoritos' : 'Pôr nos favoritos',
-              icon: Icon(fav ? Icons.star : Icons.star_border, color: fav ? Cores.aviso : null),
-              onPressed: () {
-                // o conjunto muda logo; a gravação em disco segue em segundo plano
-                widget.biblioteca.alternarFavorito(widget.lista.id, c.id);
-                setState(() => _versaoFavoritos++);
-              },
+          return RealceFoco(
+            construir: (_, aoMudarFoco) => ListTile(
+              onFocusChange: aoMudarFoco,
+              focusNode: identical(c, _canalAFocar) ? _focoRegresso : null,
+              autofocus: focarPrimeiro && i == 0,
+              leading: _Logo(c.logo),
+              title: Text(c.nome, maxLines: 1, overflow: TextOverflow.ellipsis),
+              subtitle: pesquisa ? Text(c.grupo, maxLines: 1, style: const TextStyle(fontSize: 12)) : null,
+              trailing: IconButton(
+                tooltip: fav ? 'Tirar dos favoritos' : 'Pôr nos favoritos',
+                icon: Icon(fav ? Icons.star : Icons.star_border, color: fav ? Cores.aviso : null),
+                onPressed: () {
+                  // o conjunto muda logo; a gravação em disco segue em segundo plano
+                  widget.biblioteca.alternarFavorito(widget.lista.id, c.id);
+                  setState(() => _versaoFavoritos++);
+                },
+              ),
+              onTap: () => _abrirCanal(canais, i),
             ),
-            onTap: () => _abrirCanal(canais, i),
           );
         },
       ),
