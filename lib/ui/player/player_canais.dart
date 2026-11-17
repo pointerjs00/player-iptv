@@ -9,7 +9,10 @@ import '../../dados/preferencias_player.dart';
 import '../../modelo/canal.dart';
 import '../../protocolos/protocolo.dart';
 import '../../rede/http.dart';
+import '../design/componentes.dart';
+import '../design/ecra.dart';
 import 'aviso_buffering.dart';
+import 'compativel_sessao.dart';
 import 'configuracao_mpv.dart';
 import 'diagnostico.dart';
 import 'estatisticas.dart';
@@ -47,15 +50,23 @@ class PlayerCanais extends StatefulWidget {
   State<PlayerCanais> createState() => PlayerCanaisState();
 }
 
-class PlayerCanaisState extends State<PlayerCanais> {
-  // a configuração do mpv para direto (buffer, reconexão, descodificação por plataforma)
-  late final ConfiguracaoMpv _config =
-      ConfiguracaoMpv.para(PlataformaVideo.atual, modo: PreferenciasPlayer.atual.modoAndroid);
-  late final Player _player = Player(configuration: _config.configuracaoPlayer);
-  late final VideoController _video;
-  late final Future<void> _configurado;
+class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver {
+  static final _android = PlataformaVideo.atual == PlataformaVideo.android;
+
+  // a configuração do mpv para direto (buffer, reconexão, descodificação por plataforma); o
+  // player é recriado se um canal precisar do modo "Compatível" (o vo fixa-se ao criar)
+  ModoDescodificacao _modo = PreferenciasPlayer.atual.modoAndroid;
+  late ConfiguracaoMpv _config;
+  late Player _player;
+  late VideoController _video;
+  late Future<void> _configurado;
+  final _subsPlayer = <StreamSubscription>[];
+  int _larguraVista = 0;
   final _taxa = TaxaEcra();
   double? _hzPedidos;
+  double? _hzEcra;
+  String? _avisoModo;
+  Timer? _esconderAviso;
   bool _estatisticas = false;
   bool _buffering = false;
   double? _percentagemBuffer;
@@ -75,10 +86,12 @@ class PlayerCanaisState extends State<PlayerCanais> {
       if (!mounted) return;
       setState(() { _aAbrir = false; _erro = null; });
       _ajustarTaxa(_pedido);
+      _vigiarImagem(_pedido);
     },
     aoFalhar: (motivo) {
       if (!mounted) return;
       _player.stop();
+      _taxa.repor();
       setState(() { _erro = motivo; _aAbrir = false; _info = true; });
     },
   );
@@ -86,25 +99,70 @@ class PlayerCanaisState extends State<PlayerCanais> {
   @override
   void initState() {
     super.initState();
-    _subs.add(_player.stream.error.listen((e) {
+    WidgetsBinding.instance.addObserver(this);
+    _criarPlayer();
+    _abrir();
+  }
+
+  void _criarPlayer() {
+    _config = ConfiguracaoMpv.para(PlataformaVideo.atual, modo: _modo);
+    _player = Player(configuration: _config.configuracaoPlayer);
+    _subsPlayer.add(_player.stream.error.listen((e) {
       if (mounted && e.isNotEmpty) {
         _vigia.parar();
+        _taxa.repor();
         setState(() { _erro = mensagemErroPlayer(e); _aAbrir = false; _info = true; });
       }
     }));
-    _subs.add(_player.stream.buffering.listen((b) {
+    _subsPlayer.add(_player.stream.buffering.listen((b) {
       _vigia.buffering(b);
-      if (mounted && b != _buffering) setState(() => _buffering = b);
+      if (!mounted) return;
+      if (b != _buffering || (!b && _percentagemBuffer != null)) {
+        // o % de uma paragem não passa para a seguinte
+        setState(() { _buffering = b; if (!b) _percentagemBuffer = null; });
+      }
     }));
-    _subs.add(_player.stream.bufferingPercentage.listen((p) {
-      if (mounted && _buffering) setState(() => _percentagemBuffer = p);
+    _subsPlayer.add(_player.stream.bufferingPercentage.listen((p) {
+      // guarda-se sempre: o mpv pode mandar o % antes do "buffering"
+      _percentagemBuffer = p;
+      if (mounted && _buffering) setState(() {});
     }));
-    _subs.add(_player.stream.width.listen(_vigia.largura));
-    _subs.add(_player.stream.position.listen(_vigia.tempo));
+    _subsPlayer.add(_player.stream.width.listen((w) {
+      if ((w ?? 0) > 0) _larguraVista = w!;
+      _vigia.largura(w);
+    }));
+    _subsPlayer.add(_player.stream.position.listen(_vigia.tempo));
     // o controlador de vídeo antes de configurar o mpv (as propriedades esperam por ele)
     _video = VideoController(_player, configuration: _config.configuracaoVideo);
     _configurado = aplicarConfiguracao(_player, _config);
-    _abrir();
+  }
+
+  /// Recria o player noutro modo de descodificação (o vo do Android fixa-se ao criar).
+  Future<void> _trocarModo(ModoDescodificacao modo) async {
+    for (final s in _subsPlayer) {
+      s.cancel();
+    }
+    _subsPlayer.clear();
+    final antigo = _player;
+    _modo = modo;
+    _criarPlayer();
+    if (mounted) setState(() {});
+    await antigo.dispose();
+  }
+
+  /// A chave do canal para lembrar, nesta sessão, que precisa do modo "Compatível".
+  String _chave(Canal c) => '${widget.nomeLista}|${c.id}';
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    switch (state) {
+      case AppLifecycleState.paused || AppLifecycleState.hidden || AppLifecycleState.detached:
+        _taxa.repor(); // a TV volta ao modo normal fora do player
+      case AppLifecycleState.resumed:
+        if (!_aAbrir && _erro == null) _ajustarTaxa(_pedido);
+      case AppLifecycleState.inactive:
+        break;
+    }
   }
 
   @override
@@ -131,17 +189,25 @@ class PlayerCanaisState extends State<PlayerCanais> {
       _vigia.comecar(); // o prazo conta desde o pedido do link
       // ao mudar de canal, o anterior para já: senão continuava a tocar (e a mandar imagem e
       // posição) enquanto o link novo se resolve
-      if (pedido > 1) await _player.stop();
+      final modo =
+          _android ? CompativelNaSessao.instancia.modoPara(_chave(canal), PreferenciasPlayer.atual.modoAndroid) : _modo;
+      if (modo != _modo) {
+        await _trocarModo(modo);
+      } else if (pedido > 1) {
+        await _player.stop();
+      }
       if (!mounted || pedido != _pedido) return;
       final f = await widget.resolver(canal);
       if (!mounted || pedido != _pedido) return;
       await _configurado;
       if (!mounted || pedido != _pedido) return;
       _vigia.abrindo();
+      _larguraVista = 0;
       await _player.open(Media(f.url, httpHeaders: f.headers));
     } catch (e) {
       if (!mounted || pedido != _pedido) return;
       _vigia.parar();
+      _taxa.repor();
       setState(() {
         _erro = e is ErroLista ? e.mensagem : descreverErro(e);
         _aAbrir = false;
@@ -160,7 +226,9 @@ class PlayerCanaisState extends State<PlayerCanais> {
   /// Android TV / Fire TV: pede o modo de ecrã que combina com o fps do canal (50 fps -> 50 Hz),
   /// para cada imagem ficar o mesmo tempo no ecrã (sem judder).
   Future<void> _ajustarTaxa(int pedido) async {
-    if (PlataformaVideo.atual != PlataformaVideo.android || !PreferenciasPlayer.atual.ajustarTaxaEcra) return;
+    if (!_android) return;
+    await _lerHzEcra();
+    if (!PreferenciasPlayer.atual.ajustarTaxaEcra) return;
     final mpv = _player.platform;
     if (mpv is! NativePlayer) return;
     // o container-fps costuma vir logo; senão o medido, que demora uns segundos
@@ -172,7 +240,12 @@ class PlayerCanaisState extends State<PlayerCanais> {
         if (fps > 0) {
           if (!mounted || pedido != _pedido) return;
           final hz = await _taxa.ajustarPara(fps);
-          if (hz != null && mounted) setState(() => _hzPedidos = hz);
+          if (hz != null && mounted) {
+            setState(() => _hzPedidos = hz);
+            // a TV demora a mudar de modo: os Hz do sistema leem-se depois
+            await Future<void>.delayed(const Duration(seconds: 3));
+            await _lerHzEcra();
+          }
           return;
         }
         await Future<void>.delayed(const Duration(seconds: 1));
@@ -181,6 +254,51 @@ class PlayerCanaisState extends State<PlayerCanais> {
       // o player fechou entretanto
     }
   }
+
+  /// Os Hz do ecrã segundo o Android (o mpv não os sabe com `mediacodec_embed`).
+  Future<void> _lerHzEcra() async {
+    final hz = await _taxa.hzAtual();
+    if (mounted && hz != _hzEcra) setState(() => _hzEcra = hz);
+  }
+
+  /// Descodificação direta: se o canal abriu mas não há imagem (o descodificador recusou o
+  /// stream e o mpv passou para software, que o mediacodec_embed não mostra), reabre este canal
+  /// em "Compatível" nesta sessão. Só uma vez por canal (nunca em ciclo).
+  Future<void> _vigiarImagem(int pedido) async {
+    if (!_android || _modo != ModoDescodificacao.direto) return;
+    final player = _player;
+    try {
+      // duas leituras seguidas sem imagem (a saída de vídeo do media_kit troca de vo no arranque)
+      for (final espera in const [Duration(seconds: 2), Duration(seconds: 1)]) {
+        await Future<void>.delayed(espera);
+        if (!mounted || pedido != _pedido || !identical(player, _player)) return;
+        final mpv = player.platform;
+        if (mpv is! NativePlayer) return;
+        final m = {
+          for (final p in const ['video-codec', 'hwdec-current', 'vo-configured']) p: await mpv.getProperty(p),
+        };
+        if (!semImagemDireta(larguraVista: _larguraVista, propriedades: m)) return;
+      }
+    } catch (_) {
+      return; // o player fechou entretanto
+    }
+    if (!mounted || pedido != _pedido) return;
+    if (!CompativelNaSessao.instancia.marcar(_chave(_canais[_i]))) return;
+    _mostrarAvisoModo('Modo compatível ativado para este canal');
+    _abrir();
+  }
+
+  void _mostrarAvisoModo(String texto) {
+    _esconderAviso?.cancel();
+    setState(() => _avisoModo = texto);
+    _esconderAviso = Timer(const Duration(seconds: 5), () {
+      if (mounted) setState(() => _avisoModo = null);
+    });
+  }
+
+  /// Comando/teclado: Menu ou I; telemóvel (sem essas teclas): toque longo.
+  static String _teclasEstatisticas(BuildContext context) =>
+      ecraTv(context) || !PlayerCanaisState._android ? 'Menu/I estatísticas' : 'toque longo: estatísticas';
 
   /// Mostra/esconde a sobreposição "Estatísticas" (também para a Task 5).
   void alternarEstatisticas() => setState(() => _estatisticas = !_estatisticas);
@@ -228,10 +346,12 @@ class PlayerCanaisState extends State<PlayerCanais> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _esconder?.cancel();
+    _esconderAviso?.cancel();
     _vigia.parar();
-    _taxa.repor();
-    for (final s in _subs) {
+    _taxa.fechar();
+    for (final s in [..._subs, ..._subsPlayer]) {
       s.cancel();
     }
     _player.dispose();
@@ -254,9 +374,22 @@ class PlayerCanaisState extends State<PlayerCanais> {
         child: ColoredBox(
           color: Colors.black,
           child: Stack(fit: StackFit.expand, children: [
-            Video(controller: _video, controls: NoVideoControls, fill: Colors.black),
+            Video(key: ObjectKey(_video), controller: _video, controls: NoVideoControls, fill: Colors.black),
             if (_aAbrir) const Center(child: CircularProgressIndicator()),
             // a meio do canal, à espera de dados (o arranque tem o indicador de cima)
+            if (_avisoModo != null)
+              Align(
+                alignment: Alignment.topCenter,
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 24),
+                  child: SuperficieVidro(
+                    cor: const Color(0xD90B0F17),
+                    raio: 14,
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    child: Text(_avisoModo!, style: const TextStyle(color: Colors.white, fontSize: 16)),
+                  ),
+                ),
+              ),
             AvisoBuffering(aberto: !_aAbrir && _erro == null, buffering: _buffering, percentagem: _percentagemBuffer),
             if (_estatisticas)
               Positioned(
@@ -264,10 +397,10 @@ class PlayerCanaisState extends State<PlayerCanais> {
                 left: 24,
                 child: PainelEstatisticas(
                   ler: _lerMpv,
-                  reamostra: _config.reamostraRitmo,
+                  geracao: _pedido,
+                  hzEcra: _hzEcra,
                   extra: [
-                    if (PlataformaVideo.atual == PlataformaVideo.android)
-                      ('Modo de descodificação', PreferenciasPlayer.atual.modoAndroid.rotulo),
+                    if (_android) ('Modo de descodificação', _modo.rotulo),
                     ('Saída · hwdec pedido', '${_config.vo} · ${_config.hwdec}'),
                     if (_hzPedidos != null) ('Taxa do ecrã pedida', '${_hzPedidos!.toStringAsFixed(2)} Hz'),
                   ],
@@ -309,7 +442,7 @@ class PlayerCanaisState extends State<PlayerCanais> {
                     Text('${canal.grupo} · ${_i + 1}/${_canais.length} · ${widget.nomeLista}',
                         style: const TextStyle(color: Colors.white70)),
                     const SizedBox(height: 4),
-                    const Text('▲▼ mudar de canal · OK informação · Menu/I estatísticas · Voltar sair',
+                    Text('▲▼ mudar de canal · OK informação · ${_teclasEstatisticas(context)} · Voltar sair',
                         style: TextStyle(color: Colors.white54, fontSize: 12)),
                   ]),
                 ),
