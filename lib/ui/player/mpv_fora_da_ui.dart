@@ -363,7 +363,8 @@ void pararSemEsperar(int handle) {
 /// estiver a tocar nesse momento, a thread de áudio dele chama um método nulo e a app morre
 /// ("JNI DETECTED ERROR: mid == null", visto no emulador ao sair e entrar no player). Por isso um
 /// player novo só abre um canal depois de os players largados terem fechado o áudio (o `dispose`
-/// do media_kit faz `stop`), no máximo [limite] (um player preso não pode impedir o seguinte).
+/// do media_kit faz `stop`). Cada player largado conta no máximo [limite] desde que foi largado:
+/// um player preso (o `dispose` dele nunca acaba) atrasa uma abertura uma vez, nunca as seguintes.
 class VezDoAudio {
   VezDoAudio({this.limite = const Duration(seconds: 4)});
   static final instancia = VezDoAudio();
@@ -373,18 +374,16 @@ class VezDoAudio {
 
   /// `fechado` acaba quando o player largado tiver fechado o áudio (destruído).
   void largar(Future<void> fechado) {
-    final f = fechado.then<void>((_) {}, onError: (_) {});
+    late final Future<void> f;
+    f = fechado.then<void>((_) {}, onError: (_) {}).timeout(limite, onTimeout: () {
+      debugPrint('mpv: um player largado não fechou o áudio em ${limite.inMilliseconds} ms; deixa de se esperar por ele');
+    }).whenComplete(() => _largados.remove(f));
     _largados.add(f);
-    f.whenComplete(() => _largados.remove(f));
   }
 
-  /// Espera que os players largados fechem o áudio (no máximo [limite]).
+  /// Espera que os players largados fechem o áudio (cada um no máximo [limite] desde que foi largado).
   Future<void> esperar() async {
     if (_largados.isEmpty) return;
-    try {
-      await Future.wait(_largados.toList()).timeout(limite);
-    } on TimeoutException {
-      debugPrint('mpv: um player largado ainda não fechou o áudio; abre-se na mesma');
-    }
+    await Future.wait(_largados.toList());
   }
 }
