@@ -142,7 +142,7 @@ class Verificador {
 
   Future<ResultadoVerificacao> _testarPerfil(Conta conta, Protocolo proto, ConteudoLista conteudo, PerfilCanal p,
       Duration timeout, Cancelamento? can, Aviso? aviso) async {
-    final cands = candidatos(p, conteudo.canais, (c) => c.nome, (c) => c.id).take(maxCandidatos).toList();
+    final cands = candidatos(p, conteudo.canais, (c) => c.nome, (c) => c.id, (c) => c.grupo).take(maxCandidatos).toList();
     if (cands.isEmpty) {
       if (!conteudo.completa) {
         return ResultadoVerificacao(EstadoV.inconclusivo, '${p.nome} não encontrada (lista de canais incompleta)');
