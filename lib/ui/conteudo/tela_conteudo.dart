@@ -13,11 +13,24 @@ import '../design/design.dart';
 import '../player/abrir_canal.dart';
 import '../realce_foco.dart';
 import '../tema.dart';
+import '../../verificar/estado.dart';
+import '../../verificar/verificador.dart';
 
 const grupoFavoritos = '★ Favoritos';
 
 /// Pede os canais de uma lista ao servidor (o protocolo da conta; substituível nos testes).
 typedef AbrirLista = Future<ConteudoLista> Function(Conta conta, {Cancelamento? cancelamento, Aviso? aviso});
+
+/// O passo do carregamento para o loader ("a pedir os canais · página 3/12" → "A pedir os
+/// canais · página 3/12" e 0.25) e o progresso quando há total. Sem o caminho do portal no fim.
+(String, double?) passoCarregamento(String aviso) {
+  var t = aviso.trim().replaceFirst(RegExp(r'\s*\([^)]*\)$'), '');
+  if (t.isEmpty) return ('A ligar…', null);
+  t = t[0].toUpperCase() + t.substring(1);
+  final m = RegExp(r'página (\d+)/(\d+)').firstMatch(t);
+  final total = m == null ? 0 : int.parse(m[2]!);
+  return (t, total > 0 ? (int.parse(m![1]!) / total).clamp(0.0, 1.0) : null);
+}
 
 Future<ConteudoLista> _abrirPeloProtocolo(Conta conta, {Cancelamento? cancelamento, Aviso? aviso}) =>
     Protocolo.para(conta).abrir(conta, cancelamento: cancelamento, aviso: aviso);
@@ -26,7 +39,7 @@ Future<ConteudoLista> _abrirPeloProtocolo(Conta conta, {Cancelamento? cancelamen
 /// cima). A pesquisa procura canais em todos os grupos, sem acentos nem maiúsculas.
 class TelaConteudo extends StatefulWidget {
   const TelaConteudo({super.key, required this.biblioteca, required this.lista, this.abrir,
-      this.atualizar = false, AbrirLista? abrirLista})
+      this.atualizar = false, AbrirLista? abrirLista, this.dns = resolverDns})
       : abrirLista = abrirLista ?? _abrirPeloProtocolo;
 
   final Biblioteca biblioteca;
@@ -41,6 +54,9 @@ class TelaConteudo extends StatefulWidget {
   /// Pede os canais ao servidor.
   final AbrirLista abrirLista;
 
+  /// Depois de uma falha: o host existe? (DNS inexistente = a lista não funciona)
+  final ResolverDns dns;
+
   @override
   State<TelaConteudo> createState() => _TelaConteudoState();
 }
@@ -51,6 +67,13 @@ class _TelaConteudoState extends State<TelaConteudo> {
   String _aviso = '';
   bool _aCarregar = false;
   Cancelamento? _cancelamento;
+
+  /// Os canais mostrados vêm da cache gravada a esta hora (null = do servidor, ou nenhuns).
+  DateTime? _daCache;
+
+  /// O "Cancelar" do loader, e quem tinha o foco antes do loader (volta para lá ao fechar).
+  final _focoCancelar = FocusNode(debugLabel: 'Cancelar o carregamento');
+  FocusNode? _focoAntes;
   String? _grupo;
   String _qCanais = '';
   String _qGrupos = '';
@@ -85,13 +108,16 @@ class _TelaConteudoState extends State<TelaConteudo> {
     _atrasoPesquisa?.cancel();
     _scrollCanais.dispose();
     _focoRegresso.dispose();
+    _focoCancelar.dispose();
     super.dispose();
   }
 
   Future<void> _iniciar() async {
     final cache = await widget.biblioteca.canaisEmCache(widget.lista.id);
+    final data = cache == null ? null : await widget.biblioteca.dataCache(widget.lista.id);
     if (!mounted) return;
     if (cache != null && cache.canais.isNotEmpty) {
+      _daCache = data ?? DateTime.now();
       _mostrar(cache);
       if (widget.atualizar) await _carregar();
     } else {
@@ -141,23 +167,84 @@ class _TelaConteudoState extends State<TelaConteudo> {
   Future<void> _carregar() async {
     _cancelamento?.cancelar();
     final can = _cancelamento = Cancelamento();
+    final antes = FocusManager.instance.primaryFocus;
+    if (antes != _focoCancelar) _focoAntes = antes;
     setState(() {
       _aCarregar = true;
       _erro = null;
-      _aviso = 'a ligar…';
+      _aviso = '';
+    });
+    // o loader cobre o ecrã: o foco vai para o "Cancelar"
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _aCarregar && _focoCancelar.context != null) _focoCancelar.requestFocus();
     });
     try {
-      final c = await widget.abrirLista(widget.lista.conta, cancelamento: can,
-          aviso: (t) { if (mounted) setState(() => _aviso = t); });
+      final conta = widget.lista.conta;
+      final c = await widget.abrirLista(conta, cancelamento: can,
+          aviso: (t) { if (mounted && identical(can, _cancelamento)) setState(() => _aviso = t); });
       await widget.biblioteca.guardarCanais(widget.lista.id, c);
-      if (mounted) _mostrar(c);
+      if (mounted) {
+        _daCache = null;
+        _mostrar(c);
+      }
     } on Cancelado {
       // saiu do ecrã ou carregou em Cancelar
     } catch (e) {
-      if (mounted) setState(() => _erro = e is ErroLista ? e.mensagem : descreverErro(e));
+      final texto = e is ErroLista ? e.mensagem : descreverErro(e);
+      if (mounted && identical(can, _cancelamento)) {
+        if (_conteudo == null) {
+          setState(() => _erro = texto);
+        } else {
+          // os canais da cache continuam à vista
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Não foi possível atualizar: $texto')));
+        }
+      }
+      unawaited(_marcarSeMorta(e));
     } finally {
-      if (mounted && identical(can, _cancelamento)) setState(() => _aCarregar = false);
+      if (mounted && identical(can, _cancelamento)) {
+        setState(() => _aCarregar = false);
+        _devolverFoco();
+      }
     }
+  }
+
+  /// O loader fechou: o foco volta a quem o tinha (por exemplo "Atualizar"); sem ninguém, os
+  /// widgets com foco automático (grupo escolhido, "Tentar de novo") ficam com ele.
+  void _devolverFoco() {
+    final antes = _focoAntes;
+    _focoAntes = null;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (antes != null && antes.context != null && antes is! FocusScopeNode && antes.canRequestFocus) {
+        antes.requestFocus();
+      }
+    });
+  }
+
+  /// Uma falha que prova que a lista não funciona (conta recusada/expirada/desativada, portal
+  /// inexistente — `ErroLista.definitivo` — ou o host que já não existe no DNS) fica registada
+  /// como uma verificação "Não funciona". Erros temporários (tempo esgotado, 5xx, 459…) não mudam
+  /// o estado.
+  Future<void> _marcarSeMorta(Object e) async {
+    ResultadoVerificacao? r;
+    if (e is ErroLista && e.definitivo) {
+      r = ResultadoVerificacao(EstadoV.naoFunciona, e.mensagem);
+    } else if (e is! ErroHttp) {
+      // o servidor respondeu (ErroHttp): o host existe. Senão, pode ser o DNS
+      try {
+        final d = await widget.dns(hostDe(widget.lista.conta.endereco));
+        if (d?.estado == EstadoV.naoFunciona) r = d;
+      } catch (_) {
+        // sem prova, o estado fica
+      }
+    }
+    if (r == null) return;
+    try {
+      await widget.biblioteca.registarVerificacao(widget.lista.id, paraUltima(r));
+    } catch (_) {
+      return; // não se gravou: fica para a próxima
+    }
+    if (mounted) setState(() {});
   }
 
   List<String> _gruposVisiveis() {
@@ -217,6 +304,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
       // sem canais, o corpo mostra "Tentar de novo" (com o foco), em vez de ficar vazio
       if (_conteudo == null) _erro = 'carregamento cancelado';
     });
+    _devolverFoco();
   }
 
   @override
@@ -246,20 +334,39 @@ class _TelaConteudoState extends State<TelaConteudo> {
           ),
         ],
       ),
-      body: Column(children: [
-        // cabeçalho: estado da última verificação e validade (sugestão 9) + pesquisa
-        Padding(
-          padding: const EdgeInsets.fromLTRB(Tokens.e16, 0, Tokens.e16, Tokens.e12),
-          child: largo
-              ? Row(children: [
-                  Expanded(child: _cabecalhoLista()),
-                  const SizedBox(width: Tokens.e16),
-                  SizedBox(width: 400, child: pesquisa),
-                ])
-              : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [_cabecalhoLista(), pesquisa]),
+      body: Stack(children: [
+        // com o loader por cima, nada de baixo recebe o foco
+        ExcludeFocus(
+          excluding: _aCarregar,
+          child: Column(children: [
+            // cabeçalho: estado da última verificação e validade (sugestão 9) + pesquisa
+            Padding(
+              padding: const EdgeInsets.fromLTRB(Tokens.e16, 0, Tokens.e16, Tokens.e12),
+              child: largo
+                  ? Row(children: [
+                      Expanded(child: _cabecalhoLista()),
+                      const SizedBox(width: Tokens.e16),
+                      SizedBox(width: 400, child: pesquisa),
+                    ])
+                  : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [_cabecalhoLista(), pesquisa]),
+            ),
+            Expanded(child: _corpo()),
+          ]),
         ),
-        if (_aCarregar) _barraCarregar(),
-        Expanded(child: _corpo()),
+        // sem cache (ou ao atualizar): o loader em ecrã cheio
+        if (_aCarregar)
+          Positioned.fill(
+            child: Builder(builder: (_) {
+              final (passo, progresso) = passoCarregamento(_aviso);
+              return CarregadorCanais(
+                passo: passo,
+                progresso: progresso,
+                focoCancelar: _focoCancelar,
+                aoCancelar: _cancelarCarregamento,
+                titulo: _conteudo == null ? 'A carregar os canais' : 'A atualizar os canais',
+              );
+            }),
+          ),
       ]),
     );
   }
@@ -290,28 +397,15 @@ class _TelaConteudoState extends State<TelaConteudo> {
             : 'Verificada ${quando.startsWith(RegExp('[0-9]')) ? 'em ' : ''}$quando',
         style: secundario,
       ),
+      // os canais vêm da cache: discreto, com a hora (o "Atualizar" está em cima)
+      if (_daCache != null && _conteudo != null)
+        Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.history_rounded, size: tv ? 16 : 14, color: Tokens.texto2),
+          const SizedBox(width: 4),
+          Text('da cache · ${dataRelativa(_daCache!)}', style: secundario),
+        ]),
     ]);
   }
-
-  Widget _barraCarregar() => Padding(
-        padding: const EdgeInsets.fromLTRB(Tokens.e16, 0, Tokens.e16, Tokens.e12),
-        child: SuperficieVidro(
-          raio: Tokens.raioBotao,
-          cor: Tokens.vidroForte,
-          padding: const EdgeInsets.symmetric(horizontal: Tokens.e16, vertical: 4),
-          child: Row(children: [
-            const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
-            const SizedBox(width: 12),
-            Expanded(child: Text(_aviso, maxLines: 1, overflow: TextOverflow.ellipsis)),
-            TextButton(
-              // sem canais para mostrar, é o único sítio útil para o foco
-              autofocus: _conteudo == null,
-              onPressed: _cancelarCarregamento,
-              child: const Text('Cancelar'),
-            ),
-          ]),
-        ),
-      );
 
   Widget _corpo() {
     final largo = MediaQuery.sizeOf(context).width >= 720;
