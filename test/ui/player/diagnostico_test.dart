@@ -74,6 +74,10 @@ void main() {
   group('veredicto', () {
     test('sem amostras: nada a dizer', () => expect(diagnosticar(const []), isNull));
 
+    test('sem vídeo (canal a abrir ou falhado): nada a dizer, não "fluido"', () {
+      expect(diagnosticar([AmostraMpv.deMapa(const {'paused-for-cache': 'no', 'frame-drop-count': '0'})]), isNull);
+    });
+
     test('fluido', () {
       expect(diagnosticar([_a(), _a(), _a()]), Veredicto.fluido);
     });

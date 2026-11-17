@@ -107,6 +107,8 @@ Veredicto? diagnosticar(List<AmostraMpv> amostras, {bool reamostra = false}) {
   if (amostras.isEmpty) return null;
   final primeira = amostras.first;
   final ultima = amostras.last;
+  // ainda sem vídeo (a abrir, ou o canal falhou): não há fluidez a julgar
+  if (ultima.largura <= 0 && ultima.fpsContentor == null && ultima.fpsEstimado == null) return null;
   final b0 = primeira.bufferSegundos;
   final b1 = ultima.bufferSegundos;
   if (ultima.pausadoParaCache || (b0 != null && b1 != null && b1 < b0 && b1 < _bufferBaixo)) {
