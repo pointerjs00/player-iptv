@@ -8,6 +8,7 @@ import 'package:window_manager/window_manager.dart';
 import 'dados/biblioteca.dart';
 import 'janelas/janela_player.dart';
 import 'modelo/canal.dart';
+import 'rede/http.dart';
 import 'ui/inicio/tela_inicio.dart';
 import 'ui/player/player_canais.dart';
 import 'ui/tema.dart';
@@ -27,8 +28,47 @@ Future<void> main(List<String> args) async {
     return;
   }
   final pasta = await getApplicationSupportDirectory();
-  final biblioteca = await Biblioteca.abrir(pasta);
+  // uma só instância: duas janelas principais reescreviam a biblioteca uma por cima da outra
+  _bloqueio = await Biblioteca.bloquearInstancia(pasta);
+  if (_bloqueio == null) {
+    runApp(const _Aviso('A app já está aberta noutra janela. Feche esta e use a outra.'));
+    return;
+  }
+  final Biblioteca biblioteca;
+  try {
+    biblioteca = await Biblioteca.abrir(pasta);
+  } catch (e) {
+    runApp(_Aviso('Não foi possível ler as listas guardadas (${descreverErro(e)}). '
+        'Feche outros programas que as possam ter abertas e abra a app de novo.'));
+    return;
+  }
   runApp(AppPlayerIptv(biblioteca: biblioteca));
+}
+
+/// Fica aberto enquanto a app corre (é o bloqueio da instância).
+RandomAccessFile? _bloqueio;
+
+class _Aviso extends StatelessWidget {
+  const _Aviso(this.texto);
+  final String texto;
+
+  @override
+  Widget build(BuildContext context) => MaterialApp(
+        debugShowCheckedModeBanner: false,
+        theme: temaApp(),
+        home: Scaffold(
+          body: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Text(texto, textAlign: TextAlign.center, style: const TextStyle(fontSize: 18)),
+                const SizedBox(height: 16),
+                FilledButton(autofocus: true, onPressed: () => exit(0), child: const Text('Fechar')),
+              ]),
+            ),
+          ),
+        ),
+      );
 }
 
 const _pt = Locale('pt', 'PT');
