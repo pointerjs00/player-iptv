@@ -28,7 +28,7 @@ abstract class DestinoTransferencias {
   /// Nomes de ficheiros já presentes em Transferências.
   Future<List<String>> existentes();
 
-  /// Escreve o ficheiro com o [nome] exato e devolve o caminho mostrado.
+  /// Escreve o ficheiro e devolve o nome REAL com que ficou (o Android pode ter renomeado).
   Future<String> escrever(String nome, Uint8List bytes, String mimeType);
 }
 
@@ -85,7 +85,7 @@ Future<ResultadoGuardar> guardarFicheiro(
     if (android ?? Platform.isAndroid) {
       final d = destino ?? _DestinoNativo();
       final nomeFinal = nomeSemColisao(nome, await d.existentes());
-      return ResultadoGuardar(await d.escrever(nomeFinal, bytes, mimeType));
+      return ResultadoGuardar('Transferências/${await d.escrever(nomeFinal, bytes, mimeType)}');
     }
     final uri = await FilePicker.saveFile(fileName: nome, bytes: bytes, mimeType: mimeType, dialogTitle: 'Guardar $nome');
     return uri == null ? const ResultadoGuardar.cancelado() : ResultadoGuardar(uri.toString());

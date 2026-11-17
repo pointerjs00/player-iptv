@@ -102,6 +102,7 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun guardar(nome: String, bytes: ByteArray, mime: String): String {
+        var nomeReal = nome
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val valores = ContentValues().apply {
                 put(MediaStore.MediaColumns.DISPLAY_NAME, nome)
@@ -115,6 +116,10 @@ class MainActivity : FlutterActivity() {
                 (contentResolver.openOutputStream(uri) ?: throw IllegalStateException("Não foi possível abrir o ficheiro"))
                     .use { it.write(bytes) }
                 contentResolver.update(uri, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
+                // o MediaStore pode ter renomeado (ficheiro de outra app com o mesmo nome)
+                contentResolver.query(uri, arrayOf(MediaStore.MediaColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+                    if (c.moveToFirst()) nomeReal = c.getString(0) ?: nome
+                }
             } catch (e: Exception) {
                 contentResolver.delete(uri, null, null)
                 throw e
@@ -125,6 +130,6 @@ class MainActivity : FlutterActivity() {
             pasta.mkdirs()
             File(pasta, nome).writeBytes(bytes)
         }
-        return "Transferências/$nome"
+        return nomeReal
     }
 }
