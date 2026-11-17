@@ -20,6 +20,10 @@ class RelogioDireto {
   double _velocidade = 1;
 
   double get velocidade => _velocidade;
+  bool get pausado => _pausado;
+
+  /// O relógio usado (o dos testes, nos testes).
+  DateTime get agora => _agora();
 
   /// O atraso agora.
   Duration get atraso {

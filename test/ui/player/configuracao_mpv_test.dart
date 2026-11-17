@@ -10,7 +10,7 @@ void main() {
         final c = ConfiguracaoMpv.para(p);
         expect(c.propriedades, containsPair('cache', 'yes'));
         expect(c.propriedades, containsPair('demuxer-readahead-secs', '10'));
-        expect(c.propriedades, containsPair('cache-secs', '20'));
+        expect(c.propriedades, containsPair('cache-secs', '300'));
         expect(c.propriedades, containsPair('demuxer-max-bytes', _mib64));
         expect(c.propriedades, containsPair('demuxer-max-back-bytes', _mib64));
         expect(c.propriedades, containsPair('cache-pause-initial', 'yes'));
@@ -57,34 +57,40 @@ void main() {
     });
   });
 
-  group('desentrelaçamento inteligente', () {
-    test('ligado: deinterlace=auto (só imagens entrelaçadas)', () {
-      final c = ConfiguracaoMpv.para(PlataformaVideo.windows, desentrelacar: true);
-      expect(c.propriedades, containsPair('deinterlace', 'auto'));
-      expect(c.desentrelacamentoAtivo, isTrue);
+  group('descodificação por hardware desligada (software)', () {
+    test('Android: gpu sem hwdec, seja qual for o modo', () {
+      for (final m in ModoDescodificacao.values) {
+        final c = ConfiguracaoMpv.para(PlataformaVideo.android, modo: m, hardware: false);
+        expect(c.vo, 'gpu');
+        expect(c.hwdec, 'no');
+      }
     });
 
-    test('desligado: deinterlace=no', () {
-      final c = ConfiguracaoMpv.para(PlataformaVideo.android, modo: ModoDescodificacao.compativel);
-      expect(c.propriedades, containsPair('deinterlace', 'no'));
-      expect(c.desentrelacamentoAtivo, isFalse);
+    test('Windows: libmpv sem hwdec', () {
+      final c = ConfiguracaoMpv.para(PlataformaVideo.windows, hardware: false);
+      expect(c.vo, 'libmpv');
+      expect(c.hwdec, 'no');
+    });
+  });
+
+  group('desentrelaçamento', () {
+    test('não vai na configuração do player (aplica-se a cada canal, conforme a preferência)', () {
+      for (final p in PlataformaVideo.values) {
+        expect(ConfiguracaoMpv.para(p).propriedades.containsKey('deinterlace'), isFalse);
+      }
     });
 
-    test('Android Compatível: o filtro do mpv aplica-se', () {
-      final c = ConfiguracaoMpv.para(PlataformaVideo.android,
-          modo: ModoDescodificacao.compativel, desentrelacar: true);
-      expect(c.propriedades, containsPair('deinterlace', 'auto'));
-      expect(c.desentrelacamentoAtivo, isTrue);
-    });
-
-    test('Android direto: o descodificador de hardware trata disso; a opção não aparece como ativa', () {
-      final c = ConfiguracaoMpv.para(PlataformaVideo.android, desentrelacar: true);
-      expect(c.propriedades.containsKey('deinterlace'), isFalse);
-      expect(c.desentrelacamentoAtivo, isFalse);
+    test('Android direto: o descodificador de hardware trata disso (o filtro do mpv não tem efeito)', () {
       expect(ConfiguracaoMpv.desentrelacamentoTemEfeito(PlataformaVideo.android, ModoDescodificacao.direto),
           isFalse);
       expect(
           ConfiguracaoMpv.desentrelacamentoTemEfeito(PlataformaVideo.android, ModoDescodificacao.compativel),
+          isTrue);
+      expect(
+          ConfiguracaoMpv.desentrelacamentoTemEfeito(PlataformaVideo.android, ModoDescodificacao.direto,
+              hardware: false),
+          isTrue);
+      expect(ConfiguracaoMpv.desentrelacamentoTemEfeito(PlataformaVideo.windows, ModoDescodificacao.direto),
           isTrue);
     });
   });

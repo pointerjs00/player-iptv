@@ -45,12 +45,19 @@ class ConfiguracaoMpv {
     required this.vo,
     required this.hwdec,
     required this.propriedades,
-    required this.desentrelacamentoAtivo,
     required this.reamostraRitmo,
   });
 
-  /// 64 MiB para a frente e 64 MiB para trás (recuar no direto, Task 5).
+  /// 64 MiB para a frente e 64 MiB para trás. Para trás é o que se pode recuar num direto:
+  /// cerca de 1½–2 min num canal HD a 5 Mb/s, uns 4 min num SD a 2 Mb/s. Valor escolhido como
+  /// meio-termo com a memória de um Fire TV Stick (1 GB): no máximo 128 MiB por player.
   static const bufferBytes = 64 * 1024 * 1024;
+
+  /// Quanto o mpv continua a ler à frente (limitado pelos 64 MiB). Num direto só há à frente o
+  /// que já chegou, por isso a tocar normalmente não muda nada; depois de recuar ou pausar, o
+  /// mpv continua a receber o canal (até aos 64 MiB) e "Voltar ao direto" chega mesmo ao direto.
+  /// Com os 20 s de antes, ao recuar mais de ~20 s o mpv deixava de ler e o canal ficava para trás.
+  static const segundosAFrente = 300;
 
   /// A saída de vídeo e a descodificação (vão no `VideoControllerConfiguration`).
   final String vo;
@@ -58,10 +65,6 @@ class ConfiguracaoMpv {
 
   /// Propriedades do mpv a pôr antes do primeiro `open()`.
   final Map<String, String> propriedades;
-
-  /// O desentrelaçamento do mpv está mesmo ligado (não se mostra "ligado" quando não teria
-  /// efeito).
-  final bool desentrelacamentoAtivo;
 
   /// Pede-se `video-sync=display-resample` (o mpv acerta o ritmo do vídeo ao do ecrã). Só tem
   /// efeito se o mpv souber os Hz do ecrã; o diagnóstico verifica-o em tempo real
@@ -74,14 +77,17 @@ class ConfiguracaoMpv {
 
   /// Com `mediacodec_embed` as imagens nunca passam pelo mpv: o filtro de desentrelaçamento
   /// não se aplica (o descodificador de hardware do aparelho é que trata das imagens
-  /// entrelaçadas). Nos outros casos aplica-se.
-  static bool desentrelacamentoTemEfeito(PlataformaVideo p, ModoDescodificacao modo) =>
-      !(p == PlataformaVideo.android && modo == ModoDescodificacao.direto);
+  /// entrelaçadas). Nos outros casos aplica-se (o desentrelaçamento é posto a cada canal, em
+  /// `aplicar_preferencias.dart`).
+  static bool desentrelacamentoTemEfeito(PlataformaVideo p, ModoDescodificacao modo, {bool hardware = true}) =>
+      !(p == PlataformaVideo.android && modo == ModoDescodificacao.direto && hardware);
 
+  /// `hardware: false`: descodificação por software (preferência para aparelhos com problemas;
+  /// no Android passa a `vo=gpu`, como o "Compatível").
   factory ConfiguracaoMpv.para(
     PlataformaVideo p, {
     ModoDescodificacao modo = ModoDescodificacao.direto,
-    bool desentrelacar = false,
+    bool hardware = true,
   }) {
     final String vo;
     final String hwdec;
@@ -90,7 +96,10 @@ class ConfiguracaoMpv {
         // (também no emulador: o media_kit forçaria lá software com vo=gpu, mas o emulador da
         // Android TV não cria o contexto GLES do mpv — "Video: no video" — e o descodificador
         // goldfish do emulador funciona com o mediacodec_embed)
-        if (modo == ModoDescodificacao.direto) {
+        if (!hardware) {
+          vo = 'gpu';
+          hwdec = 'no';
+        } else if (modo == ModoDescodificacao.direto) {
           vo = 'mediacodec_embed';
           hwdec = 'mediacodec';
         } else {
@@ -103,22 +112,20 @@ class ConfiguracaoMpv {
         // a única saída que fica dentro da janela é a "libmpv" (com "gpu" o mpv abria uma
         // janela sua por cima). A libmpv usa o mesmo renderizador que a "gpu".
         vo = 'libmpv';
-        hwdec = 'auto-safe';
+        hwdec = hardware ? 'auto-safe' : 'no';
     }
     final reamostra = p != PlataformaVideo.android;
-    final temEfeito = desentrelacamentoTemEfeito(p, modo);
-    final desentrelaca = desentrelacar && temEfeito;
     return ConfiguracaoMpv._(
       vo: vo,
       hwdec: hwdec,
-      desentrelacamentoAtivo: desentrelaca,
       reamostraRitmo: reamostra,
       propriedades: {
-        // buffer para direto: com cache=yes o mpv junta até cache-secs (20 s) à frente; o
-        // demuxer-readahead-secs só conta se o cache estiver desligado
+        // buffer para direto: com cache=yes o mpv junta até cache-secs à frente (ver
+        // segundosAFrente; limitado pelos demuxer-max-bytes); o demuxer-readahead-secs só conta
+        // se o cache estiver desligado
         'cache': 'yes',
         'demuxer-readahead-secs': '10',
-        'cache-secs': '20',
+        'cache-secs': '$segundosAFrente',
         'demuxer-max-bytes': '$bufferBytes',
         'demuxer-max-back-bytes': '$bufferBytes',
         // junta 2 s antes de começar: evita engasgos logo no arranque
@@ -130,28 +137,61 @@ class ConfiguracaoMpv {
         'framedrop': 'vo',
         if (p == PlataformaVideo.android) 'ao': 'audiotrack,opensles',
         if (reamostra) 'video-sync': 'display-resample',
-        // "auto": só desentrelaça as imagens marcadas como entrelaçadas
-        if (temEfeito) 'deinterlace': desentrelaca ? 'auto' : 'no',
       },
     );
   }
 }
 
-/// Põe as propriedades no mpv do `player` (antes do primeiro `open()`).
-Future<void> aplicarConfiguracao(Player player, ConfiguracaoMpv c) async {
-  final mpv = player.platform;
-  if (mpv is! NativePlayer) return;
+/// Põe as propriedades no mpv (antes do primeiro `open()`).
+Future<void> aplicarConfiguracao(MotorMpv mpv, ConfiguracaoMpv c) async {
   try {
     for (final e in c.propriedades.entries) {
       await mpv.setProperty(e.key, e.value);
     }
-    if (c.desentrelacamentoAtivo && await mpv.getProperty('deinterlace') != 'auto') {
-      // libmpv antigo sem deinterlace=auto: o mesmo efeito com o filtro (só imagens entrelaçadas)
-      await mpv.setProperty('vf', 'lavfi=[bwdif=deint=interlaced]');
-      debugPrint('mpv: deinterlace=auto indisponível; a usar bwdif=deint=interlaced');
-    }
   } catch (e) {
     // o player fechou entretanto; uma configuração a menos nunca impede o canal de abrir
     debugPrint('mpv: configuração não aplicada ($e)');
+  }
+}
+
+/// O que o player usa do mpv. O [MotorMediaKit] é o verdadeiro; os testes usam um falso que
+/// regista as chamadas.
+abstract interface class MotorMpv {
+  Future<void> setProperty(String propriedade, String valor);
+  Future<String> getProperty(String propriedade);
+  Future<void> setRate(double velocidade);
+  Future<void> setVolume(double volume);
+
+  /// Um comando do mpv (ex.: `['seek', '-10', 'relative']`).
+  Future<void> command(List<String> comando);
+}
+
+/// O mpv de um `Player` do media_kit (sem `NativePlayer` — web — as propriedades não fazem nada).
+class MotorMediaKit implements MotorMpv {
+  MotorMediaKit(this.player);
+  final Player player;
+
+  @override
+  Future<void> setProperty(String propriedade, String valor) async {
+    final mpv = player.platform;
+    if (mpv is NativePlayer) await mpv.setProperty(propriedade, valor);
+  }
+
+  @override
+  Future<String> getProperty(String propriedade) async {
+    final mpv = player.platform;
+    return mpv is NativePlayer ? mpv.getProperty(propriedade) : '';
+  }
+
+  @override
+  Future<void> setRate(double velocidade) => player.setRate(velocidade);
+
+  @override
+  Future<void> setVolume(double volume) => player.setVolume(volume);
+
+  @override
+  Future<void> command(List<String> comando) async {
+    final mpv = player.platform;
+    if (mpv is NativePlayer) await mpv.command(comando);
   }
 }
