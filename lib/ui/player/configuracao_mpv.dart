@@ -1,7 +1,6 @@
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
@@ -75,25 +74,22 @@ class ConfiguracaoMpv {
   /// Com `mediacodec_embed` as imagens nunca passam pelo mpv: o filtro de desentrelaçamento
   /// não se aplica (o descodificador de hardware do aparelho é que trata das imagens
   /// entrelaçadas). Nos outros casos aplica-se.
-  static bool desentrelacamentoTemEfeito(PlataformaVideo p, ModoDescodificacao modo, {bool emulador = false}) =>
-      !(p == PlataformaVideo.android && modo == ModoDescodificacao.direto && !emulador);
+  static bool desentrelacamentoTemEfeito(PlataformaVideo p, ModoDescodificacao modo) =>
+      !(p == PlataformaVideo.android && modo == ModoDescodificacao.direto);
 
   factory ConfiguracaoMpv.para(
     PlataformaVideo p, {
     ModoDescodificacao modo = ModoDescodificacao.direto,
     bool desentrelacar = false,
-    bool emulador = false,
   }) {
     final String vo;
     final String hwdec;
     switch (p) {
       case PlataformaVideo.android:
-        if (emulador) {
-          // o emulador não tem descodificador de hardware a sério (o media_kit também força
-          // software aí); o mediacodec_embed não consegue mostrar imagens descodificadas no CPU
-          vo = 'gpu';
-          hwdec = 'no';
-        } else if (modo == ModoDescodificacao.direto) {
+        // (também no emulador: o media_kit forçaria lá software com vo=gpu, mas o emulador da
+        // Android TV não cria o contexto GLES do mpv — "Video: no video" — e o descodificador
+        // goldfish do emulador funciona com o mediacodec_embed)
+        if (modo == ModoDescodificacao.direto) {
           vo = 'mediacodec_embed';
           hwdec = 'mediacodec';
         } else {
@@ -109,7 +105,7 @@ class ConfiguracaoMpv {
         hwdec = 'auto-safe';
     }
     final reamostra = p != PlataformaVideo.android;
-    final temEfeito = desentrelacamentoTemEfeito(p, modo, emulador: emulador);
+    final temEfeito = desentrelacamentoTemEfeito(p, modo);
     final desentrelaca = desentrelacar && temEfeito;
     return ConfiguracaoMpv._(
       vo: vo,
@@ -156,20 +152,4 @@ Future<void> aplicarConfiguracao(Player player, ConfiguracaoMpv c) async {
     // o player fechou entretanto; uma configuração a menos nunca impede o canal de abrir
     debugPrint('mpv: configuração não aplicada ($e)');
   }
-}
-
-/// O Android é um emulador? (Pergunta-se ao media_kit, que usa isto para forçar software.)
-Future<bool> eEmuladorAndroid() async {
-  if (!Platform.isAndroid) return false;
-  try {
-    return await const MethodChannel('com.alexmercerind/media_kit_video').invokeMethod<bool>('Utils.IsEmulator') ??
-        false;
-  } catch (_) {
-    return false;
-  }
-}
-
-/// O que se sabe do aparelho para configurar o mpv (preenchido no arranque, em `main`).
-abstract final class AmbienteVideo {
-  static bool emulador = false;
 }

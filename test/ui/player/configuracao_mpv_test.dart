@@ -44,11 +44,6 @@ void main() {
       expect(c.propriedades, containsPair('ao', 'audiotrack,opensles'));
     });
 
-    test('emulador: software (o mediacodec_embed não mostra imagens descodificadas no CPU)', () {
-      final c = ConfiguracaoMpv.para(PlataformaVideo.android, emulador: true);
-      expect(c.vo, 'gpu');
-      expect(c.hwdec, 'no');
-    });
   });
 
   group('Windows', () {
@@ -90,10 +85,6 @@ void main() {
           isFalse);
       expect(
           ConfiguracaoMpv.desentrelacamentoTemEfeito(PlataformaVideo.android, ModoDescodificacao.compativel),
-          isTrue);
-      expect(
-          ConfiguracaoMpv.desentrelacamentoTemEfeito(PlataformaVideo.android, ModoDescodificacao.direto,
-              emulador: true),
           isTrue);
     });
   });

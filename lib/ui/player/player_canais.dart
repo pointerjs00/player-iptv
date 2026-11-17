@@ -48,8 +48,8 @@ class PlayerCanais extends StatefulWidget {
 
 class PlayerCanaisState extends State<PlayerCanais> {
   // a configuração do mpv para direto (buffer, reconexão, descodificação por plataforma)
-  late final ConfiguracaoMpv _config = ConfiguracaoMpv.para(PlataformaVideo.atual,
-      modo: PreferenciasPlayer.atual.modoAndroid, emulador: AmbienteVideo.emulador);
+  late final ConfiguracaoMpv _config =
+      ConfiguracaoMpv.para(PlataformaVideo.atual, modo: PreferenciasPlayer.atual.modoAndroid);
   late final Player _player = Player(configuration: _config.configuracaoPlayer);
   late final VideoController _video;
   late final Future<void> _configurado;
@@ -256,8 +256,7 @@ class PlayerCanaisState extends State<PlayerCanais> {
                   reamostra: _config.reamostraRitmo,
                   extra: [
                     if (PlataformaVideo.atual == PlataformaVideo.android)
-                      ('Modo de descodificação',
-                          AmbienteVideo.emulador ? 'software (emulador)' : PreferenciasPlayer.atual.modoAndroid.rotulo),
+                      ('Modo de descodificação', PreferenciasPlayer.atual.modoAndroid.rotulo),
                     ('Saída · hwdec pedido', '${_config.vo} · ${_config.hwdec}'),
                     if (_hzPedidos != null) ('Taxa do ecrã pedida', '${_hzPedidos!.toStringAsFixed(2)} Hz'),
                   ],

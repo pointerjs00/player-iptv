@@ -13,7 +13,6 @@ import 'rede/http.dart';
 import 'ui/design/componentes.dart';
 import 'ui/design/ecra.dart';
 import 'ui/inicio/tela_inicio.dart';
-import 'ui/player/configuracao_mpv.dart';
 import 'ui/player/player_canais.dart';
 import 'ui/realce_foco.dart';
 import 'ui/tema.dart';
@@ -48,8 +47,7 @@ Future<void> main(List<String> args) async {
     return;
   }
   await configurarRealceFoco(); // Android TV: o realce do foco sempre visível
-  // o player: descodificação/taxa do ecrã escolhidas pelo utilizador; o emulador só tem software
-  AmbienteVideo.emulador = await eEmuladorAndroid();
+  // o player: descodificação/taxa do ecrã escolhidas pelo utilizador
   PreferenciasPlayer.atual = await PreferenciasPlayer.carregar(pasta, tv: EcraTv.nativo);
   runApp(AppPlayerIptv(biblioteca: biblioteca));
 }
