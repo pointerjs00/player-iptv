@@ -16,20 +16,25 @@ import '../rede/http.dart' show limiteIsolate;
 
 class Lista {
   Lista({required this.id, required this.ordem, required this.conta, this.ultima,
-      Set<String>? favoritos})
+      Set<String>? favoritos, this.nomeProprio = ''})
       : favoritos = favoritos ?? <String>{};
 
   final String id;
 
   /// Nº de ordem (não muda quando se apagam outras): dá o nome NNNHOST.
   final int ordem;
-  final Conta conta;
+
+  /// Muda ao editar a lista (ver [Biblioteca.editar]).
+  Conta conta;
   UltimaVerificacao? ultima;
+
+  /// O nome escolhido pelo utilizador ('' = o nome gerado NNNHOST DDMMAA).
+  String nomeProprio;
 
   /// Ids dos canais favoritos.
   final Set<String> favoritos;
 
-  String get nome => nomeLista(ordem, conta, ultima?.validade ?? '');
+  String get nome => nomeProprio.trim().isNotEmpty ? nomeProprio.trim() : nomeLista(ordem, conta, ultima?.validade ?? '');
 
   /// Com INC à frente se a última verificação foi inconclusiva.
   String get nomeMostrado => ultima?.estado == 'inconclusivo' ? '$marcaInc$nome' : nome;
@@ -38,6 +43,7 @@ class Lista {
         'id': id, 'ordem': ordem, 'conta': conta.paraJson(),
         if (ultima != null) 'ultima': ultima!.paraJson(),
         'favoritos': favoritos.toList(),
+        if (nomeProprio.trim().isNotEmpty) 'nome_proprio': nomeProprio.trim(),
       };
 
   static Lista? deJson(Object? j) {
@@ -48,6 +54,7 @@ class Lista {
         conta: Conta.deJson(Map<String, dynamic>.from(j['conta'] as Map)),
         ultima: UltimaVerificacao.deJson(j['ultima']),
         favoritos: {for (final f in (j['favoritos'] as List? ?? const [])) '$f'},
+        nomeProprio: j['nome_proprio'] is String ? j['nome_proprio'] as String : '',
       );
     } catch (_) {
       return null; // entrada estragada: ignora-se, as outras ficam
@@ -61,6 +68,14 @@ abstract interface class ColecaoListas implements Listenable {
   List<Lista> get listas;
   Lista? porId(String id);
   Future<void> registarVerificacao(String id, UltimaVerificacao v);
+}
+
+/// Uma edição recusada (por exemplo, a conta nova já é outra lista do Player).
+class ErroEdicao implements Exception {
+  ErroEdicao(this.mensagem);
+  final String mensagem;
+  @override
+  String toString() => mensagem;
 }
 
 /// Como juntar as listas enviadas pelo Gestor às do Player.
@@ -193,6 +208,45 @@ class Biblioteca extends ChangeNotifier implements ColecaoListas {
     await guardar();
   }
 
+  /// Muda a conta e o nome próprio de uma lista ('' = o nome gerado). Se a chave da conta mudar
+  /// (é outra conta), a cache de canais e o último resultado saem; com a mesma chave (por
+  /// exemplo, só a password mudou) ficam. Devolve se a cache ficou. Lança [ErroEdicao] se a conta
+  /// nova já for outra lista do Player (nada muda).
+  Future<bool> editar(String id, Conta conta, {String nomeProprio = ''}) async {
+    final l = porId(id);
+    if (l == null) throw ErroEdicao('a lista já não existe');
+    final k = chave(conta);
+    final mesma = k == chave(l.conta);
+    if (!mesma && _listas.any((o) => o.id != id && chave(o.conta) == k)) {
+      throw ErroEdicao('já existe outra lista com esta conta');
+    }
+    final (contaAntes, nomeAntes, ultimaAntes) = (l.conta, l.nomeProprio, l.ultima);
+    l
+      ..conta = conta
+      ..nomeProprio = nomeProprio.trim();
+    if (!mesma) l.ultima = null;
+    try {
+      await guardar();
+    } catch (_) {
+      // o que se vê é sempre o que está no disco
+      l
+        ..conta = contaAntes
+        ..nomeProprio = nomeAntes
+        ..ultima = ultimaAntes;
+      notifyListeners();
+      rethrow;
+    }
+    if (!mesma) {
+      try {
+        final f = _ficheiroCanais(id);
+        if (await f.exists()) await f.delete();
+      } on FileSystemException {
+        // ignora-se: o próximo "Atualizar" escreve por cima
+      }
+    }
+    return mesma;
+  }
+
   /// Recebe as listas enviadas pelo Gestor. Nos modos de esmagar, as listas do Player que não
   /// foram enviadas e não passam no critério saem (com os favoritos e a cache de canais).
   /// As enviadas que já existiam (pela chave) ficam com o resultado do Gestor.
@@ -282,6 +336,15 @@ class Biblioteca extends ChangeNotifier implements ColecaoListas {
     }
   }
 
+  /// Quando foi gravada a cache de canais (null = sem cache).
+  Future<DateTime?> dataCache(String id) async {
+    try {
+      final f = _ficheiroCanais(id);
+      return await f.exists() ? await f.lastModified() : null;
+    } on FileSystemException {
+      return null;
+    }
+  }
 
   Future<void> guardarCanais(String id, ConteudoLista c) async {
     await _pastaCanais.create(recursive: true);
