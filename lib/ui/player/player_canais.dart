@@ -187,8 +187,16 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   /// Larga um player: pausa e volume 0 pelo media_kit já (se o mpv estiver preso e o player
   /// ficar por destruir, nunca toca por trás), depois destrói-o quando for seguro.
   static Future<void> _aposentar(MotorForaDaUi motor, Player player) => motor.aposentar(
-        pausar: player.pause,
-        silenciar: () => player.setVolume(0),
+        // pelas funções assíncronas do libmpv (pause, mute): o pause()/setVolume() do
+        // media_kit esperam pelo controlador de vídeo e pelo lock dele e, ao sair a meio de uma
+        // abertura, nunca chegavam a parar nada (visto no emulador)
+        pausar: () async {
+          var h = motor.handleConhecido;
+          final mpv = player.platform;
+          if (h == null && mpv is NativePlayer) h = await mpv.handle.timeout(const Duration(seconds: 2));
+          if (h != null) pararSemEsperar(h);
+        },
+        silenciar: () async {}, // o mute=yes vai com o pause
         destruir: player.dispose,
       );
 

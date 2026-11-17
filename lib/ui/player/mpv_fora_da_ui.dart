@@ -57,6 +57,10 @@ class MotorForaDaUi implements MotorMpv {
   /// Os pedidos que já estão no isolate/mpv (até acabarem de facto, mesmo depois do limite).
   final _emCurso = <Future<void>>{};
   bool _fechado = false;
+  int? _handleConhecido;
+
+  /// O handle do mpv, se já se soube (para parar o player sem esperar por nada).
+  int? get handleConhecido => _handleConhecido;
 
   Future<T> _correr<T>(T semMpv, Future<T> Function(int handle) f) async {
     if (_fechado) return semMpv;
@@ -68,6 +72,7 @@ class MotorForaDaUi implements MotorMpv {
       return semMpv;
     }
     if (h == null || _fechado) return semMpv;
+    _handleConhecido = h;
     final pedido = f(h);
     final acabou = pedido.then<void>((_) {}, onError: (_) {});
     _emCurso.add(acabou);
@@ -310,5 +315,36 @@ class ExecutorIsolate implements ExecutorMpv {
         if (id != null) respostas.send((id, null, '$e'));
       }
     });
+  }
+}
+
+typedef _SetAsyncNativo = Int32 Function(Pointer<Void>, Uint64, Pointer<Utf8>, Int32, Pointer<Void>);
+typedef _SetAsync = int Function(Pointer<Void>, int, Pointer<Utf8>, int, Pointer<Void>);
+
+_SetAsync? _setAsync;
+
+/// Pára já um player que se vai largar: `pause=yes` e `mute=yes` pelas funções assíncronas do
+/// libmpv, que só põem o pedido na fila do mpv e voltam logo (podem ser chamadas
+/// na thread da UI, mesmo com o mpv ocupado ou o isolate preso). Assim um player que fique por
+/// destruir não toca por trás. Sem `stop`: com uma abertura a meio, o `stop` ocupava o mpv e as
+/// chamadas síncronas que o media_kit_video faz na thread da UI ao largar a superfície ficavam
+/// presas (ANR visto no emulador). Nunca lança.
+void pararSemEsperar(int handle) {
+  try {
+    if (_setAsync == null) {
+      final lib = ExecutorIsolate._libmpv();
+      _setAsync = lib.lookupFunction<_SetAsyncNativo, _SetAsync>('mpv_set_property_async');
+    }
+    final ctx = Pointer<Void>.fromAddress(handle);
+    // longe dos números de pedido do media_kit (a resposta é ignorada)
+    const resposta = 1 << 52;
+    using((arena) {
+      for (final (nome, valor) in const [('pause', 'yes'), ('mute', 'yes')]) {
+        final dados = arena<Pointer<Utf8>>()..value = valor.toNativeUtf8(allocator: arena);
+        _setAsync!(ctx, resposta, nome.toNativeUtf8(allocator: arena), 1 /* MPV_FORMAT_STRING */, dados.cast());
+      }
+    });
+  } catch (e) {
+    debugPrint('mpv: não parou o player ($e)');
   }
 }
