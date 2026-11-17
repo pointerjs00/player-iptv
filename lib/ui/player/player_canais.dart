@@ -9,6 +9,7 @@ import '../../dados/preferencias_player.dart';
 import '../../modelo/canal.dart';
 import '../../protocolos/protocolo.dart';
 import '../../rede/http.dart';
+import 'aviso_buffering.dart';
 import 'configuracao_mpv.dart';
 import 'diagnostico.dart';
 import 'estatisticas.dart';
@@ -56,6 +57,8 @@ class PlayerCanaisState extends State<PlayerCanais> {
   final _taxa = TaxaEcra();
   double? _hzPedidos;
   bool _estatisticas = false;
+  bool _buffering = false;
+  double? _percentagemBuffer;
   late List<Canal> _canais = widget.canais;
   late int _i = widget.indice;
   String? _erro;
@@ -89,7 +92,13 @@ class PlayerCanaisState extends State<PlayerCanais> {
         setState(() { _erro = mensagemErroPlayer(e); _aAbrir = false; _info = true; });
       }
     }));
-    _subs.add(_player.stream.buffering.listen(_vigia.buffering));
+    _subs.add(_player.stream.buffering.listen((b) {
+      _vigia.buffering(b);
+      if (mounted && b != _buffering) setState(() => _buffering = b);
+    }));
+    _subs.add(_player.stream.bufferingPercentage.listen((p) {
+      if (mounted && _buffering) setState(() => _percentagemBuffer = p);
+    }));
     _subs.add(_player.stream.width.listen(_vigia.largura));
     _subs.add(_player.stream.position.listen(_vigia.tempo));
     // o controlador de vídeo antes de configurar o mpv (as propriedades esperam por ele)
@@ -247,6 +256,8 @@ class PlayerCanaisState extends State<PlayerCanais> {
           child: Stack(fit: StackFit.expand, children: [
             Video(controller: _video, controls: NoVideoControls, fill: Colors.black),
             if (_aAbrir) const Center(child: CircularProgressIndicator()),
+            // a meio do canal, à espera de dados (o arranque tem o indicador de cima)
+            AvisoBuffering(aberto: !_aAbrir && _erro == null, buffering: _buffering, percentagem: _percentagemBuffer),
             if (_estatisticas)
               Positioned(
                 top: 24,
