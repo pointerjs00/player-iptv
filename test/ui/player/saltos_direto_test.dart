@@ -123,6 +123,16 @@ void main() {
     await s.avancar();
     await s.voltarAoDireto();
   });
+
+  test('zapping a meio de "voltar ao direto": não faz seek no canal novo nem pede reabrir', () async {
+    await saltos.recuar();
+    mpv.comandos.clear();
+    expect(await saltos.voltarAoDireto(aindaValido: () => false), VoltaAoDireto.cancelado);
+    expect(mpv.comandos, isEmpty);
+    relogio.pausou();
+    t = t.add(const Duration(minutes: 3));
+    expect(await saltos.voltarAoDireto(aindaValido: () => false), VoltaAoDireto.cancelado);
+  });
 }
 
 class _SemPosicao implements MotorMpv {

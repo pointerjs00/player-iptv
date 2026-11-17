@@ -72,11 +72,13 @@ class SaltosDireto {
   /// longa: o buffer encheu, o mpv deixou de ler e o canal ficou mesmo para trás; ou o buffer não
   /// se sabe) devolve [VoltaAoDireto.reabrir]: quem chama reabre o canal (link novo), a única
   /// forma de chegar ao direto verdadeiro.
-  Future<VoltaAoDireto> voltarAoDireto() async {
+  /// `aindaValido`: falso se entretanto se mudou de canal (não se faz nada no canal novo).
+  Future<VoltaAoDireto> voltarAoDireto({bool Function()? aindaValido}) async {
     final d = relogio.atraso;
     if (d < const Duration(milliseconds: 500)) return VoltaAoDireto.jaEmDireto;
     try {
       final aFrente = double.tryParse(await mpv.getProperty('demuxer-cache-duration'));
+      if (aindaValido != null && !aindaValido()) return VoltaAoDireto.cancelado;
       if (aFrente == null || d.inMicroseconds / 1e6 - aFrente > margemReabrir.inSeconds) {
         return VoltaAoDireto.reabrir;
       }
@@ -94,4 +96,4 @@ class SaltosDireto {
   static const margemReabrir = Duration(seconds: 3);
 }
 
-enum VoltaAoDireto { jaEmDireto, porSeek, reabrir }
+enum VoltaAoDireto { jaEmDireto, porSeek, reabrir, cancelado }

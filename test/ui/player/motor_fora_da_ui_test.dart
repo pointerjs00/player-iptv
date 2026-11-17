@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:isolate';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -139,6 +140,25 @@ void main() {
       expect(destruido, 1);
     });
 
+    test('aposentar: pausa e tira o som pelo media_kit já, mesmo com o mpv preso; destrói depois', () async {
+      final m = motorCom();
+      ex.preso = true;
+      unawaited(m.getProperty('time-pos'));
+      await Future<void>.delayed(Duration.zero);
+      final passos = <String>[];
+      await m
+          .aposentar(
+            pausar: () async => passos.add('pausa'),
+            silenciar: () async => passos.add('volume 0'),
+            destruir: () async => passos.add('destruir'),
+          )
+          .timeout(const Duration(seconds: 1));
+      expect(passos, ['pausa', 'volume 0'], reason: 'um player largado nunca continua a tocar');
+      ex.soltar();
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      expect(passos.last, 'destruir');
+    });
+
     test('sem pedidos no mpv: destrói logo', () async {
       final m = motorCom();
       var destruido = 0;
@@ -163,6 +183,15 @@ void main() {
     await expectLater(e.getProperty(1, 'lancar').timeout(const Duration(seconds: 5)), throwsA(isA<StateError>()));
     expect(await e.getProperty(1, 'y').timeout(const Duration(seconds: 5)), 'eco:y');
   });
+
+  test('uma chamada pendurada no isolate (não morre) é abandonada: os pedidos seguintes vão para um isolate novo',
+      () async {
+    final e = ExecutorIsolate.paraTestes(isolateDeTeste, limiteAbandono: const Duration(milliseconds: 200));
+    expect(await e.getProperty(1, 'a').timeout(const Duration(seconds: 5)), 'eco:a');
+    unawaited(e.getProperty(1, 'pendurar').then((_) {}, onError: (_) {}));
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+    expect(await e.getProperty(1, 'b').timeout(const Duration(seconds: 2)), 'eco:b');
+  });
 }
 
 /// Um isolate de mpv de mentira: "morrer" sai sem responder; "lancar" lança fora de qualquer
@@ -174,6 +203,8 @@ void isolateDeTeste(SendPort respostas) {
     final (int id, String _, int _, List<String> args) = m as (int, String, int, List<String>);
     if (args.first == 'morrer') Isolate.exit();
     if (args.first == 'lancar') throw StateError('estragado');
+    // como uma chamada nativa que não volta: o isolate fica preso (sem morrer)
+    if (args.first == 'pendurar') sleep(const Duration(seconds: 6));
     respostas.send((id, 'eco:${args.first}', null));
   });
 }

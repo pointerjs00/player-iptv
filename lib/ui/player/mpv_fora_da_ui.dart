@@ -108,6 +108,23 @@ class MotorForaDaUi implements MotorMpv {
     }
   }
 
+  /// Larga o player: pausa-o e tira-lhe o som pelo media_kit (pedidos assíncronos, não passam
+  /// pelo isolate — um player que fique por destruir nunca continua a tocar) e depois
+  /// [fecharEDestruir].
+  Future<void> aposentar({
+    required Future<void> Function() pausar,
+    required Future<void> Function() silenciar,
+    required Future<void> Function() destruir,
+  }) async {
+    _fechado = true;
+    try {
+      await Future.wait([pausar(), silenciar()]).timeout(limite);
+    } catch (e) {
+      debugPrint('mpv: não parou o player largado ($e)');
+    }
+    await fecharEDestruir(destruir);
+  }
+
   /// Fecha e destrói o player (`destruir`) sem nunca prender quem chama mais do que [limite]:
   /// se um pedido ainda estiver dentro do mpv, a destruição fica para quando ele acabar (destruir
   /// antes seria usar memória já libertada; se nunca acabar, o player fica por destruir).
@@ -133,30 +150,45 @@ typedef _Command = int Function(Pointer<Void>, Pointer<Pointer<Utf8>>);
 /// O [ExecutorMpv] verdadeiro: um isolate que chama o libmpv (o mesmo que o media_kit carregou),
 /// um pedido de cada vez, pela ordem em que chegam.
 class ExecutorIsolate implements ExecutorMpv {
-  ExecutorIsolate._(this._entrada);
-  static final instancia = ExecutorIsolate._(_principal);
+  ExecutorIsolate._(this._entrada, this.limiteAbandono);
+  static final instancia = ExecutorIsolate._(_principal, const Duration(seconds: 30));
 
-  /// Com outra função no isolate (testes: um isolate que morre ou lança).
+  /// Com outra função no isolate (testes: um isolate que morre, lança ou fica preso).
   @visibleForTesting
-  factory ExecutorIsolate.paraTestes(void Function(SendPort) entrada) => ExecutorIsolate._(entrada);
+  factory ExecutorIsolate.paraTestes(void Function(SendPort) entrada,
+          {Duration limiteAbandono = const Duration(seconds: 30)}) =>
+      ExecutorIsolate._(entrada, limiteAbandono);
 
   final void Function(SendPort) _entrada;
 
+  /// Um pedido sem resposta há tanto tempo prendeu o isolate (uma chamada nativa que não volta
+  /// não o faz morrer): esse isolate é abandonado e os pedidos seguintes vão para um novo, para
+  /// os players seguintes não ficarem na fila atrás dele. Os pedidos dele continuam à espera
+  /// (o player deles só é destruído se acabarem).
+  final Duration limiteAbandono;
+
   Future<SendPort>? _porta;
+  int _geracao = 0;
   int _proximo = 0;
-  final _pendentes = <int, Completer<Object?>>{};
+  final _pendentes = <int, (int, Completer<Object?>)>{};
+
+  void _abandonar(int geracao) {
+    if (geracao != _geracao) return;
+    _geracao++;
+    _porta = null;
+  }
 
   Future<SendPort> _iniciar() async {
+    final geracao = _geracao;
     final respostas = ReceivePort('mpv-respostas');
     final pronto = Completer<SendPort>();
     void morreu(Object motivo) {
       // os pedidos que lá estavam nunca terão resposta: falham já; o próximo arranca outro
-      _porta = null;
+      _abandonar(geracao);
       respostas.close();
-      final pendentes = _pendentes.values.toList();
-      _pendentes.clear();
-      for (final c in pendentes) {
-        c.completeError(StateError('o isolate do mpv parou ($motivo)'));
+      final ids = [for (final e in _pendentes.entries) if (e.value.$1 == geracao) e.key];
+      for (final id in ids) {
+        _pendentes.remove(id)!.$2.completeError(StateError('o isolate do mpv parou ($motivo)'));
       }
       if (!pronto.isCompleted) pronto.completeError(StateError('o isolate do mpv não arrancou ($motivo)'));
     }
@@ -166,7 +198,7 @@ class ExecutorIsolate implements ExecutorMpv {
         if (!pronto.isCompleted) pronto.complete(m);
       } else if (m is (int, Object?, String?)) {
         final (id, valor, erro) = m;
-        final c = _pendentes.remove(id);
+        final c = _pendentes.remove(id)?.$2;
         if (c == null) return;
         erro == null ? c.complete(valor) : c.completeError(StateError(erro));
       } else if (m is List) {
@@ -194,9 +226,14 @@ class ExecutorIsolate implements ExecutorMpv {
       rethrow;
     }
     final id = _proximo++;
-    final c = _pendentes[id] = Completer<Object?>();
+    final c = Completer<Object?>();
+    final geracao = _geracao;
+    _pendentes[id] = (geracao, c);
     porta.send((id, op, handle, args));
-    return c.future;
+    final vigia = Timer(limiteAbandono, () {
+      if (!c.isCompleted) _abandonar(geracao);
+    });
+    return c.future.whenComplete(vigia.cancel);
   }
 
   @override

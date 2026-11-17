@@ -179,9 +179,18 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     _hardware = hardware;
     _criarPlayer();
     if (mounted) setState(() {});
-    // nenhum pedido ao mpv antigo depois de destruído; nunca espera mais do que o limite
-    await motorAntigo.fecharEDestruir(antigo.dispose);
+    // pára o antigo (nunca toca por trás); nenhum pedido ao mpv antigo depois de destruído;
+    // nunca espera mais do que o limite
+    await _aposentar(motorAntigo, antigo);
   }
+
+  /// Larga um player: pausa e volume 0 pelo media_kit já (se o mpv estiver preso e o player
+  /// ficar por destruir, nunca toca por trás), depois destrói-o quando for seguro.
+  static Future<void> _aposentar(MotorForaDaUi motor, Player player) => motor.aposentar(
+        pausar: player.pause,
+        silenciar: () => player.setVolume(0),
+        destruir: player.dispose,
+      );
 
   /// A chave do canal para lembrar, nesta sessão, que precisa do modo "Compatível".
   String _chave(Canal c) => '${widget.nomeLista}|${c.id}';
@@ -382,8 +391,12 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       case AcaoPlayer.voltarAoDireto:
         _saltar(() async {
           if (!_aTocar) await _tocar(true);
-          // longe demais para o buffer: reabre o canal (link novo) — o seek ficava minutos atrás
-          if (await _saltos.voltarAoDireto() == VoltaAoDireto.reabrir && mounted) _abrir();
+          // longe demais para o buffer: reabre o canal (link novo) — o seek ficava minutos atrás.
+          // Se entretanto mudou de canal, não se mexe no canal novo.
+          final pedido = _pedido;
+          final saltos = _saltos;
+          final r = await saltos.voltarAoDireto(aindaValido: () => mounted && pedido == _pedido);
+          if (r == VoltaAoDireto.reabrir && mounted && pedido == _pedido) _abrir();
           return null;
         });
       case AcaoPlayer.playPausa:
@@ -562,8 +575,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       s.cancel();
     }
     // o mpv só se destrói depois dos pedidos que ainda lá estão
-    final player = _player;
-    unawaited(_motor.fecharEDestruir(player.dispose));
+    unawaited(_aposentar(_motor, _player));
     super.dispose();
   }
 
