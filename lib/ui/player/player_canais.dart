@@ -23,6 +23,7 @@ import 'painel_definicoes.dart';
 import 'relogio_direto.dart';
 import 'saltos_direto.dart';
 import 'taxa_ecra.dart';
+import 'troca_player.dart';
 import 'vigia_abertura.dart';
 
 /// A mensagem do leitor sem links: nas contas Xtream o link leva o utilizador e a password.
@@ -170,8 +171,10 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     _configurado = aplicarConfiguracao(_motor, _config);
   }
 
-  /// Recria o player noutra descodificação (o vo do Android fixa-se ao criar).
-  Future<void> _recriar(ModoDescodificacao modo, bool hardware) async {
+  /// Recria o player noutra descodificação (o vo do Android fixa-se ao criar) ou no lugar de um
+  /// mpv que deixou de responder. Devolve a aposentação do antigo (quem abre não espera por ela:
+  /// ver [prepararPlayer]).
+  Future<void> _recriar(ModoDescodificacao modo, bool hardware) {
     for (final s in _subsPlayer) {
       s.cancel();
     }
@@ -182,9 +185,8 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     _hardware = hardware;
     _criarPlayer();
     if (mounted) setState(() {});
-    // pára o antigo (nunca toca por trás); nenhum pedido ao mpv antigo depois de destruído;
-    // nunca espera mais do que o limite
-    await _aposentar(motorAntigo, antigo);
+    // pára o antigo (nunca toca por trás); nenhum pedido ao mpv antigo depois de destruído
+    return _aposentar(motorAntigo, antigo);
   }
 
   /// Larga um player: pausa e volume 0 pelo media_kit já (se o mpv estiver preso e o player
@@ -263,16 +265,13 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
           _android ? CompativelNaSessao.instancia.modoPara(_chave(canal), _prefs.modoAndroid) : _prefs.modoAndroid;
       final hardware = _prefs.hardware;
       // um mpv que deixou de responder não se volta a usar: player novo
-      if ((_android && (modo != _modo || hardware != _hardware)) || _motor.semResposta) {
-        await _recriar(modo, hardware);
-      } else if (pedido > 1) {
-        try {
-          await _player.stop().timeout(_limiteStop);
-        } on TimeoutException {
-          debugPrint('mpv: stop sem resposta; player novo');
-          await _recriar(modo, hardware);
-        }
-      }
+      await prepararPlayer(
+        novo: (_android && (modo != _modo || hardware != _hardware)) || _motor.semResposta,
+        zap: pedido > 1,
+        parar: () => _player.stop(),
+        trocar: () => _recriar(modo, hardware),
+        limiteStop: _limiteStop,
+      );
       if (!mounted || pedido != _pedido) return;
       final f = await widget.resolver(canal);
       if (!mounted || pedido != _pedido) return;
