@@ -166,6 +166,21 @@ void main() {
       expect(destruido, 1);
     });
 
+    test('um mpv que deixou de responder fica marcado: os pedidos seguintes nem lhe chegam', () async {
+      final m = motorCom();
+      ex.preso = true;
+      expect(await m.getProperty('time-pos'), '');
+      expect(m.semResposta, isTrue);
+      ex.preso = false;
+      final antes = ex.chamadas.length;
+      final t = DateTime.now();
+      expect(await m.getProperty('width'), '');
+      await m.setProperty('mute', 'yes');
+      await m.command(['seek', '1']);
+      expect(DateTime.now().difference(t), lessThan(const Duration(milliseconds: 100)));
+      expect(ex.chamadas.length, antes, reason: 'nenhum pedido novo ao mpv preso');
+    });
+
     test('um pedido que falha (o isolate morreu) dá o valor vazio, sem exceção', () async {
       ex.falha = true;
       expect(await motorCom().getProperty('x'), '');

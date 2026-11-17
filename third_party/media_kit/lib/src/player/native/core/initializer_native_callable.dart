@@ -6,8 +6,9 @@
 import 'dart:collection';
 import 'dart:ffi';
 
-import 'package:media_kit/ffi/ffi.dart';
 import 'package:media_kit/generated/libmpv/bindings.dart' as generated;
+import 'package:media_kit/src/player/native/core/native_library.dart';
+import 'package:media_kit/src/player/native/utils/fora_da_ui.dart';
 import 'package:synchronized/synchronized.dart';
 
 /// {@template initializer_native_callable}
@@ -38,15 +39,11 @@ class InitializerNativeCallable {
     Future<void> Function(Pointer<generated.mpv_event>) callback, {
     Map<String, String> options = const {},
   }) async {
-    final ctx = mpv.mpv_create();
-    for (final entry in options.entries) {
-      final name = entry.key.toNativeUtf8();
-      final value = entry.value.toNativeUtf8();
-      mpv.mpv_set_option_string(ctx, name.cast(), value.cast());
-      calloc.free(name);
-      calloc.free(value);
-    }
-    mpv.mpv_initialize(ctx);
+    // player-iptv: criar e inicializar o mpv fora da thread da UI (ver fora_da_ui.dart)
+    final address = await foraDaUi(ffiCreate, NativeLibrary.path, 0, [
+      for (final entry in options.entries) ...[entry.key, entry.value],
+    ]);
+    final ctx = Pointer<generated.mpv_handle>.fromAddress(address);
     final nativeCallable = WakeUpNativeCallable.listener(_callback);
     final nativeFunction = nativeCallable.nativeFunction;
     _locks[ctx.address] = Lock();

@@ -103,6 +103,9 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   int _pedido = 0;
 
   // nunca ecrã preto mudo: o "a abrir" só sai com imagem; sem ela em 20 s, erro
+  /// Um stop que não acaba neste tempo é de um mpv que deixou de responder.
+  static const _limiteStop = Duration(seconds: 5);
+
   late final _vigia = VigiaAbertura(
     aoAbrir: () {
       if (!mounted) return;
@@ -254,10 +257,16 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       final modo =
           _android ? CompativelNaSessao.instancia.modoPara(_chave(canal), _prefs.modoAndroid) : _prefs.modoAndroid;
       final hardware = _prefs.hardware;
-      if (_android && (modo != _modo || hardware != _hardware)) {
+      // um mpv que deixou de responder não se volta a usar: player novo
+      if ((_android && (modo != _modo || hardware != _hardware)) || _motor.semResposta) {
         await _recriar(modo, hardware);
       } else if (pedido > 1) {
-        await _player.stop();
+        try {
+          await _player.stop().timeout(_limiteStop);
+        } on TimeoutException {
+          debugPrint('mpv: stop sem resposta; player novo');
+          await _recriar(modo, hardware);
+        }
       }
       if (!mounted || pedido != _pedido) return;
       final f = await widget.resolver(canal);

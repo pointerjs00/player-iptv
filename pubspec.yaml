@@ -46,10 +46,12 @@ dependencies:
   # já vinha com o media_kit (sem descargas novas): chamar o libmpv fora da thread da UI
   ffi: ^2.2.0
 
-# media_kit 1.2.6 com o lock por player (ver third_party/media_kit/README.player-iptv.md)
+# media_kit 1.2.6 e media_kit_video 2.0.1 locais (ver os README.player-iptv.md em third_party/)
 dependency_overrides:
   media_kit:
     path: third_party/media_kit
+  media_kit_video:
+    path: third_party/media_kit_video
 
 dev_dependencies:
   flutter_test:

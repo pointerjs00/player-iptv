@@ -58,12 +58,17 @@ class MotorForaDaUi implements MotorMpv {
   final _emCurso = <Future<void>>{};
   bool _fechado = false;
   int? _handleConhecido;
+  bool _semResposta = false;
+
+  /// O mpv deste player deixou de responder (um pedido passou o [limite]): não se lhe pede mais
+  /// nada (cada pedido novo ficava também preso e enchia a fila do isolate).
+  bool get semResposta => _semResposta;
 
   /// O handle do mpv, se já se soube (para parar o player sem esperar por nada).
   int? get handleConhecido => _handleConhecido;
 
   Future<T> _correr<T>(T semMpv, Future<T> Function(int handle) f) async {
-    if (_fechado) return semMpv;
+    if (_fechado || _semResposta) return semMpv;
     final int? h;
     try {
       h = await _handle().timeout(limite);
@@ -71,7 +76,7 @@ class MotorForaDaUi implements MotorMpv {
       debugPrint('mpv: sem player pronto ($e)');
       return semMpv;
     }
-    if (h == null || _fechado) return semMpv;
+    if (h == null || _fechado || _semResposta) return semMpv;
     _handleConhecido = h;
     final pedido = f(h);
     final acabou = pedido.then<void>((_) {}, onError: (_) {});
@@ -79,8 +84,12 @@ class MotorForaDaUi implements MotorMpv {
     unawaited(acabou.whenComplete(() => _emCurso.remove(acabou)));
     try {
       return await pedido.timeout(limite);
+    } on TimeoutException catch (e) {
+      _semResposta = true;
+      debugPrint('mpv: pedido sem resposta; o player deixa de ser usado ($e)');
+      return semMpv;
     } catch (e) {
-      debugPrint('mpv: pedido sem resposta ($e)');
+      debugPrint('mpv: pedido falhou ($e)');
       return semMpv;
     }
   }

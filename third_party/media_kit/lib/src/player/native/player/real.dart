@@ -32,6 +32,7 @@ import 'package:media_kit/src/player/native/core/initializer.dart';
 import 'package:media_kit/src/player/native/core/native_library.dart';
 import 'package:media_kit/src/player/native/utils/android_asset_loader.dart';
 import 'package:media_kit/src/player/native/utils/android_helper.dart';
+import 'package:media_kit/src/player/native/utils/fora_da_ui.dart';
 import 'package:media_kit/src/player/native/utils/isolates.dart';
 import 'package:media_kit/src/player/native/utils/native_reference_holder.dart';
 import 'package:media_kit/src/player/native/utils/temp_file.dart';
@@ -52,14 +53,9 @@ void nativeEnsureInitialized({String? libmpv}) {
     print('$tag Disposing:\n${references.map((e) => e.address).join('\n')}');
 
     // I can only get quit to work; [mpv_terminate_destroy] causes direct crash.
-    final mpv = generated.MPV(DynamicLibrary.open(NativeLibrary.path));
-    final cmd = 'quit'.toNativeUtf8();
-    try {
-      for (final reference in references) {
-        mpv.mpv_command_string(reference.cast(), cmd.cast());
-      }
-    } finally {
-      calloc.free(cmd);
+    // player-iptv: fora da thread da UI (só em modo debug)
+    for (final reference in references) {
+      foraDaUi(ffiCommandString, NativeLibrary.path, reference.address, const ['quit']);
     }
   });
 }
@@ -103,8 +99,11 @@ class NativePlayer extends PlatformPlayer {
 
       Initializer(mpv).dispose(ctx);
 
+      // player-iptv: fora da thread da UI (com o mpv preso, terminate_destroy não voltava)
+      final lib = NativeLibrary.path;
+      final address = ctx.address;
       Future.delayed(const Duration(seconds: 5), () {
-        mpv.mpv_terminate_destroy(ctx);
+        foraDaUi(ffiTerminateDestroy, lib, address, const []);
       });
     }
 
@@ -1234,15 +1233,9 @@ class NativePlayer extends PlatformPlayer {
       await waitForVideoControllerInitializationIfAttached;
     }
 
-    final name = property.toNativeUtf8();
-    final data = value.toNativeUtf8();
-    mpv.mpv_set_property_string(
-      ctx,
-      name.cast(),
-      data.cast(),
-    );
-    calloc.free(name);
-    calloc.free(data);
+    // player-iptv: fora da thread da UI (um mpv que não responde não pode causar ANR); a ordem
+    // das chamadas mantém-se porque quem chama espera por cada uma
+    await foraDaUi(ffiSetPropertyString, NativeLibrary.path, ctx.address, [property, value]);
   }
 
   /// Retrieves the value of a property from the internal libmpv instance of this [Player].
@@ -1265,17 +1258,8 @@ class NativePlayer extends PlatformPlayer {
       await waitForVideoControllerInitializationIfAttached;
     }
 
-    final name = property.toNativeUtf8();
-    final value = mpv.mpv_get_property_string(ctx, name.cast());
-    if (value != nullptr) {
-      final result = value.cast<Utf8>().toDartString();
-      calloc.free(name);
-      mpv.mpv_free(value.cast());
-
-      return result;
-    }
-
-    return "";
+    // player-iptv: fora da thread da UI
+    return foraDaUi(ffiGetPropertyString, NativeLibrary.path, ctx.address, [property]);
   }
 
   /// Observes property for the internal libmpv instance of this [Player].
@@ -2052,15 +2036,14 @@ class NativePlayer extends PlatformPlayer {
         if (prop.ref.format == generated.mpv_format.MPV_FORMAT_NONE) {
           final fn = observed[prop.ref.name.cast<Utf8>().toDartString()];
           if (fn != null) {
-            final data = mpv.mpv_get_property_string(ctx, prop.ref.name);
-            if (data != nullptr) {
-              try {
-                await fn.call(data.cast<Utf8>().toDartString());
-              } catch (exception, stacktrace) {
-                print(exception);
-                print(stacktrace);
-              }
-              mpv.mpv_free(data.cast());
+            // player-iptv: fora da thread da UI
+            final data = await foraDaUi(ffiGetPropertyString, NativeLibrary.path, ctx.address,
+                [prop.ref.name.cast<Utf8>().toDartString()]);
+            try {
+              await fn.call(data);
+            } catch (exception, stacktrace) {
+              print(exception);
+              print(stacktrace);
             }
           }
         }
@@ -2122,9 +2105,14 @@ class NativePlayer extends PlatformPlayer {
       }
     }
     if (event.ref.event_id == generated.mpv_event_id.MPV_EVENT_HOOK) {
+      // player-iptv: as chamadas ao mpv dos hooks correm fora da thread da UI (foraDaUi); o
+      // hook só continua depois delas, pela mesma ordem do original
       final prop = event.ref.data.cast<generated.mpv_event_hook>();
-      if (prop.ref.name.cast<Utf8>().toDartString() == 'on_load') {
-        // --------------------------------------------------
+      final hook = prop.ref.name.cast<Utf8>().toDartString();
+      final id = prop.ref.id.toString();
+      final lib = NativeLibrary.path;
+      final address = ctx.address;
+      if (hook == 'on_load') {
         for (final hook in onLoadHooks) {
           try {
             await hook.call();
@@ -2133,125 +2121,35 @@ class NativePlayer extends PlatformPlayer {
             print(stacktrace);
           }
         }
-        // --------------------------------------------------
-        // Handle HTTP headers specified in the [Media].
         try {
-          final name = 'path'.toNativeUtf8();
-          final uri = mpv.mpv_get_property_string(
-            ctx,
-            name.cast(),
-          );
-          // Get the headers for current [Media] by looking up [uri] in the [HashMap].
-          final headers = Media(uri.cast<Utf8>().toDartString()).httpHeaders;
+          final uri = await foraDaUi(ffiGetPropertyString, lib, address, const ['path']);
+          final headers = Media(uri).httpHeaders;
           if (headers != null) {
-            final property = 'http-header-fields'.toNativeUtf8();
-            // Allocate & fill the [mpv_node] with the headers.
-            final value = calloc<generated.mpv_node>();
-            value.ref.format = generated.mpv_format.MPV_FORMAT_NODE_ARRAY;
-            value.ref.u.list = calloc<generated.mpv_node_list>();
-            value.ref.u.list.ref.num = headers.length;
-            value.ref.u.list.ref.values = calloc<generated.mpv_node>(
-              headers.length,
-            );
-            final entries = headers.entries.toList();
-            for (int i = 0; i < entries.length; i++) {
-              final k = entries[i].key;
-              final v = entries[i].value;
-              final data = '$k: $v'.toNativeUtf8();
-              value.ref.u.list.ref.values[i].format =
-                  generated.mpv_format.MPV_FORMAT_STRING;
-              value.ref.u.list.ref.values[i].u.string = data.cast();
-            }
-            mpv.mpv_set_property(
-              ctx,
-              property.cast(),
-              generated.mpv_format.MPV_FORMAT_NODE,
-              value.cast(),
-            );
-            // Free the allocated memory.
-            calloc.free(property);
-            for (int i = 0; i < value.ref.u.list.ref.num; i++) {
-              calloc.free(value.ref.u.list.ref.values[i].u.string);
-            }
-            calloc.free(value.ref.u.list.ref.values);
-            calloc.free(value.ref.u.list);
-            calloc.free(value);
+            await foraDaUi(ffiSetHttpHeaders, lib, address,
+                [for (final e in headers.entries) '${e.key}: ${e.value}']);
           }
-          mpv.mpv_free(uri.cast());
-          calloc.free(name);
         } catch (exception, stacktrace) {
           print(exception);
           print(stacktrace);
         }
-        // Handle start & end position specified in the [Media].
         try {
-          final name = 'playlist-pos'.toNativeUtf8();
-          final value = calloc<Int64>();
-          value.value = -1;
-
-          mpv.mpv_get_property(
-            ctx,
-            name.cast(),
-            generated.mpv_format.MPV_FORMAT_INT64,
-            value.cast(),
-          );
-
-          final index = value.value;
-
-          calloc.free(name.cast());
-          calloc.free(value.cast());
-
+          final index = await foraDaUi(ffiGetPropertyInt64, lib, address, const ['playlist-pos']);
           if (index >= 0) {
             final start = current[index].start;
             final end = current[index].end;
-
             if (start != null) {
-              try {
-                final property = 'start'.toNativeUtf8();
-                final value = (start.inMilliseconds / 1000)
-                    .toStringAsFixed(3)
-                    .toNativeUtf8();
-                mpv.mpv_set_property_string(
-                  ctx,
-                  property.cast(),
-                  value.cast(),
-                );
-                calloc.free(property);
-                calloc.free(value);
-              } catch (exception, stacktrace) {
-                print(exception);
-                print(stacktrace);
-              }
+              await foraDaUi(ffiSetPropertyString, lib, address,
+                  ['start', (start.inMilliseconds / 1000).toStringAsFixed(3)]);
             }
-
             if (end != null) {
-              try {
-                final property = 'end'.toNativeUtf8();
-                final value = (end.inMilliseconds / 1000)
-                    .toStringAsFixed(3)
-                    .toNativeUtf8();
-                mpv.mpv_set_property_string(
-                  ctx,
-                  property.cast(),
-                  value.cast(),
-                );
-                calloc.free(property);
-                calloc.free(value);
-              } catch (exception, stacktrace) {
-                print(exception);
-                print(stacktrace);
-              }
+              await foraDaUi(ffiSetPropertyString, lib, address,
+                  ['end', (end.inMilliseconds / 1000).toStringAsFixed(3)]);
             }
           }
         } catch (_) {}
-        // --------------------------------------------------
-        mpv.mpv_hook_continue(
-          ctx,
-          prop.ref.id,
-        );
+        await foraDaUi(ffiHookContinue, lib, address, [id]);
       }
-      if (prop.ref.name.cast<Utf8>().toDartString() == 'on_unload') {
-        // --------------------------------------------------
+      if (hook == 'on_unload') {
         for (final hook in onUnloadHooks) {
           try {
             await hook.call();
@@ -2260,58 +2158,19 @@ class NativePlayer extends PlatformPlayer {
             print(stacktrace);
           }
         }
-        // --------------------------------------------------
-        // Set http-header-fields as [generated.mpv_format.MPV_FORMAT_NONE] [generated.mpv_node].
-        try {
-          final property = 'http-header-fields'.toNativeUtf8();
-          final value = calloc<generated.mpv_node>();
-          value.ref.format = generated.mpv_format.MPV_FORMAT_NONE;
-          mpv.mpv_set_property(
-            ctx,
-            property.cast(),
-            generated.mpv_format.MPV_FORMAT_NODE,
-            value.cast(),
-          );
-          calloc.free(property);
-          calloc.free(value);
-        } catch (exception, stacktrace) {
-          print(exception);
-          print(stacktrace);
+        for (final f in [
+          () => foraDaUi(ffiSetHttpHeaders, lib, address, const []),
+          () => foraDaUi(ffiSetPropertyString, lib, address, const ['start', 'none']),
+          () => foraDaUi(ffiSetPropertyString, lib, address, const ['end', 'none']),
+        ]) {
+          try {
+            await f();
+          } catch (exception, stacktrace) {
+            print(exception);
+            print(stacktrace);
+          }
         }
-        // Set start & end position as [generated.mpv_format.MPV_FORMAT_NONE] [generated.mpv_node].
-        try {
-          final property = 'start'.toNativeUtf8();
-          final value = 'none'.toNativeUtf8();
-          mpv.mpv_set_property_string(
-            ctx,
-            property.cast(),
-            value.cast(),
-          );
-          calloc.free(property);
-          calloc.free(value);
-        } catch (exception, stacktrace) {
-          print(exception);
-          print(stacktrace);
-        }
-        try {
-          final property = 'end'.toNativeUtf8();
-          final value = 'none'.toNativeUtf8();
-          mpv.mpv_set_property_string(
-            ctx,
-            property.cast(),
-            value.cast(),
-          );
-          calloc.free(property);
-          calloc.free(value);
-        } catch (exception, stacktrace) {
-          print(exception);
-          print(stacktrace);
-        }
-        // --------------------------------------------------
-        mpv.mpv_hook_continue(
-          ctx,
-          prop.ref.id,
-        );
+        await foraDaUi(ffiHookContinue, lib, address, [id]);
       }
     }
   }
@@ -2540,7 +2399,8 @@ class NativePlayer extends PlatformPlayer {
     final requestNumber = _asyncRequestNumber++;
     final completer = _setPropertyRequests[requestNumber] = Completer<int>();
     final namePtr = name.toNativeUtf8();
-    if (configuration.async) {
+    // player-iptv: sempre pela API assíncrona (a síncrona prendia a thread da UI com o mpv preso)
+    {
       final immediate = mpv.mpv_set_property_async(
         ctx,
         requestNumber,
@@ -2555,13 +2415,6 @@ class NativePlayer extends PlatformPlayer {
         return;
       }
       _logError(await completer.future, text);
-    } else {
-      mpv.mpv_set_property(
-        ctx,
-        namePtr.cast(),
-        format,
-        data,
-      );
     }
     calloc.free(namePtr);
   }
@@ -2617,7 +2470,8 @@ class NativePlayer extends PlatformPlayer {
       (arr + i).value = pointers[i];
     }
 
-    if (configuration.async) {
+    // player-iptv: sempre pela API assíncrona (a síncrona prendia a thread da UI com o mpv preso)
+    {
       final requestNumber = _asyncRequestNumber++;
       final completer = _commandRequests[requestNumber] = Completer<int>();
       final immediate = mpv.mpv_command_async(ctx, requestNumber, arr.cast());
@@ -2628,8 +2482,6 @@ class NativePlayer extends PlatformPlayer {
         return;
       }
       _logError(await completer.future, text);
-    } else {
-      mpv.mpv_command(ctx, arr.cast());
     }
 
     calloc.free(arr);
