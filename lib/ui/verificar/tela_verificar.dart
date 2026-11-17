@@ -1,7 +1,7 @@
-import 'package:file_picker/file_picker.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../dados/biblioteca.dart';
+import '../../dados/guardar_ficheiro.dart';
 import '../../importar/importar.dart';
 import '../../importar/stbstalker.dart';
 import '../../modelo/conta.dart';
@@ -155,18 +155,23 @@ class _TelaVerificarState extends State<TelaVerificar> {
   Future<void> _exportar() async {
     final listas = [for (final l in _b.listas) if (_selecao.contains(l.id)) l];
     if (listas.isEmpty) return _aviso('Selecione as listas a exportar.');
-    if (_formato == 'json') {
-      final uri = await FilePicker.saveFile(fileName: 'Accounts.json', bytes: exportarAccountsJson(listas),
-          mimeType: 'application/json', dialogTitle: 'Guardar Accounts.json');
-      if (uri != null) _aviso('${listas.length} listas exportadas para o Accounts.json.');
-      return;
-    }
-    final (zip, ignoradas) = exportarZipIni(listas);
-    if (zip == null) return _aviso('Nenhuma das listas selecionadas é Stalker (portal + MAC).');
-    final uri = await FilePicker.saveFile(fileName: 'listas_stalker.zip', bytes: zip, mimeType: 'application/zip',
-        dialogTitle: 'Guardar os ficheiros .ini');
-    if (uri != null) {
-      _aviso('Listas exportadas.${ignoradas > 0 ? ' $ignoradas sem MAC (Xtream/M3U) ficaram de fora.' : ''}');
+    try {
+      if (_formato == 'json') {
+        final r = await guardarFicheiro('Accounts.json', exportarAccountsJson(listas), 'application/json');
+        if (!r.cancelado) _aviso('${listas.length} listas exportadas. Guardado em ${r.destino}');
+        return;
+      }
+      final (zip, ignoradas) = exportarZipIni(listas);
+      if (zip == null) return _aviso('Nenhuma das listas selecionadas é Stalker (portal + MAC).');
+      final r = await guardarFicheiro('listas_stalker.zip', zip, 'application/zip');
+      if (!r.cancelado) {
+        _aviso('Listas exportadas. Guardado em ${r.destino}.'
+            '${ignoradas > 0 ? ' $ignoradas sem MAC (Xtream/M3U) ficaram de fora.' : ''}');
+      }
+    } on ErroGuardar catch (e) {
+      _aviso(e.mensagem);
+    } catch (e) {
+      _aviso(mensagemErroGuardar(e));
     }
   }
 
