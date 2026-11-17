@@ -19,6 +19,7 @@ import 'estatisticas.dart';
 import 'faixas.dart';
 import 'maquina_controlos.dart';
 import 'mpv_fora_da_ui.dart';
+import 'numero_canal.dart';
 import 'painel_definicoes.dart';
 import 'relogio_direto.dart';
 import 'saltos_direto.dart';
@@ -99,6 +100,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   Track _faixa = const Track();
   late List<Canal> _canais = widget.canais;
   late int _i = widget.indice;
+  late final _historico = HistoricoCanais(widget.indice);
   String? _erro;
   bool _aAbrir = true;
   int _pedido = 0;
@@ -237,6 +239,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   void trocar(List<Canal> canais, int i) {
     _canais = canais;
     _i = i;
+    _historico.novaLista(i);
     _abrir();
   }
 
@@ -376,10 +379,26 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
 
   void _mudar(int delta) {
     if (_canais.length < 2) return;
-    _i = (_i + delta) % _canais.length;
-    if (_i < 0) _i += _canais.length;
+    final i = (_i + delta) % _canais.length;
+    _irPara(i < 0 ? i + _canais.length : i);
+  }
+
+  /// Abre o canal `i` da lista (o atual fica como "canal visto antes").
+  void _irPara(int i) {
+    if (i < 0 || i >= _canais.length || _historico.irPara(i) == null) return;
+    _i = i;
     widget.aoMudarCanal?.call(_i);
     _abrir();
+  }
+
+  /// O número escrito com os algarismos: o número do portal ou a posição na lista.
+  void _irParaNumero(int n) {
+    final i = indicePorNumero(_canais, n);
+    if (i == null) {
+      _mostrarAviso('Não há o canal $n nesta lista');
+    } else {
+      _irPara(i);
+    }
   }
 
   Future<void> _tocar(bool tocar) async {
@@ -407,6 +426,9 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
         _mudar(-1);
       case AcaoPlayer.canalSeguinte:
         _mudar(1);
+      case AcaoPlayer.alternarCanal:
+        final anterior = _historico.anterior;
+        if (anterior != null) _irPara(anterior);
       case AcaoPlayer.recuar:
         _saltar(_saltos.recuar);
       case AcaoPlayer.avancar:
@@ -437,7 +459,8 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       case AcaoPlayer.sair:
         widget.aoSair();
       case AcaoPlayer.passar || AcaoPlayer.mostrarControlos || AcaoPlayer.esconderControlos ||
-            AcaoPlayer.fecharPainel:
+            AcaoPlayer.fecharPainel || AcaoPlayer.algarismo || AcaoPlayer.irParaNumero ||
+            AcaoPlayer.cancelarNumero:
         break;
     }
   }
@@ -625,7 +648,9 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
           aTocar: _aTocar,
           velocidade: _velocidade,
           erro: _erro != null,
+          podeAlternar: _historico.anterior != null,
         ),
+        aoNumero: _irParaNumero,
         atraso: () => _relogio.atraso,
         lerInfoStream: () async => {for (final p in propriedadesInfoStream) p: await _motor.getProperty(p)},
         aoAgir: _agir,

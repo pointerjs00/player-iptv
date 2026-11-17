@@ -103,7 +103,7 @@ class Xtream implements Protocolo {
       final grupo = nomes['${s['category_id']}'] ?? 'Sem grupo';
       if (vistos.add(grupo)) grupos.add(grupo);
       canais.add(Canal(id: '${s['stream_id']}', nome: '${s['name'] ?? ''}'.trim(), grupo: grupo,
-          logo: '${s['stream_icon'] ?? ''}'));
+          logo: '${s['stream_icon'] ?? ''}', numero: numeroCanal(s['num'])));
     }
     // a ordem das categorias do painel, com as que não têm canais no fim
     final ordem = [for (final n in nomes.values) if (vistos.contains(n)) n];

@@ -51,14 +51,20 @@ class JanelaPlayer {
   Lista? _lista;
   List<Canal> _canais = const [];
   Map<String, dynamic>? _pendente;
+  void Function(Canal canal)? _aoVer;
 
   /// Mostra `canais[i]` na janela do player (abre-a se não estiver aberta).
-  Future<void> mostrar(Lista lista, List<Canal> canais, int i, {void Function(String motivo)? aoFalhar}) async {
+  /// `aoVer` é chamado com cada canal que o player pede para abrir (o primeiro e os do zapping).
+  Future<void> mostrar(Lista lista, List<Canal> canais, int i,
+      {void Function(String motivo)? aoFalhar, void Function(Canal canal)? aoVer}) async {
     _lista = lista;
     _canais = canais;
+    _aoVer = aoVer;
     final msg = {
       'tipo': 'abrir', 'lista': lista.nomeMostrado, 'i': i,
-      'canais': [for (final c in canais) {'id': c.id, 'nome': c.nome, 'grupo': c.grupo}],
+      'canais': [
+        for (final c in canais) {'id': c.id, 'nome': c.nome, 'grupo': c.grupo, if (c.numero != null) 'num': c.numero},
+      ],
     };
     if (_ligacao != null) {
       _enviar(msg);
@@ -177,6 +183,7 @@ class JanelaPlayer {
       _enviar({'tipo': 'fonte', 'pedido': m['pedido'], 'erro': 'canal desconhecido'});
       return;
     }
+    _aoVer?.call(_canais[i]);
     try {
       final f = await Protocolo.para(lista.conta).fonte(lista.conta, _canais[i]);
       _enviar({'tipo': 'fonte', 'pedido': m['pedido'], 'url': f.url, 'headers': f.headers});
@@ -248,7 +255,7 @@ class LigacaoPrincipal {
     if (m['tipo'] == 'abrir') {
       final canais = [
         for (final c in (m['canais'] as List))
-          Canal(id: '${c['id']}', nome: '${c['nome']}', grupo: '${c['grupo']}'),
+          Canal(id: '${c['id']}', nome: '${c['nome']}', grupo: '${c['grupo']}', numero: numeroCanal(c['num'])),
       ];
       aberturas.add(('${m['lista']}', canais, m['i'] as int));
     } else if (m['tipo'] == 'fonte') {

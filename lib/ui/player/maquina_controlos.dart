@@ -1,5 +1,7 @@
 import 'package:flutter/services.dart';
 
+import 'numero_canal.dart';
+
 /// O que está por cima do vídeo.
 enum VistaPlayer {
   /// Só o vídeo: as setas mudam de canal (cima = seguinte, baixo = anterior) e recuam/avançam (esquerda/direita).
@@ -33,6 +35,18 @@ enum AcaoPlayer {
 
   /// (só dos botões) seek até ao fim do buffer.
   voltarAoDireto,
+
+  /// Um algarismo entrou (ou saiu) do número do canal ([MaquinaControlos.numero]).
+  algarismo,
+
+  /// Saltar para o canal com o número escrito ([MaquinaControlos.tirarNumero]).
+  irParaNumero,
+
+  /// O número escrito foi abandonado (Voltar).
+  cancelarNumero,
+
+  /// Alternar entre os dois últimos canais vistos.
+  alternarCanal,
 }
 
 /// As teclas do comando/teclado no player, conforme a vista. Sem widgets (testa-se à parte):
@@ -65,6 +79,8 @@ class MaquinaControlos {
     LogicalKeyboardKey.contextMenu: AcaoPlayer.estatisticas,
     LogicalKeyboardKey.keyI: AcaoPlayer.estatisticas,
     LogicalKeyboardKey.f11: AcaoPlayer.ecraInteiro,
+    // a tecla "último canal" do comando (KEYCODE_LAST_CHANNEL)
+    LogicalKeyboardKey.mediaLast: AcaoPlayer.alternarCanal,
   };
 
   /// Só com o vídeo sozinho (com a barra, as setas são da navegação).
@@ -74,10 +90,34 @@ class MaquinaControlos {
     LogicalKeyboardKey.arrowLeft: AcaoPlayer.recuar,
     LogicalKeyboardKey.arrowRight: AcaoPlayer.avancar,
     LogicalKeyboardKey.space: AcaoPlayer.playPausa,
+    LogicalKeyboardKey.backspace: AcaoPlayer.alternarCanal,
   };
+
+  /// O número do canal a ser escrito com os algarismos ('' = nenhum).
+  String numero = '';
+
+  /// O número escrito (e esquece-o). null = não havia.
+  int? tirarNumero() {
+    final n = int.tryParse(numero);
+    numero = '';
+    return n;
+  }
 
   /// A ação de uma tecla premida (`erro`: está à vista o cartão de erro do canal).
   AcaoPlayer tecla(LogicalKeyboardKey k, {bool erro = false}) {
+    // os algarismos escrevem o número do canal em qualquer vista (nenhuma outra tecla os usa)
+    final d = algarismoDe(k);
+    if (d != null) {
+      if (numero.length < maxAlgarismos) numero += '$d';
+      return AcaoPlayer.algarismo;
+    }
+    if (numero.isNotEmpty) {
+      if (_ok.contains(k)) return AcaoPlayer.irParaNumero;
+      if (k == LogicalKeyboardKey.backspace) {
+        numero = numero.substring(0, numero.length - 1);
+        return numero.isEmpty ? AcaoPlayer.cancelarNumero : AcaoPlayer.algarismo;
+      }
+    }
     final sempre = _sempre[k];
     if (sempre != null) return sempre;
     if (_voltar.contains(k)) return voltar();
@@ -90,8 +130,12 @@ class MaquinaControlos {
     return _escondida[k] ?? AcaoPlayer.passar;
   }
 
-  /// Voltar por camadas: fecha o painel, depois a barra, depois sai.
+  /// Voltar por camadas: abandona o número a ser escrito, fecha o painel, depois a barra, depois sai.
   AcaoPlayer voltar() {
+    if (numero.isNotEmpty) {
+      numero = '';
+      return AcaoPlayer.cancelarNumero;
+    }
     switch (vista) {
       case VistaPlayer.painel:
         vista = VistaPlayer.controlos;

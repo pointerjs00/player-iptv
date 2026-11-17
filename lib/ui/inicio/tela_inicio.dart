@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
@@ -11,13 +14,16 @@ import '../conteudo/tela_conteudo.dart';
 import '../design/design.dart';
 import '../realce_foco.dart';
 import 'acoes_lista.dart';
+import 'cartao_continuar.dart';
 import 'cartao_lista.dart';
 
 /// Início com os separadores "Player" e "Gestor". O Player mostra as listas em cartões (com o
 /// estado da última verificação, pesquisa e filtro por estado) e não gere nada: adicionar,
-/// verificar, exportar e enviar listas para o Player faz-se no Gestor.
+/// verificar, exportar e enviar listas para o Player faz-se no Gestor. No topo do Player,
+/// "Continuar a ver" (o último canal visto). No Android, Voltar no Início pede confirmação.
 class TelaInicio extends StatefulWidget {
-  const TelaInicio({super.key, required this.biblioteca, this.area, this.separadorGestor, this.abrirLista, this.definicoes});
+  const TelaInicio({super.key, required this.biblioteca, this.area, this.separadorGestor, this.abrirLista, this.definicoes,
+      this.abrirCanal, this.sair = SystemNavigator.pop});
 
   /// As listas do Player.
   final Biblioteca biblioteca;
@@ -33,6 +39,12 @@ class TelaInicio extends StatefulWidget {
 
   /// Para testes: pede os canais de uma lista (em vez do protocolo da conta).
   final AbrirLista? abrirLista;
+
+  /// Para testes: em vez de abrir o player (ver [TelaConteudo.abrir]).
+  final FutureOr<int?> Function(List<Canal> canais, int i)? abrirCanal;
+
+  /// Fecha a app (o segundo Voltar no Início).
+  final VoidCallback sair;
 
   @override
   State<TelaInicio> createState() => _TelaInicioState();
@@ -50,8 +62,29 @@ class _TelaInicioState extends State<TelaInicio> {
 
   FocusNode _focoCartao(String id) => _focos.putIfAbsent(id, () => FocusNode(debugLabel: 'Cartão $id'));
 
+  /// Depois do primeiro Voltar, durante [_tempoSair], o segundo fecha a app.
+  static const _tempoSair = Duration(seconds: 2);
+  Timer? _podeSair;
+
+  /// Android/TV: Voltar no Início (sem nada por cima) não fecha logo a app. No Windows a janela
+  /// fecha-se pelo botão de fechar, como sempre.
+  bool get _confirmarSaida => defaultTargetPlatform == TargetPlatform.android;
+
+  void _voltar(BuildContext context) {
+    if (_podeSair?.isActive ?? false) {
+      _podeSair!.cancel();
+      widget.sair();
+      return;
+    }
+    _podeSair = Timer(_tempoSair, () {});
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(const SnackBar(content: Text('Carregue outra vez em Voltar para sair'), duration: _tempoSair));
+  }
+
   @override
   void dispose() {
+    _podeSair?.cancel();
     _focoMais.dispose();
     for (final f in _focos.values) {
       f.dispose();
@@ -124,8 +157,9 @@ class _TelaInicioState extends State<TelaInicio> {
     }
   }
 
-  void _abrir(Lista l, {bool atualizar = false}) => Navigator.of(context).push(rotaSuave<void>(
-        TelaConteudo(biblioteca: widget.biblioteca, lista: l, atualizar: atualizar, abrirLista: widget.abrirLista),
+  void _abrir(Lista l, {bool atualizar = false, String? continuar}) => Navigator.of(context).push(rotaSuave<void>(
+        TelaConteudo(biblioteca: widget.biblioteca, lista: l, atualizar: atualizar, abrirLista: widget.abrirLista,
+            abrir: widget.abrirCanal, continuar: continuar),
       ));
 
   /// "Ir para o Gestor": muda de separador e põe o foco no "+" (que só aparece no Gestor).
@@ -142,7 +176,26 @@ class _TelaInicioState extends State<TelaInicio> {
           final todas = widget.biblioteca.listas;
           final vis = _visiveis();
           final tv = ecraTv(context);
+          final visto = widget.biblioteca.ultimoVisto;
+          final listaVista = visto == null ? null : widget.biblioteca.porId(visto.lista);
           return Column(children: [
+            if (visto != null && listaVista != null)
+              Padding(
+                // margem para o cartão focado crescer e brilhar sem ser cortado
+                padding: const EdgeInsets.fromLTRB(Tokens.e24, Tokens.e16, Tokens.e24, Tokens.e4),
+                child: SizedBox(
+                  height: CartaoContinuar.altura(tv),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 760),
+                    child: entradaEmCascata(0, CartaoContinuar(
+                      visto: visto,
+                      lista: listaVista,
+                      autofocus: true,
+                      aoAbrir: () => _abrir(listaVista, continuar: visto.canal),
+                    )),
+                  ),
+                ),
+              ),
             Padding(
               padding: const EdgeInsets.fromLTRB(Tokens.e16, Tokens.e12, Tokens.e16, Tokens.e4),
               child: Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
@@ -177,7 +230,8 @@ class _TelaInicioState extends State<TelaInicio> {
                           // só os primeiros entram em cascata (entradaEmCascata ignora índices > 30)
                           itemBuilder: (_, i) => entradaEmCascata(i, CartaoLista(
                             lista: vis[i],
-                            autofocus: i == 0,
+                            // com "Continuar a ver" o foco começa nele
+                            autofocus: i == 0 && widget.biblioteca.ultimoVisto == null,
                             aoAbrir: () => _abrir(vis[i]),
                             focusNode: _focoCartao(vis[i].id),
                             aoMenu: () => _menu(vis[i]),
@@ -227,7 +281,17 @@ class _TelaInicioState extends State<TelaInicio> {
   @override
   Widget build(BuildContext context) {
     final temGestor = widget.separadorGestor != null;
-    if (!temGestor) return _corpo(context, gestorAtivo: false);
+    return PopScope(
+      // o Voltar do comando no Início: "Carregue outra vez em Voltar para sair"
+      canPop: !_confirmarSaida,
+      onPopInvokedWithResult: (saiu, _) {
+        if (!saiu) _voltar(context);
+      },
+      child: temGestor ? _comAbas() : _corpo(context, gestorAtivo: false),
+    );
+  }
+
+  Widget _comAbas() {
     return DefaultTabController(
       length: 2,
       // com "reduzir movimento" a troca de abas também é instantânea

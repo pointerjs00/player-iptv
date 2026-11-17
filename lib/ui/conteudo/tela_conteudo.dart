@@ -12,6 +12,7 @@ import '../campo_tv.dart';
 import '../design/design.dart';
 import '../player/abrir_canal.dart';
 import '../realce_foco.dart';
+import 'opcoes_conteudo.dart';
 import '../tema.dart';
 import '../../verificar/estado.dart';
 import '../../verificar/verificador.dart';
@@ -39,7 +40,7 @@ Future<ConteudoLista> _abrirPeloProtocolo(Conta conta, {Cancelamento? cancelamen
 /// cima). A pesquisa procura canais em todos os grupos, sem acentos nem maiúsculas.
 class TelaConteudo extends StatefulWidget {
   const TelaConteudo({super.key, required this.biblioteca, required this.lista, this.abrir,
-      this.atualizar = false, AbrirLista? abrirLista, this.dns = resolverDns})
+      this.atualizar = false, AbrirLista? abrirLista, this.dns = resolverDns, this.continuar})
       : abrirLista = abrirLista ?? _abrirPeloProtocolo;
 
   final Biblioteca biblioteca;
@@ -56,6 +57,9 @@ class TelaConteudo extends StatefulWidget {
 
   /// Depois de uma falha: o host existe? (DNS inexistente = a lista não funciona)
   final ResolverDns dns;
+
+  /// "Continuar a ver": o id do canal a abrir no player logo que os canais estejam à vista.
+  final String? continuar;
 
   @override
   State<TelaConteudo> createState() => _TelaConteudoState();
@@ -92,6 +96,14 @@ class _TelaConteudoState extends State<TelaConteudo> {
   final _focoRegresso = FocusNode();
   Canal? _canalAFocar;
 
+  /// Os grupos escondidos também à vista (com um ícone), para os voltar a mostrar.
+  bool _verEscondidos = false;
+  bool _continuou = false;
+
+  /// O foco de cada grupo (depois de esconder um, o foco passa ao grupo escolhido).
+  final _focosGrupos = <String, FocusNode>{};
+  FocusNode _focoGrupo(String g) => _focosGrupos.putIfAbsent(g, () => FocusNode(debugLabel: 'Grupo $g'));
+
   /// A altura de cada canal (maior na TV: vê-se de longe).
   double _alturaCanal(bool tv) => tv ? 76 : 56;
   static const _margemLista = 8.0;
@@ -109,6 +121,9 @@ class _TelaConteudoState extends State<TelaConteudo> {
     _scrollCanais.dispose();
     _focoRegresso.dispose();
     _focoCancelar.dispose();
+    for (final f in _focosGrupos.values) {
+      f.dispose();
+    }
     super.dispose();
   }
 
@@ -137,9 +152,80 @@ class _TelaConteudoState extends State<TelaConteudo> {
       _nomes = null;
       _chaveVisiveis = null;
       _erro = null;
-      _grupo ??= widget.lista.favoritos.isNotEmpty ? grupoFavoritos : (c.grupos.isEmpty ? null : c.grupos.first);
+      _grupo ??= _primeiroGrupo(c);
     });
     _indexarNomes(c);
+    if (widget.continuar != null && !_continuou) {
+      _continuou = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _continuarA(widget.continuar!);
+      });
+    }
+  }
+
+  String? _primeiroGrupo(ConteudoLista c) {
+    if (widget.lista.favoritos.isNotEmpty) return grupoFavoritos;
+    final escondidos = widget.lista.gruposEscondidos;
+    return c.grupos.where((g) => _verEscondidos || !escondidos.contains(g)).firstOrNull ??
+        (c.grupos.isEmpty ? null : c.grupos.first);
+  }
+
+  /// "Continuar a ver": abre o player nesse canal, com os canais do grupo dele.
+  void _continuarA(String id) {
+    final canal = _conteudo?.canais.where((c) => c.id == id).firstOrNull;
+    if (canal == null) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('O último canal visto já não está nesta lista.')));
+      return;
+    }
+    setState(() {
+      _grupo = canal.grupo;
+      _qCanais = '';
+    });
+    final canais = _canaisVisiveis();
+    final i = canais.indexOf(canal);
+    if (i >= 0) _abrirCanal(canais, i);
+  }
+
+  /// O que se escolheu nas opções (do grupo `g` ou do topo).
+  Future<void> _opcoes([String? g]) async {
+    final l = widget.lista;
+    final grupo = g ?? (_grupo == grupoFavoritos ? null : _grupo);
+    final o = await mostrarOpcoesCanais(context,
+        grupo: grupo,
+        grupoEscondido: grupo != null && l.gruposEscondidos.contains(grupo),
+        soGrupo: g != null,
+        ordem: l.ordemCanais,
+        verEscondidos: _verEscondidos,
+        escondidos: l.gruposEscondidos.length);
+    if (o == null || !mounted) return;
+    Future<void> gravar(Future<void> f) => f.catchError((Object e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context)
+                .showSnackBar(SnackBar(content: Text('Não foi possível guardar (${descreverErro(e)}).')));
+          }
+        });
+    switch (o) {
+      case OpcaoCanais.esconderGrupo:
+        unawaited(gravar(widget.biblioteca.esconderGrupo(l.id, grupo!, true)));
+        if (!_verEscondidos && _grupo == grupo) _grupo = _primeiroGrupo(_conteudo!);
+      case OpcaoCanais.mostrarGrupo:
+        unawaited(gravar(widget.biblioteca.esconderGrupo(l.id, grupo!, false)));
+      case OpcaoCanais.ordemLista || OpcaoCanais.ordemAz:
+        unawaited(gravar(widget.biblioteca
+            .definirOrdem(l.id, o == OpcaoCanais.ordemAz ? OrdemCanais.az : OrdemCanais.lista)));
+      case OpcaoCanais.verEscondidos || OpcaoCanais.ocultarEscondidos:
+        _verEscondidos = o == OpcaoCanais.verEscondidos;
+        if (!_verEscondidos && l.gruposEscondidos.contains(_grupo)) _grupo = _primeiroGrupo(_conteudo!);
+    }
+    setState(() => _chaveVisiveis = null);
+    // o grupo com o foco pode ter saído: o foco vai para o grupo escolhido
+    if (o == OpcaoCanais.esconderGrupo || o == OpcaoCanais.ocultarEscondidos) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final g = _grupo;
+        if (mounted && g != null) _focosGrupos[g]?.requestFocus();
+      });
+    }
   }
 
   /// Os nomes sem acentos, para a pesquisa: numa lista grande, fora da thread da interface.
@@ -258,9 +344,11 @@ class _TelaConteudoState extends State<TelaConteudo> {
     final c = _conteudo;
     if (c == null) return const [];
     final q = semAcentos(_qGrupos.trim());
+    final escondidos = widget.lista.gruposEscondidos;
     return [
       if (widget.lista.favoritos.isNotEmpty) grupoFavoritos,
-      for (final g in c.grupos) if (q.isEmpty || semAcentos(g).contains(q)) g,
+      for (final g in c.grupos)
+        if ((q.isEmpty || semAcentos(g).contains(q)) && (_verEscondidos || !escondidos.contains(g))) g,
     ];
   }
 
@@ -268,23 +356,42 @@ class _TelaConteudoState extends State<TelaConteudo> {
     final c = _conteudo;
     if (c == null) return const [];
     final q = semAcentos(_qCanais.trim());
-    final chave = q.isNotEmpty ? 'q:$q' : (_grupo == grupoFavoritos ? 'f:$_versaoFavoritos' : 'g:$_grupo');
+    final ordem = widget.lista.ordemCanais;
+    final escondidos = widget.lista.gruposEscondidos;
+    final chave = '${ordem.name}|${_verEscondidos ? '' : escondidos.join('\u0000')}|'
+        '${q.isNotEmpty ? 'q:$q' : (_grupo == grupoFavoritos ? 'f:$_versaoFavoritos' : 'g:$_grupo')}';
     if (chave == _chaveVisiveis) return _visiveis;
     _chaveVisiveis = chave;
+    final List<Canal> r;
     if (q.isNotEmpty) {
       final nomes = _nomes ??= [for (final x in c.canais) semAcentos(x.nome)];
-      _visiveis = [for (var i = 0; i < c.canais.length; i++) if (nomes[i].contains(q)) c.canais[i]];
+      // os grupos escondidos também ficam fora da pesquisa
+      final semEscondidos = _verEscondidos || escondidos.isEmpty;
+      r = [
+        for (var i = 0; i < c.canais.length; i++)
+          if (nomes[i].contains(q) && (semEscondidos || !escondidos.contains(c.canais[i].grupo))) c.canais[i],
+      ];
     } else if (_grupo == grupoFavoritos) {
-      _visiveis = [for (final x in c.canais) if (widget.lista.favoritos.contains(x.id)) x];
+      r = [for (final x in c.canais) if (widget.lista.favoritos.contains(x.id)) x];
     } else {
-      _visiveis = _grupo == null ? c.canais : (_porGrupo[_grupo] ?? const []);
+      r = _grupo == null ? c.canais : (_porGrupo[_grupo] ?? const []);
     }
+    _visiveis = ordenarCanais(r, ordem);
     return _visiveis;
   }
 
+  /// Guarda o canal para o "Continuar a ver" (em segundo plano; uma falha não incomoda).
+  void _registarVisto(Canal c) =>
+      unawaited(widget.biblioteca.registarVisto(widget.lista.id, c).catchError((Object _) {}));
+
   Future<void> _abrirCanal(List<Canal> canais, int i) async {
-    final volta = widget.abrir != null ? await widget.abrir!(canais, i) : await abrirCanal(context, widget.lista, canais, i);
-    if (volta == null || !mounted || volta < 0 || volta >= canais.length) return;
+    _registarVisto(canais[i]);
+    final volta = widget.abrir != null
+        ? await widget.abrir!(canais, i)
+        : await abrirCanal(context, widget.lista, canais, i, aoVer: _registarVisto);
+    if (volta == null || volta < 0 || volta >= canais.length) return;
+    _registarVisto(canais[volta]);
+    if (!mounted) return;
     // a lista visível ainda é a mesma que foi para o player? Então foca o canal que tocava.
     if (!identical(canais, _canaisVisiveis())) return;
     setState(() => _canalAFocar = canais[volta]);
@@ -334,6 +441,11 @@ class _TelaConteudoState extends State<TelaConteudo> {
       appBar: AppBar(
         title: Text(widget.lista.nomeMostrado, maxLines: 1, overflow: TextOverflow.ellipsis),
         actions: [
+          IconButton(
+            tooltip: 'Opções dos canais',
+            onPressed: _conteudo == null ? null : _opcoes,
+            icon: const Icon(Icons.tune_rounded),
+          ),
           IconButton(
             tooltip: 'Atualizar a lista de canais',
             onPressed: _atualizar,
@@ -566,25 +678,42 @@ class _TelaConteudoState extends State<TelaConteudo> {
       Expanded(
         child: FocusTraversalGroup(
           child: ListView.builder(
+            key: const Key('lista-grupos'),
             // margem para a borda de realce não ser cortada pelo vidro
             padding: const EdgeInsets.all(_margemLista),
             itemCount: grupos.length,
             itemBuilder: (_, i) {
               final g = grupos[i];
               final n = g == grupoFavoritos ? widget.lista.favoritos.length : (_contagens[g] ?? 0);
-              return RealceFoco(
+              final fav = g == grupoFavoritos;
+              final escondido = !fav && widget.lista.gruposEscondidos.contains(g);
+              void escolher() => setState(() => _grupo = g);
+              final tile = RealceFoco(
                 construir: (_, aoMudarFoco) => ListTile(
+                  focusNode: _focoGrupo(g),
                   onFocusChange: aoMudarFoco,
                   dense: !tv,
                   // o foco começa no grupo escolhido
                   autofocus: g == _grupo,
                   selected: g == _grupo && _qCanais.trim().isEmpty,
                   title: Text(g, maxLines: 1, overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: tv ? 17 : 14, fontWeight: FontWeight.w500)),
-                  trailing: Text('$n', style: TextStyle(color: Tokens.texto2, fontSize: tv ? 15 : 12.5)),
-                  onTap: () => setState(() => _grupo = g),
+                      style: TextStyle(fontSize: tv ? 17 : 14, fontWeight: FontWeight.w500,
+                          color: escondido ? Tokens.texto2 : null)),
+                  trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                    if (escondido) ...[
+                      Icon(Icons.visibility_off_outlined,
+                          key: const Key('grupo-escondido'), size: tv ? 18 : 16, color: Tokens.texto2,
+                          semanticLabel: 'escondido'),
+                      const SizedBox(width: 6),
+                    ],
+                    Text('$n', style: TextStyle(color: Tokens.texto2, fontSize: tv ? 15 : 12.5)),
+                  ]),
+                  onTap: escolher,
+                  // o menu do grupo: toque longo (o OK mantido vem do OkMantido)
+                  onLongPress: fav ? null : () => _opcoes(g),
                 ),
               );
+              return fav ? tile : OkMantido(aoCarregar: escolher, aoManter: () => _opcoes(g), child: tile);
             },
           ),
         ),
