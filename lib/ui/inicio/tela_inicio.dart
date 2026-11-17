@@ -6,8 +6,8 @@ import '../../verificar/servico.dart';
 import '../adicionar.dart';
 import '../campo_tv.dart';
 import '../conteudo/tela_conteudo.dart';
+import '../design/design.dart';
 import '../realce_foco.dart';
-import '../tema.dart';
 import 'cartao_lista.dart';
 
 /// Início: as listas guardadas em cartões, com pesquisa e filtro por estado.
@@ -64,8 +64,8 @@ class _TelaInicioState extends State<TelaInicio> {
     if (ok == true) await widget.biblioteca.remover(l.id);
   }
 
-  void _abrir(Lista l) => Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => TelaConteudo(biblioteca: widget.biblioteca, lista: l),
+  void _abrir(Lista l) => Navigator.of(context).push(rotaSuave<void>(
+        TelaConteudo(biblioteca: widget.biblioteca, lista: l),
       ));
 
   Widget _listas() => ListenableBuilder(
@@ -73,9 +73,10 @@ class _TelaInicioState extends State<TelaInicio> {
         builder: (context, _) {
           final todas = widget.biblioteca.listas;
           final vis = _visiveis();
+          final tv = ecraTv(context);
           return Column(children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+              padding: const EdgeInsets.fromLTRB(Tokens.e16, Tokens.e12, Tokens.e16, Tokens.e4),
               child: Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
                 SizedBox(
                   width: 280,
@@ -98,23 +99,28 @@ class _TelaInicioState extends State<TelaInicio> {
               child: todas.isEmpty
                   ? _vazio()
                   : vis.isEmpty
-                      ? const Center(child: Text('Nenhuma lista com este filtro.'))
+                      ? const Center(
+                          child: Text('Nenhuma lista com este filtro.', style: TextStyle(color: Tokens.texto2)))
                       : GridView.builder(
-                          padding: const EdgeInsets.all(16),
+                          // margem para o cartão focado crescer (1.04) e brilhar sem ser cortado
+                          padding: const EdgeInsets.all(Tokens.e24),
                           // no telemóvel, um cartão por linha (com o nome inteiro)
                           gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-                            maxCrossAxisExtent: MediaQuery.sizeOf(context).width < 600 ? 600 : 340,
-                            mainAxisExtent: 224, crossAxisSpacing: 12, mainAxisSpacing: 12,
+                            maxCrossAxisExtent: MediaQuery.sizeOf(context).width < 600 ? 600 : (tv ? 400 : 340),
+                            mainAxisExtent: CartaoLista.altura(tv),
+                            crossAxisSpacing: Tokens.e16,
+                            mainAxisSpacing: Tokens.e16,
                           ),
                           itemCount: vis.length,
-                          itemBuilder: (_, i) => CartaoLista(
+                          // só os primeiros entram em cascata (entradaEmCascata ignora índices > 30)
+                          itemBuilder: (_, i) => entradaEmCascata(i, CartaoLista(
                             lista: vis[i],
                             autofocus: i == 0,
                             aoAbrir: () => _abrir(vis[i]),
                             aoVerificar: widget.servico == null ? null : () => widget.servico!.verificar(vis[i]),
                             verificando: widget.servico?.aVerificar(vis[i].id) ?? false,
                             aoRemover: () => _remover(vis[i]),
-                          ),
+                          )),
                         ),
             ),
           ]);
@@ -122,24 +128,36 @@ class _TelaInicioState extends State<TelaInicio> {
       );
 
   Widget _vazio() => Center(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Icon(Icons.live_tv_outlined, size: 56, color: Cores.texto2),
-          const SizedBox(height: 12),
-          const Text('Ainda não há listas.', style: TextStyle(fontSize: 18)),
-          const SizedBox(height: 4),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 24),
-            child: Text('Importe o Accounts.json, ficheiros .ini, listas M3U ou cole as linhas.',
-                textAlign: TextAlign.center, style: TextStyle(color: Cores.texto2)),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(Tokens.e24),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 460),
+            child: entradaEmCascata(0, SuperficieVidro(
+              padding: const EdgeInsets.all(Tokens.e32),
+              elevacao: 2,
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Container(
+                  width: 72,
+                  height: 72,
+                  decoration: const BoxDecoration(shape: BoxShape.circle, gradient: Tokens.gradienteAcento),
+                  child: const Icon(Icons.live_tv_outlined, size: 36, color: Colors.white),
+                ),
+                const SizedBox(height: Tokens.e16),
+                const Text('Ainda não há listas.', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+                const SizedBox(height: Tokens.e8),
+                const Text('Importe o Accounts.json, ficheiros .ini, listas M3U ou cole as linhas.',
+                    textAlign: TextAlign.center, style: TextStyle(color: Tokens.texto2)),
+                const SizedBox(height: Tokens.e24),
+                FilledButton.icon(
+                  autofocus: true,
+                  onPressed: () => mostrarAdicionar(context, widget.biblioteca),
+                  icon: const Icon(Icons.add),
+                  label: const Text('Adicionar listas'),
+                ),
+              ]),
+            )),
           ),
-          const SizedBox(height: 16),
-          FilledButton.icon(
-            autofocus: true,
-            onPressed: () => mostrarAdicionar(context, widget.biblioteca),
-            icon: const Icon(Icons.add),
-            label: const Text('Adicionar listas'),
-          ),
-        ]),
+        ),
       );
 
   @override
@@ -152,7 +170,7 @@ class _TelaInicioState extends State<TelaInicio> {
         title: temVerificar
             ? Row(children: [
                 // no telemóvel não há espaço para o nome e as abas
-                if (MediaQuery.sizeOf(context).width >= 600) ...const [Text('Player IPTV'), SizedBox(width: 16)],
+                if (MediaQuery.sizeOf(context).width >= 600) ...const [_Marca(), SizedBox(width: Tokens.e16)],
                 Expanded(
                   child: TabBar(
                     isScrollable: true,
@@ -166,7 +184,7 @@ class _TelaInicioState extends State<TelaInicio> {
                   ),
                 ),
               ])
-            : const Text('Player IPTV'),
+            : const _Marca(),
         actions: [
           IconButton(
             tooltip: 'Adicionar listas',
@@ -179,6 +197,23 @@ class _TelaInicioState extends State<TelaInicio> {
     );
     return temVerificar ? DefaultTabController(length: 2, child: corpo) : corpo;
   }
+}
+
+/// O nome da app com o ícone em gradiente.
+class _Marca extends StatelessWidget {
+  const _Marca();
+
+  @override
+  Widget build(BuildContext context) => Row(mainAxisSize: MainAxisSize.min, children: [
+        Container(
+          width: 30,
+          height: 30,
+          decoration: BoxDecoration(gradient: Tokens.gradienteAcento, borderRadius: BorderRadius.circular(9)),
+          child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 22),
+        ),
+        const SizedBox(width: 10),
+        const Text('Player IPTV'),
+      ]);
 }
 
 /// O nome de uma aba (com espaço para a borda do realce).
