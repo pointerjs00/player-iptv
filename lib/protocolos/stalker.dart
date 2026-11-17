@@ -174,7 +174,7 @@ class Stalker implements Protocolo {
       if (grupo.isEmpty) grupo = 'Sem grupo';
       usados.add(grupo);
       canais.add(Canal(id: '${c['id'] ?? c['cmd']}', nome: '${c['name'] ?? ''}'.trim(), grupo: grupo,
-          cmd: '${c['cmd'] ?? ''}', logo: '${c['logo'] ?? ''}'));
+          cmd: '${c['cmd'] ?? ''}', logo: '${c['logo'] ?? ''}', numero: numeroCanal(c['number'])));
     }
     final grupos = [for (final g in generos.values) if (usados.contains(g)) g];
     for (final g in usados) {

@@ -1,11 +1,12 @@
 /// Cópia de segurança: exporta e importa tudo o que a app guarda num só ficheiro `.json`.
 ///
 /// Formato (versão 1): `{"formato": "player-iptv-copia", "versao": 1, "criada": ISO,
-/// "biblioteca": {"canais_teste": [...], "listas": [...]}, "gestor": {"listas": [...]},
-/// "preferencias": {...}}`. Cada lista leva a conta, o último resultado, os favoritos e o nome
-/// próprio ([Lista.paraJson]). Campos novos (grupos escondidos, ordem de listagem) entram como
-/// chaves novas dentro de cada lista ou secções novas, e quem lê ignora o que não conhece;
-/// só uma mudança incompatível sobe o número da versão.
+/// "biblioteca": {"canais_teste": [...], "listas": [...], "ultimo_visto": {...}}, "gestor": {"listas": [...]},
+/// "preferencias": {...}}`. Cada lista leva a conta, o último resultado, os favoritos, o nome
+/// próprio, os grupos escondidos (`grupos_escondidos`) e a ordem dos canais (`ordem_canais`)
+/// ([Lista.paraJson]); `ultimo_visto` é o "Continuar a ver" ([UltimoVisto]). Estes três entraram
+/// como chaves novas opcionais (os ficheiros sem elas continuam a ler-se e as versões anteriores
+/// da app ignoram-nas), por isso a versão continua 1: só uma mudança incompatível sobe o número.
 ///
 /// O ficheiro leva as credenciais das listas (como a própria biblioteca): é para guardar com
 /// cuidado. Nunca vão para logs nem para mensagens de erro.
@@ -42,13 +43,16 @@ enum ModoRestauro { juntar, substituir }
 /// O conteúdo já validado de um ficheiro de cópia de segurança.
 class CopiaLida {
   CopiaLida({required this.versao, this.criada, this.player = const [], this.gestor = const [],
-      this.canaisTeste, this.preferencias, required this.temPlayer, required this.temGestor});
+      this.canaisTeste, this.preferencias, this.ultimoVisto, required this.temPlayer, required this.temGestor});
 
   final int versao;
   final DateTime? criada;
   final List<Lista> player;
   final List<Lista> gestor;
   final List<String>? canaisTeste;
+
+  /// O "Continuar a ver" do Player (aponta para uma lista de [player]).
+  final UltimoVisto? ultimoVisto;
   final Map<String, dynamic>? preferencias;
   final bool temPlayer, temGestor;
 }
@@ -76,6 +80,7 @@ Uint8List codificarCopia(Biblioteca biblioteca, AreaGestor area, Preferencias pr
     'biblioteca': {
       'canais_teste': biblioteca.canaisTeste,
       'listas': [for (final l in biblioteca.listas) l.paraJson()],
+      if (biblioteca.ultimoVisto != null) 'ultimo_visto': biblioteca.ultimoVisto!.paraJson(),
     },
     'gestor': {'listas': [for (final l in area.listas) l.paraJson()]},
     'preferencias': preferencias.paraJson(),
@@ -141,6 +146,7 @@ CopiaLida lerCopia(String texto) {
     temGestor: gestor != null,
     canaisTeste: ct is List && ct.isNotEmpty ? [for (final c in ct) '$c'] : null,
     preferencias: prefs is Map ? Map<String, dynamic>.from(prefs) : null,
+    ultimoVisto: raiz['biblioteca'] is Map ? UltimoVisto.deJson((raiz['biblioteca'] as Map)['ultimo_visto']) : null,
   );
 }
 
@@ -159,7 +165,8 @@ Future<ResumoRestauro> restaurarCopia(CopiaLida copia, ModoRestauro modo,
   PlanoRestauro? p, g;
   try {
     if (copia.temPlayer) {
-      final r = await biblioteca.restaurar(copia.player, substituir: substituir, canaisTeste: copia.canaisTeste);
+      final r = await biblioteca.restaurar(copia.player, substituir: substituir,
+          canaisTeste: copia.canaisTeste, ultimoVisto: copia.ultimoVisto);
       desfazer.add(r.desfazer);
       p = r.plano;
     }

@@ -14,10 +14,55 @@ import '../modelo/canal.dart';
 import '../modelo/conta.dart';
 import '../rede/http.dart' show limiteIsolate;
 
+/// Como se mostram os canais de uma lista.
+enum OrdemCanais {
+  /// A ordem do portal/lista.
+  lista,
+
+  /// Por nome, A–Z (sem acentos nem maiúsculas).
+  az,
+}
+
+/// Os canais pela `ordem` (a lista original quando é a do portal).
+List<Canal> ordenarCanais(List<Canal> canais, OrdemCanais ordem) {
+  if (ordem == OrdemCanais.lista || canais.length < 2) return canais;
+  final chaves = {for (final c in canais) c: semAcentos(c.nome)};
+  return [...canais]..sort((a, b) => chaves[a]!.compareTo(chaves[b]!));
+}
+
+/// O último canal visto no Player ("Continuar a ver"): a lista e o que é preciso para o mostrar.
+class UltimoVisto {
+  const UltimoVisto({required this.lista, required this.canal, required this.nome, this.grupo = '',
+      this.logo = '', this.data});
+
+  /// O id da lista e o id do canal.
+  final String lista, canal;
+  final String nome, grupo, logo;
+  final DateTime? data;
+
+  UltimoVisto comLista(String id) =>
+      UltimoVisto(lista: id, canal: canal, nome: nome, grupo: grupo, logo: logo, data: data);
+
+  Map<String, dynamic> paraJson() => {
+        'lista': lista, 'canal': canal, 'nome': nome, 'grupo': grupo, 'logo': logo,
+        if (data != null) 'data': data!.toUtc().toIso8601String(),
+      };
+
+  static UltimoVisto? deJson(Object? j) {
+    if (j is! Map || j['lista'] is! String || j['canal'] is! String) return null;
+    return UltimoVisto(
+      lista: j['lista'] as String, canal: j['canal'] as String, nome: '${j['nome'] ?? ''}',
+      grupo: '${j['grupo'] ?? ''}', logo: '${j['logo'] ?? ''}', data: DateTime.tryParse('${j['data']}'),
+    );
+  }
+}
+
 class Lista {
   Lista({required this.id, required this.ordem, required this.conta, this.ultima,
-      Set<String>? favoritos, this.nomeProprio = ''})
-      : favoritos = favoritos ?? <String>{};
+      Set<String>? favoritos, this.nomeProprio = '', Set<String>? gruposEscondidos,
+      this.ordemCanais = OrdemCanais.lista})
+      : favoritos = favoritos ?? <String>{},
+        gruposEscondidos = gruposEscondidos ?? <String>{};
 
   final String id;
 
@@ -34,6 +79,12 @@ class Lista {
   /// Ids dos canais favoritos.
   final Set<String> favoritos;
 
+  /// Os grupos escondidos no ecrã de canais (e na pesquisa).
+  final Set<String> gruposEscondidos;
+
+  /// Como se ordenam os canais desta lista.
+  OrdemCanais ordemCanais;
+
   String get nome => nomeProprio.trim().isNotEmpty ? nomeProprio.trim() : nomeLista(ordem, conta, ultima?.validade ?? '');
 
   /// Com INC à frente se a última verificação foi inconclusiva.
@@ -44,6 +95,8 @@ class Lista {
         if (ultima != null) 'ultima': ultima!.paraJson(),
         'favoritos': favoritos.toList(),
         if (nomeProprio.trim().isNotEmpty) 'nome_proprio': nomeProprio.trim(),
+        if (gruposEscondidos.isNotEmpty) 'grupos_escondidos': gruposEscondidos.toList(),
+        if (ordemCanais != OrdemCanais.lista) 'ordem_canais': ordemCanais.name,
       };
 
   static Lista? deJson(Object? j) {
@@ -55,6 +108,8 @@ class Lista {
         ultima: UltimaVerificacao.deJson(j['ultima']),
         favoritos: {for (final f in (j['favoritos'] as List? ?? const [])) '$f'},
         nomeProprio: j['nome_proprio'] is String ? j['nome_proprio'] as String : '',
+        gruposEscondidos: {for (final g in (j['grupos_escondidos'] as List? ?? const [])) '$g'},
+        ordemCanais: OrdemCanais.values.asNameMap()[j['ordem_canais']] ?? OrdemCanais.lista,
       );
     } catch (_) {
       return null; // entrada estragada: ignora-se, as outras ficam
@@ -89,11 +144,12 @@ class ResultadoRestauro {
 
 Lista _copiaLista(Lista l, {String? id, int? ordem}) => Lista(
     id: id ?? l.id, ordem: ordem ?? l.ordem, conta: l.conta, ultima: l.ultima,
-    favoritos: Set.of(l.favoritos), nomeProprio: l.nomeProprio);
+    favoritos: Set.of(l.favoritos), nomeProprio: l.nomeProprio, gruposEscondidos: Set.of(l.gruposEscondidos),
+    ordemCanais: l.ordemCanais);
 
 /// Calcula as listas depois de restaurar `doFicheiro` sobre `atuais`, sem mexer em nenhuma.
-/// - juntar: as da mesma conta (pela chave) ficam, com os favoritos unidos, o resultado mais
-///   recente e o nome próprio se não tinham; as novas entram no fim com o número de ordem seguinte;
+/// - juntar: as da mesma conta (pela chave) ficam, com os favoritos e os grupos escondidos unidos,
+///   o resultado mais recente, e o nome próprio e a ordem A–Z se não tinham; as novas entram no fim com o número de ordem seguinte;
 /// - substituir: ficam só as do ficheiro (as repetidas dentro do ficheiro contam uma vez).
 PlanoRestauro planearRestauro(List<Lista> atuais, List<Lista> doFicheiro, {required bool substituir}) {
   final vistas = <String>{};
@@ -133,6 +189,13 @@ PlanoRestauro planearRestauro(List<Lista> atuais, List<Lista> doFicheiro, {requi
     final antes = dest.favoritos.length;
     dest.favoritos.addAll(f.favoritos);
     if (dest.favoritos.length != antes) mudou = true;
+    final escondidosAntes = dest.gruposEscondidos.length;
+    dest.gruposEscondidos.addAll(f.gruposEscondidos);
+    if (dest.gruposEscondidos.length != escondidosAntes) mudou = true;
+    if (dest.ordemCanais == OrdemCanais.lista && f.ordemCanais != OrdemCanais.lista) {
+      dest.ordemCanais = f.ordemCanais;
+      mudou = true;
+    }
     final u = f.ultima;
     if (u != null && (dest.ultima == null || u.data.isAfter(dest.ultima!.data))) {
       dest.ultima = u;
@@ -185,6 +248,14 @@ class Biblioteca extends ChangeNotifier implements ColecaoListas {
   /// Os canais que a verificação testa ("rtp1", "sporttv1", "dazn1").
   List<String> canaisTeste = const ['rtp1'];
 
+  UltimoVisto? _ultimoVisto;
+
+  /// O último canal visto ("Continuar a ver"); null se não há ou se a lista já não existe.
+  UltimoVisto? get ultimoVisto {
+    final u = _ultimoVisto;
+    return u != null && porId(u.lista) != null ? u : null;
+  }
+
   @override
   List<Lista> get listas => List.unmodifiable(_listas);
 
@@ -217,6 +288,7 @@ class Biblioteca extends ChangeNotifier implements ColecaoListas {
         }
         final ct = dados['canais_teste'];
         if (ct is List && ct.isNotEmpty) b.canaisTeste = [for (final c in ct) '$c'];
+        b._ultimoVisto = UltimoVisto.deJson(dados['ultimo_visto']);
       } catch (_) {
         // o texto leu-se bem mas não é uma biblioteca (JSON inválido ou outra forma): estragado
         await b._ficheiro.copy('${b._ficheiro.path}.bak');
@@ -280,6 +352,7 @@ class Biblioteca extends ChangeNotifier implements ColecaoListas {
 
   Future<void> remover(String id) async {
     _listas.removeWhere((l) => l.id == id);
+    if (_ultimoVisto?.lista == id) _ultimoVisto = null;
     final f = _ficheiroCanais(id);
     if (await f.exists()) await f.delete();
     await guardar();
@@ -387,32 +460,50 @@ class Biblioteca extends ChangeNotifier implements ColecaoListas {
   }
 
   /// Aplica uma cópia de segurança (ver [planearRestauro]). Se a gravação falhar, tudo volta a
-  /// como estava. `canaisTeste` só vale ao substituir. O resultado traz como desfazer.
+  /// como estava. `canaisTeste` só vale ao substituir. O `ultimoVisto` do ficheiro (que aponta para
+  /// uma lista do ficheiro) passa para a lista restaurada da mesma conta; ao juntar só entra se não
+  /// houver um local. O resultado traz como desfazer.
   Future<ResultadoRestauro> restaurar(List<Lista> doFicheiro,
-      {required bool substituir, List<String>? canaisTeste}) async {
+      {required bool substituir, List<String>? canaisTeste, UltimoVisto? ultimoVisto}) async {
     final plano = planearRestauro(_listas, doFicheiro, substituir: substituir);
-    final antes = List.of(_listas), testeAntes = this.canaisTeste;
-    Future<void> desfazer() async {
+    final antes = List.of(_listas), testeAntes = this.canaisTeste, vistoAntes = _ultimoVisto;
+    void repor() {
       _listas
         ..clear()
         ..addAll(antes);
       this.canaisTeste = testeAntes;
+      _ultimoVisto = vistoAntes;
+    }
+
+    Future<void> desfazer() async {
+      repor();
       await guardar();
     }
 
+    UltimoVisto? visto;
+    if (ultimoVisto != null) {
+      final daLista = doFicheiro.where((l) => l.id == ultimoVisto.lista).firstOrNull;
+      final destino = daLista == null
+          ? null
+          : plano.listas.where((l) => chave(l.conta) == chave(daLista.conta)).firstOrNull;
+      if (destino != null) visto = ultimoVisto.comLista(destino.id);
+    }
+    final localValido = this.ultimoVisto;
     _listas
       ..clear()
       ..addAll(plano.listas);
     if (substituir && canaisTeste != null && canaisTeste.isNotEmpty) {
       this.canaisTeste = List.unmodifiable(canaisTeste);
     }
+    if (substituir) {
+      _ultimoVisto = visto;
+    } else if (localValido == null && visto != null) {
+      _ultimoVisto = visto;
+    }
     try {
       await guardar();
     } catch (_) {
-      _listas
-        ..clear()
-        ..addAll(antes);
-      this.canaisTeste = testeAntes;
+      repor();
       notifyListeners();
       rethrow;
     }
@@ -434,6 +525,32 @@ class Biblioteca extends ChangeNotifier implements ColecaoListas {
   Future<void> definirCanaisTeste(List<String> ids) async {
     if (ids.isEmpty) return;
     canaisTeste = List.unmodifiable(ids);
+    await guardar();
+  }
+
+  /// Esconde (ou volta a mostrar) um grupo da lista `id`.
+  Future<void> esconderGrupo(String id, String grupo, bool esconder) async {
+    final l = porId(id);
+    if (l == null) return;
+    final mudou = esconder ? l.gruposEscondidos.add(grupo) : l.gruposEscondidos.remove(grupo);
+    if (mudou) await guardar();
+  }
+
+  /// Muda a ordem dos canais da lista `id`.
+  Future<void> definirOrdem(String id, OrdemCanais ordem) async {
+    final l = porId(id);
+    if (l == null || l.ordemCanais == ordem) return;
+    l.ordemCanais = ordem;
+    await guardar();
+  }
+
+  /// Regista o canal que abriu no player (para o "Continuar a ver"). Sem gravar se for o mesmo.
+  Future<void> registarVisto(String listaId, Canal canal) async {
+    if (porId(listaId) == null) return;
+    final u = _ultimoVisto;
+    if (u != null && u.lista == listaId && u.canal == canal.id) return;
+    _ultimoVisto = UltimoVisto(lista: listaId, canal: canal.id, nome: canal.nome, grupo: canal.grupo,
+        logo: canal.logo, data: DateTime.now());
     await guardar();
   }
 
@@ -484,6 +601,7 @@ class Biblioteca extends ChangeNotifier implements ColecaoListas {
     // o texto é tirado agora (o estado deste momento); a escrita espera pela anterior
     final texto = const JsonEncoder.withIndent(' ').convert({
       'versao': 1, 'canais_teste': canaisTeste, 'listas': [for (final l in _listas) l.paraJson()],
+      if (ultimoVisto != null) 'ultimo_visto': ultimoVisto!.paraJson(),
     });
     notifyListeners();
     return _emFila(() => _escreverAtomico(_ficheiro, texto));
