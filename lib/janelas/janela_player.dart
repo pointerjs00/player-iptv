@@ -27,14 +27,18 @@ import '../rede/http.dart';
 typedef LancarPlayer = Future<void> Function(int porta, String token);
 
 class JanelaPlayer {
-  JanelaPlayer._(this._lancar);
+  JanelaPlayer._(this._lancar, {this.prazo = const Duration(seconds: 20)});
   static final instancia = JanelaPlayer._(_lancarProcesso);
 
   /// Para os testes: em vez de lançar o .exe, chama `lancar`.
   @visibleForTesting
-  factory JanelaPlayer.paraTestes(LancarPlayer lancar) => JanelaPlayer._(lancar);
+  factory JanelaPlayer.paraTestes(LancarPlayer lancar, {Duration prazo = const Duration(seconds: 20)}) =>
+      JanelaPlayer._(lancar, prazo: prazo);
 
   final LancarPlayer _lancar;
+
+  /// Quanto se espera que a janela do player ligue depois de lançada.
+  final Duration prazo;
   bool _aLancar = false;
 
   /// A variável de ambiente com o token do player (não vai no argv, que outros processos veem).
@@ -49,7 +53,7 @@ class JanelaPlayer {
   Map<String, dynamic>? _pendente;
 
   /// Mostra `canais[i]` na janela do player (abre-a se não estiver aberta).
-  Future<void> mostrar(Lista lista, List<Canal> canais, int i) async {
+  Future<void> mostrar(Lista lista, List<Canal> canais, int i, {void Function(String motivo)? aoFalhar}) async {
     _lista = lista;
     _canais = canais;
     final msg = {
@@ -63,13 +67,30 @@ class JanelaPlayer {
     _pendente = msg;
     if (_aLancar) return; // a abrir: a mensagem vai quando ligar
     _aLancar = true;
-    _token = _novoToken();
-    final srv = _servidor ??= await _abrirServidor();
-    await _lancar(srv.port, _token);
-    // se a janela não ligar em 20 s, desiste-se (o próximo clique tenta de novo)
-    Timer(const Duration(seconds: 20), () {
-      if (_ligacao == null) _aLancar = false;
+    final tentativa = ++_tentativa;
+    try {
+      _token = _novoToken();
+      final srv = _servidor ??= await _abrirServidor();
+      await _lancar(srv.port, _token);
+    } catch (e) {
+      // sem isto o player nunca mais abria até reiniciar a app
+      _desistir();
+      throw ErroLista('Não foi possível abrir o player (${descreverErro(e)}).');
+    }
+    // se a janela não ligar a tempo, desiste-se e avisa-se (o próximo clique tenta de novo)
+    Timer(prazo, () {
+      if (_ligacao != null || tentativa != _tentativa || !_aLancar) return;
+      _desistir();
+      aoFalhar?.call('A janela do player não abriu a tempo. Tente de novo.');
     });
+  }
+
+  int _tentativa = 0;
+
+  void _desistir() {
+    _aLancar = false;
+    _pendente = null;
+    _token = '';
   }
 
   static Future<void> _lancarProcesso(int porta, String token) async {

@@ -13,7 +13,13 @@ import 'player_canais.dart';
 /// devolve, ao sair do player, o índice do canal que estava a tocar (pode ter mudado).
 Future<int?> abrirCanal(BuildContext context, Lista lista, List<Canal> canais, int i) async {
   if (Platform.isWindows) {
-    await JanelaPlayer.instancia.mostrar(lista, canais, i);
+    final avisos = ScaffoldMessenger.maybeOf(context);
+    void avisar(String m) => avisos?.showSnackBar(SnackBar(content: Text(m)));
+    try {
+      await JanelaPlayer.instancia.mostrar(lista, canais, i, aoFalhar: avisar);
+    } on ErroLista catch (e) {
+      avisar(e.mensagem);
+    }
     return null;
   }
   final atual = ValueNotifier(i);

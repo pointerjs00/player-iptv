@@ -7,6 +7,7 @@ import 'package:player_iptv/dados/biblioteca.dart';
 import 'package:player_iptv/janelas/janela_player.dart';
 import 'package:player_iptv/modelo/canal.dart';
 import 'package:player_iptv/modelo/conta.dart';
+import 'package:player_iptv/protocolos/protocolo.dart';
 
 const _link = 'http://h/live/UTILIZADOR/SEGREDO/1.ts';
 final _lista = Lista(id: '1', ordem: 1, conta: Conta('x', Tipo.m3u, 'http://h/l.m3u'));
@@ -96,5 +97,33 @@ void main() {
     }
     expect(fechada.isCompleted, isFalse, reason: 'o player verdadeiro não pode ser desligado');
     expect((await l.fonte(0)).url, _link);
+  });
+
+  group('_aLancar', () {
+    test('se lançar o player falha, o erro chega a quem pediu e o próximo pedido tenta de novo', () async {
+      var vezes = 0;
+      final j = JanelaPlayer.paraTestes((p, t) async {
+        vezes++;
+        if (vezes == 1) throw const ProcessException('player.exe', [], 'não encontrado');
+      });
+      addTearDown(j.fechar);
+      await expectLater(j.mostrar(_lista, _canais, 0), throwsA(isA<ErroLista>()));
+      await j.mostrar(_lista, _canais, 0);
+      expect(vezes, 2, reason: 'depois de uma falha o player tem de voltar a poder abrir');
+    });
+
+    test('se a janela não liga a tempo, avisa e o próximo pedido tenta de novo', () async {
+      var vezes = 0;
+      final j = JanelaPlayer.paraTestes((p, t) async => vezes++, prazo: const Duration(milliseconds: 200));
+      addTearDown(j.fechar);
+      final avisos = <String>[];
+      await j.mostrar(_lista, _canais, 0, aoFalhar: avisos.add);
+      await j.mostrar(_lista, _canais, 0, aoFalhar: avisos.add); // ainda a abrir: não lança outra
+      expect(vezes, 1);
+      await Future<void>.delayed(const Duration(milliseconds: 400));
+      expect(avisos, ['A janela do player não abriu a tempo. Tente de novo.']);
+      await j.mostrar(_lista, _canais, 0);
+      expect(vezes, 2);
+    });
   });
 }
