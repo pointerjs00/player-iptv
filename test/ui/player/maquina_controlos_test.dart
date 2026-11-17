@@ -8,11 +8,11 @@ MaquinaControlos _em(VistaPlayer v) => MaquinaControlos()..vista = v;
 
 void main() {
   group('controlos escondidos', () {
-    test('cima/baixo mudam de canal; esquerda/direita recuam/avançam 10 s', () {
+    test('cima = canal seguinte, baixo = anterior; esquerda/direita recuam/avançam 10 s', () {
       final m = MaquinaControlos();
       expect(m.vista, VistaPlayer.escondida);
-      expect(m.tecla(K.arrowUp), AcaoPlayer.canalAnterior);
-      expect(m.tecla(K.arrowDown), AcaoPlayer.canalSeguinte);
+      expect(m.tecla(K.arrowUp), AcaoPlayer.canalSeguinte, reason: 'como o Canal+ e o deslizar para cima');
+      expect(m.tecla(K.arrowDown), AcaoPlayer.canalAnterior);
       expect(m.tecla(K.arrowLeft), AcaoPlayer.recuar);
       expect(m.tecla(K.arrowRight), AcaoPlayer.avancar);
       expect(m.vista, VistaPlayer.escondida);
@@ -87,10 +87,10 @@ void main() {
       expect(_em(v).tecla(K.mediaPause), AcaoPlayer.pausar);
       expect(_em(v).tecla(K.mediaRewind), AcaoPlayer.recuar);
       expect(_em(v).tecla(K.mediaFastForward), AcaoPlayer.avancar);
-      expect(_em(v).tecla(K.channelUp), AcaoPlayer.canalAnterior);
-      expect(_em(v).tecla(K.channelDown), AcaoPlayer.canalSeguinte);
-      expect(_em(v).tecla(K.pageUp), AcaoPlayer.canalAnterior);
-      expect(_em(v).tecla(K.pageDown), AcaoPlayer.canalSeguinte);
+      expect(_em(v).tecla(K.channelUp), AcaoPlayer.canalSeguinte, reason: 'Canal+ = o canal seguinte');
+      expect(_em(v).tecla(K.channelDown), AcaoPlayer.canalAnterior);
+      expect(_em(v).tecla(K.pageUp), AcaoPlayer.canalSeguinte);
+      expect(_em(v).tecla(K.pageDown), AcaoPlayer.canalAnterior);
       expect(_em(v).tecla(K.info), AcaoPlayer.estatisticas);
       expect(_em(v).tecla(K.f11), AcaoPlayer.ecraInteiro);
       final m = _em(v);

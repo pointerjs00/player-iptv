@@ -123,7 +123,7 @@ void main() {
     await _tecla(t, LogicalKeyboardKey.arrowDown);
     await _tecla(t, LogicalKeyboardKey.arrowLeft);
     await _tecla(t, LogicalKeyboardKey.arrowRight);
-    expect(e.acoes, [AcaoPlayer.canalAnterior, AcaoPlayer.canalSeguinte, AcaoPlayer.recuar, AcaoPlayer.avancar]);
+    expect(e.acoes, [AcaoPlayer.canalSeguinte, AcaoPlayer.canalAnterior, AcaoPlayer.recuar, AcaoPlayer.avancar]);
     expect(_barraVisivel(t), isFalse);
   });
 
@@ -167,7 +167,7 @@ void main() {
     await _tecla(t, LogicalKeyboardKey.mediaPlayPause);
     await _tecla(t, LogicalKeyboardKey.channelDown);
     await _tecla(t, LogicalKeyboardKey.mediaRewind);
-    expect(e.acoes, [AcaoPlayer.playPausa, AcaoPlayer.canalSeguinte, AcaoPlayer.recuar]);
+    expect(e.acoes, [AcaoPlayer.playPausa, AcaoPlayer.canalAnterior, AcaoPlayer.recuar]);
   });
 
   testWidgets('esconde-se após 5 s sem atividade; uma tecla adia', (t) async {
@@ -339,7 +339,7 @@ void main() {
     double opacidade() => t.widget<AnimatedOpacity>(find.byKey(const ValueKey('infoCanal'))).opacity;
     expect(opacidade(), 1);
     await _tecla(t, LogicalKeyboardKey.arrowDown);
-    expect(e.acoes, [AcaoPlayer.canalSeguinte]);
+    expect(e.acoes, [AcaoPlayer.canalAnterior]);
     await t.pump(const Duration(seconds: 5));
     await t.pumpAndSettle();
     expect(opacidade(), 0);

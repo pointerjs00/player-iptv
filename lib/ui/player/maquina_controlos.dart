@@ -2,7 +2,7 @@ import 'package:flutter/services.dart';
 
 /// O que está por cima do vídeo.
 enum VistaPlayer {
-  /// Só o vídeo: as setas mudam de canal (cima/baixo) e recuam/avançam (esquerda/direita).
+  /// Só o vídeo: as setas mudam de canal (cima = seguinte, baixo = anterior) e recuam/avançam (esquerda/direita).
   escondida,
 
   /// A barra de controlos: as setas andam pelos botões.
@@ -56,10 +56,11 @@ class MaquinaControlos {
     LogicalKeyboardKey.mediaPause: AcaoPlayer.pausar,
     LogicalKeyboardKey.mediaRewind: AcaoPlayer.recuar,
     LogicalKeyboardKey.mediaFastForward: AcaoPlayer.avancar,
-    LogicalKeyboardKey.channelUp: AcaoPlayer.canalAnterior,
-    LogicalKeyboardKey.channelDown: AcaoPlayer.canalSeguinte,
-    LogicalKeyboardKey.pageUp: AcaoPlayer.canalAnterior,
-    LogicalKeyboardKey.pageDown: AcaoPlayer.canalSeguinte,
+    // Canal+ = o canal seguinte (convenção da TV), como ↑ e o deslizar para cima
+    LogicalKeyboardKey.channelUp: AcaoPlayer.canalSeguinte,
+    LogicalKeyboardKey.channelDown: AcaoPlayer.canalAnterior,
+    LogicalKeyboardKey.pageUp: AcaoPlayer.canalSeguinte,
+    LogicalKeyboardKey.pageDown: AcaoPlayer.canalAnterior,
     LogicalKeyboardKey.info: AcaoPlayer.estatisticas,
     LogicalKeyboardKey.contextMenu: AcaoPlayer.estatisticas,
     LogicalKeyboardKey.keyI: AcaoPlayer.estatisticas,
@@ -68,8 +69,8 @@ class MaquinaControlos {
 
   /// Só com o vídeo sozinho (com a barra, as setas são da navegação).
   static final _escondida = {
-    LogicalKeyboardKey.arrowUp: AcaoPlayer.canalAnterior,
-    LogicalKeyboardKey.arrowDown: AcaoPlayer.canalSeguinte,
+    LogicalKeyboardKey.arrowUp: AcaoPlayer.canalSeguinte,
+    LogicalKeyboardKey.arrowDown: AcaoPlayer.canalAnterior,
     LogicalKeyboardKey.arrowLeft: AcaoPlayer.recuar,
     LogicalKeyboardKey.arrowRight: AcaoPlayer.avancar,
     LogicalKeyboardKey.space: AcaoPlayer.playPausa,

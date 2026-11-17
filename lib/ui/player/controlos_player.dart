@@ -30,7 +30,7 @@ class EstadoControlos {
 
 /// A barra de controlos e o painel de definições por cima do vídeo (`child`), e as teclas do
 /// comando conforme o que está à vista ([MaquinaControlos]):
-/// - escondida: cima/baixo mudam de canal, esquerda/direita recuam/avançam 10 s, OK mostra a barra;
+/// - escondida: cima/Canal+ = canal seguinte, baixo/Canal− = anterior, esquerda/direita recuam/avançam 10 s, OK mostra a barra;
 /// - barra: as setas andam pelos botões; esconde-se após 5 s sem atividade;
 /// - painel: as setas andam pelo painel; não se esconde sozinho.
 /// Voltar fecha o painel, depois a barra, depois sai. Teclas multimédia sempre.
