@@ -2,8 +2,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:player_iptv/ui/player/diagnostico.dart';
 
 AmostraMpv _a({double? buffer = 8, bool pausado = false, int dropsSaida = 0, int dropsDesc = 0,
-        double? fps = 25, double? ecra = 50}) =>
+        double? fps = 25, double? ecra = 50, String sync = 'audio'}) =>
     AmostraMpv.deMapa({
+      'video-sync': sync,
       'demuxer-cache-duration': buffer?.toString() ?? '',
       'paused-for-cache': pausado ? 'yes' : 'no',
       'frame-drop-count': '$dropsSaida',
@@ -72,62 +73,89 @@ void main() {
   });
 
   group('veredicto', () {
+    // 3 amostras (3 s) iguais
+    List<AmostraMpv> x3(AmostraMpv a) => [a, a, a];
+
     test('sem amostras: nada a dizer', () => expect(diagnosticar(const []), isNull));
 
     test('sem vídeo (canal a abrir ou falhado): nada a dizer, não "fluido"', () {
-      expect(diagnosticar([AmostraMpv.deMapa(const {'paused-for-cache': 'no', 'frame-drop-count': '0'})]), isNull);
+      final v = AmostraMpv.deMapa(const {'paused-for-cache': 'no', 'frame-drop-count': '0'});
+      expect(diagnosticar([v, v, v]), isNull);
     });
 
-    test('fluido', () {
-      expect(diagnosticar([_a(), _a(), _a()]), Veredicto.fluido);
+    test('menos de 3 amostras (logo a seguir a abrir/zapping): ainda a medir', () {
+      expect(diagnosticar([_a(), _a()]), isNull);
+      expect(diagnosticar([_a(buffer: 20), _a(buffer: 1, pausado: true)]), isNull);
     });
 
-    test('rede: o leitor parou à espera de dados', () {
-      expect(diagnosticar([_a(), _a(buffer: 0, pausado: true)]), Veredicto.rede);
+    test('fluido', () => expect(diagnosticar(x3(_a())), Veredicto.fluido));
+
+    test('rede: o leitor parou à espera de dados (2 amostras seguidas)', () {
+      expect(diagnosticar([_a(), _a(buffer: 0, pausado: true), _a(buffer: 0, pausado: true)]), Veredicto.rede);
     });
 
-    test('rede: o buffer está a esvaziar', () {
+    test('uma só amostra parada não chega (engasgo de 1 s)', () {
+      expect(diagnosticar([_a(buffer: 2), _a(buffer: 2), _a(buffer: 1.6, pausado: true)]), Veredicto.fluido);
+    });
+
+    test('rede: o buffer está a esvaziar (cai ≥ 1 s e fica abaixo de 1,5 s)', () {
       expect(diagnosticar([_a(buffer: 6), _a(buffer: 3.5), _a(buffer: 1.2)]), Veredicto.rede);
     });
 
-    test('buffer a baixar mas ainda folgado não é rede', () {
-      expect(diagnosticar([_a(buffer: 18), _a(buffer: 14)]), Veredicto.fluido);
+    test('buffer pequeno a oscilar (HLS/TS com rajadas) não é rede', () {
+      expect(diagnosticar([_a(buffer: 2.4), _a(buffer: 2.9), _a(buffer: 2.1)]), Veredicto.fluido);
+      expect(diagnosticar([_a(buffer: 18), _a(buffer: 16), _a(buffer: 14)]), Veredicto.fluido);
     });
 
-    test('descodificação: imagens perdidas no descodificador', () {
-      expect(diagnosticar([_a(dropsDesc: 2), _a(dropsDesc: 9)]), Veredicto.descodificacao);
+    test('descodificação: ≥ 2 imagens perdidas no descodificador na janela', () {
+      expect(diagnosticar([_a(dropsDesc: 2), _a(dropsDesc: 5), _a(dropsDesc: 9)]), Veredicto.descodificacao);
+      expect(diagnosticar([_a(dropsDesc: 2), _a(dropsDesc: 2), _a(dropsDesc: 3)]), Veredicto.fluido,
+          reason: 'uma perda isolada não conta');
     });
 
-    test('ecrã: imagens perdidas na saída', () {
-      expect(diagnosticar([_a(dropsSaida: 1), _a(dropsSaida: 4)]), Veredicto.ecra);
+    test('ecrã: ≥ 2 imagens perdidas na saída', () {
+      expect(diagnosticar([_a(dropsSaida: 1), _a(dropsSaida: 2), _a(dropsSaida: 4)]), Veredicto.ecra);
+      expect(diagnosticar([_a(dropsSaida: 1), _a(dropsSaida: 1), _a(dropsSaida: 2)]), Veredicto.fluido);
     });
 
     test('ecrã: 50 fps num ecrã a 60 Hz (judder)', () {
-      expect(diagnosticar([_a(fps: 50, ecra: 60)]), Veredicto.ecra);
-      expect(diagnosticar([_a(fps: 25, ecra: 60)]), Veredicto.ecra);
+      expect(diagnosticar(x3(_a(fps: 50, ecra: 60))), Veredicto.ecra);
+      expect(diagnosticar(x3(_a(fps: 25, ecra: 60))), Veredicto.ecra);
     });
 
     test('ritmos compatíveis não são problema (25 em 50, 30 em 60, 29.97 em 59.94)', () {
-      expect(diagnosticar([_a(fps: 25, ecra: 50)]), Veredicto.fluido);
-      expect(diagnosticar([_a(fps: 50, ecra: 50)]), Veredicto.fluido);
-      expect(diagnosticar([_a(fps: 30, ecra: 60)]), Veredicto.fluido);
-      expect(diagnosticar([_a(fps: 29.97, ecra: 59.94)]), Veredicto.fluido);
-      expect(diagnosticar([_a(fps: 29.97, ecra: 60)]), Veredicto.fluido);
+      expect(diagnosticar(x3(_a(fps: 25, ecra: 50))), Veredicto.fluido);
+      expect(diagnosticar(x3(_a(fps: 50, ecra: 50))), Veredicto.fluido);
+      expect(diagnosticar(x3(_a(fps: 30, ecra: 60))), Veredicto.fluido);
+      expect(diagnosticar(x3(_a(fps: 29.97, ecra: 59.94))), Veredicto.fluido);
+      expect(diagnosticar(x3(_a(fps: 29.97, ecra: 60))), Veredicto.fluido);
     });
 
-    test('com display-resample o mpv compensa 50 em 60', () {
-      expect(diagnosticar([_a(fps: 50, ecra: 60)], reamostra: true), Veredicto.fluido);
+    test('Android direto: o mpv não sabe os Hz; usa os do sistema (canal nativo)', () {
+      expect(diagnosticar(x3(_a(fps: 50, ecra: null))), Veredicto.fluido, reason: 'desconhecido não acusa');
+      expect(diagnosticar(x3(_a(fps: 50, ecra: null)), hzEcra: 60), Veredicto.ecra);
+      expect(diagnosticar(x3(_a(fps: 50, ecra: null)), hzEcra: 50), Veredicto.fluido);
     });
 
-    test('ritmo do ecrã desconhecido não acusa o ecrã', () {
-      expect(diagnosticar([_a(fps: 50, ecra: null)]), Veredicto.fluido);
+    test('display-resample só conta quando está mesmo ativo (o mpv sabe os Hz do ecrã)', () {
+      expect(diagnosticar(x3(_a(fps: 50, ecra: 60, sync: 'display-resample'))), Veredicto.fluido);
+      // Windows com vo=libmpv: pedido mas sem Hz do ecrã -> o mpv volta ao áudio; não se sabe
+      expect(diagnosticar(x3(_a(fps: 50, ecra: null, sync: 'display-resample'))), Veredicto.fluido);
+      expect(diagnosticar(x3(_a(fps: 50, ecra: null, sync: 'display-resample')), hzEcra: 60), Veredicto.ecra,
+          reason: 'Hz do sistema conhecidos mas o mpv não reamostra');
+      expect(diagnosticar(x3(_a(fps: 50, ecra: 60, sync: 'audio'))), Veredicto.ecra);
     });
 
     test('prioridade: rede > descodificação > ecrã', () {
-      expect(diagnosticar([_a(dropsDesc: 0, dropsSaida: 0), _a(pausado: true, dropsDesc: 5, dropsSaida: 5)]),
+      expect(
+          diagnosticar([
+            _a(),
+            _a(pausado: true, buffer: 0, dropsDesc: 5, dropsSaida: 5),
+            _a(pausado: true, buffer: 0, dropsDesc: 9, dropsSaida: 9),
+          ]),
           Veredicto.rede);
       expect(
-          diagnosticar([_a(dropsDesc: 0, dropsSaida: 0, fps: 50, ecra: 60), _a(dropsDesc: 5, dropsSaida: 5)]),
+          diagnosticar([_a(fps: 50, ecra: 60), _a(dropsDesc: 3, dropsSaida: 3), _a(dropsDesc: 5, dropsSaida: 5)]),
           Veredicto.descodificacao);
     });
 
@@ -136,6 +164,32 @@ void main() {
       expect(textoVeredicto(Veredicto.descodificacao), 'descodificação (imagens perdidas no descodificador)');
       expect(textoVeredicto(Veredicto.ecra), 'ecrã (imagens perdidas na saída / 50 fps num ecrã a 60 Hz)');
       expect(textoVeredicto(Veredicto.fluido), 'fluido');
+    });
+  });
+
+  test('as linhas mostram os Hz do sistema quando o mpv não os sabe', () {
+    final a = AmostraMpv.deMapa(const {'width': '1280', 'height': '720', 'container-fps': '50'});
+    final texto = linhasEstatisticas(a, hzEcra: 60).map((l) => '${l.$1}: ${l.$2}').join('\n');
+    expect(texto, contains('60.00 (sistema)'));
+  });
+
+  group('semImagemDireta (descodificação direta sem imagem)', () {
+    Map<String, String> m({String codec = 'h264', String hw = 'mediacodec', String vo = 'yes'}) =>
+        {'video-codec': codec, 'hwdec-current': hw, 'vo-configured': vo};
+
+    test('a tocar com o descodificador de hardware: tem imagem', () {
+      expect(semImagemDireta(larguraVista: 1920, propriedades: m()), isFalse);
+    });
+    test('o mpv passou para software: o mediacodec_embed não mostra nada', () {
+      expect(semImagemDireta(larguraVista: 1920, propriedades: m(hw: 'no')), isTrue);
+      expect(semImagemDireta(larguraVista: 1920, propriedades: m(hw: '')), isTrue);
+    });
+    test('a saída de vídeo falhou ("Video: no video")', () {
+      expect(semImagemDireta(larguraVista: 1920, propriedades: m(codec: '', hw: '', vo: 'no')), isTrue);
+      expect(semImagemDireta(larguraVista: 1920, propriedades: m(vo: 'no')), isTrue);
+    });
+    test('canal só de som (rádio): nunca houve vídeo, não é falha', () {
+      expect(semImagemDireta(larguraVista: 0, propriedades: m(codec: '', hw: '', vo: 'no')), isFalse);
     });
   });
 }

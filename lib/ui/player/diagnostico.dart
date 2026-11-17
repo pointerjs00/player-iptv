@@ -16,6 +16,7 @@ const propriedadesDiagnostico = [
   'cache-buffering-state',
   'video-bitrate',
   'paused-for-cache',
+  'video-sync',
 ];
 
 /// Um retrato do mpv num instante (os valores chegam como texto; os que faltam ficam nulos/0).
@@ -34,6 +35,7 @@ class AmostraMpv {
     this.estadoBuffer,
     this.bitrate,
     this.pausadoParaCache = false,
+    this.sincronizacao = '',
   });
 
   factory AmostraMpv.deMapa(Map<String, String> m) {
@@ -57,6 +59,7 @@ class AmostraMpv {
       estadoBuffer: d('cache-buffering-state')?.round(),
       bitrate: d('video-bitrate'),
       pausadoParaCache: m['paused-for-cache']?.trim() == 'yes',
+      sincronizacao: m['video-sync']?.trim() ?? '',
     );
   }
 
@@ -85,6 +88,13 @@ class AmostraMpv {
 
   /// O leitor parou à espera de dados da rede.
   final bool pausadoParaCache;
+
+  /// `video-sync` do mpv (ex.: `audio`, `display-resample`).
+  final String sincronizacao;
+
+  /// O mpv está mesmo a acertar o ritmo ao ecrã: pediu-se `display-*` e ele sabe os Hz do ecrã
+  /// (no Windows com `vo=libmpv` não sabe, e volta a sincronizar pelo áudio).
+  bool get reamostraAtiva => sincronizacao.startsWith('display-') && (fpsEcra ?? 0) > 0;
 }
 
 /// Onde está o problema de fluidez.
@@ -97,27 +107,46 @@ String textoVeredicto(Veredicto v) => switch (v) {
       Veredicto.fluido => 'fluido',
     };
 
-/// Abaixo disto (segundos) e a cair, o buffer está a esvaziar.
-const _bufferBaixo = 3.0;
+/// Amostras precisas para um veredicto (~3 s): logo a seguir a abrir/zapping ainda se mede.
+const amostrasMinimas = 3;
 
-/// O veredicto a partir das últimas amostras (a mais antiga primeiro; uns 5 s chegam).
-/// Prioridade: rede > descodificação > ecrã (um buffer vazio também faz perder imagens).
-/// `reamostra`: o mpv acerta o ritmo ao do ecrã (`video-sync=display-resample`).
-Veredicto? diagnosticar(List<AmostraMpv> amostras, {bool reamostra = false}) {
+/// Perdas na janela abaixo disto são ruído (uma imagem perdida de vez em quando).
+const _perdasMinimas = 2;
+
+/// O veredicto a partir das últimas amostras (a mais antiga primeiro; ~5 s), só com condições
+/// que se mantêm: parado à espera da rede em 2 amostras seguidas, ou o buffer a cair ≥ 1 s até
+/// menos de 1,5 s; ≥ 2 perdas na janela. Prioridade: rede > descodificação > ecrã (um buffer
+/// vazio também faz perder imagens). `hzEcra`: os Hz do ecrã segundo o sistema, para quando o mpv
+/// não os sabe (`mediacodec_embed` no Android). Sem vídeo ou poucas amostras: null.
+Veredicto? diagnosticar(List<AmostraMpv> amostras, {double? hzEcra}) {
   if (amostras.isEmpty) return null;
   final primeira = amostras.first;
   final ultima = amostras.last;
   // ainda sem vídeo (a abrir, ou o canal falhou): não há fluidez a julgar
   if (ultima.largura <= 0 && ultima.fpsContentor == null && ultima.fpsEstimado == null) return null;
+  if (amostras.length < amostrasMinimas) return null;
+  final penultima = amostras[amostras.length - 2];
   final b0 = primeira.bufferSegundos;
   final b1 = ultima.bufferSegundos;
-  if (ultima.pausadoParaCache || (b0 != null && b1 != null && b1 < b0 && b1 < _bufferBaixo)) {
+  if ((ultima.pausadoParaCache && penultima.pausadoParaCache) ||
+      (b0 != null && b1 != null && b0 - b1 >= 1 && b1 < 1.5)) {
     return Veredicto.rede;
   }
-  if (ultima.dropsDescodificador > primeira.dropsDescodificador) return Veredicto.descodificacao;
-  if (ultima.dropsSaida > primeira.dropsSaida) return Veredicto.ecra;
-  if (!reamostra && ritmoDesfasado(ultima.fpsContentor, ultima.fpsEcra)) return Veredicto.ecra;
+  if (ultima.dropsDescodificador - primeira.dropsDescodificador >= _perdasMinimas) return Veredicto.descodificacao;
+  if (ultima.dropsSaida - primeira.dropsSaida >= _perdasMinimas) return Veredicto.ecra;
+  if (!ultima.reamostraAtiva && ritmoDesfasado(ultima.fpsContentor, ultima.fpsEcra ?? hzEcra)) return Veredicto.ecra;
   return Veredicto.fluido;
+}
+
+/// Descodificação direta (`mediacodec_embed`) sem imagem: havia vídeo (`larguraVista` > 0) mas o
+/// mpv passou para software (o `mediacodec_embed` só mostra imagens do MediaCodec) ou a saída de
+/// vídeo falhou ("Video: no video"). Ouve-se o som com o ecrã preto. Canais só de som não contam.
+bool semImagemDireta({required int larguraVista, required Map<String, String> propriedades}) {
+  if (larguraVista <= 0) return false;
+  final hw = propriedades['hwdec-current']?.trim() ?? '';
+  final codec = propriedades['video-codec']?.trim() ?? '';
+  final vo = propriedades['vo-configured']?.trim() ?? '';
+  return vo == 'no' || codec.isEmpty || hw.isEmpty || hw == 'no';
 }
 
 /// O ecrã não mostra cada imagem o mesmo número de vezes (ex.: 50 fps a 60 Hz: 1 ou 2
@@ -130,7 +159,7 @@ bool ritmoDesfasado(double? fps, double? ecra) {
 }
 
 /// As linhas da sobreposição "Estatísticas" (rótulo, valor).
-List<(String, String)> linhasEstatisticas(AmostraMpv a) {
+List<(String, String)> linhasEstatisticas(AmostraMpv a, {double? hzEcra}) {
   String fps(double? v) => v == null || v <= 0 ? '—' : v.toStringAsFixed(2);
   final hw = a.hwdec.isEmpty ? '—' : (a.hwdec == 'no' ? 'software (CPU)' : 'hardware (${a.hwdec})');
   final br = a.bitrate;
@@ -140,7 +169,7 @@ List<(String, String)> linhasEstatisticas(AmostraMpv a) {
     ('Codec', a.codec.isEmpty ? '—' : a.codec),
     ('Resolução', a.largura > 0 ? '${a.largura}×${a.altura}' : '—'),
     ('Imagens/s (canal · medido)', '${fps(a.fpsContentor)} · ${fps(a.fpsEstimado)}'),
-    ('Ecrã (Hz)', fps(a.fpsEcra)),
+    ('Ecrã (Hz)', a.fpsEcra != null || hzEcra == null ? fps(a.fpsEcra) : '${fps(hzEcra)} (sistema)'),
     ('Perdidas (saída · descodificador)', '${a.dropsSaida} · ${a.dropsDescodificador}'),
     ('Buffer', buffer == null ? '—' : '${buffer.toStringAsFixed(1)} s'),
     ('Estado do buffer', a.estadoBuffer == null ? '—' : '${a.estadoBuffer}%'),

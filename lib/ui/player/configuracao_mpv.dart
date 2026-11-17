@@ -63,8 +63,9 @@ class ConfiguracaoMpv {
   /// efeito).
   final bool desentrelacamentoAtivo;
 
-  /// `video-sync=display-resample`: o mpv acerta o ritmo do vídeo ao do ecrã (50 fps em 60 Hz
-  /// não dá judder), por isso o diagnóstico não acusa o ecrã por isso.
+  /// Pede-se `video-sync=display-resample` (o mpv acerta o ritmo do vídeo ao do ecrã). Só tem
+  /// efeito se o mpv souber os Hz do ecrã; o diagnóstico verifica-o em tempo real
+  /// ([AmostraMpv.reamostraAtiva]) em vez de confiar neste pedido.
   final bool reamostraRitmo;
 
   PlayerConfiguration get configuracaoPlayer => const PlayerConfiguration(bufferSize: bufferBytes);
@@ -113,7 +114,8 @@ class ConfiguracaoMpv {
       desentrelacamentoAtivo: desentrelaca,
       reamostraRitmo: reamostra,
       propriedades: {
-        // buffer para direto: junta 10 s à frente, guarda até 20 s
+        // buffer para direto: com cache=yes o mpv junta até cache-secs (20 s) à frente; o
+        // demuxer-readahead-secs só conta se o cache estiver desligado
         'cache': 'yes',
         'demuxer-readahead-secs': '10',
         'cache-secs': '20',

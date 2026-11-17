@@ -10,13 +10,17 @@ import 'diagnostico.dart';
 /// fluidez (rede / descodificação / ecrã / fluido). Peça independente: a Task 5 liga-a a partir
 /// do painel de definições do player.
 class PainelEstatisticas extends StatefulWidget {
-  const PainelEstatisticas({super.key, required this.ler, this.reamostra = false, this.extra = const [],
+  const PainelEstatisticas({super.key, required this.ler, this.hzEcra, this.geracao, this.extra = const [],
       this.intervalo = const Duration(seconds: 1)});
 
   final Future<Map<String, String>> Function() ler;
 
-  /// O mpv acerta o ritmo do vídeo ao do ecrã (Windows: `display-resample`).
-  final bool reamostra;
+  /// Os Hz do ecrã segundo o sistema (Android), para quando o mpv não os sabe.
+  final double? hzEcra;
+
+  /// Muda a cada canal aberto (zapping): as amostras recomeçam, para não comparar o buffer do
+  /// canal anterior com o do novo.
+  final Object? geracao;
 
   /// Linhas a mais (ex.: o modo de descodificação, a taxa do ecrã pedida).
   final List<(String, String)> extra;
@@ -58,6 +62,12 @@ class _PainelEstatisticasState extends State<PainelEstatisticas> {
   }
 
   @override
+  void didUpdateWidget(PainelEstatisticas antigo) {
+    super.didUpdateWidget(antigo);
+    if (antigo.geracao != widget.geracao) _amostras.clear();
+  }
+
+  @override
   void dispose() {
     _timer?.cancel();
     super.dispose();
@@ -66,10 +76,10 @@ class _PainelEstatisticasState extends State<PainelEstatisticas> {
   @override
   Widget build(BuildContext context) {
     final ultima = _amostras.isEmpty ? const AmostraMpv() : _amostras.last;
-    final v = diagnosticar(_amostras, reamostra: widget.reamostra);
+    final v = diagnosticar(_amostras, hzEcra: widget.hzEcra);
     const rotulo = TextStyle(color: Colors.white60, fontSize: 13);
     const valor = TextStyle(color: Colors.white, fontSize: 13, fontFeatures: [FontFeature.tabularFigures()]);
-    final linhas = [...linhasEstatisticas(ultima), ...widget.extra];
+    final linhas = [...linhasEstatisticas(ultima, hzEcra: widget.hzEcra), ...widget.extra];
     return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 420),
       child: SuperficieVidro(
@@ -88,7 +98,7 @@ class _PainelEstatisticasState extends State<PainelEstatisticas> {
               ]),
             ),
           const SizedBox(height: 8),
-          Text('Veredicto: ${v == null ? '—' : textoVeredicto(v)}',
+          Text('Veredicto: ${v != null ? textoVeredicto(v) : (ultima.largura > 0 ? 'a medir…' : '—')}',
               style: TextStyle(color: _cor(v), fontSize: 14, fontWeight: FontWeight.w600)),
         ]),
       ),
