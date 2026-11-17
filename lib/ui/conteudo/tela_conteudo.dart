@@ -8,6 +8,7 @@ import '../../modelo/canal.dart';
 import '../../protocolos/protocolo.dart';
 import '../../rede/http.dart';
 import '../campo_tv.dart';
+import '../design/design.dart';
 import '../player/abrir_canal.dart';
 import '../realce_foco.dart';
 import '../tema.dart';
@@ -52,7 +53,10 @@ class _TelaConteudoState extends State<TelaConteudo> {
   final _scrollCanais = ScrollController();
   final _focoRegresso = FocusNode();
   Canal? _canalAFocar;
-  static const _alturaCanal = 56.0;
+
+  /// A altura de cada canal (maior na TV: vê-se de longe).
+  double _alturaCanal(bool tv) => tv ? 76 : 56;
+  static const _margemLista = 8.0;
 
   @override
   void initState() {
@@ -176,7 +180,8 @@ class _TelaConteudoState extends State<TelaConteudo> {
     setState(() => _canalAFocar = canais[volta]);
     if (_scrollCanais.hasClients) {
       final p = _scrollCanais.position;
-      _scrollCanais.jumpTo((volta * _alturaCanal - p.viewportDimension / 2 + _alturaCanal / 2)
+      final h = _alturaCanal(ecraTv(context));
+      _scrollCanais.jumpTo((_margemLista + volta * h - p.viewportDimension / 2 + h / 2)
           .clamp(0.0, p.maxScrollExtent));
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -200,9 +205,23 @@ class _TelaConteudoState extends State<TelaConteudo> {
 
   @override
   Widget build(BuildContext context) {
+    final largo = MediaQuery.sizeOf(context).width >= 720;
+    final pesquisa = Padding(
+      padding: EdgeInsets.only(top: largo ? 0 : Tokens.e8),
+      child: CampoTv(
+        key: const Key('pesquisa-canais'),
+        decoration: InputDecoration(
+          prefixIcon: const Icon(Icons.search),
+          hintText: _conteudo == null
+              ? 'Pesquisar canais'
+              : 'Pesquisar em ${_conteudo!.canais.length} canais de ${_conteudo!.grupos.length} grupos',
+        ),
+        onChanged: _pesquisar,
+      ),
+    );
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.lista.nomeMostrado),
+        title: Text(widget.lista.nomeMostrado, maxLines: 1, overflow: TextOverflow.ellipsis),
         actions: [
           IconButton(
             tooltip: 'Atualizar a lista de canais',
@@ -212,29 +231,58 @@ class _TelaConteudoState extends State<TelaConteudo> {
         ],
       ),
       body: Column(children: [
-        if (_aCarregar) _barraCarregar(),
+        // cabeçalho: estado da última verificação e validade (sugestão 9) + pesquisa
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-          child: CampoTv(
-            key: const Key('pesquisa-canais'),
-            decoration: InputDecoration(
-              prefixIcon: const Icon(Icons.search),
-              hintText: _conteudo == null
-                  ? 'Pesquisar canais'
-                  : 'Pesquisar em ${_conteudo!.canais.length} canais de ${_conteudo!.grupos.length} grupos',
-            ),
-            onChanged: _pesquisar,
-          ),
+          padding: const EdgeInsets.fromLTRB(Tokens.e16, 0, Tokens.e16, Tokens.e12),
+          child: largo
+              ? Row(children: [
+                  Expanded(child: _cabecalhoLista()),
+                  const SizedBox(width: Tokens.e16),
+                  SizedBox(width: 400, child: pesquisa),
+                ])
+              : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [_cabecalhoLista(), pesquisa]),
         ),
+        if (_aCarregar) _barraCarregar(),
         Expanded(child: _corpo()),
       ]),
     );
   }
 
-  Widget _barraCarregar() => Material(
-        color: Cores.superficie2,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+  /// O estado da última verificação, a validade e quando foi verificada.
+  Widget _cabecalhoLista() {
+    final tv = ecraTv(context);
+    final u = widget.lista.ultima;
+    final validade = textoValidade(u?.validade ?? '');
+    final quando = u == null ? '' : dataRelativa(u.data);
+    final secundario = TextStyle(color: Tokens.texto2, fontSize: tv ? 15 : 13);
+    return Wrap(spacing: Tokens.e8, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
+      PilulaEstado(u?.estado, grande: tv),
+      if (validade.isNotEmpty)
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+          decoration: BoxDecoration(color: Tokens.vidroForte, borderRadius: BorderRadius.circular(Tokens.raioPilula)),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(Icons.event_outlined, size: tv ? 16 : 14, color: Tokens.texto2),
+            const SizedBox(width: 5),
+            Text(validade, style: TextStyle(fontSize: tv ? 15 : 13)),
+          ]),
+        ),
+      Text(
+        u == null
+            ? 'Ainda não foi verificada'
+            // "hoje às 14:05", "há 3 dias" ou uma data ("em 02/01/2026")
+            : 'Verificada ${quando.startsWith(RegExp('[0-9]')) ? 'em ' : ''}$quando',
+        style: secundario,
+      ),
+    ]);
+  }
+
+  Widget _barraCarregar() => Padding(
+        padding: const EdgeInsets.fromLTRB(Tokens.e16, 0, Tokens.e16, Tokens.e12),
+        child: SuperficieVidro(
+          raio: Tokens.raioBotao,
+          cor: Tokens.vidroForte,
+          padding: const EdgeInsets.symmetric(horizontal: Tokens.e16, vertical: 4),
           child: Row(children: [
             const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
             const SizedBox(width: 12),
@@ -250,35 +298,52 @@ class _TelaConteudoState extends State<TelaConteudo> {
       );
 
   Widget _corpo() {
+    final largo = MediaQuery.sizeOf(context).width >= 720;
+    final tv = ecraTv(context);
     if (_conteudo == null) {
       if (_erro != null) {
         return Center(
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            const Icon(Icons.error_outline, size: 48, color: Cores.mau),
-            const SizedBox(height: 8),
-            Text('Não foi possível abrir a lista: $_erro', textAlign: TextAlign.center),
-            const SizedBox(height: 12),
-            FilledButton(autofocus: true, onPressed: _carregar, child: const Text('Tentar de novo')),
-          ]),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(Tokens.e24),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 520),
+              child: SuperficieVidro(
+                padding: const EdgeInsets.all(Tokens.e24),
+                elevacao: 2,
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  const Icon(Icons.error_outline, size: 48, color: Tokens.mau),
+                  const SizedBox(height: Tokens.e12),
+                  Text('Não foi possível abrir a lista: $_erro', textAlign: TextAlign.center),
+                  const SizedBox(height: Tokens.e16),
+                  FilledButton(autofocus: true, onPressed: _carregar, child: const Text('Tentar de novo')),
+                ]),
+              ),
+            ),
+          ),
         );
       }
-      return const SizedBox.shrink();
+      // a ler a cache ou a carregar do servidor: o esqueleto a brilhar
+      return _esqueleto(largo, tv);
     }
-    final largo = MediaQuery.sizeOf(context).width >= 720;
     final canais = _canaisVisiveis();
     final lista = _listaCanais(canais);
     final pesquisa = _qCanais.trim().isNotEmpty;
     if (largo) {
-      return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        SizedBox(width: 300, child: _colunaGrupos()),
-        const VerticalDivider(width: 1),
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            _cabecalhoCanais(canais.length, pesquisa),
-            Expanded(child: lista),
-          ]),
-        ),
-      ]);
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(Tokens.e16, 0, Tokens.e16, Tokens.e16),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          SizedBox(width: tv ? 340 : 300, child: SuperficieVidro(child: _colunaGrupos())),
+          const SizedBox(width: Tokens.e16),
+          Expanded(
+            child: SuperficieVidro(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                _cabecalhoCanais(canais.length, pesquisa),
+                Expanded(child: lista),
+              ]),
+            ),
+          ),
+        ]),
+      );
     }
     final grupos = _gruposVisiveis();
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -286,7 +351,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
         height: 48,
         child: ListView.separated(
           scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+          padding: const EdgeInsets.symmetric(horizontal: Tokens.e16),
           itemCount: grupos.length,
           separatorBuilder: (_, _) => const SizedBox(width: 6),
           itemBuilder: (_, i) => ChoiceChip(
@@ -297,25 +362,84 @@ class _TelaConteudoState extends State<TelaConteudo> {
         ),
       ),
       _cabecalhoCanais(canais.length, pesquisa),
-      Expanded(child: lista),
+      Expanded(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(Tokens.e12, 0, Tokens.e12, Tokens.e12),
+          child: SuperficieVidro(child: lista),
+        ),
+      ),
     ]);
   }
 
+  /// Enquanto carrega: blocos com a forma dos grupos e dos canais, com um brilho a passar.
+  Widget _esqueleto(bool largo, bool tv) {
+    final h = _alturaCanal(tv);
+    final logo = tv ? 56.0 : 40.0;
+    Widget canal(int i) => SizedBox(
+          height: h,
+          child: Row(children: [
+            BlocoEsqueleto(largura: logo, altura: logo, raio: 10),
+            const SizedBox(width: Tokens.e16),
+            Expanded(
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: FractionallySizedBox(
+                    widthFactor: .35 + (i * 37 % 40) / 100, child: const BlocoEsqueleto(altura: 14)),
+              ),
+            ),
+          ]),
+        );
+    final canais = Column(children: [for (var i = 0; i < 14; i++) canal(i)]);
+    final grupos = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const BlocoEsqueleto(altura: 40, raio: Tokens.raioCampo),
+      const SizedBox(height: Tokens.e16),
+      for (var i = 0; i < 12; i++)
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: FractionallySizedBox(
+              widthFactor: .5 + (i * 29 % 40) / 100, child: const BlocoEsqueleto(altura: 14)),
+        ),
+    ]);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(Tokens.e16, 0, Tokens.e16, Tokens.e16),
+      // nunca rola nem transborda: corta o que não cabe
+      child: ClipRect(
+        child: OverflowBox(
+          alignment: Alignment.topCenter,
+          maxHeight: double.infinity,
+          child: EsqueletoBrilho(
+            child: Padding(
+              padding: const EdgeInsets.all(Tokens.e16),
+              child: largo
+                  ? Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      SizedBox(width: tv ? 308 : 268, child: grupos),
+                      const SizedBox(width: Tokens.e32 + Tokens.e16),
+                      Expanded(child: canais),
+                    ])
+                  : canais,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _cabecalhoCanais(int n, bool pesquisa) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+        padding: const EdgeInsets.fromLTRB(Tokens.e16, Tokens.e12, Tokens.e16, Tokens.e4),
         child: Text(
           pesquisa
               ? (n == 1 ? '1 canal encontrado' : '$n canais encontrados')
               : '${_grupo ?? 'Todos'} · ${n == 1 ? '1 canal' : '$n canais'}',
-          style: const TextStyle(color: Cores.texto2, fontWeight: FontWeight.w700, fontSize: 12),
+          style: TextStyle(color: Tokens.texto2, fontWeight: FontWeight.w700, fontSize: ecraTv(context) ? 15 : 13),
         ),
       );
 
   Widget _colunaGrupos() {
     final grupos = _gruposVisiveis();
+    final tv = ecraTv(context);
     return Column(children: [
       Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.fromLTRB(Tokens.e12, Tokens.e12, Tokens.e12, Tokens.e4),
         child: CampoTv(
           key: const Key('filtro-grupos'),
           decoration: const InputDecoration(prefixIcon: Icon(Icons.filter_list), hintText: 'Filtrar grupos'),
@@ -325,6 +449,8 @@ class _TelaConteudoState extends State<TelaConteudo> {
       Expanded(
         child: FocusTraversalGroup(
           child: ListView.builder(
+            // margem para a borda de realce não ser cortada pelo vidro
+            padding: const EdgeInsets.all(_margemLista),
             itemCount: grupos.length,
             itemBuilder: (_, i) {
               final g = grupos[i];
@@ -332,12 +458,13 @@ class _TelaConteudoState extends State<TelaConteudo> {
               return RealceFoco(
                 construir: (_, aoMudarFoco) => ListTile(
                   onFocusChange: aoMudarFoco,
-                  dense: true,
+                  dense: !tv,
                   // o foco começa no grupo escolhido
                   autofocus: g == _grupo,
                   selected: g == _grupo && _qCanais.trim().isEmpty,
-                  title: Text(g, maxLines: 1, overflow: TextOverflow.ellipsis),
-                  trailing: Text('$n', style: const TextStyle(color: Cores.texto2)),
+                  title: Text(g, maxLines: 1, overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: tv ? 17 : 14, fontWeight: FontWeight.w500)),
+                  trailing: Text('$n', style: TextStyle(color: Tokens.texto2, fontSize: tv ? 15 : 12.5)),
                   onTap: () => setState(() => _grupo = g),
                 ),
               );
@@ -350,16 +477,20 @@ class _TelaConteudoState extends State<TelaConteudo> {
 
   Widget _listaCanais(List<Canal> canais) {
     if (canais.isEmpty) {
-      return const Center(child: Text('Nenhum canal.', style: TextStyle(color: Cores.texto2)));
+      return const Center(child: Text('Nenhum canal.', style: TextStyle(color: Tokens.texto2)));
     }
+    final tv = ecraTv(context);
     final pesquisa = _qCanais.trim().isNotEmpty;
     // no ecrã estreito (sem coluna de grupos) o foco começa no 1.º canal
     final focarPrimeiro = MediaQuery.sizeOf(context).width < 720;
     return FocusTraversalGroup(
+      // virtualizada (itemExtent fixo) e sem animar cada canal: listas de 100 mil
       child: ListView.builder(
+        key: const Key('lista-canais'),
         controller: _scrollCanais,
+        padding: const EdgeInsets.all(_margemLista),
         itemCount: canais.length,
-        itemExtent: _alturaCanal,
+        itemExtent: _alturaCanal(tv),
         itemBuilder: (_, i) {
           final c = canais[i];
           final fav = widget.lista.favoritos.contains(c.id);
@@ -368,12 +499,17 @@ class _TelaConteudoState extends State<TelaConteudo> {
               onFocusChange: aoMudarFoco,
               focusNode: identical(c, _canalAFocar) ? _focoRegresso : null,
               autofocus: focarPrimeiro && i == 0,
-              leading: _Logo(c.logo),
-              title: Text(c.nome, maxLines: 1, overflow: TextOverflow.ellipsis),
-              subtitle: pesquisa ? Text(c.grupo, maxLines: 1, style: const TextStyle(fontSize: 12)) : null,
+              leading: _Logo(c.logo, tamanho: tv ? 56 : 40),
+              minLeadingWidth: tv ? 56 : 40,
+              title: Text(c.nome, maxLines: 1, overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: tv ? 19 : 15, fontWeight: FontWeight.w500)),
+              subtitle: pesquisa
+                  ? Text(c.grupo, maxLines: 1, style: TextStyle(fontSize: tv ? 14 : 12, color: Tokens.texto2))
+                  : null,
               trailing: IconButton(
                 tooltip: fav ? 'Tirar dos favoritos' : 'Pôr nos favoritos',
-                icon: Icon(fav ? Icons.star : Icons.star_border, color: fav ? Cores.aviso : null),
+                icon: Icon(fav ? Icons.star_rounded : Icons.star_outline_rounded,
+                    color: fav ? Tokens.aviso : Tokens.texto2, size: tv ? 28 : 24),
                 onPressed: () {
                   // o conjunto muda logo; a gravação em disco segue em segundo plano
                   widget.biblioteca.alternarFavorito(widget.lista.id, c.id);
@@ -389,17 +525,26 @@ class _TelaConteudoState extends State<TelaConteudo> {
   }
 }
 
+/// O logótipo do canal num quadrado de vidro (ou o ícone de TV sem logótipo).
 class _Logo extends StatelessWidget {
-  const _Logo(this.url);
+  const _Logo(this.url, {required this.tamanho});
   final String url;
+  final double tamanho;
 
   @override
   Widget build(BuildContext context) {
-    const vazio = SizedBox(width: 40, height: 40, child: Icon(Icons.tv, color: Cores.texto2));
-    if (!url.startsWith('http')) return vazio;
-    return SizedBox(
-      width: 40, height: 40,
-      child: Image.network(url, fit: BoxFit.contain, errorBuilder: (_, _, _) => vazio),
+    final vazio = Icon(Icons.tv_rounded, color: Tokens.texto2, size: tamanho * .5);
+    return Container(
+      key: const Key('logo-canal'),
+      width: tamanho,
+      height: tamanho,
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(color: Tokens.vidro, borderRadius: BorderRadius.circular(tamanho * .22)),
+      child: url.startsWith('http')
+          ? Image.network(url, fit: BoxFit.contain, errorBuilder: (_, _, _) => vazio,
+              // descodificado no tamanho mostrado (poupa memória com muitos logótipos)
+              cacheWidth: (tamanho * MediaQuery.devicePixelRatioOf(context)).round())
+          : vazio,
     );
   }
 }

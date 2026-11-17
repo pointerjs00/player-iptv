@@ -9,6 +9,7 @@ import 'package:player_iptv/importar/importar.dart';
 import 'package:player_iptv/modelo/canal.dart';
 import 'package:player_iptv/modelo/conta.dart';
 import 'package:player_iptv/ui/conteudo/tela_conteudo.dart';
+import 'package:player_iptv/ui/design/design.dart';
 import 'package:player_iptv/ui/inicio/tela_inicio.dart';
 import 'package:player_iptv/ui/player/player_canais.dart';
 import 'package:player_iptv/ui/realce_foco.dart';
@@ -204,6 +205,61 @@ void main() {
       // ignore: avoid_print
       print('I5 rebuild médio: ${sw.elapsedMilliseconds / 5} ms');
       expect(sw.elapsedMilliseconds / 5, lessThan(60));
+    });
+
+    testWidgets('sugestão 9: esqueleto a brilhar enquanto carrega; depois o cabeçalho com estado e validade',
+        (t) async {
+      _tamanho(t, 1200, 800);
+      await t.runAsync(() async {
+        await bib.adicionar([
+          Importada(contaDeLinha('http://x.com/l.m3u')!,
+              UltimaVerificacao(estado: 'funciona', data: DateTime.now(), validade: '2027-10-16')),
+        ]);
+        await bib.guardarCanais(bib.listas.single.id, canais);
+      });
+      final l = bib.listas.single;
+      // a cache ainda não foi lida (IO real fora do runAsync): está a carregar
+      await t.pumpWidget(_app(TelaConteudo(biblioteca: bib, lista: l)));
+      expect(find.byType(EsqueletoBrilho), findsOneWidget);
+      expect(find.text('PT: RTP 1 HD'), findsNothing);
+      // a leitura tem vários passos de IO real: cada um precisa de tempo real e de um pump
+      for (var i = 0; i < 30 && find.byType(EsqueletoBrilho).evaluate().isNotEmpty; i++) {
+        await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+        await t.pump();
+      }
+      expect(find.byType(EsqueletoBrilho), findsNothing);
+      expect(find.text('PT: RTP 1 HD'), findsOneWidget);
+      // cabeçalho: nome da lista, estado da última verificação e validade
+      expect(find.text(l.nomeMostrado), findsWidgets);
+      expect(find.descendant(of: find.byType(PilulaEstado), matching: find.text('Funciona')), findsOneWidget);
+      expect(find.text('até 16/10/2027'), findsOneWidget);
+      expect(find.textContaining('Verificada hoje'), findsOneWidget);
+    });
+
+    testWidgets('sem verificação, o cabeçalho diz "Por verificar"', (t) async {
+      _tamanho(t, 1200, 800);
+      final l = await preparar(t);
+      await mostrar(t, l);
+      expect(find.descendant(of: find.byType(PilulaEstado), matching: find.text('Por verificar')), findsOneWidget);
+    });
+
+    testWidgets('sugestão 8: na TV (ecraTv) canais e logótipos maiores', (t) async {
+      _tamanho(t, 960, 540);
+      final l = await preparar(t);
+      Future<(double, Size)> medidas() async {
+        await mostrar(t, l);
+        final extensao = t.widget<ListView>(find.byKey(const Key('lista-canais'))).itemExtent!;
+        final logo = t.getSize(find.byKey(const Key('logo-canal')).first);
+        return (extensao, logo);
+      }
+
+      final (altura, logo) = await medidas();
+      await t.pumpWidget(const SizedBox());
+      EcraTv.nativo = true;
+      addTearDown(() => EcraTv.nativo = false);
+      final (alturaTv, logoTv) = await medidas();
+      expect(alturaTv, greaterThan(altura));
+      expect(logoTv.width, greaterThan(logo.width));
     });
 
     testWidgets('no telemóvel os grupos são chips', (t) async {
