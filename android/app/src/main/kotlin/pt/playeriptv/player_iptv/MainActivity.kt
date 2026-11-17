@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import android.view.Display
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -27,6 +28,47 @@ class MainActivity : FlutterActivity() {
                 )
             } else {
                 result.notImplemented()
+            }
+        }
+        // Taxa de atualização do ecrã (Android TV / Fire TV): o player pede o modo que combina com
+        // o fps do canal (50 fps -> 50 Hz) e repõe-no ao sair. Usa preferredDisplayModeId (API 23+),
+        // que muda mesmo de modo; o Surface.setFrameRate (API 30+) só pede trocas sem corte, e
+        // 60 -> 50 Hz quase nunca o é numa TV, por isso não serviria.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "player_iptv/ecra").setMethodCallHandler { call, result ->
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+                result.success(null)
+                return@setMethodCallHandler
+            }
+            val ecra = ecraAtual()
+            if (ecra == null) {
+                result.success(null)
+                return@setMethodCallHandler
+            }
+            when (call.method) {
+                "taxas" -> {
+                    val atual = ecra.mode
+                    result.success(
+                        mapOf(
+                            "atual" to atual.refreshRate.toDouble(),
+                            "suportadas" to modosMesmaResolucao(ecra).map { it.refreshRate.toDouble() }.distinct()
+                        )
+                    )
+                }
+                "pedir" -> {
+                    val hz = call.argument<Double>("hz") ?: 0.0
+                    val modo = modosMesmaResolucao(ecra).minByOrNull { Math.abs(it.refreshRate - hz) }
+                    if (modo == null || Math.abs(modo.refreshRate - hz) > 0.05) {
+                        result.success(false)
+                    } else {
+                        window.attributes = window.attributes.apply { preferredDisplayModeId = modo.modeId }
+                        result.success(true)
+                    }
+                }
+                "repor" -> {
+                    window.attributes = window.attributes.apply { preferredDisplayModeId = 0 }
+                    result.success(true)
+                }
+                else -> result.notImplemented()
             }
         }
         // Guardar em Transferências (telemóvel e TV): MediaStore no Android 10+, pasta pública no 9-
@@ -57,6 +99,18 @@ class MainActivity : FlutterActivity() {
                 }
                 else -> result.notImplemented()
             }
+        }
+    }
+
+    private fun ecraAtual(): Display? =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) display
+        else @Suppress("DEPRECATION") (windowManager.defaultDisplay)
+
+    /** Os modos com a resolução atual (só muda a taxa, nunca a resolução). */
+    private fun modosMesmaResolucao(ecra: Display): List<Display.Mode> {
+        val atual = ecra.mode
+        return ecra.supportedModes.filter {
+            it.physicalWidth == atual.physicalWidth && it.physicalHeight == atual.physicalHeight
         }
     }
 
