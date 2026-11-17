@@ -43,6 +43,8 @@ dependencies:
   file_picker: ^13.4.0
   crypto: ^3.0.8
   window_manager: ^0.7.0
+  # já vinha com o media_kit (sem descargas novas): chamar o libmpv fora da thread da UI
+  ffi: ^2.2.0
 
 dev_dependencies:
   flutter_test:

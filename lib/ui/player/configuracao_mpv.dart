@@ -154,8 +154,8 @@ Future<void> aplicarConfiguracao(MotorMpv mpv, ConfiguracaoMpv c) async {
   }
 }
 
-/// O que o player usa do mpv. O [MotorMediaKit] é o verdadeiro; os testes usam um falso que
-/// regista as chamadas.
+/// O que o player usa do mpv. O verdadeiro é o `MotorForaDaUi` (as chamadas ao libmpv fora da
+/// thread da UI); os testes usam um falso que regista as chamadas.
 abstract interface class MotorMpv {
   Future<void> setProperty(String propriedade, String valor);
   Future<String> getProperty(String propriedade);
@@ -164,34 +164,4 @@ abstract interface class MotorMpv {
 
   /// Um comando do mpv (ex.: `['seek', '-10', 'relative']`).
   Future<void> command(List<String> comando);
-}
-
-/// O mpv de um `Player` do media_kit (sem `NativePlayer` — web — as propriedades não fazem nada).
-class MotorMediaKit implements MotorMpv {
-  MotorMediaKit(this.player);
-  final Player player;
-
-  @override
-  Future<void> setProperty(String propriedade, String valor) async {
-    final mpv = player.platform;
-    if (mpv is NativePlayer) await mpv.setProperty(propriedade, valor);
-  }
-
-  @override
-  Future<String> getProperty(String propriedade) async {
-    final mpv = player.platform;
-    return mpv is NativePlayer ? mpv.getProperty(propriedade) : '';
-  }
-
-  @override
-  Future<void> setRate(double velocidade) => player.setRate(velocidade);
-
-  @override
-  Future<void> setVolume(double volume) => player.setVolume(volume);
-
-  @override
-  Future<void> command(List<String> comando) async {
-    final mpv = player.platform;
-    if (mpv is NativePlayer) await mpv.command(comando);
-  }
 }

@@ -18,6 +18,7 @@ import 'diagnostico.dart';
 import 'estatisticas.dart';
 import 'faixas.dart';
 import 'maquina_controlos.dart';
+import 'mpv_fora_da_ui.dart';
 import 'painel_definicoes.dart';
 import 'relogio_direto.dart';
 import 'saltos_direto.dart';
@@ -76,7 +77,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   late bool _hardware = Preferencias.atual.hardware;
   late ConfiguracaoMpv _config;
   late Player _player;
-  late MotorMpv _motor;
+  late MotorForaDaUi _motor;
   late SaltosDireto _saltos;
   late VideoController _video;
   late Future<void> _configurado;
@@ -133,7 +134,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   void _criarPlayer() {
     _config = ConfiguracaoMpv.para(_plataforma, modo: _modo, hardware: _hardware);
     _player = Player(configuration: _config.configuracaoPlayer);
-    _motor = MotorMediaKit(_player);
+    _motor = MotorForaDaUi.doPlayer(_player);
     _saltos = SaltosDireto(_motor, _relogio);
     _subsPlayer.add(_player.stream.error.listen((e) {
       if (mounted && e.isNotEmpty && erroFatalPlayer(e)) {
@@ -178,10 +179,12 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     }
     _subsPlayer.clear();
     final antigo = _player;
+    final motorAntigo = _motor;
     _modo = modo;
     _hardware = hardware;
     _criarPlayer();
     if (mounted) setState(() {});
+    await motorAntigo.fechar(); // nenhum pedido ao mpv antigo depois de destruído
     await antigo.dispose();
   }
 
@@ -563,7 +566,9 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     for (final s in _subsPlayer) {
       s.cancel();
     }
-    _player.dispose();
+    // o mpv só se destrói depois dos pedidos que ainda lá estão
+    final player = _player;
+    _motor.fechar().whenComplete(player.dispose);
     super.dispose();
   }
 
