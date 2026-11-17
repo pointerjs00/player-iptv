@@ -189,7 +189,11 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
 
   /// Larga um player: pausa e volume 0 pelo media_kit já (se o mpv estiver preso e o player
   /// ficar por destruir, nunca toca por trás), depois destrói-o quando for seguro.
-  static Future<void> _aposentar(MotorForaDaUi motor, Player player) => motor.aposentar(
+  static Future<void> _aposentar(MotorForaDaUi motor, Player player) {
+    // o próximo player só abre um canal depois de este fechar o áudio (ver VezDoAudio)
+    final audioFechado = Completer<void>();
+    VezDoAudio.instancia.largar(audioFechado.future);
+    return motor.aposentar(
         // pelas funções assíncronas do libmpv (pause, mute): o pause()/setVolume() do
         // media_kit esperam pelo controlador de vídeo e pelo lock dele e, ao sair a meio de uma
         // abertura, nunca chegavam a parar nada (visto no emulador)
@@ -200,8 +204,9 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
           if (h != null) pararSemEsperar(h);
         },
         silenciar: () async {}, // o mute=yes vai com o pause
-        destruir: player.dispose,
+        destruir: () => player.dispose().whenComplete(audioFechado.complete),
       );
+  }
 
   /// A chave do canal para lembrar, nesta sessão, que precisa do modo "Compatível".
   String _chave(Canal c) => '${widget.nomeLista}|${c.id}';
@@ -278,6 +283,8 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       if (!mounted || pedido != _pedido) return;
       _vigia.abrindo();
       _larguraVista = 0;
+      await VezDoAudio.instancia.esperar();
+      if (!mounted || pedido != _pedido) return;
       await _player.open(Media(f.url, httpHeaders: f.headers));
     } catch (e) {
       if (!mounted || pedido != _pedido) return;

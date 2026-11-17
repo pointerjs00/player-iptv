@@ -357,3 +357,34 @@ void pararSemEsperar(int handle) {
     debugPrint('mpv: não parou o player ($e)');
   }
 }
+
+/// A vez do áudio entre players. A saída `audiotrack` do mpv guarda as referências JNI do
+/// `AudioTrack` em variáveis globais e limpa-as quando um player fecha o áudio: se outro player
+/// estiver a tocar nesse momento, a thread de áudio dele chama um método nulo e a app morre
+/// ("JNI DETECTED ERROR: mid == null", visto no emulador ao sair e entrar no player). Por isso um
+/// player novo só abre um canal depois de os players largados terem fechado o áudio (o `dispose`
+/// do media_kit faz `stop`), no máximo [limite] (um player preso não pode impedir o seguinte).
+class VezDoAudio {
+  VezDoAudio({this.limite = const Duration(seconds: 4)});
+  static final instancia = VezDoAudio();
+
+  final Duration limite;
+  final _largados = <Future<void>>{};
+
+  /// `fechado` acaba quando o player largado tiver fechado o áudio (destruído).
+  void largar(Future<void> fechado) {
+    final f = fechado.then<void>((_) {}, onError: (_) {});
+    _largados.add(f);
+    f.whenComplete(() => _largados.remove(f));
+  }
+
+  /// Espera que os players largados fechem o áudio (no máximo [limite]).
+  Future<void> esperar() async {
+    if (_largados.isEmpty) return;
+    try {
+      await Future.wait(_largados.toList()).timeout(limite);
+    } on TimeoutException {
+      debugPrint('mpv: um player largado ainda não fechou o áudio; abre-se na mesma');
+    }
+  }
+}
