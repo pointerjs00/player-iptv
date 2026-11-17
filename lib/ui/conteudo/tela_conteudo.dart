@@ -5,6 +5,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../../dados/biblioteca.dart';
 import '../../modelo/canal.dart';
+import '../../modelo/conta.dart';
 import '../../protocolos/protocolo.dart';
 import '../../rede/http.dart';
 import '../campo_tv.dart';
@@ -15,16 +16,30 @@ import '../tema.dart';
 
 const grupoFavoritos = '★ Favoritos';
 
+/// Pede os canais de uma lista ao servidor (o protocolo da conta; substituível nos testes).
+typedef AbrirLista = Future<ConteudoLista> Function(Conta conta, {Cancelamento? cancelamento, Aviso? aviso});
+
+Future<ConteudoLista> _abrirPeloProtocolo(Conta conta, {Cancelamento? cancelamento, Aviso? aviso}) =>
+    Protocolo.para(conta).abrir(conta, cancelamento: cancelamento, aviso: aviso);
+
 /// O conteúdo de uma lista: grupos à esquerda, canais à direita (no telemóvel, grupos em
 /// cima). A pesquisa procura canais em todos os grupos, sem acentos nem maiúsculas.
 class TelaConteudo extends StatefulWidget {
-  const TelaConteudo({super.key, required this.biblioteca, required this.lista, this.abrir});
+  const TelaConteudo({super.key, required this.biblioteca, required this.lista, this.abrir,
+      this.atualizar = false, AbrirLista? abrirLista})
+      : abrirLista = abrirLista ?? _abrirPeloProtocolo;
 
   final Biblioteca biblioteca;
   final Lista lista;
 
   /// Para testes: em vez de abrir o player. Devolve o canal que estava a tocar ao sair.
   final FutureOr<int?> Function(List<Canal> canais, int i)? abrir;
+
+  /// "Atualizar canais": pede os canais ao servidor logo ao abrir (a cache, se houver, fica por baixo).
+  final bool atualizar;
+
+  /// Pede os canais ao servidor.
+  final AbrirLista abrirLista;
 
   @override
   State<TelaConteudo> createState() => _TelaConteudoState();
@@ -78,6 +93,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
     if (!mounted) return;
     if (cache != null && cache.canais.isNotEmpty) {
       _mostrar(cache);
+      if (widget.atualizar) await _carregar();
     } else {
       await _carregar();
     }
@@ -131,7 +147,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
       _aviso = 'a ligar…';
     });
     try {
-      final c = await Protocolo.para(widget.lista.conta).abrir(widget.lista.conta, cancelamento: can,
+      final c = await widget.abrirLista(widget.lista.conta, cancelamento: can,
           aviso: (t) { if (mounted) setState(() => _aviso = t); });
       await widget.biblioteca.guardarCanais(widget.lista.id, c);
       if (mounted) _mostrar(c);

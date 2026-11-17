@@ -13,6 +13,8 @@ class CampoTv extends StatefulWidget {
     this.controller,
     this.minLines,
     this.maxLines = 1,
+    this.autofocus = false,
+    this.obscureText = false,
   });
 
   final InputDecoration decoration;
@@ -20,6 +22,10 @@ class CampoTv extends StatefulWidget {
   final TextEditingController? controller;
   final int? minLines;
   final int? maxLines;
+  final bool autofocus;
+
+  /// Esconde o texto (passwords).
+  final bool obscureText;
 
   @override
   State<CampoTv> createState() => _CampoTvState();
@@ -95,6 +101,8 @@ class _CampoTvState extends State<CampoTv> {
           controller: widget.controller,
           minLines: widget.minLines,
           maxLines: widget.maxLines,
+          autofocus: widget.autofocus,
+          obscureText: widget.obscureText,
           readOnly: !_aEscrever,
           decoration: widget.decoration,
           onTap: _aEscrever ? null : _escrever,
