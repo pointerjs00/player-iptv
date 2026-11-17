@@ -378,5 +378,48 @@ void main() {
       }
       expect(caminho, ['Verificar', 'Adicionar listas']);
     });
+
+    testWidgets('T2: "Adicionar listas": o campo não abre o teclado com o foco, Voltar sai da '
+        'edição e chega-se a "Adicionar" só com setas e OK', (t) async {
+      _tamanho(t, 960, 540);
+      await t.pumpWidget(_app(TelaInicio(biblioteca: bib)));
+      await t.pump();
+      expect(_focado(), 'Adicionar listas');
+      await _tecla(t, LogicalKeyboardKey.select);
+      await t.pumpAndSettle();
+      expect(_focado(), contains('Escolher ficheiros'));
+      await _tecla(t, LogicalKeyboardKey.arrowDown);
+      expect(_focado(), contains('[campo'));
+      expect(t.testTextInput.isVisible, isFalse, reason: 'o foco sozinho não abre o teclado no ecrã');
+      // sem escrever, as setas saem do campo (e voltam)
+      await _tecla(t, LogicalKeyboardKey.arrowDown);
+      expect(_focado(), anyOf('Cancelar', 'Adicionar'));
+      await _tecla(t, LogicalKeyboardKey.arrowUp);
+      expect(_focado(), contains('[campo'));
+      // OK escreve
+      await _tecla(t, LogicalKeyboardKey.select);
+      expect(t.testTextInput.isVisible, isTrue);
+      t.testTextInput.enterText('http://x.com/l.m3u');
+      await t.pump();
+      // Voltar fecha o teclado (e não o diálogo); as setas voltam a mudar o foco
+      // Voltar do comando (o simulador não tem tecla física para o goBack: usa-se a do Esc)
+      await t.sendKeyEvent(LogicalKeyboardKey.goBack, physicalKey: PhysicalKeyboardKey.escape);
+      await t.pump();
+      expect(t.testTextInput.isVisible, isFalse);
+      expect(find.text('Adicionar listas'), findsWidgets);
+      expect(_focado(), contains('[campo http://x.com/l.m3u'));
+      await _tecla(t, LogicalKeyboardKey.arrowDown);
+      for (var i = 0; i < 2 && _focado() != 'Adicionar'; i++) {
+        await _tecla(t, LogicalKeyboardKey.arrowRight);
+      }
+      expect(_focado(), 'Adicionar');
+      await t.runAsync(() async {
+        await _tecla(t, LogicalKeyboardKey.select);
+        await Future<void>.delayed(const Duration(milliseconds: 300));
+      });
+      await t.pumpAndSettle();
+      expect(bib.listas, hasLength(1));
+      expect(find.text('1 lista nova.'), findsOneWidget);
+    });
   });
 }
