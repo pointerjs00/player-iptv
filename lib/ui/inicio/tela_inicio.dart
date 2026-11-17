@@ -1,8 +1,9 @@
+import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../../dados/area_gestor.dart';
 import '../../dados/biblioteca.dart';
 import '../../modelo/canal.dart';
-import '../../verificar/servico.dart';
 import '../adicionar.dart';
 import '../campo_tv.dart';
 import '../conteudo/tela_conteudo.dart';
@@ -10,17 +11,20 @@ import '../design/design.dart';
 import '../realce_foco.dart';
 import 'cartao_lista.dart';
 
-/// Início: as listas guardadas em cartões, com pesquisa e filtro por estado.
+/// Início com os separadores "Player" e "Gestor". O Player mostra as listas em cartões (com o
+/// estado da última verificação, pesquisa e filtro por estado) e não gere nada: adicionar,
+/// verificar, exportar e enviar listas para o Player faz-se no Gestor.
 class TelaInicio extends StatefulWidget {
-  const TelaInicio({super.key, required this.biblioteca, this.servico, this.separadorVerificar});
+  const TelaInicio({super.key, required this.biblioteca, this.area, this.separadorGestor});
 
+  /// As listas do Player.
   final Biblioteca biblioteca;
 
-  /// Verifica listas e guarda o resultado; sem ele não há botões de verificar.
-  final ServicoVerificacao? servico;
+  /// As listas do Gestor: o "+" (só com o separador Gestor ativo) adiciona aqui.
+  final AreaGestor? area;
 
-  /// O separador "Verificar" (a interface do verificador).
-  final Widget? separadorVerificar;
+  /// O separador "Gestor".
+  final Widget? separadorGestor;
 
   @override
   State<TelaInicio> createState() => _TelaInicioState();
@@ -29,6 +33,15 @@ class TelaInicio extends StatefulWidget {
 class _TelaInicioState extends State<TelaInicio> {
   String _q = '';
   int? _abaFocada; // a aba com o foco do comando (para o realce)
+
+  /// O "+": recebe o foco depois de "Ir para o Gestor" (o botão do ecrã vazio desaparece).
+  final _focoMais = FocusNode(debugLabel: 'Adicionar listas');
+
+  @override
+  void dispose() {
+    _focoMais.dispose();
+    super.dispose();
+  }
   String? _filtro; // null = todas; 'por_verificar' = sem resultado
 
   static const _filtros = [
@@ -69,8 +82,16 @@ class _TelaInicioState extends State<TelaInicio> {
         TelaConteudo(biblioteca: widget.biblioteca, lista: l),
       ));
 
+  /// "Ir para o Gestor": muda de separador e põe o foco no "+" (que só aparece no Gestor).
+  void _irParaGestor(BuildContext context) {
+    DefaultTabController.of(context).animateTo(1);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _focoMais.context != null) _focoMais.requestFocus();
+    });
+  }
+
   Widget _listas() => ListenableBuilder(
-        listenable: Listenable.merge([widget.biblioteca, ?widget.servico]),
+        listenable: widget.biblioteca,
         builder: (context, _) {
           final todas = widget.biblioteca.listas;
           final vis = _visiveis();
@@ -88,17 +109,11 @@ class _TelaInicioState extends State<TelaInicio> {
                 ),
                 for (final (v, t) in _filtros)
                   ChoiceChip(label: Text(t), selected: _filtro == v, onSelected: (_) => setState(() => _filtro = v)),
-                if (widget.servico != null && todas.isNotEmpty)
-                  OutlinedButton.icon(
-                    onPressed: () => widget.servico!.verificarVarias(vis),
-                    icon: const Icon(Icons.playlist_add_check),
-                    label: Text('Verificar ${vis.length == todas.length ? 'todas' : 'as ${vis.length} visíveis'}'),
-                  ),
               ]),
             ),
             Expanded(
               child: todas.isEmpty
-                  ? _vazio()
+                  ? _vazio(context)
                   : vis.isEmpty
                       ? const Center(
                           child: Text('Nenhuma lista com este filtro.', style: TextStyle(color: Tokens.texto2)))
@@ -118,8 +133,6 @@ class _TelaInicioState extends State<TelaInicio> {
                             lista: vis[i],
                             autofocus: i == 0,
                             aoAbrir: () => _abrir(vis[i]),
-                            aoVerificar: widget.servico == null ? null : () => widget.servico!.verificar(vis[i]),
-                            verificando: widget.servico?.aVerificar(vis[i].id) ?? false,
                             aoRemover: () => _remover(vis[i]),
                           )),
                         ),
@@ -128,7 +141,7 @@ class _TelaInicioState extends State<TelaInicio> {
         },
       );
 
-  Widget _vazio() => Center(
+  Widget _vazio(BuildContext context) => Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(Tokens.e24),
           child: ConstrainedBox(
@@ -144,17 +157,20 @@ class _TelaInicioState extends State<TelaInicio> {
                   child: const Icon(Icons.live_tv_outlined, size: 36, color: Colors.white),
                 ),
                 const SizedBox(height: Tokens.e16),
-                const Text('Ainda não há listas.', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+                const Text('Ainda não há listas no Player',
+                    textAlign: TextAlign.center, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
                 const SizedBox(height: Tokens.e8),
-                const Text('Importe o Accounts.json, ficheiros .ini, listas M3U ou cole as linhas.',
+                const Text('Adicione e verifique listas no Gestor e envie-as para o Player.',
                     textAlign: TextAlign.center, style: TextStyle(color: Tokens.texto2)),
-                const SizedBox(height: Tokens.e24),
-                FilledButton.icon(
-                  autofocus: true,
-                  onPressed: () => mostrarAdicionar(context, widget.biblioteca),
-                  icon: const Icon(Icons.add),
-                  label: const Text('Adicionar listas'),
-                ),
+                if (widget.separadorGestor != null) ...[
+                  const SizedBox(height: Tokens.e24),
+                  FilledButton.icon(
+                    autofocus: true,
+                    onPressed: () => _irParaGestor(context),
+                    icon: const Icon(Icons.arrow_forward_rounded),
+                    label: const Text('Ir para o Gestor'),
+                  ),
+                ],
               ]),
             )),
           ),
@@ -163,43 +179,69 @@ class _TelaInicioState extends State<TelaInicio> {
 
   @override
   Widget build(BuildContext context) {
-    final temVerificar = widget.separadorVerificar != null;
-    final corpo = Scaffold(
+    final temGestor = widget.separadorGestor != null;
+    if (!temGestor) return _corpo(context, gestorAtivo: false);
+    return DefaultTabController(
+      length: 2,
+      // com "reduzir movimento" a troca de abas também é instantânea
+      animationDuration: duracaoAnimada(context, kTabScrollDuration),
+      child: Builder(builder: (context) {
+        final c = DefaultTabController.of(context);
+        return ListenableBuilder(listenable: c, builder: (context, _) => _corpo(context, gestorAtivo: c.index == 1));
+      }),
+    );
+  }
+
+  Widget _corpo(BuildContext context, {required bool gestorAtivo}) {
+    final temGestor = widget.separadorGestor != null;
+    final area = widget.area;
+    return Scaffold(
       appBar: AppBar(
         // as abas ficam na mesma linha do "+": CIMA a partir do conteúdo para nas abas (nada
-        // por cima delas) e ESQUERDA/DIREITA trocam Listas, Verificar e o "+"
-        title: temVerificar
+        // por cima delas) e ESQUERDA/DIREITA trocam Player, Gestor e o "+" (só no Gestor)
+        title: temGestor
             ? Row(children: [
                 // no telemóvel não há espaço para o nome e as abas
                 if (MediaQuery.sizeOf(context).width >= 600) ...const [_Marca(), SizedBox(width: Tokens.e16)],
                 Expanded(
-                  child: TabBar(
-                    isScrollable: true,
-                    tabAlignment: TabAlignment.start,
-                    dividerColor: Colors.transparent,
-                    onFocusChange: (f, i) => setState(() => _abaFocada = f ? i : (_abaFocada == i ? null : _abaFocada)),
-                    tabs: [
-                      for (final (i, t) in const ['Listas', 'Verificar'].indexed)
-                        Tab(child: MolduraFoco(focado: _abaFocada == i, raio: 8, child: _Aba(t))),
-                    ],
+                  // sem o "+" (no Player), DIREITA na última aba fica nela (não salta para os filtros)
+                  child: Focus(
+                    canRequestFocus: false,
+                    skipTraversal: true,
+                    includeSemantics: false,
+                    onKeyEvent: (_, e) => e is! KeyUpEvent &&
+                            e.logicalKey == LogicalKeyboardKey.arrowRight &&
+                            _abaFocada == 1 &&
+                            !(gestorAtivo && area != null)
+                        ? KeyEventResult.handled
+                        : KeyEventResult.ignored,
+                    child: TabBar(
+                      isScrollable: true,
+                      tabAlignment: TabAlignment.start,
+                      dividerColor: Colors.transparent,
+                      onFocusChange: (f, i) =>
+                          setState(() => _abaFocada = f ? i : (_abaFocada == i ? null : _abaFocada)),
+                      tabs: [
+                        for (final (i, t) in const ['Player', 'Gestor'].indexed)
+                          Tab(child: MolduraFoco(focado: _abaFocada == i, raio: 8, child: _Aba(t))),
+                      ],
+                    ),
                   ),
                 ),
               ])
             : const _Marca(),
         actions: [
-          IconButton(
-            tooltip: 'Adicionar listas',
-            onPressed: () => mostrarAdicionar(context, widget.biblioteca),
-            icon: const Icon(Icons.add),
-          ),
+          if (gestorAtivo && area != null)
+            IconButton(
+              focusNode: _focoMais,
+              tooltip: 'Adicionar listas',
+              onPressed: () => mostrarAdicionar(context, area),
+              icon: const Icon(Icons.add),
+            ),
         ],
       ),
-      body: temVerificar ? TabBarView(children: [_listas(), widget.separadorVerificar!]) : _listas(),
+      body: temGestor ? TabBarView(children: [_listas(), widget.separadorGestor!]) : _listas(),
     );
-    return temVerificar
-        // com "reduzir movimento" a troca de abas também é instantânea
-        ? DefaultTabController(length: 2, animationDuration: duracaoAnimada(context, kTabScrollDuration), child: corpo)
-        : corpo;
   }
 }
 

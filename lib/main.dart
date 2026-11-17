@@ -5,6 +5,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:window_manager/window_manager.dart';
 
+import 'dados/area_gestor.dart';
 import 'dados/biblioteca.dart';
 import 'dados/preferencias_player.dart';
 import 'janelas/janela_player.dart';
@@ -39,8 +40,10 @@ Future<void> main(List<String> args) async {
     return;
   }
   final Biblioteca biblioteca;
+  final AreaGestor area;
   try {
     biblioteca = await Biblioteca.abrir(pasta);
+    area = await AreaGestor.abrir(pasta);
   } catch (e) {
     runApp(_Aviso('Não foi possível ler as listas guardadas (${descreverErro(e)}). '
         'Feche outros programas que as possam ter abertas e abra a app de novo.'));
@@ -49,7 +52,7 @@ Future<void> main(List<String> args) async {
   await configurarRealceFoco(); // Android TV: o realce do foco sempre visível
   // o player: descodificação/taxa do ecrã escolhidas pelo utilizador
   PreferenciasPlayer.atual = await PreferenciasPlayer.carregar(pasta, tv: EcraTv.nativo);
-  runApp(AppPlayerIptv(biblioteca: biblioteca));
+  runApp(AppPlayerIptv(biblioteca: biblioteca, area: area));
 }
 
 /// Fica aberto enquanto a app corre (é o bloqueio da instância).
@@ -82,15 +85,16 @@ class _Aviso extends StatelessWidget {
 const _pt = Locale('pt', 'PT');
 
 class AppPlayerIptv extends StatefulWidget {
-  const AppPlayerIptv({super.key, required this.biblioteca});
+  const AppPlayerIptv({super.key, required this.biblioteca, required this.area});
   final Biblioteca biblioteca;
+  final AreaGestor area;
 
   @override
   State<AppPlayerIptv> createState() => _AppPlayerIptvState();
 }
 
 class _AppPlayerIptvState extends State<AppPlayerIptv> {
-  late final _servico = ServicoVerificacao(widget.biblioteca);
+  late final _servico = ServicoVerificacao(widget.biblioteca, colecao: widget.area);
 
   @override
   void dispose() {
@@ -110,8 +114,8 @@ class _AppPlayerIptvState extends State<AppPlayerIptv> {
         localizationsDelegates: GlobalMaterialLocalizations.delegates,
         home: TelaInicio(
           biblioteca: widget.biblioteca,
-          servico: _servico,
-          separadorVerificar: TelaVerificar(biblioteca: widget.biblioteca, servico: _servico),
+          area: widget.area,
+          separadorGestor: TelaVerificar(biblioteca: widget.biblioteca, area: widget.area, servico: _servico),
         ),
       );
 }

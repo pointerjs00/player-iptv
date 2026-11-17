@@ -5,17 +5,15 @@ import '../../modelo/conta.dart';
 import '../design/design.dart';
 import '../tema.dart';
 
-/// Cartão de uma lista no Início: ícone do tipo, nome, servidor, pílula do último resultado,
-/// validade e "Verificar de novo". Com o foco do comando cresce e brilha (ver [CartaoModerno]).
+/// Cartão de uma lista no Player: ícone do tipo, nome, servidor, pílula do último resultado,
+/// validade e motivo (a verificação faz-se no Gestor). Com o foco do comando cresce e brilha
+/// (ver [CartaoModerno]).
 class CartaoLista extends StatelessWidget {
-  const CartaoLista({super.key, required this.lista, required this.aoAbrir, this.aoVerificar,
-      this.aoRemover, this.verificando = false, this.autofocus = false});
+  const CartaoLista({super.key, required this.lista, required this.aoAbrir, this.aoRemover, this.autofocus = false});
 
   final Lista lista;
   final VoidCallback aoAbrir;
-  final VoidCallback? aoVerificar;
   final VoidCallback? aoRemover;
-  final bool verificando;
   final bool autofocus;
 
   static const _tipos = {Tipo.stalker: 'Stalker', Tipo.xtream: 'Xtream', Tipo.m3u: 'M3U'};
@@ -84,21 +82,7 @@ class CartaoLista extends StatelessWidget {
               padding: const EdgeInsets.only(top: 6),
               child: Text(u.motivo, maxLines: 1, overflow: TextOverflow.ellipsis, style: secundario),
             ),
-          const SizedBox(height: Tokens.e12),
-          if (aoVerificar != null)
-            OutlinedButton.icon(
-              style: const ButtonStyle(
-                padding: WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 14, vertical: 8)),
-                visualDensity: VisualDensity.compact,
-              ),
-              // fica ligado a verificar (um botão desligado perde o foco do comando);
-              // verificar de novo uma lista que já está a ser verificada não faz nada
-              onPressed: aoVerificar,
-              icon: verificando
-                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Icon(Icons.refresh, size: 18),
-              label: Text(verificando ? 'A verificar…' : 'Verificar de novo'),
-            ),
+          const SizedBox(height: Tokens.e4),
         ],
       ),
     );

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:player_iptv/dados/area_gestor.dart';
 import 'package:player_iptv/dados/biblioteca.dart';
 import 'package:player_iptv/importar/importar.dart';
 import 'package:player_iptv/modelo/canal.dart';
@@ -49,7 +50,7 @@ void main() {
     } on FileSystemException {/* o Windows ainda tem o ficheiro aberto */}
   });
 
-  testWidgets('Início: cartões com o último resultado e filtro por estado', (t) async {
+  testWidgets('Player: cartões com o último resultado e filtro por estado (sem verificar)', (t) async {
     await t.runAsync(() => bib.adicionar([
           Importada(contaDeLinha('http://nxtbox.uk/c/ 00:1A:79:00:00:01')!,
               UltimaVerificacao(estado: 'funciona', data: DateTime.now(), validade: '2027-10-16')),
@@ -58,14 +59,15 @@ void main() {
           Importada(contaDeLinha('http://novo.com/x.m3u')!),
         ]));
     _tamanho(t, 1200, 800);
-    await t.pumpWidget(_app(TelaInicio(biblioteca: bib, servico: ServicoVerificacao(bib))));
+    await t.pumpWidget(_app(TelaInicio(biblioteca: bib)));
     await t.pump();
     expect(find.text('001NXTBOX 161027'), findsOneWidget);
     expect(find.text('até 16/10/2027'), findsOneWidget);
     expect(find.text('INC 002OUTRO'), findsOneWidget);
     expect(find.text('tempo esgotado'), findsOneWidget);
     expect(find.text('Por verificar'), findsWidgets);
-    expect(find.text('Verificar de novo'), findsNWidgets(3));
+    // o Player não verifica (é no Gestor)
+    expect(find.text('Verificar de novo'), findsNothing);
 
     await t.tap(find.widgetWithText(ChoiceChip, 'INC'));
     await t.pump();
@@ -84,18 +86,22 @@ void main() {
     expect(mensagemErroPlayer('http://h/live/u/p/1.ts'), 'o canal não abriu');
   });
 
-  testWidgets('Início vazio convida a adicionar listas', (t) async {
+  testWidgets('Player vazio: diz que não há listas no Player e não adiciona', (t) async {
     await t.pumpWidget(_app(TelaInicio(biblioteca: bib)));
-    expect(find.text('Ainda não há listas.'), findsOneWidget);
-    expect(find.text('Adicionar listas'), findsOneWidget);
+    expect(find.text('Ainda não há listas no Player'), findsOneWidget);
+    expect(find.text('Adicionar listas'), findsNothing);
+    expect(find.byTooltip('Adicionar listas'), findsNothing);
   });
 
-  testWidgets('I3: Verificar com 300 listas só constrói as linhas visíveis (lista preguiçosa)', (t) async {
-    await t.runAsync(() => bib.adicionar([
+  testWidgets('I3: Gestor com 300 listas só constrói as linhas visíveis (lista preguiçosa)', (t) async {
+    late AreaGestor area;
+    await t.runAsync(() async => area = await AreaGestor.abrir(pasta));
+    await t.runAsync(() => area.adicionar([
           for (var i = 0; i < 300; i++) Importada(contaDeLinha('http://h$i.com/l.m3u')!),
         ]));
     _tamanho(t, 1200, 1600);
-    await t.pumpWidget(_app(Scaffold(body: TelaVerificar(biblioteca: bib, servico: ServicoVerificacao(bib)))));
+    await t.pumpWidget(_app(Scaffold(
+        body: TelaVerificar(biblioteca: bib, area: area, servico: ServicoVerificacao(bib, colecao: area)))));
     await t.pump();
     final construidas = find.byType(CheckboxListTile, skipOffstage: false).evaluate().length;
     expect(construidas, greaterThan(0));

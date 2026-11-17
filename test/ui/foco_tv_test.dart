@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:player_iptv/dados/area_gestor.dart';
 import 'package:player_iptv/dados/biblioteca.dart';
 import 'package:player_iptv/importar/importar.dart';
 import 'package:player_iptv/modelo/canal.dart';
@@ -154,11 +155,30 @@ class _Lento extends Verificador {
 void main() {
   late Directory pasta;
   late Biblioteca bib;
+  late AreaGestor area;
 
   setUp(() async {
     pasta = Directory.systemTemp.createTempSync('foco');
     bib = await Biblioteca.abrir(pasta);
+    area = await AreaGestor.abrir(pasta);
   });
+
+  /// O Player vazio, com o Gestor: "Ir para o Gestor" (OK) e o "+" (OK) abrem "Adicionar listas"
+  /// (só com o comando).
+  Future<void> abrirAdicionar(WidgetTester t) async {
+    await t.pumpWidget(_app(TelaInicio(
+      biblioteca: bib,
+      area: area,
+      separadorGestor: const Center(child: Text('ECRÃ GESTOR')),
+    )));
+    await t.pump();
+    expect(_focado(), 'Ir para o Gestor');
+    await _tecla(t, LogicalKeyboardKey.select);
+    await t.pumpAndSettle();
+    expect(_focado(), 'Adicionar listas');
+    await _tecla(t, LogicalKeyboardKey.select);
+    await t.pumpAndSettle();
+  }
   tearDown(() async {
     try {
       pasta.deleteSync(recursive: true);
@@ -280,23 +300,6 @@ void main() {
     await _fechar(t);
   });
 
-  testWidgets('I6: "Verificar de novo" no cartão mantém o foco enquanto verifica', (t) async {
-    _tamanho(t, 1200, 800);
-    await t.runAsync(() => bib.adicionar([Importada(contaDeLinha('http://x.com/c/ 00:1A:79:00:00:01')!)]));
-    final f = _Lento();
-    final s = ServicoVerificacao(bib, verificador: f, ritmo: RitmoHost(intervalo: Duration.zero));
-    await t.pumpWidget(_app(TelaInicio(biblioteca: bib, servico: s)));
-    await t.pump();
-    await _irPara(t, 'Verificar de novo');
-    await _tecla(t, LogicalKeyboardKey.select);
-    await t.pump();
-    expect(s.ocupado, isTrue);
-    expect(_focado(), contains('A verificar'));
-    s.parar();
-    f.soltar.complete();
-    await t.pump();
-  });
-
   testWidgets('I6: Voltar do Conteúdo regressa ao Início com o cartão focado', (t) async {
     _tamanho(t, 1200, 800);
     await t.runAsync(() async {
@@ -325,13 +328,13 @@ void main() {
     expect(_focado(), contains('002B'));
   });
 
-  group('I6: Verificar', () {
+  group('I6: Gestor', () {
     Future<(ServicoVerificacao, _Lento)> abrirVerificar(WidgetTester t) async {
       _tamanho(t, 1200, 1600);
-      await t.runAsync(() => bib.adicionar([Importada(contaDeLinha('http://x.com/c/ 00:1A:79:00:00:01')!)]));
+      await t.runAsync(() => area.adicionar([Importada(contaDeLinha('http://x.com/c/ 00:1A:79:00:00:01')!)]));
       final f = _Lento();
-      final s = ServicoVerificacao(bib, verificador: f, ritmo: RitmoHost(intervalo: Duration.zero));
-      await t.pumpWidget(_app(Scaffold(body: TelaVerificar(biblioteca: bib, servico: s))));
+      final s = ServicoVerificacao(bib, colecao: area, verificador: f, ritmo: RitmoHost(intervalo: Duration.zero));
+      await t.pumpWidget(_app(Scaffold(body: TelaVerificar(biblioteca: bib, area: area, servico: s))));
       await t.pump();
       return (s, f);
     }
@@ -367,7 +370,8 @@ void main() {
       addTearDown(() => t.runAsync(calado.close));
       _tamanho(t, 1200, 1600);
       await t.pumpWidget(_app(Scaffold(
-          body: TelaVerificar(biblioteca: bib, servico: ServicoVerificacao(bib), baseStb: 'http://127.0.0.1:${calado.port}/'))));
+          body: TelaVerificar(biblioteca: bib, area: area, servico: ServicoVerificacao(bib, colecao: area),
+              baseStb: 'http://127.0.0.1:${calado.port}/'))));
       await t.pump();
       await _irPara(t, 'Iniciar pesquisa');
       await _tecla(t, LogicalKeyboardKey.select);
@@ -380,7 +384,7 @@ void main() {
 
   group('Tarefa C', () {
     // Android TV a 1080p: 960×540 lógicos (densidade 2)
-    Future<void> inicioComVerificar(WidgetTester t) async {
+    Future<void> inicioComGestor(WidgetTester t) async {
       _tamanho(t, 960, 540);
       await t.runAsync(() => bib.adicionar([
             Importada(contaDeLinha('http://a.com/l.m3u')!),
@@ -388,14 +392,14 @@ void main() {
           ]));
       await t.pumpWidget(_app(TelaInicio(
         biblioteca: bib,
-        servico: ServicoVerificacao(bib),
-        separadorVerificar: const Center(child: Text('ECRÃ VERIFICAR')),
+        area: area,
+        separadorGestor: const Center(child: Text('ECRÃ GESTOR')),
       )));
       await t.pump();
     }
 
-    testWidgets('T3: do 1.º cartão, CIMA chega às abas e DIREITA+OK mostra o Verificar', (t) async {
-      await inicioComVerificar(t);
+    testWidgets('T3: do 1.º cartão, CIMA chega às abas e DIREITA+OK mostra o Gestor', (t) async {
+      await inicioComGestor(t);
       expect(_focado(), contains('001A'));
       // no emulador: CIMA ×4 + DIREITA + OK abria o "+"; carregar CIMA a mais não pode passar das abas
       final caminho = <String>[];
@@ -403,50 +407,55 @@ void main() {
         await _tecla(t, LogicalKeyboardKey.arrowUp);
         caminho.add(_focado());
       }
-      expect(_focado(), 'Listas', reason: 'CIMA a partir dos cartões: $caminho');
+      expect(_focado(), 'Player', reason: 'CIMA a partir dos cartões: $caminho');
       await _tecla(t, LogicalKeyboardKey.arrowRight);
-      expect(_focado(), 'Verificar');
+      expect(_focado(), 'Gestor');
       await _tecla(t, LogicalKeyboardKey.select);
       await t.pumpAndSettle();
-      expect(find.text('ECRÃ VERIFICAR').hitTestable(), findsOneWidget);
-      // e de volta às Listas com ESQUERDA+OK
+      expect(find.text('ECRÃ GESTOR').hitTestable(), findsOneWidget);
+      // e de volta ao Player com ESQUERDA+OK
       await _tecla(t, LogicalKeyboardKey.arrowLeft);
-      expect(_focado(), 'Listas');
+      expect(_focado(), 'Player');
       await _tecla(t, LogicalKeyboardKey.select);
       await t.pumpAndSettle();
-      expect(find.text('ECRÃ VERIFICAR').hitTestable(), findsNothing);
+      expect(find.text('ECRÃ GESTOR').hitTestable(), findsNothing);
     });
 
-    testWidgets('T3: as abas na barra de cima cabem no telemóvel', (t) async {
-      await inicioComVerificar(t);
+    testWidgets('T3: as abas na barra de cima cabem no telemóvel (e o "+" no Gestor)', (t) async {
+      await inicioComGestor(t);
       _tamanho(t, 360, 740);
       await t.pump();
       expect(t.takeException(), isNull);
-      expect(find.text('Verificar').hitTestable(), findsOneWidget);
+      expect(find.text('Gestor').hitTestable(), findsOneWidget);
+      expect(find.byTooltip('Adicionar listas'), findsNothing, reason: 'o "+" só existe no Gestor');
+      await t.tap(find.text('Gestor'));
+      await t.pumpAndSettle();
+      expect(t.takeException(), isNull);
       expect(find.byTooltip('Adicionar listas').hitTestable(), findsOneWidget);
     });
 
-    testWidgets('T3: o "+" (Adicionar listas) continua alcançável: à direita das abas', (t) async {
-      await inicioComVerificar(t);
+    testWidgets('T3: o "+" (Adicionar listas) continua alcançável no Gestor: à direita das abas', (t) async {
+      await inicioComGestor(t);
       for (var i = 0; i < 6; i++) {
         await _tecla(t, LogicalKeyboardKey.arrowUp);
       }
+      // no Player não há "+": à direita do Gestor não há nada
       final caminho = <String>[];
       for (var i = 0; i < 2; i++) {
         await _tecla(t, LogicalKeyboardKey.arrowRight);
         caminho.add(_focado());
       }
-      expect(caminho, ['Verificar', 'Adicionar listas']);
+      expect(caminho, ['Gestor', 'Gestor']);
+      await _tecla(t, LogicalKeyboardKey.select);
+      await t.pumpAndSettle();
+      await _tecla(t, LogicalKeyboardKey.arrowRight);
+      expect(_focado(), 'Adicionar listas');
     });
 
     testWidgets('T2: "Adicionar listas": o campo não abre o teclado com o foco, Voltar sai da '
         'edição e chega-se a "Adicionar" só com setas e OK', (t) async {
       _tamanho(t, 960, 540);
-      await t.pumpWidget(_app(TelaInicio(biblioteca: bib)));
-      await t.pump();
-      expect(_focado(), 'Adicionar listas');
-      await _tecla(t, LogicalKeyboardKey.select);
-      await t.pumpAndSettle();
+      await abrirAdicionar(t);
       expect(_focado(), contains('Escolher ficheiros'));
       await _tecla(t, LogicalKeyboardKey.arrowDown);
       expect(_focado(), contains('[campo'));
@@ -478,17 +487,15 @@ void main() {
         await Future<void>.delayed(const Duration(milliseconds: 300));
       });
       await t.pumpAndSettle();
-      expect(bib.listas, hasLength(1));
+      expect(area.listas, hasLength(1));
+      expect(bib.listas, isEmpty, reason: 'entra no Gestor, não no Player');
       expect(find.text('1 lista nova.'), findsOneWidget);
     });
 
     testWidgets('T2 (emulador): o Voltar do sistema a escrever acaba a edição sem fechar o diálogo; '
         'depois as setas chegam a "Adicionar" e OK adiciona', (t) async {
       _tamanho(t, 960, 540);
-      await t.pumpWidget(_app(TelaInicio(biblioteca: bib)));
-      await t.pump();
-      await _tecla(t, LogicalKeyboardKey.select);
-      await t.pumpAndSettle();
+      await abrirAdicionar(t);
       await _tecla(t, LogicalKeyboardKey.arrowDown);
       expect(_focado(), contains('[campo'));
       await _tecla(t, LogicalKeyboardKey.select);
@@ -511,15 +518,12 @@ void main() {
         await Future<void>.delayed(const Duration(milliseconds: 300));
       });
       await t.pumpAndSettle();
-      expect(bib.listas, hasLength(1));
+      expect(area.listas, hasLength(1));
     });
 
     testWidgets('T2: sem estar a escrever, o Voltar do sistema fecha o diálogo', (t) async {
       _tamanho(t, 960, 540);
-      await t.pumpWidget(_app(TelaInicio(biblioteca: bib)));
-      await t.pump();
-      await _tecla(t, LogicalKeyboardKey.select);
-      await t.pumpAndSettle();
+      await abrirAdicionar(t);
       await _tecla(t, LogicalKeyboardKey.arrowDown);
       expect(_focado(), contains('[campo'));
       await t.binding.handlePopRoute();
@@ -573,9 +577,10 @@ void main() {
             Importada(contaDeLinha('http://a.com/c/ 00:1A:79:00:00:01')!),
             Importada(contaDeLinha('http://b.com/l.m3u')!),
           ]));
-      final s = ServicoVerificacao(bib);
+      await t.runAsync(() => area.adicionar([Importada(contaDeLinha('http://g.com/l.m3u')!)]));
+      final s = ServicoVerificacao(bib, colecao: area);
       await t.pumpWidget(_app(TelaInicio(
-          biblioteca: bib, servico: s, separadorVerificar: TelaVerificar(biblioteca: bib, servico: s))));
+          biblioteca: bib, area: area, separadorGestor: TelaVerificar(biblioteca: bib, area: area, servico: s))));
       await t.pump();
       expect(_focado(), contains('001A'));
       expect(_semRealce(), isNull);
@@ -589,10 +594,19 @@ void main() {
       final vistos = <String>{};
       final falhas = await _semRealceAoPercorrer(t, 30, vistos: vistos);
       expect(falhas, isEmpty);
-      for (final v in ['Listas', 'Verificar', 'Adicionar listas', 'Todas', 'Verificar todas', 'Verificar de novo',
-        'Mais opções', '[campo ]']) {
+      for (final v in ['Player', 'Gestor', 'Todas', 'Mais opções', '[campo ]']) {
         expect(vistos, contains(v), reason: 'percorreu: $vistos');
       }
+      // o Player não gere nada
+      expect(vistos, isNot(contains('Adicionar listas')));
+      expect(vistos.where((v) => v.contains('Verificar')), isEmpty, reason: '$vistos');
+      // o Gestor (com o "+")
+      await t.tap(find.text('Gestor'));
+      await t.pumpAndSettle();
+      final noGestor = <String>{};
+      expect(await _semRealceAoPercorrer(t, 40, vistos: noGestor), isEmpty);
+      expect(noGestor.join(' / '), allOf(contains('Adicionar listas'), contains('Importar do Player'),
+          contains('Verificar todas'), contains('Enviar para o Player'), contains('Remover do Gestor')));
     });
 
     testWidgets('T1: Conteúdo — grupos, canais, estrela, pesquisa e Atualizar com realce', (t) async {
@@ -618,25 +632,34 @@ void main() {
       expect(vistos, contains('UK'), reason: '$vistos');
     });
 
-    testWidgets('T1: Verificar — botões, chips, caixas e formato com realce', (t) async {
+    testWidgets('T1: Gestor — botões, chips, caixas e formato com realce', (t) async {
       _realceTv();
       _tamanho(t, 1200, 1600);
-      await t.runAsync(() => bib.adicionar([Importada(contaDeLinha('http://x.com/c/ 00:1A:79:00:00:01')!)]));
-      await t.pumpWidget(_app(Scaffold(body: TelaVerificar(biblioteca: bib, servico: ServicoVerificacao(bib)))));
+      await t.runAsync(() => area.adicionar([Importada(contaDeLinha('http://x.com/c/ 00:1A:79:00:00:01')!)]));
+      await t.pumpWidget(_app(Scaffold(
+          body: TelaVerificar(biblioteca: bib, area: area, servico: ServicoVerificacao(bib, colecao: area)))));
       await t.pump();
       final vistos = <String>{};
-      final falhas = await _semRealceAoPercorrer(t, 25, vistos: vistos);
+      // o Gestor tem mais botões (adicionar, importar, limpar, enviar, remover) antes das linhas
+      final falhas = await _semRealceAoPercorrer(t, 35, vistos: vistos);
       expect(falhas, isEmpty);
       expect(vistos.join(' / '), allOf(contains('Iniciar pesquisa'), contains('Verificar todas'), contains('Todas'),
           contains('001X'), contains('Accounts.json')));
+      expect(vistos.join(' / '), allOf(contains('Importar do Player'), contains('Limpar o Gestor'),
+          contains('Enviar para o Player'), contains('Remover do Gestor')));
     });
 
     testWidgets('T1: diálogo "Adicionar listas" — botões e campo com realce', (t) async {
       _realceTv();
       _tamanho(t, 960, 540);
-      await t.pumpWidget(_app(TelaInicio(biblioteca: bib)));
+      await t.pumpWidget(_app(TelaInicio(
+          biblioteca: bib, area: area, separadorGestor: const Center(child: Text('ECRÃ GESTOR')))));
       await t.pump();
-      expect(_semRealce(), isNull);
+      await t.pump();
+      expect(_semRealce(), isNull, reason: '"Ir para o Gestor" com realce');
+      await _tecla(t, LogicalKeyboardKey.select);
+      await t.pumpAndSettle();
+      expect(_semRealce(), isNull, reason: 'o "+" com realce');
       await _tecla(t, LogicalKeyboardKey.select);
       await t.pumpAndSettle();
       final vistos = <String>{};
@@ -656,7 +679,7 @@ void main() {
             Importada(contaDeLinha('http://a.com/l.m3u')!),
             Importada(contaDeLinha('http://b.com/l.m3u')!),
           ]));
-      await t.pumpWidget(_app(TelaInicio(biblioteca: bib, servico: ServicoVerificacao(bib))));
+      await t.pumpWidget(_app(TelaInicio(biblioteca: bib)));
       await t.pump();
       await t.pump();
       int realces() => find
@@ -680,10 +703,13 @@ void main() {
       // o botão tem o seu realce (borda no Material do botão); o cartão deixa de ter o dele
       expect(realces(), 0, reason: 'com o foco no botão, o cartão já não tem realce');
       expect(_semRealce(), isNull);
-      await _tecla(t, LogicalKeyboardKey.arrowDown);
+      // o único botão do cartão do Player é "Mais opções" (verificar é no Gestor)
+      expect(_focado(), 'Mais opções');
+      // do botão de dentro do 2.º cartão (em cima, à direita), ESQUERDA volta ao cartão dele e
+      // depois vai para o 1.º cartão (não para o botão dele)
+      await _tecla(t, LogicalKeyboardKey.arrowLeft);
       await t.pump();
-      expect(_focado(), contains('Verificar de novo'));
-      // do botão de dentro do 2.º cartão, ESQUERDA vai para o 1.º cartão (não para o botão dele)
+      expect(cartaoFocado('002B'), isTrue, reason: 'foco em: ${_focado()}');
       await _tecla(t, LogicalKeyboardKey.arrowLeft);
       await t.pump();
       expect(cartaoFocado('001A'), isTrue, reason: 'foco em: ${_focado()}');

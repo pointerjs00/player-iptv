@@ -3,15 +3,15 @@ import 'dart:convert';
 import 'package:file_picker/file_picker.dart';
 import 'package:material_ui/material_ui.dart';
 
-import '../dados/biblioteca.dart';
+import '../dados/area_gestor.dart';
 import 'campo_tv.dart';
 import 'design/tokens.dart';
 import '../importar/importar.dart';
 import '../rede/http.dart';
 import '../modelo/conta.dart';
 
-/// Importa ficheiros (Accounts.json, .ini, .m3u, .txt, historico.json) para a biblioteca.
-Future<String> importarFicheiros(Biblioteca b) async {
+/// Importa ficheiros (Accounts.json, .ini, .m3u, .txt, historico.json) para o Gestor.
+Future<String> importarFicheiros(AreaGestor b) async {
   final ficheiros = await FilePicker.pickFiles(dialogTitle: 'Escolher listas');
   if (ficheiros.isEmpty) return '';
   final importadas = <Importada>[];
@@ -30,8 +30,8 @@ Future<String> importarFicheiros(Biblioteca b) async {
   return _resumo(novas, importadas.length - novas, erros);
 }
 
-/// Junta listas coladas (uma por linha) ou um URL de lista M3U.
-Future<String> importarTexto(Biblioteca b, String texto) async {
+/// Junta ao Gestor listas coladas (uma por linha) ou um URL de lista M3U.
+Future<String> importarTexto(AreaGestor b, String texto) async {
   final contas = lerLinhas(texto);
   if (contas.isEmpty) return 'Não foi encontrada nenhuma lista no texto.';
   final novas = await b.adicionar([for (final c in contas) Importada(c)]);
@@ -47,8 +47,8 @@ String _resumo(int novas, int repetidas, List<String> erros) {
   return t;
 }
 
-/// Diálogo "Adicionar listas": ficheiros ou colar.
-Future<void> mostrarAdicionar(BuildContext context, Biblioteca b) async {
+/// Diálogo "Adicionar listas" (ao Gestor): ficheiros ou colar.
+Future<void> mostrarAdicionar(BuildContext context, AreaGestor b) async {
   final ctrl = TextEditingController();
   final mensagem = await showDialog<String>(
     context: context,
