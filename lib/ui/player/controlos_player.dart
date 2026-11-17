@@ -44,6 +44,7 @@ class ControlosPlayer extends StatefulWidget {
     required this.definicoes,
     required this.child,
     this.comEcraInteiro = false,
+    this.lerInfoStream,
     this.esconderApos = const Duration(seconds: 5),
   });
 
@@ -58,6 +59,10 @@ class ControlosPlayer extends StatefulWidget {
 
   /// Os itens do painel (pedidos de novo a cada construção: mostram os valores atuais).
   final List<ItemDefinicao> Function() definicoes;
+
+  /// Lê do player as [propriedadesInfoStream] (resolução, imagens/s, débito): só com a barra
+  /// à vista, a cada segundo (no player verdadeiro, fora da thread da UI).
+  final Future<Map<String, String>> Function()? lerInfoStream;
 
   /// Windows: botão de ecrã inteiro e duplo clique.
   final bool comEcraInteiro;
@@ -79,6 +84,8 @@ class ControlosPlayerState extends State<ControlosPlayer> {
   Timer? _relogio;
   Timer? _fimInfo;
   bool _infoCanal = false;
+  String? _infoStream;
+  bool _aLerInfo = false;
 
   VistaPlayer get vista => _m.vista;
 
@@ -115,12 +122,29 @@ class ControlosPlayerState extends State<ControlosPlayer> {
   void _atualizarRelogio() {
     final ver = _m.vista != VistaPlayer.escondida;
     if (ver && _relogio == null) {
+      _lerInfo();
       _relogio = Timer.periodic(const Duration(seconds: 1), (_) {
-        if (mounted) setState(() {});
+        if (!mounted) return;
+        setState(() {});
+        _lerInfo();
       });
     } else if (!ver) {
       _relogio?.cancel();
       _relogio = null;
+    }
+  }
+
+  Future<void> _lerInfo() async {
+    final ler = widget.lerInfoStream;
+    if (ler == null || _aLerInfo || _m.vista == VistaPlayer.escondida) return;
+    _aLerInfo = true;
+    try {
+      final texto = textoInfoStream(await ler());
+      if (mounted && texto != _infoStream) setState(() => _infoStream = texto);
+    } catch (_) {
+      // o player pode estar a fechar: fica o último valor
+    } finally {
+      _aLerInfo = false;
     }
   }
 
@@ -332,7 +356,22 @@ class ControlosPlayerState extends State<ControlosPlayer> {
               child: FocusTraversalGroup(
                 child: Column(mainAxisSize: MainAxisSize.min, children: [
                   Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Expanded(child: _Titulo(estado: e)),
+                    Expanded(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        _Titulo(estado: e),
+                        if (widget.lerInfoStream != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Text(_infoStream ?? '— · — · —',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                    fontSize: tv ? 16 : 13,
+                                    color: Tokens.texto2,
+                                    fontFeatures: const [FontFeature.tabularFigures()])),
+                          ),
+                      ]),
+                    ),
                     const SizedBox(width: Tokens.e16),
                     _IndicadorDireto(emDireto: emDireto, atraso: atraso),
                   ]),
@@ -456,4 +495,30 @@ class _Vidro extends StatelessWidget {
         ),
         child: child,
       );
+}
+
+/// O que a barra lê do mpv para [textoInfoStream].
+const propriedadesInfoStream = ['width', 'height', 'container-fps', 'estimated-vf-fps', 'video-bitrate'];
+
+String _decimal(double v, int casas) {
+  var t = v.toStringAsFixed(casas);
+  if (t.contains('.')) t = t.replaceFirst(RegExp(r'\.?0+$'), '');
+  return t.replaceAll('.', ',');
+}
+
+/// "1280×720 · 50 fps · 3,1 Mb/s" (vírgula decimal; "—" no que não se sabe).
+String textoInfoStream(Map<String, String> m) {
+  double? n(String k) {
+    final v = double.tryParse(m[k]?.trim() ?? '');
+    return v != null && v > 0 ? v : null;
+  }
+
+  final w = n('width'), h = n('height');
+  final fps = n('container-fps') ?? n('estimated-vf-fps');
+  final br = n('video-bitrate');
+  return [
+    w != null && h != null ? '${w.round()}×${h.round()}' : '—',
+    fps != null ? '${_decimal(fps, 2)} fps' : '—',
+    br != null ? '${_decimal(br / 1e6, 1)} Mb/s' : '—',
+  ].join(' · ');
 }

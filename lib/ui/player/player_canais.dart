@@ -597,6 +597,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
           erro: _erro != null,
         ),
         atraso: () => _relogio.atraso,
+        lerInfoStream: () async => {for (final p in propriedadesInfoStream) p: await _motor.getProperty(p)},
         aoAgir: _agir,
         aoMudarVelocidade: _mudarVelocidade,
         definicoes: _definicoes,

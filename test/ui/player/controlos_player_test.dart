@@ -19,6 +19,13 @@ class _Ensaio {
   bool ecraInteiro = false;
   var silencio = false;
   StateSetter? reconstruir;
+  var leiturasInfo = 0;
+  Map<String, String> infoStream = const {
+    'width': '1280',
+    'height': '720',
+    'container-fps': '50.000000',
+    'video-bitrate': '3100000',
+  };
 }
 
 final _chave = GlobalKey<ControlosPlayerState>();
@@ -54,6 +61,10 @@ Future<_Ensaio> _montar(WidgetTester t, {bool ecraInteiro = false, bool semAnima
                 erro: e.erro,
               ),
               atraso: () => e.atraso,
+              lerInfoStream: () async {
+                e.leiturasInfo++;
+                return e.infoStream;
+              },
               aoAgir: (a) => setState(() => e.acoes.add(a)),
               aoMudarVelocidade: (v) => setState(() {
                 e.velocidades.add(v);
@@ -359,4 +370,38 @@ void main() {
       expect(e.acoes.last, AcaoPlayer.voltarAoDireto);
     });
   }
+
+  testWidgets('a barra mostra resolução, imagens/s e débito; escondida não lê o player', (t) async {
+    final e = await _montar(t);
+    await t.pump(const Duration(seconds: 3));
+    expect(e.leiturasInfo, 0, reason: 'escondida não lê');
+    await _tecla(t, LogicalKeyboardKey.select);
+    expect(find.text('1280×720 · 50 fps · 3,1 Mb/s'), findsOneWidget);
+    e.infoStream = const {
+      'width': '',
+      'height': '',
+      'container-fps': '',
+      'estimated-vf-fps': '29.97',
+      'video-bitrate': '',
+    };
+    await t.pump(const Duration(seconds: 1));
+    await t.pumpAndSettle();
+    expect(find.text('— · 29,97 fps · —'), findsOneWidget);
+    await _tecla(t, LogicalKeyboardKey.escape);
+    final n = e.leiturasInfo;
+    await t.pump(const Duration(seconds: 5));
+    expect(e.leiturasInfo, n, reason: 'deixa de ler quando a barra se esconde');
+  });
+
+  test('texto da informação do stream (vírgula decimal, "—" sem valor)', () {
+    expect(
+      textoInfoStream(const {'width': '1920', 'height': '1080', 'container-fps': '25', 'video-bitrate': '8000000'}),
+      '1920×1080 · 25 fps · 8 Mb/s',
+    );
+    expect(
+      textoInfoStream(const {'width': '720', 'height': '576', 'container-fps': '23.976', 'video-bitrate': '860000'}),
+      '720×576 · 23,98 fps · 0,9 Mb/s',
+    );
+    expect(textoInfoStream(const {}), '— · — · —');
+  });
 }
