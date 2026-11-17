@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:isolate';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:player_iptv/ui/player/mpv_fora_da_ui.dart';
@@ -29,9 +30,12 @@ class _ExecutorPreso implements ExecutorMpv {
     chamadas.add('$handle:$p=$v');
   }
 
+  bool falha = false;
+
   @override
   Future<String> getProperty(int handle, String p) async {
     await _talvezPreso();
+    if (falha) throw StateError('o isolate morreu');
     chamadas.add('$handle:get $p');
     return 'v-$p';
   }
@@ -102,5 +106,74 @@ void main() {
     await m.setProperty('mute', 'yes');
     expect(await m.getProperty('x'), '');
     expect(ex.chamadas, isEmpty);
+  });
+
+  group('nunca fica preso', () {
+    const limite = Duration(milliseconds: 200);
+
+    MotorForaDaUi motorCom({Future<int?> Function()? handle}) => MotorForaDaUi(
+          handle: handle ?? () async => 7,
+          executor: ex,
+          setRate: (_) async {},
+          setVolume: (_) async {},
+          limite: limite,
+        );
+
+    test('um controlador de vídeo que nunca fica pronto: os pedidos desistem e fechar não espera', () async {
+      final m = motorCom(handle: () => Completer<int?>().future);
+      expect(await m.getProperty('x'), '');
+      await m.setProperty('mute', 'yes');
+      await m.fechar().timeout(const Duration(seconds: 1));
+      expect(ex.chamadas, isEmpty);
+    });
+
+    test('mpv preso: quem chama desiste no limite; o player só é destruído quando o pedido acabar', () async {
+      final m = motorCom();
+      ex.preso = true;
+      expect(await m.getProperty('time-pos'), '');
+      var destruido = 0;
+      await m.fecharEDestruir(() async => destruido++).timeout(const Duration(seconds: 1));
+      expect(destruido, 0, reason: 'destruir com um pedido dentro do mpv seria usar memória já libertada');
+      ex.soltar();
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      expect(destruido, 1);
+    });
+
+    test('sem pedidos no mpv: destrói logo', () async {
+      final m = motorCom();
+      var destruido = 0;
+      await m.fecharEDestruir(() async => destruido++);
+      expect(destruido, 1);
+    });
+
+    test('um pedido que falha (o isolate morreu) dá o valor vazio, sem exceção', () async {
+      ex.falha = true;
+      expect(await motorCom().getProperty('x'), '');
+    });
+  });
+
+  test('o isolate do mpv morre: os pedidos pendentes falham (não ficam pendurados) e o seguinte arranca outro', () async {
+    final e = ExecutorIsolate.paraTestes(isolateDeTeste);
+    await expectLater(e.getProperty(1, 'morrer').timeout(const Duration(seconds: 5)), throwsA(isA<StateError>()));
+    expect(await e.getProperty(1, 'x').timeout(const Duration(seconds: 5)), 'eco:x');
+  });
+
+  test('erro dentro do isolate (mensagem estragada) responde com erro', () async {
+    final e = ExecutorIsolate.paraTestes(isolateDeTeste);
+    await expectLater(e.getProperty(1, 'lancar').timeout(const Duration(seconds: 5)), throwsA(isA<StateError>()));
+    expect(await e.getProperty(1, 'y').timeout(const Duration(seconds: 5)), 'eco:y');
+  });
+}
+
+/// Um isolate de mpv de mentira: "morrer" sai sem responder; "lancar" lança fora de qualquer
+/// try (morre com erro); o resto responde "eco:...".
+void isolateDeTeste(SendPort respostas) {
+  final pedidos = ReceivePort();
+  respostas.send(pedidos.sendPort);
+  pedidos.listen((m) {
+    final (int id, String _, int _, List<String> args) = m as (int, String, int, List<String>);
+    if (args.first == 'morrer') Isolate.exit();
+    if (args.first == 'lancar') throw StateError('estragado');
+    respostas.send((id, 'eco:${args.first}', null));
   });
 }

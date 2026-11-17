@@ -179,8 +179,8 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     _hardware = hardware;
     _criarPlayer();
     if (mounted) setState(() {});
-    await motorAntigo.fechar(); // nenhum pedido ao mpv antigo depois de destruído
-    await antigo.dispose();
+    // nenhum pedido ao mpv antigo depois de destruído; nunca espera mais do que o limite
+    await motorAntigo.fecharEDestruir(antigo.dispose);
   }
 
   /// A chave do canal para lembrar, nesta sessão, que precisa do modo "Compatível".
@@ -563,7 +563,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     }
     // o mpv só se destrói depois dos pedidos que ainda lá estão
     final player = _player;
-    _motor.fechar().whenComplete(player.dispose);
+    unawaited(_motor.fecharEDestruir(player.dispose));
     super.dispose();
   }
 
