@@ -9,13 +9,14 @@ import '../design/movimento.dart';
 import '../design/tokens.dart';
 import 'aplicar_preferencias.dart';
 import 'maquina_controlos.dart';
+import 'numero_canal.dart';
 import 'painel_definicoes.dart';
 import 'relogio_direto.dart';
 
 /// O que a barra mostra do canal a tocar.
 class EstadoControlos {
   const EstadoControlos({required this.canal, required this.subtitulo, this.aTocar = true,
-      this.velocidade = 1.0, this.erro = false});
+      this.velocidade = 1.0, this.erro = false, this.podeAlternar = false});
 
   final String canal;
 
@@ -26,6 +27,9 @@ class EstadoControlos {
 
   /// Está à vista o cartão de erro do canal (OK tenta de novo).
   final bool erro;
+
+  /// Há um canal visto antes deste (o botão "Canal visto antes" aparece).
+  final bool podeAlternar;
 }
 
 /// A barra de controlos e o painel de definições por cima do vídeo (`child`), e as teclas do
@@ -34,6 +38,8 @@ class EstadoControlos {
 /// - barra: as setas andam pelos botões; esconde-se após 5 s sem atividade;
 /// - painel: as setas andam pelo painel; não se esconde sozinho.
 /// Voltar fecha o painel, depois a barra, depois sai. Teclas multimédia sempre.
+/// Os algarismos escrevem um número de canal (no ecrã; salta com OK ou após [tempoNumero]);
+/// "último canal" (ou Backspace) alterna com o canal visto antes.
 class ControlosPlayer extends StatefulWidget {
   const ControlosPlayer({
     super.key,
@@ -46,7 +52,11 @@ class ControlosPlayer extends StatefulWidget {
     this.comEcraInteiro = false,
     this.lerInfoStream,
     this.esconderApos = const Duration(seconds: 5),
+    this.aoNumero,
   });
+
+  /// O número de canal escrito com os algarismos (null = os algarismos não fazem nada).
+  final ValueChanged<int>? aoNumero;
 
   final EstadoControlos estado;
 
@@ -83,6 +93,7 @@ class ControlosPlayerState extends State<ControlosPlayer> {
   Timer? _esconder;
   Timer? _relogio;
   Timer? _fimInfo;
+  Timer? _fimNumero;
   bool _infoCanal = false;
   String? _infoStream;
   bool _aLerInfo = false;
@@ -94,6 +105,7 @@ class ControlosPlayerState extends State<ControlosPlayer> {
     _esconder?.cancel();
     _relogio?.cancel();
     _fimInfo?.cancel();
+    _fimNumero?.cancel();
     _raiz.dispose();
     _play.dispose();
     _botaoDefinicoes.dispose();
@@ -192,6 +204,20 @@ class ControlosPlayerState extends State<ControlosPlayer> {
       case AcaoPlayer.fecharPainel:
         _depoisMudarVista();
         _depoisDoFrame(_botaoDefinicoes.requestFocus);
+      case AcaoPlayer.algarismo:
+        _fimNumero?.cancel();
+        _fimNumero = Timer(tempoNumero, () {
+          if (mounted && _m.numero.isNotEmpty) _executar(AcaoPlayer.irParaNumero);
+        });
+        setState(() {});
+      case AcaoPlayer.irParaNumero:
+        _fimNumero?.cancel();
+        final n = _m.tirarNumero();
+        setState(() {});
+        if (n != null) widget.aoNumero?.call(n);
+      case AcaoPlayer.cancelarNumero:
+        _fimNumero?.cancel();
+        setState(() {});
       default:
         widget.aoAgir(a);
     }
@@ -213,6 +239,7 @@ class ControlosPlayerState extends State<ControlosPlayer> {
       // tecla presa: com a barra/painel é a navegação; escondida não muda de canal em rajada
       return _m.vista == VistaPlayer.escondida ? KeyEventResult.handled : KeyEventResult.ignored;
     }
+    if (widget.aoNumero == null && algarismoDe(e.logicalKey) != null) return KeyEventResult.ignored;
     final a = _m.tecla(e.logicalKey, erro: widget.estado.erro);
     if (a == AcaoPlayer.passar) return KeyEventResult.ignored;
     _executar(a);
@@ -241,7 +268,7 @@ class ControlosPlayerState extends State<ControlosPlayer> {
     final duracao = duracaoAnimada(context, Tokens.duracaoMedia);
     return PopScope(
       // o Voltar do sistema quando não chega como tecla (gesto/predictive back)
-      canPop: vista == VistaPlayer.escondida,
+      canPop: vista == VistaPlayer.escondida && _m.numero.isEmpty,
       onPopInvokedWithResult: (saiu, _) {
         if (!saiu) _executar(_m.voltar());
       },
@@ -298,6 +325,7 @@ class ControlosPlayerState extends State<ControlosPlayer> {
                 ),
               ),
             ),
+            if (_m.numero.isNotEmpty) IgnorePointer(child: MostradorNumero(numero: _m.numero)),
             AnimatedSwitcher(
               duration: duracao,
               child: vista == VistaPlayer.painel
@@ -394,6 +422,7 @@ class ControlosPlayerState extends State<ControlosPlayer> {
                       ),
                       botao(Icons.forward_10_rounded, 'Avançar 10 s', AcaoPlayer.avancar),
                       botao(Icons.skip_next_rounded, 'Canal seguinte', AcaoPlayer.canalSeguinte),
+                      if (e.podeAlternar) botao(Icons.swap_horiz_rounded, 'Canal visto antes', AcaoPlayer.alternarCanal),
                       const SizedBox(width: Tokens.e16),
                       Tooltip(
                         message: 'Velocidade',

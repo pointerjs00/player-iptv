@@ -5,12 +5,15 @@ import 'package:material_ui/material_ui.dart';
 import 'package:player_iptv/ui/design/ecra.dart';
 import 'package:player_iptv/ui/player/controlos_player.dart';
 import 'package:player_iptv/ui/player/maquina_controlos.dart';
+import 'package:player_iptv/ui/player/numero_canal.dart';
 import 'package:player_iptv/ui/player/painel_definicoes.dart';
 import 'package:player_iptv/ui/realce_foco.dart';
 import 'package:player_iptv/ui/tema.dart';
 
 class _Ensaio {
   final acoes = <AcaoPlayer>[];
+  final numeros = <int>[];
+  bool podeAlternar = false;
   final velocidades = <double>[];
   Duration atraso = Duration.zero;
   bool aTocar = true;
@@ -59,7 +62,9 @@ Future<_Ensaio> _montar(WidgetTester t, {bool ecraInteiro = false, bool semAnima
                 aTocar: e.aTocar,
                 velocidade: e.velocidade,
                 erro: e.erro,
+                podeAlternar: e.podeAlternar,
               ),
+              aoNumero: e.numeros.add,
               atraso: () => e.atraso,
               lerInfoStream: () async {
                 e.leiturasInfo++;
@@ -403,5 +408,70 @@ void main() {
       '720×576 · 23,98 fps · 0,9 Mb/s',
     );
     expect(textoInfoStream(const {}), '— · — · —');
+  });
+
+  group('número do canal', () {
+    testWidgets('algarismos mostram o número no ecrã e saltam depois de uma pausa curta', (t) async {
+      final e = await _montar(t);
+      await _tecla(t, LogicalKeyboardKey.digit1);
+      await _tecla(t, LogicalKeyboardKey.numpad2);
+      expect(find.byKey(const Key('numero-canal')), findsOneWidget);
+      expect(find.text('12'), findsOneWidget);
+      expect(_barraVisivel(t), isFalse);
+      expect(e.numeros, isEmpty);
+      await t.pump(tempoNumero);
+      await t.pumpAndSettle();
+      expect(e.numeros, [12]);
+      expect(find.text('12'), findsNothing);
+      expect(e.acoes, isEmpty, reason: 'não mudou de canal pelas setas nem saiu');
+    });
+
+    testWidgets('OK salta já (sem mostrar a barra); Voltar cancela sem sair', (t) async {
+      final e = await _montar(t);
+      await _tecla(t, LogicalKeyboardKey.digit7);
+      await _tecla(t, LogicalKeyboardKey.select);
+      expect(e.numeros, [7]);
+      expect(_barraVisivel(t), isFalse);
+
+      await _tecla(t, LogicalKeyboardKey.digit3);
+      await _tecla(t, LogicalKeyboardKey.escape);
+      expect(find.text('3'), findsNothing);
+      await t.pump(tempoNumero);
+      expect(e.numeros, [7]);
+      expect(e.acoes, isNot(contains(AcaoPlayer.sair)));
+    });
+
+    testWidgets('com a barra aberta os algarismos também saltam e a barra fica', (t) async {
+      final e = await _montar(t);
+      await _tecla(t, LogicalKeyboardKey.select);
+      await _tecla(t, LogicalKeyboardKey.digit5);
+      expect(find.text('5'), findsOneWidget);
+      expect(_focado(), 'Pausa', reason: 'o foco fica onde estava');
+      await t.pump(tempoNumero);
+      await t.pumpAndSettle();
+      expect(e.numeros, [5]);
+    });
+  });
+
+  group('alternar entre os dois últimos canais', () {
+    testWidgets('a tecla "último canal" do comando alterna', (t) async {
+      final e = await _montar(t);
+      await _tecla(t, LogicalKeyboardKey.mediaLast);
+      expect(e.acoes, [AcaoPlayer.alternarCanal]);
+    });
+
+    testWidgets('na barra há um botão (só com um canal anterior), ao alcance das setas', (t) async {
+      final e = await _montar(t);
+      await _tecla(t, LogicalKeyboardKey.select);
+      expect(find.byTooltip('Canal visto antes'), findsNothing);
+      e.reconstruir!(() => e.podeAlternar = true);
+      await t.pumpAndSettle();
+      for (var i = 0; i < 3; i++) {
+        await _tecla(t, LogicalKeyboardKey.arrowRight);
+      }
+      expect(_focado(), 'Canal visto antes');
+      await _tecla(t, LogicalKeyboardKey.select);
+      expect(e.acoes.last, AcaoPlayer.alternarCanal);
+    });
   });
 }

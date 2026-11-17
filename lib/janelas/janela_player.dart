@@ -58,7 +58,9 @@ class JanelaPlayer {
     _canais = canais;
     final msg = {
       'tipo': 'abrir', 'lista': lista.nomeMostrado, 'i': i,
-      'canais': [for (final c in canais) {'id': c.id, 'nome': c.nome, 'grupo': c.grupo}],
+      'canais': [
+        for (final c in canais) {'id': c.id, 'nome': c.nome, 'grupo': c.grupo, if (c.numero != null) 'num': c.numero},
+      ],
     };
     if (_ligacao != null) {
       _enviar(msg);
@@ -248,7 +250,7 @@ class LigacaoPrincipal {
     if (m['tipo'] == 'abrir') {
       final canais = [
         for (final c in (m['canais'] as List))
-          Canal(id: '${c['id']}', nome: '${c['nome']}', grupo: '${c['grupo']}'),
+          Canal(id: '${c['id']}', nome: '${c['nome']}', grupo: '${c['grupo']}', numero: numeroCanal(c['num'])),
       ];
       aberturas.add(('${m['lista']}', canais, m['i'] as int));
     } else if (m['tipo'] == 'fonte') {

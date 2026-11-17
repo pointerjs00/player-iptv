@@ -11,7 +11,7 @@ import 'package:player_iptv/protocolos/protocolo.dart';
 
 const _link = 'http://h/live/UTILIZADOR/SEGREDO/1.ts';
 final _lista = Lista(id: '1', ordem: 1, conta: Conta('x', Tipo.m3u, 'http://h/l.m3u'));
-const _canais = [Canal(id: '1', nome: 'RTP 1', grupo: 'g', url: _link)];
+const _canais = [Canal(id: '1', nome: 'RTP 1', grupo: 'g', url: _link, numero: 101)];
 
 /// Lê as linhas que chegam ao socket durante `d` (ou até fechar).
 Future<(List<String>, bool)> _escutar(Socket s, Duration d) async {
@@ -82,6 +82,7 @@ void main() {
     });
     final abertura = await l.aberturas.stream.first.timeout(const Duration(seconds: 5));
     expect(abertura.$2.single.nome, 'RTP 1');
+    expect(abertura.$2.single.numero, 101, reason: 'o número do portal chega à janela do player');
     expect((await l.fonte(0)).url, _link);
 
     // depois de o player entrar, a principal deixa de aceitar ligações
