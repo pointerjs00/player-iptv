@@ -96,6 +96,39 @@ void main() {
       expect(t.hasRunningAnimations, isFalse);
     });
 
+    // a opacidade efetiva de 'x' dentro do ecrã (1 = totalmente visível)
+    double opacidade(WidgetTester t) => transicoes()
+        .evaluate()
+        .map((e) => (e.widget as FadeTransition).opacity.value)
+        .fold(1.0, (a, b) => a * b);
+
+    testWidgets('I2: só anima na abertura do ecrã; um item recriado depois (scroll, abas) aparece logo', (t) async {
+      var chave = 0;
+      late StateSetter mudar;
+      await t.pumpWidget(_app(StatefulBuilder(builder: (c, s) {
+        mudar = s;
+        return KeyedSubtree(key: ValueKey(chave), child: entradaEmCascata(20, const Text('x')));
+      })));
+      expect(opacidade(t), lessThan(1), reason: 'na abertura anima');
+      await t.pumpAndSettle();
+      await t.pump(const Duration(seconds: 2));
+      mudar(() => chave++); // o item sai da cache do GridView e volta: é um elemento novo
+      await t.pump();
+      expect(opacidade(t), 1, reason: 'depois da abertura não volta a animar');
+    });
+
+    testWidgets('I2: um item que recebe o foco a meio da cascata aparece logo (o foco nunca fica escondido)',
+        (t) async {
+      final no = FocusNode();
+      addTearDown(no.dispose);
+      await t.pumpWidget(_app(entradaEmCascata(25, TextButton(focusNode: no, onPressed: () {}, child: const Text('x')))));
+      await t.pump(const Duration(milliseconds: 50));
+      expect(opacidade(t), lessThan(1));
+      no.requestFocus();
+      await t.pump();
+      expect(opacidade(t), 1);
+    });
+
     testWidgets('sem animação para índices > 30 (listas grandes)', (t) async {
       await t.pumpWidget(_app(entradaEmCascata(31, const Text('x'))));
       expect(transicoes(), findsNothing);
@@ -176,6 +209,46 @@ void main() {
     expect(EcraTv.nativo, isTrue);
     await configurarRealceFoco(eTv: () async => false);
     expect(EcraTv.nativo, isFalse);
+  });
+
+  testWidgets('I1: com reduzir movimento a rotaSuave dura zero e o ecrã de baixo nunca fica por baixo do novo',
+      (t) async {
+    await t.pumpWidget(_app(
+        Builder(
+            builder: (c) => TextButton(
+                onPressed: () => Navigator.of(c).push(rotaSuave(const Text('nova'))), child: const Text('abrir'))),
+        semAnimacoes: true));
+    await t.tap(find.text('abrir'));
+    await t.pump();
+    final rota = ModalRoute.of(t.element(find.text('nova')))! as TransitionRoute;
+    expect(rota.transitionDuration, Duration.zero);
+    expect(rota.reverseTransitionDuration, Duration.zero);
+    expect(find.text('abrir'), findsNothing, reason: 'o ecrã de baixo já não é pintado');
+    Navigator.of(t.element(find.text('nova'))).pop();
+    await t.pump();
+    expect(find.text('nova'), findsNothing, reason: 'voltar também é instantâneo');
+    expect(find.text('abrir'), findsOneWidget);
+  });
+
+  testWidgets('I1: com reduzir movimento, quem sai de uma MaterialPageRoute fica escondido logo', (t) async {
+    await t.pumpWidget(_app(
+        Builder(
+            builder: (c) => TextButton(
+                onPressed: () => Navigator.of(c).push(MaterialPageRoute<void>(builder: (_) => const Text('nova'))),
+                child: const Text('abrir'))),
+        semAnimacoes: true));
+    await t.tap(find.text('abrir'));
+    await t.pump();
+    await t.pump(const Duration(milliseconds: 50));
+    // a meio da duração da rota: o ecrã antigo está escondido (opacidade 0), o novo inteiro
+    double opacidade(String texto) => find
+        .ancestor(of: find.text(texto), matching: find.byType(Opacity))
+        .evaluate()
+        .map((e) => (e.widget as Opacity).opacity)
+        .fold(1.0, (a, b) => a * b);
+    expect(opacidade('abrir'), 0);
+    expect(opacidade('nova'), 1);
+    await t.pumpAndSettle();
   });
 
   testWidgets('rotaSuave: fade-through ao abrir, instantânea com disableAnimations', (t) async {

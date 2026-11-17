@@ -11,6 +11,7 @@ import 'package:player_iptv/modelo/conta.dart';
 import 'package:player_iptv/protocolos/protocolo.dart';
 import 'package:player_iptv/rede/http.dart';
 import 'package:player_iptv/ui/conteudo/tela_conteudo.dart';
+import 'package:player_iptv/ui/design/ecra.dart';
 import 'package:player_iptv/ui/inicio/tela_inicio.dart';
 import 'package:player_iptv/ui/realce_foco.dart';
 import 'package:player_iptv/ui/tema.dart';
@@ -642,6 +643,51 @@ void main() {
       final falhas = await _semRealceAoPercorrer(t, 5, vistos: vistos);
       expect(falhas, isEmpty);
       expect(vistos.join(' / '), allOf(contains('Escolher ficheiros'), contains('Cancelar'), contains('Adicionar')));
+    });
+
+    testWidgets('D1: DIREITA do 1.º cartão foca o 2.º cartão (não o botão de dentro) e só há um realce; '
+        'BAIXO entra nos botões do cartão', (t) async {
+      // como no emulador da Android TV: 960×540 lógicos e tamanhos de TV
+      _realceTv();
+      _tamanho(t, 960, 540);
+      EcraTv.nativo = true;
+      addTearDown(() => EcraTv.nativo = false);
+      await t.runAsync(() => bib.adicionar([
+            Importada(contaDeLinha('http://a.com/l.m3u')!),
+            Importada(contaDeLinha('http://b.com/l.m3u')!),
+          ]));
+      await t.pumpWidget(_app(TelaInicio(biblioteca: bib, servico: ServicoVerificacao(bib))));
+      await t.pump();
+      await t.pump();
+      int realces() => find
+          .byWidgetPredicate((w) =>
+              w is DecoratedBox &&
+              w.decoration is BoxDecoration &&
+              (w.decoration as BoxDecoration).border == Border.fromBorderSide(Realce.borda))
+          .evaluate()
+          .length;
+      // o cartão inteiro tem o foco: os textos de dentro (nome, botão...) são todos do foco
+      bool cartaoFocado(String nome) => _textosFocados().length > 1 && _focado().contains(nome);
+      expect(cartaoFocado('001A'), isTrue, reason: _focado());
+      expect(realces(), 1);
+      await _tecla(t, LogicalKeyboardKey.arrowRight);
+      await t.pump();
+      expect(cartaoFocado('002B'), isTrue, reason: 'foco em: ${_focado()}');
+      expect(realces(), 1, reason: 'um só realce visível');
+      await _tecla(t, LogicalKeyboardKey.arrowDown);
+      await t.pump();
+      expect(_textosFocados(), hasLength(1), reason: 'BAIXO entra num botão do cartão: ${_focado()}');
+      // o botão tem o seu realce (borda no Material do botão); o cartão deixa de ter o dele
+      expect(realces(), 0, reason: 'com o foco no botão, o cartão já não tem realce');
+      expect(_semRealce(), isNull);
+      await _tecla(t, LogicalKeyboardKey.arrowDown);
+      await t.pump();
+      expect(_focado(), contains('Verificar de novo'));
+      // do botão de dentro do 2.º cartão, ESQUERDA vai para o 1.º cartão (não para o botão dele)
+      await _tecla(t, LogicalKeyboardKey.arrowLeft);
+      await t.pump();
+      expect(cartaoFocado('001A'), isTrue, reason: 'foco em: ${_focado()}');
+      expect(realces(), 1);
     });
   });
 }

@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../realce_foco.dart';
@@ -59,6 +60,10 @@ class SuperficieVidro extends StatelessWidget {
 /// Um cartão de vidro que se toca/abre (InkWell). Com o foco do comando (modo "traditional"):
 /// aumenta para 1.04, ganha a borda de realce, um brilho violeta e a sombra sobe. Com o rato por
 /// cima só a sombra sobe. No toque (telemóvel), o foco automático não muda nada.
+///
+/// O realce é só do cartão em si (não quando o foco está num botão de dentro). Os botões de
+/// dentro só entram na navegação com as setas quando o foco já está no cartão: ESQUERDA/DIREITA
+/// entre cartões vão de cartão em cartão e BAIXO, no cartão, entra nos botões.
 class CartaoModerno extends StatefulWidget {
   const CartaoModerno({super.key, required this.child, this.onTap, this.autofocus = false,
       this.focusNode, this.padding = const EdgeInsets.all(Tokens.e16), this.raio = Tokens.raioCartao,
@@ -77,11 +82,62 @@ class CartaoModerno extends StatefulWidget {
 }
 
 class _CartaoModernoState extends State<CartaoModerno> {
+  FocusNode? _proprio;
+  final _interior = FocusNode(debugLabel: 'CartaoModerno.interior', canRequestFocus: false, skipTraversal: true);
+
+  /// O foco é do próprio cartão.
   bool _focado = false;
+
+  /// O foco está no cartão ou num botão dele.
+  bool _dentro = false;
   bool _rato = false;
 
-  void _foco(bool f) {
-    if (mounted && f != _focado) setState(() => _focado = f);
+  FocusNode get _no => widget.focusNode ?? (_proprio ??= FocusNode(debugLabel: 'CartaoModerno'));
+
+  @override
+  void initState() {
+    super.initState();
+    _no.addListener(_mudouFoco);
+  }
+
+  @override
+  void didUpdateWidget(CartaoModerno antigo) {
+    super.didUpdateWidget(antigo);
+    if (antigo.focusNode != widget.focusNode) {
+      (antigo.focusNode ?? _proprio)?.removeListener(_mudouFoco);
+      _no.addListener(_mudouFoco);
+      _mudouFoco();
+    }
+  }
+
+  @override
+  void dispose() {
+    _no.removeListener(_mudouFoco);
+    _proprio?.dispose();
+    _interior.dispose();
+    super.dispose();
+  }
+
+  void _mudouFoco() {
+    final f = _no.hasPrimaryFocus, d = _no.hasFocus;
+    if (mounted && (f != _focado || d != _dentro)) {
+      setState(() {
+        _focado = f;
+        _dentro = d;
+      });
+    }
+  }
+
+  /// BAIXO com o foco no cartão: entra no primeiro botão de dentro (a navegação direcional só
+  /// procura abaixo do cartão inteiro e saltaria para a fila de baixo).
+  KeyEventResult _tecla(FocusNode _, KeyEvent e) {
+    if (e is KeyUpEvent || e.logicalKey != LogicalKeyboardKey.arrowDown || !_no.hasPrimaryFocus) {
+      return KeyEventResult.ignored;
+    }
+    final botoes = _interior.traversalDescendants.where((n) => n.canRequestFocus);
+    if (botoes.isEmpty) return KeyEventResult.ignored;
+    botoes.first.requestFocus();
+    return KeyEventResult.handled;
   }
 
   void _hover(bool h) {
@@ -114,13 +170,25 @@ class _CartaoModernoState extends State<CartaoModerno> {
             type: MaterialType.transparency,
             shape: RoundedRectangleBorder(borderRadius: r),
             clipBehavior: Clip.antiAlias,
-            child: InkWell(
-              onTap: widget.onTap,
-              autofocus: widget.autofocus,
-              focusNode: widget.focusNode,
-              onFocusChange: _foco,
-              onHover: _hover,
-              child: Padding(padding: widget.padding, child: widget.child),
+            child: Focus(
+              canRequestFocus: false,
+              skipTraversal: true,
+              includeSemantics: false,
+              onKeyEvent: _tecla,
+              child: InkWell(
+                onTap: widget.onTap,
+                autofocus: widget.autofocus,
+                focusNode: _no,
+                // o fundo de foco só com o foco no próprio cartão (não num botão de dentro)
+                focusColor: _focado ? null : Colors.transparent,
+                onHover: _hover,
+                child: Focus(
+                  focusNode: _interior,
+                  includeSemantics: false,
+                  descendantsAreTraversable: _dentro,
+                  child: Padding(padding: widget.padding, child: widget.child),
+                ),
+              ),
             ),
           ),
         ),
@@ -234,7 +302,8 @@ class _EsqueletoBrilhoState extends State<EsqueletoBrilho> with SingleTickerProv
   }
 
   @override
-  Widget build(BuildContext context) => AnimatedBuilder(
+  // RepaintBoundary: o brilho repinta-se a cada frame sem arrastar o resto do ecrã
+  Widget build(BuildContext context) => RepaintBoundary(child: AnimatedBuilder(
         animation: _c,
         builder: (_, filho) => ShaderMask(
           blendMode: BlendMode.srcIn,
@@ -246,7 +315,7 @@ class _EsqueletoBrilhoState extends State<EsqueletoBrilho> with SingleTickerProv
           child: filho,
         ),
         child: widget.child,
-      );
+      ));
 }
 
 class _Deslizar extends GradientTransform {

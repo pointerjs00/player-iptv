@@ -196,7 +196,10 @@ class _TelaInicioState extends State<TelaInicio> {
       ),
       body: temVerificar ? TabBarView(children: [_listas(), widget.separadorVerificar!]) : _listas(),
     );
-    return temVerificar ? DefaultTabController(length: 2, child: corpo) : corpo;
+    return temVerificar
+        // com "reduzir movimento" a troca de abas também é instantânea
+        ? DefaultTabController(length: 2, animationDuration: duracaoAnimada(context, kTabScrollDuration), child: corpo)
+        : corpo;
   }
 }
 

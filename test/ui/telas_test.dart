@@ -14,6 +14,7 @@ import 'package:player_iptv/ui/inicio/tela_inicio.dart';
 import 'package:player_iptv/ui/player/player_canais.dart';
 import 'package:player_iptv/ui/realce_foco.dart';
 import 'package:player_iptv/ui/tema.dart';
+import 'package:player_iptv/ui/verificar/tela_verificar.dart';
 import 'package:player_iptv/verificar/servico.dart';
 
 // como a app (main.dart): o tema segue o modo de realce do foco
@@ -87,6 +88,18 @@ void main() {
     await t.pumpWidget(_app(TelaInicio(biblioteca: bib)));
     expect(find.text('Ainda não há listas.'), findsOneWidget);
     expect(find.text('Adicionar listas'), findsOneWidget);
+  });
+
+  testWidgets('I3: Verificar com 300 listas só constrói as linhas visíveis (lista preguiçosa)', (t) async {
+    await t.runAsync(() => bib.adicionar([
+          for (var i = 0; i < 300; i++) Importada(contaDeLinha('http://h$i.com/l.m3u')!),
+        ]));
+    _tamanho(t, 1200, 1600);
+    await t.pumpWidget(_app(Scaffold(body: TelaVerificar(biblioteca: bib, servico: ServicoVerificacao(bib)))));
+    await t.pump();
+    final construidas = find.byType(CheckboxListTile, skipOffstage: false).evaluate().length;
+    expect(construidas, greaterThan(0));
+    expect(construidas, lessThan(60), reason: '$construidas linhas construídas');
   });
 
   group('Conteúdo', () {
