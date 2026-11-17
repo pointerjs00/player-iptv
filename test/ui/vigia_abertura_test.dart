@@ -27,6 +27,30 @@ void main() {
     expect(abriu, 1);
   });
 
+  test('I8 + cache-pause-initial: a imagem chega durante os 2 s de buffer; abre quando o buffer acaba', () {
+    // com cache-pause-initial=yes o mpv sabe a largura logo mas fica parado (paused-for-cache)
+    // até juntar 2 s; a posição não anda
+    v..comecar()..abrindo();
+    v.buffering(true);
+    v.largura(1920);
+    v.tempo(Duration.zero);
+    expect(abriu, 0, reason: 'ainda a juntar buffer: o "a abrir" fica');
+    v.buffering(false); // paused-for-cache=no
+    expect(abriu, 1);
+    expect(falhas, isEmpty);
+  });
+
+  test('I8 + cache-pause-initial: o buffer inicial dentro do prazo não dá erro', () async {
+    v..comecar()..abrindo();
+    v.buffering(true);
+    v.largura(1280);
+    await Future<void>.delayed(const Duration(milliseconds: 200)); // < prazo de 0.3 s
+    v.buffering(false);
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+    expect(abriu, 1);
+    expect(falhas, isEmpty);
+  });
+
   test('I8: o tempo a andar com imagem também conta como aberto', () {
     v..comecar()..abrindo();
     v.largura(1280);

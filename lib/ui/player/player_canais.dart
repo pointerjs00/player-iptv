@@ -5,9 +5,14 @@ import 'package:material_ui/material_ui.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
+import '../../dados/preferencias_player.dart';
 import '../../modelo/canal.dart';
 import '../../protocolos/protocolo.dart';
 import '../../rede/http.dart';
+import 'configuracao_mpv.dart';
+import 'diagnostico.dart';
+import 'estatisticas.dart';
+import 'taxa_ecra.dart';
 import 'vigia_abertura.dart';
 
 /// A mensagem do leitor sem links: nas contas Xtream o link leva o utilizador e a password.
@@ -42,8 +47,15 @@ class PlayerCanais extends StatefulWidget {
 }
 
 class PlayerCanaisState extends State<PlayerCanais> {
-  late final Player _player = Player();
-  late final VideoController _video = VideoController(_player);
+  // a configuração do mpv para direto (buffer, reconexão, descodificação por plataforma)
+  late final ConfiguracaoMpv _config = ConfiguracaoMpv.para(PlataformaVideo.atual,
+      modo: PreferenciasPlayer.atual.modoAndroid, emulador: AmbienteVideo.emulador);
+  late final Player _player = Player(configuration: _config.configuracaoPlayer);
+  late final VideoController _video;
+  late final Future<void> _configurado;
+  final _taxa = TaxaEcra();
+  double? _hzPedidos;
+  bool _estatisticas = false;
   late List<Canal> _canais = widget.canais;
   late int _i = widget.indice;
   String? _erro;
@@ -57,7 +69,9 @@ class PlayerCanaisState extends State<PlayerCanais> {
   // nunca ecrã preto mudo: o "a abrir" só sai com imagem; sem ela em 20 s, erro
   late final _vigia = VigiaAbertura(
     aoAbrir: () {
-      if (mounted) setState(() { _aAbrir = false; _erro = null; });
+      if (!mounted) return;
+      setState(() { _aAbrir = false; _erro = null; });
+      _ajustarTaxa(_pedido);
     },
     aoFalhar: (motivo) {
       if (!mounted) return;
@@ -78,6 +92,9 @@ class PlayerCanaisState extends State<PlayerCanais> {
     _subs.add(_player.stream.buffering.listen(_vigia.buffering));
     _subs.add(_player.stream.width.listen(_vigia.largura));
     _subs.add(_player.stream.position.listen(_vigia.tempo));
+    // o controlador de vídeo antes de configurar o mpv (as propriedades esperam por ele)
+    _video = VideoController(_player, configuration: _config.configuracaoVideo);
+    _configurado = aplicarConfiguracao(_player, _config);
     _abrir();
   }
 
@@ -109,6 +126,8 @@ class PlayerCanaisState extends State<PlayerCanais> {
       if (!mounted || pedido != _pedido) return;
       final f = await widget.resolver(canal);
       if (!mounted || pedido != _pedido) return;
+      await _configurado;
+      if (!mounted || pedido != _pedido) return;
       _vigia.abrindo();
       await _player.open(Media(f.url, httpHeaders: f.headers));
     } catch (e) {
@@ -121,6 +140,41 @@ class PlayerCanaisState extends State<PlayerCanais> {
       });
     }
   }
+
+  /// As propriedades do mpv para as estatísticas (texto; "" quando não há).
+  Future<Map<String, String>> _lerMpv() async {
+    final mpv = _player.platform;
+    if (mpv is! NativePlayer) return const {};
+    return {for (final p in propriedadesDiagnostico) p: await mpv.getProperty(p)};
+  }
+
+  /// Android TV / Fire TV: pede o modo de ecrã que combina com o fps do canal (50 fps -> 50 Hz),
+  /// para cada imagem ficar o mesmo tempo no ecrã (sem judder).
+  Future<void> _ajustarTaxa(int pedido) async {
+    if (PlataformaVideo.atual != PlataformaVideo.android || !PreferenciasPlayer.atual.ajustarTaxaEcra) return;
+    final mpv = _player.platform;
+    if (mpv is! NativePlayer) return;
+    // o container-fps costuma vir logo; senão o medido, que demora uns segundos
+    try {
+      for (var tentativa = 0; tentativa < 5; tentativa++) {
+        if (!mounted || pedido != _pedido) return;
+        var fps = double.tryParse(await mpv.getProperty('container-fps')) ?? 0;
+        if (fps <= 0) fps = double.tryParse(await mpv.getProperty('estimated-vf-fps')) ?? 0;
+        if (fps > 0) {
+          if (!mounted || pedido != _pedido) return;
+          final hz = await _taxa.ajustarPara(fps);
+          if (hz != null && mounted) setState(() => _hzPedidos = hz);
+          return;
+        }
+        await Future<void>.delayed(const Duration(seconds: 1));
+      }
+    } catch (_) {
+      // o player fechou entretanto
+    }
+  }
+
+  /// Mostra/esconde a sobreposição "Estatísticas" (também para a Task 5).
+  void alternarEstatisticas() => setState(() => _estatisticas = !_estatisticas);
 
   void _mostrarInfo() {
     _esconder?.cancel();
@@ -149,6 +203,9 @@ class PlayerCanaisState extends State<PlayerCanais> {
     } else if (k == LogicalKeyboardKey.select || k == LogicalKeyboardKey.enter ||
         k == LogicalKeyboardKey.numpadEnter) {
       _erro != null ? _abrir() : _mostrarInfo();
+    } else if (k == LogicalKeyboardKey.info || k == LogicalKeyboardKey.keyI ||
+        k == LogicalKeyboardKey.contextMenu) {
+      alternarEstatisticas();
     } else if (k == LogicalKeyboardKey.escape) {
       // o Voltar do Android/comando já fecha a página do player (o sistema trata dele)
       widget.aoSair();
@@ -164,6 +221,7 @@ class PlayerCanaisState extends State<PlayerCanais> {
   void dispose() {
     _esconder?.cancel();
     _vigia.parar();
+    _taxa.repor();
     for (final s in _subs) {
       s.cancel();
     }
@@ -181,6 +239,7 @@ class PlayerCanaisState extends State<PlayerCanais> {
       onKeyEvent: _tecla,
       child: GestureDetector(
         onTap: _mostrarInfo,
+        onLongPress: alternarEstatisticas,
         onDoubleTap: widget.alternarEcraInteiro,
         onVerticalDragEnd: (d) => _mudar((d.primaryVelocity ?? 0) < 0 ? 1 : -1),
         child: ColoredBox(
@@ -188,6 +247,22 @@ class PlayerCanaisState extends State<PlayerCanais> {
           child: Stack(fit: StackFit.expand, children: [
             Video(controller: _video, controls: NoVideoControls, fill: Colors.black),
             if (_aAbrir) const Center(child: CircularProgressIndicator()),
+            if (_estatisticas)
+              Positioned(
+                top: 24,
+                left: 24,
+                child: PainelEstatisticas(
+                  ler: _lerMpv,
+                  reamostra: _config.reamostraRitmo,
+                  extra: [
+                    if (PlataformaVideo.atual == PlataformaVideo.android)
+                      ('Modo de descodificação',
+                          AmbienteVideo.emulador ? 'software (emulador)' : PreferenciasPlayer.atual.modoAndroid.rotulo),
+                    ('Saída · hwdec pedido', '${_config.vo} · ${_config.hwdec}'),
+                    if (_hzPedidos != null) ('Taxa do ecrã pedida', '${_hzPedidos!.toStringAsFixed(2)} Hz'),
+                  ],
+                ),
+              ),
             if (_erro != null)
               Center(
                 child: Card(
@@ -224,7 +299,7 @@ class PlayerCanaisState extends State<PlayerCanais> {
                     Text('${canal.grupo} · ${_i + 1}/${_canais.length} · ${widget.nomeLista}',
                         style: const TextStyle(color: Colors.white70)),
                     const SizedBox(height: 4),
-                    const Text('▲▼ mudar de canal · OK informação · Voltar sair',
+                    const Text('▲▼ mudar de canal · OK informação · Menu/I estatísticas · Voltar sair',
                         style: TextStyle(color: Colors.white54, fontSize: 12)),
                   ]),
                 ),
