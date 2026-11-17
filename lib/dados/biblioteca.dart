@@ -70,6 +70,83 @@ abstract interface class ColecaoListas implements Listenable {
   Future<void> registarVerificacao(String id, UltimaVerificacao v);
 }
 
+/// O que uma restauração (cópia de segurança) vai fazer às listas.
+class PlanoRestauro {
+  const PlanoRestauro(this.listas, this.novas, this.atualizadas, this.removidas, this.idsSemCache);
+  final List<Lista> listas;
+  final int novas, atualizadas, removidas;
+
+  /// As listas cuja cache de canais deixa de servir (saíram ou passaram a ser outra conta).
+  final Set<String> idsSemCache;
+}
+
+/// O resultado de gravar uma restauração e como a desfazer (se outra gravação falhar a seguir).
+class ResultadoRestauro {
+  const ResultadoRestauro(this.plano, this.desfazer);
+  final PlanoRestauro plano;
+  final Future<void> Function() desfazer;
+}
+
+Lista _copiaLista(Lista l, {String? id, int? ordem}) => Lista(
+    id: id ?? l.id, ordem: ordem ?? l.ordem, conta: l.conta, ultima: l.ultima,
+    favoritos: Set.of(l.favoritos), nomeProprio: l.nomeProprio);
+
+/// Calcula as listas depois de restaurar `doFicheiro` sobre `atuais`, sem mexer em nenhuma.
+/// - juntar: as da mesma conta (pela chave) ficam, com os favoritos unidos, o resultado mais
+///   recente e o nome próprio se não tinham; as novas entram no fim com o número de ordem seguinte;
+/// - substituir: ficam só as do ficheiro (as repetidas dentro do ficheiro contam uma vez).
+PlanoRestauro planearRestauro(List<Lista> atuais, List<Lista> doFicheiro, {required bool substituir}) {
+  final vistas = <String>{};
+  final deFicheiro = [for (final l in doFicheiro) if (vistas.add(chave(l.conta))) l];
+  final ids = <String>{};
+  String idLivre(String id) {
+    var n = id;
+    while (!ids.add(n)) {
+      n = novoIdLista();
+    }
+    return n;
+  }
+
+  if (substituir) {
+    final listas = [for (final l in deFicheiro) _copiaLista(l, id: idLivre(l.id))];
+    final porId = {for (final l in listas) l.id: chave(l.conta)};
+    final sem = {for (final l in atuais) if (porId[l.id] != chave(l.conta)) l.id};
+    final removidas = atuais.where((a) => !vistas.contains(chave(a.conta))).length;
+    return PlanoRestauro(listas, listas.length, 0, removidas, sem);
+  }
+  final porChave = {for (final l in atuais) chave(l.conta): l.id};
+  final listas = [for (final l in atuais) _copiaLista(l)];
+  for (final l in listas) {
+    ids.add(l.id);
+  }
+  var proxima = atuais.fold<int>(0, (m, l) => max(m, l.ordem)) + 1;
+  var novas = 0, atualizadas = 0;
+  for (final f in [...deFicheiro]..sort((a, b) => a.ordem.compareTo(b.ordem))) {
+    final idExistente = porChave[chave(f.conta)];
+    if (idExistente == null) {
+      listas.add(_copiaLista(f, id: idLivre(f.id), ordem: proxima++));
+      novas++;
+      continue;
+    }
+    final dest = listas.firstWhere((l) => l.id == idExistente);
+    var mudou = false;
+    final antes = dest.favoritos.length;
+    dest.favoritos.addAll(f.favoritos);
+    if (dest.favoritos.length != antes) mudou = true;
+    final u = f.ultima;
+    if (u != null && (dest.ultima == null || u.data.isAfter(dest.ultima!.data))) {
+      dest.ultima = u;
+      mudou = true;
+    }
+    if (dest.nomeProprio.trim().isEmpty && f.nomeProprio.trim().isNotEmpty) {
+      dest.nomeProprio = f.nomeProprio;
+      mudou = true;
+    }
+    if (mudou) atualizadas++;
+  }
+  return PlanoRestauro(listas, novas, atualizadas, 0, const {});
+}
+
 /// Uma edição recusada (por exemplo, a conta nova já é outra lista do Player).
 class ErroEdicao implements Exception {
   ErroEdicao(this.mensagem);
@@ -307,6 +384,51 @@ class Biblioteca extends ChangeNotifier implements ColecaoListas {
     if (l == null) return;
     l.ultima = v;
     await guardar();
+  }
+
+  /// Aplica uma cópia de segurança (ver [planearRestauro]). Se a gravação falhar, tudo volta a
+  /// como estava. `canaisTeste` só vale ao substituir. O resultado traz como desfazer.
+  Future<ResultadoRestauro> restaurar(List<Lista> doFicheiro,
+      {required bool substituir, List<String>? canaisTeste}) async {
+    final plano = planearRestauro(_listas, doFicheiro, substituir: substituir);
+    final antes = List.of(_listas), testeAntes = this.canaisTeste;
+    Future<void> desfazer() async {
+      _listas
+        ..clear()
+        ..addAll(antes);
+      this.canaisTeste = testeAntes;
+      await guardar();
+    }
+
+    _listas
+      ..clear()
+      ..addAll(plano.listas);
+    if (substituir && canaisTeste != null && canaisTeste.isNotEmpty) {
+      this.canaisTeste = List.unmodifiable(canaisTeste);
+    }
+    try {
+      await guardar();
+    } catch (_) {
+      _listas
+        ..clear()
+        ..addAll(antes);
+      this.canaisTeste = testeAntes;
+      notifyListeners();
+      rethrow;
+    }
+    return ResultadoRestauro(plano, desfazer);
+  }
+
+  /// Apaga a cache de canais de listas que já não existem (ou mudaram de conta).
+  Future<void> apagarCaches(Iterable<String> ids) async {
+    for (final id in ids) {
+      try {
+        final f = _ficheiroCanais(id);
+        if (await f.exists()) await f.delete();
+      } on FileSystemException {
+        // uma cache que não se apaga já não é usada
+      }
+    }
   }
 
   Future<void> definirCanaisTeste(List<String> ids) async {

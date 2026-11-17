@@ -103,6 +103,33 @@ class AreaGestor extends ChangeNotifier implements ColecaoListas {
   Future<int> importarDoPlayer(Biblioteca player) =>
       adicionar([for (final l in player.listas) Importada(l.conta, l.ultima)]);
 
+  /// Aplica as listas do Gestor de uma cópia de segurança (ver [planearRestauro]). Se a gravação
+  /// falhar, tudo volta a como estava; o resultado traz como desfazer.
+  Future<ResultadoRestauro> restaurar(List<Lista> doFicheiro, {required bool substituir}) async {
+    final plano = planearRestauro(_listas, doFicheiro, substituir: substituir);
+    final antes = List.of(_listas);
+    Future<void> desfazer() async {
+      _listas
+        ..clear()
+        ..addAll(antes);
+      await _guardar();
+    }
+
+    _listas
+      ..clear()
+      ..addAll(plano.listas);
+    try {
+      await _guardar();
+    } catch (_) {
+      _listas
+        ..clear()
+        ..addAll(antes);
+      notifyListeners();
+      rethrow;
+    }
+    return ResultadoRestauro(plano, desfazer);
+  }
+
   Future<void> remover(Iterable<String> ids) async {
     final s = ids.toSet();
     _listas.removeWhere((l) => s.contains(l.id));

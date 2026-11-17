@@ -17,7 +17,7 @@ import 'cartao_lista.dart';
 /// estado da última verificação, pesquisa e filtro por estado) e não gere nada: adicionar,
 /// verificar, exportar e enviar listas para o Player faz-se no Gestor.
 class TelaInicio extends StatefulWidget {
-  const TelaInicio({super.key, required this.biblioteca, this.area, this.separadorGestor, this.abrirLista});
+  const TelaInicio({super.key, required this.biblioteca, this.area, this.separadorGestor, this.abrirLista, this.definicoes});
 
   /// As listas do Player.
   final Biblioteca biblioteca;
@@ -27,6 +27,9 @@ class TelaInicio extends StatefulWidget {
 
   /// O separador "Gestor".
   final Widget? separadorGestor;
+
+  /// O ecrã de Definições (a roda dentada no topo, nos dois separadores).
+  final WidgetBuilder? definicoes;
 
   /// Para testes: pede os canais de uma lista (em vez do protocolo da conta).
   final AbrirLista? abrirLista;
@@ -256,7 +259,8 @@ class _TelaInicioState extends State<TelaInicio> {
                     onKeyEvent: (_, e) => e is! KeyUpEvent &&
                             e.logicalKey == LogicalKeyboardKey.arrowRight &&
                             _abaFocada == 1 &&
-                            !(gestorAtivo && area != null)
+                            !(gestorAtivo && area != null) &&
+                            widget.definicoes == null
                         ? KeyEventResult.handled
                         : KeyEventResult.ignored,
                     child: TabBar(
@@ -281,6 +285,12 @@ class _TelaInicioState extends State<TelaInicio> {
               tooltip: 'Adicionar listas',
               onPressed: () => mostrarAdicionar(context, area),
               icon: const Icon(Icons.add),
+            ),
+          if (widget.definicoes != null)
+            IconButton(
+              tooltip: 'Definições',
+              onPressed: () => Navigator.of(context).push(rotaSuave<void>(widget.definicoes!(context))),
+              icon: const Icon(Icons.settings_outlined),
             ),
         ],
       ),

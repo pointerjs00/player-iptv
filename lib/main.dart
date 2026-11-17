@@ -11,7 +11,9 @@ import 'dados/preferencias.dart';
 import 'janelas/janela_player.dart';
 import 'modelo/canal.dart';
 import 'rede/http.dart';
+import 'ui/definicoes/tela_definicoes.dart';
 import 'ui/design/componentes.dart';
+import 'ui/design/movimento.dart';
 import 'ui/design/ecra.dart';
 import 'ui/inicio/tela_inicio.dart';
 import 'ui/player/player_canais.dart';
@@ -114,11 +116,24 @@ class _AppPlayerIptvState extends State<AppPlayerIptv> {
         locale: _pt,
         supportedLocales: const [_pt],
         localizationsDelegates: GlobalMaterialLocalizations.delegates,
-        home: TelaInicio(
-          biblioteca: widget.biblioteca,
-          area: widget.area,
-          separadorGestor: TelaVerificar(biblioteca: widget.biblioteca, area: widget.area, servico: _servico),
-        ),
+        home: Builder(builder: (context) {
+          Widget definicoes(BuildContext _) => TelaDefinicoes(
+              biblioteca: widget.biblioteca,
+              area: widget.area,
+              preferencias: Preferencias.atual,
+              servico: _servico);
+          return TelaInicio(
+            biblioteca: widget.biblioteca,
+            area: widget.area,
+            definicoes: definicoes,
+            separadorGestor: TelaVerificar(
+              biblioteca: widget.biblioteca,
+              area: widget.area,
+              servico: _servico,
+              abrirDefinicoes: () => Navigator.of(context).push(rotaSuave<void>(definicoes(context))),
+            ),
+          );
+        }),
       );
 }
 
@@ -141,7 +156,10 @@ class _AppJanelaPlayerState extends State<AppJanelaPlayer> {
   @override
   void initState() {
     super.initState();
-    widget.ligacao.aberturas.stream.listen((a) {
+    widget.ligacao.aberturas.stream.listen((a) async {
+      // as definições podem ter mudado na janela principal desde a última abertura
+      await Preferencias.atual.recarregar();
+      if (!mounted) return;
       setState(() {
         _lista = a.$1;
         _canais = a.$2;

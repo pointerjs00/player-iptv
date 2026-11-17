@@ -21,7 +21,7 @@ import 'dialogos_gestor.dart';
 /// e exportam-se (Accounts.json ou .ini) ou enviam-se para o Player.
 class TelaVerificar extends StatefulWidget {
   const TelaVerificar({super.key, required this.biblioteca, required this.area, required this.servico,
-      this.baseStb = stbBase});
+      this.baseStb = stbBase, this.abrirDefinicoes});
 
   /// As listas do Player (recebem os envios) e os canais de teste.
   final Biblioteca biblioteca;
@@ -29,6 +29,9 @@ class TelaVerificar extends StatefulWidget {
 
   /// Grava os resultados no Gestor.
   final ServicoVerificacao servico;
+
+  /// Abre as Definições (onde se escolhem os canais de teste).
+  final VoidCallback? abrirDefinicoes;
 
   /// O blog a pesquisar (injetável para os testes).
   final String baseStb;
@@ -296,21 +299,16 @@ class _TelaVerificarState extends State<TelaVerificar> {
                     subtitulo: 'A lista funciona se um deles abrir.',
                     icone: Icons.live_tv_outlined,
                   ),
-                  Wrap(spacing: Tokens.e8, runSpacing: Tokens.e8, children: [
-                    for (final p in perfisCanais.values)
-                      FilterChip(
-                        label: Text(p.nome),
-                        selected: _b.canaisTeste.contains(p.id),
-                        onSelected: s.ocupado
-                            ? null
-                            : (on) {
-                                final novo = [for (final id in perfisCanais.keys)
-                                  if (id == p.id ? on : _b.canaisTeste.contains(id)) id];
-                                if (novo.isEmpty) return _aviso('Escolha pelo menos um canal.');
-                                _b.definirCanaisTeste(novo);
-                              },
-                      ),
-                  ]),
+                  Text('Canais de teste: ${perfisDe(_b.canaisTeste).map((p) => p.nome).join(', ')}',
+                      style: const TextStyle(color: Tokens.texto2)),
+                  if (widget.abrirDefinicoes != null) ...[
+                    const SizedBox(height: Tokens.e8),
+                    OutlinedButton.icon(
+                      onPressed: widget.abrirDefinicoes,
+                      icon: const Icon(Icons.settings_outlined),
+                      label: const Text('Alterar nas Definições'),
+                    ),
+                  ],
                   const SizedBox(height: Tokens.e16),
                   Wrap(spacing: Tokens.e8, runSpacing: Tokens.e8, crossAxisAlignment: WrapCrossAlignment.center, children: [
                     // ligados enquanto verifica (desligar um botão com o foco deixa o comando sem foco)
