@@ -222,15 +222,22 @@ class _TelaConteudoState extends State<TelaConteudo> {
   }
 
   /// Uma falha que prova que a lista não funciona (conta recusada/expirada/desativada, portal
-  /// inexistente — `ErroLista.definitivo` — ou o host que já não existe no DNS) fica registada
+  /// inexistente — `ErroLista.definitivo` —, uma M3U com 404/410 ou o host que já não existe no DNS) fica registada
   /// como uma verificação "Não funciona". Erros temporários (tempo esgotado, 5xx, 459…) não mudam
   /// o estado.
   Future<void> _marcarSeMorta(Object e) async {
     ResultadoVerificacao? r;
     if (e is ErroLista && e.definitivo) {
       r = ResultadoVerificacao(EstadoV.naoFunciona, e.mensagem);
-    } else if (e is! ErroHttp) {
-      // o servidor respondeu (ErroHttp): o host existe. Senão, pode ser o DNS
+    } else if (e is ErroHttp) {
+      // o servidor respondeu: o host existe. Como no verificador, só o download de uma M3U com
+      // um estado definitivo (404/410) é prova; um erro HTTP de uma API (Stalker/Xtream) não
+      if (widget.lista.conta.tipo == Tipo.m3u) {
+        final c = classificarFalha(e);
+        if (c.estado == EstadoV.naoFunciona) r = c;
+      }
+    } else {
+      // pode ser o DNS
       try {
         final d = await widget.dns(hostDe(widget.lista.conta.endereco));
         if (d?.estado == EstadoV.naoFunciona) r = d;

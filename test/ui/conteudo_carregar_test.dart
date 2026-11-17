@@ -75,9 +75,11 @@ void main() {
     }
   }
 
-  Future<Lista> lista(WidgetTester t, {bool comCache = false, UltimaVerificacao? ultima}) async {
+  Future<Lista> lista(WidgetTester t, {bool comCache = false, UltimaVerificacao? ultima, Conta? conta}) async {
     await t.runAsync(() async {
-      await bib.adicionar([Importada(Conta('', Tipo.xtream, 'http://h.com:8080', utilizador: 'u', password: 'p'), ultima)]);
+      await bib.adicionar([
+        Importada(conta ?? Conta('', Tipo.xtream, 'http://h.com:8080', utilizador: 'u', password: 'p'), ultima),
+      ]);
       if (comCache) await bib.guardarCanais(bib.listas.single.id, _canais);
     });
     return bib.listas.single;
@@ -182,8 +184,8 @@ void main() {
 
   group('listas mortas', () {
     Future<UltimaVerificacao?> falhar(WidgetTester t, Object erro,
-        {UltimaVerificacao? antes, ResolverDns? dns}) async {
-      final l = await lista(t, ultima: antes);
+        {UltimaVerificacao? antes, ResolverDns? dns, Conta? conta}) async {
+      final l = await lista(t, ultima: antes, conta: conta);
       await abrir(t, l, dns: dns);
       await esperar(t, () => srv.pedidos.isNotEmpty);
       srv.resposta.completeError(erro);
@@ -213,6 +215,30 @@ void main() {
       expect(u!.estado, 'nao_funciona');
       expect(u.motivo, 'DNS: h.com não existe');
     });
+
+    // como o verificador (classificarFalha): o download de uma M3U com 404/410 é prova
+    for (final (status, motivo) in [(404, 'não encontrado (404)'), (410, 'removido (410)')]) {
+      testWidgets('M3U com $status: marcada "Não funciona"', (t) async {
+        final u = await falhar(t, ErroHttp(status), conta: Conta('', Tipo.m3u, 'http://h.com/l.m3u'),
+            antes: UltimaVerificacao(estado: 'funciona', data: DateTime(2026, 1, 1)));
+        expect((u!.estado, u.motivo), ('nao_funciona', motivo));
+      });
+    }
+
+    testWidgets('Xtream com 404 (a API, não a lista): o estado não muda', (t) async {
+      final u = await falhar(t, ErroHttp(404),
+          antes: UltimaVerificacao(estado: 'funciona', data: DateTime(2026, 1, 1), motivo: 'abriu RTP 1'));
+      expect(u!.estado, 'funciona');
+    });
+
+    for (final erro in [ErroLista('o endereço não devolveu uma lista M3U'), ErroHttp(503)]) {
+      testWidgets('M3U com "$erro" (R13 / temporário): o estado não muda', (t) async {
+        final u = await falhar(t, erro, conta: Conta('', Tipo.m3u, 'http://h.com/l.m3u'),
+            antes: UltimaVerificacao(estado: 'funciona', data: DateTime(2026, 1, 1), motivo: 'abriu RTP 1'),
+            dns: (_) async => null);
+        expect(u!.estado, 'funciona');
+      });
+    }
 
     for (final (nome, erro) in [
       ('tempo esgotado', TimeoutException('t')),
