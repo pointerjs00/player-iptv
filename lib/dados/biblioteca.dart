@@ -204,12 +204,9 @@ class Biblioteca extends ChangeNotifier implements ColecaoListas {
           ModoEnvio.esmagarMantendoFuncionaisEInc => const {'funciona', 'inconclusivo'}.contains(l.ultima?.estado),
           ModoEnvio.esmagarTodas => false,
         };
+    // as listas mudam todas de uma vez (a interface nunca vê um envio a meio); a cache depois
     final sair = [for (final l in _listas) if (!enviadas.containsKey(chave(l.conta)) && !mantem(l)) l];
-    for (final l in sair) {
-      _listas.remove(l);
-      final f = _ficheiroCanais(l.id);
-      if (await f.exists()) await f.delete();
-    }
+    _listas.removeWhere(sair.contains);
     final porChave = {for (final l in _listas) chave(l.conta): l};
     var adicionadas = 0, atualizadas = 0;
     var proxima = _listas.fold<int>(0, (m, l) => max(m, l.ordem)) + 1;
@@ -224,6 +221,14 @@ class Biblioteca extends ChangeNotifier implements ColecaoListas {
       }
     }
     await guardar();
+    for (final l in sair) {
+      try {
+        final f = _ficheiroCanais(l.id);
+        if (await f.exists()) await f.delete();
+      } on FileSystemException {
+        // uma cache que não se apaga já não é usada (o id não volta a existir)
+      }
+    }
     return ResumoEnvio(adicionadas: adicionadas, atualizadas: atualizadas, removidas: sair.length);
   }
 
