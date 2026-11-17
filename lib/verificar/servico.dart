@@ -4,6 +4,7 @@ import 'dart:collection';
 import 'package:flutter/foundation.dart';
 
 import '../dados/biblioteca.dart';
+import '../dados/preferencias.dart';
 import '../modelo/conta.dart';
 import '../rede/http.dart';
 import 'estado.dart';
@@ -17,10 +18,12 @@ import 'verificador.dart';
 /// - cada volta de uma conta tem um limite de tempo.
 class ServicoVerificacao extends ChangeNotifier {
   ServicoVerificacao(this.biblioteca,
-      {ColecaoListas? colecao, Verificador? verificador, this.workers = 4, RitmoHost? ritmo})
+      {ColecaoListas? colecao, Verificador? verificador, this.workers = 4, RitmoHost? ritmo,
+      Preferencias? preferencias})
       : colecao = colecao ?? biblioteca,
         verificador = verificador ?? Verificador(),
-        ritmo = ritmo ?? RitmoHost();
+        ritmo = ritmo ?? RitmoHost(),
+        _preferencias = preferencias;
 
   /// Dá os canais de teste.
   final Biblioteca biblioteca;
@@ -33,7 +36,10 @@ class ServicoVerificacao extends ChangeNotifier {
   /// Um pedido de cada vez por servidor, partilhado por todas as verificações.
   final RitmoHost ritmo;
 
-  static const _timeout = Duration(seconds: 8);
+  final Preferencias? _preferencias;
+
+  /// O tempo limite de cada canal, das Definições (lido a cada volta: mudar vale logo).
+  Duration get _timeout => Duration(seconds: (_preferencias ?? Preferencias.atual).timeoutVerificacao);
 
   /// id da lista -> o passo em curso ("a pedir os canais", "na fila"...).
   final passos = <String, String>{};
