@@ -30,6 +30,9 @@ enum AcaoPlayer {
   estatisticas,
   ecraInteiro,
   tentarDeNovo,
+
+  /// (só dos botões) seek até ao fim do buffer.
+  voltarAoDireto,
 }
 
 /// As teclas do comando/teclado no player, conforme a vista. Sem widgets (testa-se à parte):
