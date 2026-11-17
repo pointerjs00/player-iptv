@@ -22,7 +22,7 @@ class _Falso extends Verificador {
   bool esperar = false;
 
   @override
-  Future<ResultadoVerificacao> verificar(Conta conta, List<String> canaisTeste,
+  Future<ResultadoVerificacao> verificarUmaVez(Conta conta, List<String> canaisTeste,
       {Duration timeout = const Duration(seconds: 8), Cancelamento? cancelamento, void Function(String)? aviso}) async {
     aCorrer++;
     if (aCorrer > pico) pico = aCorrer;

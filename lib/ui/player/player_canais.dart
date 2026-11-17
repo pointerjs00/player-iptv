@@ -8,10 +8,11 @@ import 'package:media_kit_video/media_kit_video.dart';
 import '../../modelo/canal.dart';
 import '../../protocolos/protocolo.dart';
 import '../../rede/http.dart';
+import 'vigia_abertura.dart';
 
 /// A mensagem do leitor sem links: nas contas Xtream o link leva o utilizador e a password.
 String mensagemErroPlayer(String e) {
-  final limpo = e.replaceAll(RegExp(r'\S+://\S+'), '').replaceAll(RegExp(r'\s+'), ' ').trim();
+  final limpo = semSegredos(e);
   final semPontuacao = limpo.replaceAll(RegExp(r'[^\p{L}\p{N}]', unicode: true), '');
   return semPontuacao.isEmpty ? 'o canal não abriu' : 'o canal não abriu ($limpo)';
 }
@@ -24,7 +25,7 @@ typedef ResolverFonte = Future<FonteVideo> Function(Canal canal);
 /// OK mostra a informação, Voltar/Esc sai.
 class PlayerCanais extends StatefulWidget {
   const PlayerCanais({super.key, required this.canais, required this.indice, required this.resolver,
-      required this.nomeLista, required this.aoSair, this.alternarEcraInteiro});
+      required this.nomeLista, required this.aoSair, this.alternarEcraInteiro, this.aoMudarCanal});
 
   final List<Canal> canais;
   final int indice;
@@ -32,6 +33,9 @@ class PlayerCanais extends StatefulWidget {
   final String nomeLista;
   final VoidCallback aoSair;
   final VoidCallback? alternarEcraInteiro;
+
+  /// O canal que está a tocar mudou (cima/baixo): ao sair, a lista foca este.
+  final ValueChanged<int>? aoMudarCanal;
 
   @override
   State<PlayerCanais> createState() => PlayerCanaisState();
@@ -50,15 +54,30 @@ class PlayerCanaisState extends State<PlayerCanais> {
   final _subs = <StreamSubscription>[];
   final _foco = FocusNode();
 
+  // nunca ecrã preto mudo: o "a abrir" só sai com imagem; sem ela em 20 s, erro
+  late final _vigia = VigiaAbertura(
+    aoAbrir: () {
+      if (mounted) setState(() { _aAbrir = false; _erro = null; });
+    },
+    aoFalhar: (motivo) {
+      if (!mounted) return;
+      _player.stop();
+      setState(() { _erro = motivo; _aAbrir = false; _info = true; });
+    },
+  );
+
   @override
   void initState() {
     super.initState();
     _subs.add(_player.stream.error.listen((e) {
-      if (mounted && e.isNotEmpty) setState(() { _erro = mensagemErroPlayer(e); _aAbrir = false; _info = true; });
+      if (mounted && e.isNotEmpty) {
+        _vigia.parar();
+        setState(() { _erro = mensagemErroPlayer(e); _aAbrir = false; _info = true; });
+      }
     }));
-    _subs.add(_player.stream.playing.listen((a) {
-      if (mounted && a) setState(() { _aAbrir = false; _erro = null; });
-    }));
+    _subs.add(_player.stream.buffering.listen(_vigia.buffering));
+    _subs.add(_player.stream.width.listen(_vigia.largura));
+    _subs.add(_player.stream.position.listen(_vigia.tempo));
     _abrir();
   }
 
@@ -83,11 +102,18 @@ class PlayerCanaisState extends State<PlayerCanais> {
     setState(() { _aAbrir = true; _erro = null; });
     _mostrarInfo();
     try {
+      _vigia.comecar(); // o prazo conta desde o pedido do link
+      // ao mudar de canal, o anterior para já: senão continuava a tocar (e a mandar imagem e
+      // posição) enquanto o link novo se resolve
+      if (pedido > 1) await _player.stop();
+      if (!mounted || pedido != _pedido) return;
       final f = await widget.resolver(canal);
       if (!mounted || pedido != _pedido) return;
+      _vigia.abrindo();
       await _player.open(Media(f.url, httpHeaders: f.headers));
     } catch (e) {
       if (!mounted || pedido != _pedido) return;
+      _vigia.parar();
       setState(() {
         _erro = e is ErroLista ? e.mensagem : descreverErro(e);
         _aAbrir = false;
@@ -108,6 +134,7 @@ class PlayerCanaisState extends State<PlayerCanais> {
     if (_canais.length < 2) return;
     _i = (_i + delta) % _canais.length;
     if (_i < 0) _i += _canais.length;
+    widget.aoMudarCanal?.call(_i);
     _abrir();
   }
 
@@ -136,6 +163,7 @@ class PlayerCanaisState extends State<PlayerCanais> {
   @override
   void dispose() {
     _esconder?.cancel();
+    _vigia.parar();
     for (final s in _subs) {
       s.cancel();
     }

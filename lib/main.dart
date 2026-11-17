@@ -8,8 +8,10 @@ import 'package:window_manager/window_manager.dart';
 import 'dados/biblioteca.dart';
 import 'janelas/janela_player.dart';
 import 'modelo/canal.dart';
+import 'rede/http.dart';
 import 'ui/inicio/tela_inicio.dart';
 import 'ui/player/player_canais.dart';
+import 'ui/realce_foco.dart';
 import 'ui/tema.dart';
 import 'ui/verificar/tela_verificar.dart';
 import 'verificar/servico.dart';
@@ -21,14 +23,58 @@ Future<void> main(List<String> args) async {
   if (Platform.isWindows && i >= 0 && i + 1 < args.length) {
     // esta é a janela do player (Windows): liga-se à janela principal
     final porta = int.parse(args[i + 1]);
-    final ligacao = await LigacaoPrincipal.ligar(porta);
+    final ligacao =
+        await LigacaoPrincipal.ligar(porta, token: Platform.environment[JanelaPlayer.variavelToken] ?? '');
     runApp(AppJanelaPlayer(ligacao: ligacao));
     return;
   }
   final pasta = await getApplicationSupportDirectory();
-  final biblioteca = await Biblioteca.abrir(pasta);
+  // uma só instância: duas janelas principais reescreviam a biblioteca uma por cima da outra
+  _bloqueio = await Biblioteca.bloquearInstancia(pasta);
+  if (_bloqueio == null) {
+    runApp(const _Aviso('A app já está aberta noutra janela. Feche esta e use a outra.'));
+    return;
+  }
+  final Biblioteca biblioteca;
+  try {
+    biblioteca = await Biblioteca.abrir(pasta);
+  } catch (e) {
+    runApp(_Aviso('Não foi possível ler as listas guardadas (${descreverErro(e)}). '
+        'Feche outros programas que as possam ter abertas e abra a app de novo.'));
+    return;
+  }
+  await configurarRealceFoco(); // Android TV: o realce do foco sempre visível
   runApp(AppPlayerIptv(biblioteca: biblioteca));
 }
+
+/// Fica aberto enquanto a app corre (é o bloqueio da instância).
+RandomAccessFile? _bloqueio;
+
+class _Aviso extends StatelessWidget {
+  const _Aviso(this.texto);
+  final String texto;
+
+  @override
+  Widget build(BuildContext context) => MaterialApp(
+        debugShowCheckedModeBanner: false,
+        theme: temaApp(),
+        builder: (_, w) => TemaConformeRealce(child: w!),
+        home: Scaffold(
+          body: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Text(texto, textAlign: TextAlign.center, style: const TextStyle(fontSize: 18)),
+                const SizedBox(height: 16),
+                FilledButton(autofocus: true, onPressed: () => exit(0), child: const Text('Fechar')),
+              ]),
+            ),
+          ),
+        ),
+      );
+}
+
+const _pt = Locale('pt', 'PT');
 
 class AppPlayerIptv extends StatefulWidget {
   const AppPlayerIptv({super.key, required this.biblioteca});
@@ -52,6 +98,10 @@ class _AppPlayerIptvState extends State<AppPlayerIptv> {
         title: 'Player IPTV',
         debugShowCheckedModeBanner: false,
         theme: temaApp(),
+        builder: (_, w) => TemaConformeRealce(child: w!),
+        locale: _pt,
+        supportedLocales: const [_pt],
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
         home: TelaInicio(
           biblioteca: widget.biblioteca,
           servico: _servico,
@@ -100,6 +150,10 @@ class _AppJanelaPlayerState extends State<AppJanelaPlayer> {
   Widget build(BuildContext context) => MaterialApp(
         debugShowCheckedModeBanner: false,
         theme: temaApp(),
+        builder: (_, w) => TemaConformeRealce(child: w!),
+        locale: _pt,
+        supportedLocales: const [_pt],
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
         home: Scaffold(
           backgroundColor: Colors.black,
           body: _canais.isEmpty

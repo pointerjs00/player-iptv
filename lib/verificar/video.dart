@@ -4,6 +4,7 @@ library;
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import '../rede/http.dart';
 import 'estado.dart';
@@ -57,16 +58,17 @@ Future<_Leitura> _ler(Uri url, Map<String, String> headers, Duration timeout, Ca
     });
     final r = await p.close().timeout(timeout);
     if (r.statusCode >= 400) {
+      final retryAfter = r.headers.value('retry-after');
       unawaited(r.drain<void>().catchError((_) {}));
-      throw ErroHttp(r.statusCode, '$url');
+      throw ErroHttp(r.statusCode, '$url', retryAfter);
     }
-    final corpo = <int>[];
+    final corpo = BytesBuilder(copy: false);
     final fim = DateTime.now().add(segundos);
     Object? cortado;
     try {
       await for (final bloco in r.timeout(timeout)) {
         can?.verificar();
-        corpo.addAll(bloco);
+        corpo.add(bloco);
         if (corpo.length >= maxBytes || DateTime.now().isAfter(fim)) break;
       }
     } on Cancelado {
@@ -75,7 +77,7 @@ Future<_Leitura> _ler(Uri url, Map<String, String> headers, Duration timeout, Ca
       cortado = e;
     }
     final redir = r.redirects.isEmpty ? url : url.resolveUri(r.redirects.last.location);
-    return _Leitura(corpo, redir, cortado);
+    return _Leitura(corpo.takeBytes(), redir, cortado);
   } finally {
     cliente.close(force: true);
   }
@@ -90,13 +92,15 @@ Future<ResultadoVerificacao> lerStream(String url, Map<String, String> headers,
   try {
     var nivel = 0;
     for (; nivel <= 4; nivel++) {
-      r = await _ler(u, headers, timeout, cancelamento);
-      if (!_ePlaylist(r.corpo)) break;
-      if (r.cortado != null) return classificarFalha(r.cortado!);
-      final linhas = utf8.decode(r.corpo, allowMalformed: true).split('\n')
+      final alvo = u;
+      final lido = await comRitmo(alvo, cancelamento, () => _ler(alvo, headers, timeout, cancelamento));
+      r = lido;
+      if (!_ePlaylist(lido.corpo)) break;
+      if (lido.cortado != null) return classificarFalha(lido.cortado!);
+      final linhas = utf8.decode(lido.corpo, allowMalformed: true).split('\n')
           .map((l) => l.trim().replaceAll('﻿', '')).where((l) => l.isNotEmpty && !l.startsWith('#'));
       if (linhas.isEmpty) return const ResultadoVerificacao(EstadoV.inconclusivo, 'playlist sem entradas');
-      u = r.urlFinal.resolve(linhas.first);
+      u = lido.urlFinal.resolve(linhas.first);
     }
     if (nivel > 4) return const ResultadoVerificacao(EstadoV.inconclusivo, 'playlist HLS com demasiados níveis');
   } on Cancelado {

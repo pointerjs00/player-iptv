@@ -157,5 +157,20 @@ void main() {
       final c = Conta('x', Tipo.m3u, '${srv.url}/x');
       expect(() => Protocolo.para(c).abrir(c), throwsA(isA<ErroLista>()));
     });
+
+    test('sem #EXTM3U mas com #EXTINF abre como na importação', () async {
+      srv.responder = (_) => (200, '\n#EXTINF:-1 group-title="G",Um\nhttp://s/1.ts\n');
+      final c = Conta('x', Tipo.m3u, '${srv.url}/lista.m3u');
+      final conteudo = await Protocolo.para(c).abrir(c);
+      expect(conteudo.canais.single.nome, 'Um');
+    });
+
+    test('JSON, vazio ou HTML com #EXTINF no texto continuam recusados', () async {
+      final c = Conta('x', Tipo.m3u, '${srv.url}/x');
+      for (final corpo in ['{"erro":"#EXTINF"}', '', '   \n', '<!DOCTYPE html><p>#EXTINF:-1,x</p>']) {
+        srv.responder = (_) => (200, corpo);
+        await expectLater(Protocolo.para(c).abrir(c), throwsA(isA<ErroLista>()), reason: corpo);
+      }
+    });
   });
 }

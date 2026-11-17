@@ -4,7 +4,9 @@ import 'package:file_picker/file_picker.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../dados/biblioteca.dart';
+import 'campo_tv.dart';
 import '../importar/importar.dart';
+import '../rede/http.dart';
 import '../modelo/conta.dart';
 
 /// Importa ficheiros (Accounts.json, .ini, .m3u, .txt, historico.json) para a biblioteca.
@@ -20,7 +22,7 @@ Future<String> importarFicheiros(Biblioteca b) async {
     } on ErroImportacao catch (e) {
       erros.add('${f.name}: ${e.mensagem}');
     } catch (e) {
-      erros.add('${f.name}: $e');
+      erros.add('${f.name}: ${descreverErro(e)}');
     }
   }
   final novas = await b.adicionar(importadas);
@@ -64,7 +66,8 @@ Future<void> mostrarAdicionar(BuildContext context, Biblioteca b) async {
             label: const Text('Escolher ficheiros (Accounts.json, .ini, .m3u, .txt)'),
           ),
           const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Text('ou cole aqui, uma por linha:')),
-          TextField(
+          // o comando da TV não fica preso no campo: o teclado só abre com OK (ver CampoTv)
+          CampoTv(
             controller: ctrl,
             minLines: 4,
             maxLines: 8,

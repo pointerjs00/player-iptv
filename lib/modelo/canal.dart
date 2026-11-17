@@ -41,7 +41,15 @@ class Canal {
 }
 
 class ConteudoLista {
-  ConteudoLista(this.grupos, this.canais, {this.validade = ''});
+  ConteudoLista(this.grupos, this.canais, {this.validade = '', this.completa = true, this.limiteLigacoes = ''});
+
+  /// False se o portal não deixou ler a lista inteira (limite de páginas, página vazia ou com
+  /// erro antes do fim, `total_items` maior do que os canais recebidos): um canal que não
+  /// aparece não prova nada.
+  final bool completa;
+
+  /// Xtream: "ativas/máximo" quando `active_cons >= max_connections` (explica uma falha).
+  final String limiteLigacoes;
 
   /// "AAAA-MM-DD", "sem limite" ou "" (desconhecida).
   final String validade;
@@ -80,13 +88,15 @@ class FonteVideo {
 
 /// Texto sem acentos e em minúsculas, para pesquisar ("joao" encontra "João").
 String semAcentos(String s) {
-  const de = 'àáâãäåçèéêëìíîïñòóôõöùúûüýÿÀÁÂÃÄÅÇÈÉÊËÌÍÎÏÑÒÓÔÕÖÙÚÛÜÝ';
-  const para = 'aaaaaaceeeeiiiinooooouuuuyyaaaaaaceeeeiiiinooooouuuuy';
   final b = StringBuffer();
-  for (final r in s.runes) {
-    final ch = String.fromCharCode(r);
-    final i = de.indexOf(ch);
-    b.write(i >= 0 ? para[i] : ch);
+  for (final r in s.toLowerCase().runes) {
+    b.writeCharCode(_semAcento[r] ?? r);
   }
-  return b.toString().toLowerCase();
+  return b.toString();
 }
+
+final Map<int, int> _semAcento = () {
+  const de = 'àáâãäåçèéêëìíîïñòóôõöùúûüýÿ';
+  const para = 'aaaaaaceeeeiiiinooooouuuuyy';
+  return {for (var i = 0; i < de.length; i++) de.codeUnitAt(i): para.codeUnitAt(i)};
+}();

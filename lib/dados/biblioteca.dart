@@ -4,6 +4,7 @@ library;
 
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
@@ -11,6 +12,7 @@ import 'package:flutter/foundation.dart';
 import '../importar/importar.dart';
 import '../modelo/canal.dart';
 import '../modelo/conta.dart';
+import '../rede/http.dart' show limiteIsolate;
 
 class Lista {
   Lista({required this.id, required this.ordem, required this.conta, this.ultima,
@@ -69,12 +71,24 @@ class Biblioteca extends ChangeNotifier {
 
   /// Abre (ou cria) a biblioteca em `pasta`. Um ficheiro estragado fica guardado como
   /// biblioteca.json.bak e a app começa vazia.
-  static Future<Biblioteca> abrir(Directory pasta) async {
+  /// Um erro ao *ler* (ficheiro bloqueado por outro processo ou pelo antivírus) é repetido e,
+  /// se continuar, lançado: nunca se começa vazio por cima de uma biblioteca boa.
+  static Future<Biblioteca> abrir(Directory pasta,
+      {@visibleForTesting Future<String> Function(File f) ler = _lerTexto}) async {
     await pasta.create(recursive: true);
     final b = Biblioteca._(pasta, []);
     if (await b._ficheiro.exists()) {
+      String? texto;
+      for (var tentativa = 1; texto == null; tentativa++) {
+        try {
+          texto = await ler(b._ficheiro);
+        } on FileSystemException {
+          if (tentativa >= 5) rethrow;
+          await Future<void>.delayed(Duration(milliseconds: 200 * tentativa));
+        }
+      }
       try {
-        final dados = jsonDecode(await b._ficheiro.readAsString());
+        final dados = jsonDecode(texto);
         for (final j in (dados['listas'] as List)) {
           final l = Lista.deJson(j);
           if (l != null) b._listas.add(l);
@@ -82,10 +96,32 @@ class Biblioteca extends ChangeNotifier {
         final ct = dados['canais_teste'];
         if (ct is List && ct.isNotEmpty) b.canaisTeste = [for (final c in ct) '$c'];
       } catch (_) {
+        // o texto leu-se bem mas não é uma biblioteca (JSON inválido ou outra forma): estragado
         await b._ficheiro.copy('${b._ficheiro.path}.bak');
       }
     }
     return b;
+  }
+
+  static Future<String> _lerTexto(File f) => f.readAsString();
+
+  /// O nome do ficheiro temporário de uma gravação: com o pid e bytes aleatórios, para duas
+  /// gravações (mesmo de dois processos) nunca escreverem no mesmo ficheiro.
+  @visibleForTesting
+  static String nomeTemporario(File f) => '${f.path}.$pid.${_novoId()}.tmp';
+
+  /// Bloqueia a pasta de dados para esta instância da app (fica bloqueada enquanto o
+  /// ficheiro devolvido estiver aberto). null = outra instância já a tem.
+  static Future<RandomAccessFile?> bloquearInstancia(Directory pasta) async {
+    await pasta.create(recursive: true);
+    final raf = await File('${pasta.path}${Platform.pathSeparator}instancia.lock').open(mode: FileMode.append);
+    try {
+      await raf.lock(FileLock.exclusive);
+      return raf;
+    } on FileSystemException {
+      await raf.close();
+      return null;
+    }
   }
 
   Lista? porId(String id) {
@@ -152,15 +188,21 @@ class Biblioteca extends ChangeNotifier {
     final f = _ficheiroCanais(id);
     if (!await f.exists()) return null;
     try {
-      return ConteudoLista.deJson(jsonDecode(await f.readAsString()) as Map<String, dynamic>);
+      // uma lista grande (100 mil canais) lê-se fora da thread da interface
+      if (await f.length() < limiteIsolate) return _lerCanais(await f.readAsString());
+      return await _lerCanaisNumIsolate(f.path);
     } catch (_) {
       return null;
     }
   }
 
+
   Future<void> guardarCanais(String id, ConteudoLista c) async {
     await _pastaCanais.create(recursive: true);
-    final texto = jsonEncode(c.paraJson());
+    // o JSON de uma lista grande faz-se num isolate (só se mandam os mapas, já simples)
+    final texto = c.canais.length < 2000
+        ? jsonEncode(c.paraJson())
+        : await _codificarNumIsolate(c);
     await _emFila(() => _escreverAtomico(_ficheiroCanais(id), texto));
   }
 
@@ -182,10 +224,8 @@ class Biblioteca extends ChangeNotifier {
     return r;
   }
 
-  static int _seq = 0;
-
   static Future<void> _escreverAtomico(File f, String texto) async {
-    final tmp = File('${f.path}.${_seq++}.tmp');
+    final tmp = File(nomeTemporario(f));
     await tmp.writeAsString(texto, flush: true);
     await tmp.rename(f.path);
   }
@@ -194,3 +234,11 @@ class Biblioteca extends ChangeNotifier {
   static String _novoId() =>
       List.generate(6, (_) => _rnd.nextInt(256).toRadixString(16).padLeft(2, '0')).join();
 }
+
+ConteudoLista _lerCanais(String texto) => ConteudoLista.deJson(jsonDecode(texto) as Map<String, dynamic>);
+
+// funções de topo: a closure mandada para o isolate não pode levar o `this` da Biblioteca
+Future<ConteudoLista> _lerCanaisNumIsolate(String caminho) =>
+    Isolate.run(() => _lerCanais(File(caminho).readAsStringSync()));
+
+Future<String> _codificarNumIsolate(ConteudoLista c) => Isolate.run(() => jsonEncode(c.paraJson()));

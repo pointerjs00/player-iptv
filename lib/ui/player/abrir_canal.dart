@@ -9,20 +9,30 @@ import '../../modelo/canal.dart';
 import '../../protocolos/protocolo.dart';
 import 'player_canais.dart';
 
-/// Abre o canal: no Windows numa janela separada; no Android em ecrã inteiro.
-void abrirCanal(BuildContext context, Lista lista, List<Canal> canais, int i) {
+/// Abre o canal: no Windows numa janela separada; no Android em ecrã inteiro. No Android
+/// devolve, ao sair do player, o índice do canal que estava a tocar (pode ter mudado).
+Future<int?> abrirCanal(BuildContext context, Lista lista, List<Canal> canais, int i) async {
   if (Platform.isWindows) {
-    JanelaPlayer.instancia.mostrar(lista, canais, i);
-    return;
+    final avisos = ScaffoldMessenger.maybeOf(context);
+    void avisar(String m) => avisos?.showSnackBar(SnackBar(content: Text(m)));
+    try {
+      await JanelaPlayer.instancia.mostrar(lista, canais, i, aoFalhar: avisar);
+    } on ErroLista catch (e) {
+      avisar(e.mensagem);
+    }
+    return null;
   }
-  Navigator.of(context).push(PageRouteBuilder(
-    pageBuilder: (_, _, _) => _PaginaPlayer(lista: lista, canais: canais, i: i),
+  final atual = ValueNotifier(i);
+  await Navigator.of(context).push(PageRouteBuilder(
+    pageBuilder: (_, _, _) => _PaginaPlayer(lista: lista, canais: canais, i: i, atual: atual),
     transitionDuration: Duration.zero,
   ));
+  return atual.value;
 }
 
 class _PaginaPlayer extends StatefulWidget {
-  const _PaginaPlayer({required this.lista, required this.canais, required this.i});
+  const _PaginaPlayer({required this.lista, required this.canais, required this.i, required this.atual});
+  final ValueNotifier<int> atual;
   final Lista lista;
   final List<Canal> canais;
   final int i;
@@ -58,6 +68,7 @@ class _PaginaPlayerState extends State<_PaginaPlayer> {
         nomeLista: widget.lista.nomeMostrado,
         resolver: (c) => Protocolo.para(conta).fonte(conta, c),
         aoSair: () => Navigator.of(context).maybePop(),
+        aoMudarCanal: (i) => widget.atual.value = i,
       ),
     );
   }

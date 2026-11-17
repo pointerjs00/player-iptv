@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/services.dart';
@@ -10,15 +11,26 @@ import 'package:player_iptv/modelo/conta.dart';
 import 'package:player_iptv/ui/conteudo/tela_conteudo.dart';
 import 'package:player_iptv/ui/inicio/tela_inicio.dart';
 import 'package:player_iptv/ui/player/player_canais.dart';
+import 'package:player_iptv/ui/realce_foco.dart';
 import 'package:player_iptv/ui/tema.dart';
 import 'package:player_iptv/verificar/servico.dart';
 
-Widget _app(Widget w) => MaterialApp(theme: temaApp(), home: w);
+// como a app (main.dart): o tema segue o modo de realce do foco
+Widget _app(Widget w) =>
+    MaterialApp(theme: temaApp(), builder: (_, c) => TemaConformeRealce(child: c!), home: w);
 
 void _tamanho(WidgetTester t, double l, double a) {
   t.view.physicalSize = Size(l, a);
   t.view.devicePixelRatio = 1;
   addTearDown(t.view.reset);
+}
+
+/// Os campos de pesquisa só deixam escrever depois de OK/toque (no comando da TV, receber o
+/// foco não abre o teclado no ecrã).
+Future<void> _escrever(WidgetTester t, Finder campo, String texto) async {
+  await t.tap(campo);
+  await t.pump();
+  await t.enterText(campo, texto);
 }
 
 void main() {
@@ -59,7 +71,7 @@ void main() {
     expect(find.text('INC 002OUTRO'), findsOneWidget);
 
     await t.tap(find.widgetWithText(ChoiceChip, 'Todas'));
-    await t.enterText(find.byType(TextField).first, 'nxt');
+    await _escrever(t, find.byType(TextField).first, 'nxt');
     await t.pump();
     expect(find.text('001NXTBOX 161027'), findsOneWidget);
     expect(find.text('003NOVO'), findsNothing);
@@ -93,7 +105,7 @@ void main() {
       return bib.listas.single;
     }
 
-    Future<void> mostrar(WidgetTester t, Lista l, {void Function(List<Canal>, int)? abrir}) async {
+    Future<void> mostrar(WidgetTester t, Lista l, {FutureOr<int?> Function(List<Canal>, int)? abrir}) async {
       // a cache é lida do disco: IO real
       await t.runAsync(() async {
         await t.pumpWidget(_app(TelaConteudo(biblioteca: bib, lista: l, abrir: abrir)));
@@ -115,20 +127,20 @@ void main() {
       expect(find.text('BBC One'), findsOneWidget);
 
       // a pesquisa ignora acentos e o grupo escolhido
-      await t.enterText(find.byKey(const Key('pesquisa-canais')), 'rtp acores');
-      await t.pump();
+      await _escrever(t, find.byKey(const Key('pesquisa-canais')), 'rtp acores');
+      await t.pump(const Duration(milliseconds: 200));
       expect(find.text('1 canal encontrado'), findsOneWidget);
-      await t.enterText(find.byKey(const Key('pesquisa-canais')), 'cnn');
-      await t.pump();
+      await _escrever(t, find.byKey(const Key('pesquisa-canais')), 'cnn');
+      await t.pump(const Duration(milliseconds: 200));
       expect(find.text('0 canais encontrados'), findsOneWidget);
-      await t.enterText(find.byKey(const Key('pesquisa-canais')), 'rtp');
-      await t.pump();
+      await _escrever(t, find.byKey(const Key('pesquisa-canais')), 'rtp');
+      await t.pump(const Duration(milliseconds: 200));
       expect(find.text('2 canais encontrados'), findsOneWidget);
       expect(find.text('RTP Açores'), findsOneWidget);
 
-      await t.enterText(find.byKey(const Key('pesquisa-canais')), '');
-      await t.enterText(find.byKey(const Key('filtro-grupos')), 'desp');
-      await t.pump();
+      await _escrever(t, find.byKey(const Key('pesquisa-canais')), '');
+      await _escrever(t, find.byKey(const Key('filtro-grupos')), 'desp');
+      await t.pump(const Duration(milliseconds: 200));
       expect(find.widgetWithText(ListTile, 'Portugal'), findsNothing);
       expect(find.widgetWithText(ListTile, 'Desporto'), findsOneWidget);
     });
@@ -137,7 +149,10 @@ void main() {
       _tamanho(t, 1200, 800);
       final l = await preparar(t);
       (List<Canal>, int)? aberto;
-      await mostrar(t, l, abrir: (c, i) => aberto = (c, i));
+      await mostrar(t, l, abrir: (c, i) {
+        aberto = (c, i);
+        return null;
+      });
       await t.tap(find.byTooltip('Pôr nos favoritos').first);
       await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
       await t.pump();
@@ -147,6 +162,48 @@ void main() {
       await t.tap(find.text('PT: SIC'));
       expect(aberto!.$1.map((c) => c.id), ['1', '2']);
       expect(aberto!.$2, 1);
+    });
+
+    testWidgets('I5: a pesquisa espera que se pare de escrever (150 ms) antes de filtrar', (t) async {
+      _tamanho(t, 1200, 800);
+      final l = await preparar(t);
+      await mostrar(t, l);
+      await _escrever(t, find.byKey(const Key('pesquisa-canais')), 'rtp');
+      await t.pump(const Duration(milliseconds: 50));
+      expect(find.text('Portugal · 2 canais'), findsOneWidget);
+      await t.pump(const Duration(milliseconds: 150));
+      expect(find.text('2 canais encontrados'), findsOneWidget);
+    });
+
+    testWidgets('I5: com 100 mil canais, cada rebuild (favorito) não volta a percorrer os nomes', (t) async {
+      _tamanho(t, 1200, 800);
+      final grande = ConteudoLista(['G', 'H'], [
+        for (var i = 0; i < 100000; i++) Canal(id: '$i', nome: 'Canal Ação $i', grupo: i.isEven ? 'G' : 'H', url: 'u$i'),
+      ]);
+      await t.runAsync(() async {
+        await bib.adicionar([Importada(contaDeLinha('http://x.com/l.m3u')!)]);
+        await bib.guardarCanais(bib.listas.single.id, grande);
+      });
+      final l = bib.listas.single;
+      await t.runAsync(() async {
+        await t.pumpWidget(_app(TelaConteudo(biblioteca: bib, lista: l)));
+        await Future<void>.delayed(const Duration(seconds: 3));
+      });
+      await t.pump();
+      await _escrever(t, find.byKey(const Key('pesquisa-canais')), 'acao 9999');
+      await t.pump(const Duration(milliseconds: 200));
+      await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 500)));
+      await t.pump();
+      expect(find.text('11 canais encontrados'), findsOneWidget);
+      final sw = Stopwatch()..start();
+      for (var k = 0; k < 5; k++) {
+        await t.tap(find.byTooltip(k.isEven ? 'Pôr nos favoritos' : 'Tirar dos favoritos').first);
+        await t.pump();
+      }
+      sw.stop();
+      // ignore: avoid_print
+      print('I5 rebuild médio: ${sw.elapsedMilliseconds / 5} ms');
+      expect(sw.elapsedMilliseconds / 5, lessThan(60));
     });
 
     testWidgets('no telemóvel os grupos são chips', (t) async {
@@ -163,7 +220,10 @@ void main() {
       _tamanho(t, 1200, 800);
       final l = await preparar(t);
       (List<Canal>, int)? aberto;
-      await mostrar(t, l, abrir: (c, i) => aberto = (c, i));
+      await mostrar(t, l, abrir: (c, i) {
+        aberto = (c, i);
+        return null;
+      });
       // foco no 1.º canal e OK
       final tile = find.widgetWithText(ListTile, 'PT: RTP 1 HD');
       Focus.of(t.element(find.descendant(of: tile, matching: find.text('PT: RTP 1 HD')))).requestFocus();

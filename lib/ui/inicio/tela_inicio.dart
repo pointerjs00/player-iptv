@@ -4,7 +4,9 @@ import '../../dados/biblioteca.dart';
 import '../../modelo/canal.dart';
 import '../../verificar/servico.dart';
 import '../adicionar.dart';
+import '../campo_tv.dart';
 import '../conteudo/tela_conteudo.dart';
+import '../realce_foco.dart';
 import '../tema.dart';
 import 'cartao_lista.dart';
 
@@ -26,6 +28,7 @@ class TelaInicio extends StatefulWidget {
 
 class _TelaInicioState extends State<TelaInicio> {
   String _q = '';
+  int? _abaFocada; // a aba com o foco do comando (para o realce)
   String? _filtro; // null = todas; 'por_verificar' = sem resultado
 
   static const _filtros = [
@@ -76,7 +79,7 @@ class _TelaInicioState extends State<TelaInicio> {
               child: Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
                 SizedBox(
                   width: 280,
-                  child: TextField(
+                  child: CampoTv(
                     decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Pesquisar listas'),
                     onChanged: (v) => setState(() => _q = v),
                   ),
@@ -144,10 +147,26 @@ class _TelaInicioState extends State<TelaInicio> {
     final temVerificar = widget.separadorVerificar != null;
     final corpo = Scaffold(
       appBar: AppBar(
-        title: const Text('Player IPTV'),
-        bottom: temVerificar
-            ? const TabBar(tabs: [Tab(text: 'Listas'), Tab(text: 'Verificar')])
-            : null,
+        // as abas ficam na mesma linha do "+": CIMA a partir do conteúdo para nas abas (nada
+        // por cima delas) e ESQUERDA/DIREITA trocam Listas, Verificar e o "+"
+        title: temVerificar
+            ? Row(children: [
+                // no telemóvel não há espaço para o nome e as abas
+                if (MediaQuery.sizeOf(context).width >= 600) ...const [Text('Player IPTV'), SizedBox(width: 16)],
+                Expanded(
+                  child: TabBar(
+                    isScrollable: true,
+                    tabAlignment: TabAlignment.start,
+                    dividerColor: Colors.transparent,
+                    onFocusChange: (f, i) => setState(() => _abaFocada = f ? i : (_abaFocada == i ? null : _abaFocada)),
+                    tabs: [
+                      for (final (i, t) in const ['Listas', 'Verificar'].indexed)
+                        Tab(child: MolduraFoco(focado: _abaFocada == i, raio: 8, child: _Aba(t))),
+                    ],
+                  ),
+                ),
+              ])
+            : const Text('Player IPTV'),
         actions: [
           IconButton(
             tooltip: 'Adicionar listas',
@@ -160,4 +179,14 @@ class _TelaInicioState extends State<TelaInicio> {
     );
     return temVerificar ? DefaultTabController(length: 2, child: corpo) : corpo;
   }
+}
+
+/// O nome de uma aba (com espaço para a borda do realce).
+class _Aba extends StatelessWidget {
+  const _Aba(this.texto);
+  final String texto;
+
+  @override
+  Widget build(BuildContext context) =>
+      Padding(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), child: Text(texto));
 }

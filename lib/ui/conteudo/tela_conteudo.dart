@@ -1,10 +1,15 @@
+import 'dart:async';
+import 'dart:isolate';
+
 import 'package:material_ui/material_ui.dart';
 
 import '../../dados/biblioteca.dart';
 import '../../modelo/canal.dart';
 import '../../protocolos/protocolo.dart';
 import '../../rede/http.dart';
+import '../campo_tv.dart';
 import '../player/abrir_canal.dart';
+import '../realce_foco.dart';
 import '../tema.dart';
 
 const grupoFavoritos = '★ Favoritos';
@@ -17,8 +22,8 @@ class TelaConteudo extends StatefulWidget {
   final Biblioteca biblioteca;
   final Lista lista;
 
-  /// Para testes: em vez de abrir o player.
-  final void Function(List<Canal> canais, int i)? abrir;
+  /// Para testes: em vez de abrir o player. Devolve o canal que estava a tocar ao sair.
+  final FutureOr<int?> Function(List<Canal> canais, int i)? abrir;
 
   @override
   State<TelaConteudo> createState() => _TelaConteudoState();
@@ -35,6 +40,20 @@ class _TelaConteudoState extends State<TelaConteudo> {
   String _qGrupos = '';
   Map<String, int> _contagens = const {};
 
+  // feitos uma vez por lista (com 100 mil canais, refazê-los a cada build congela a TV)
+  Map<String, List<Canal>> _porGrupo = const {};
+  List<String>? _nomes; // os nomes sem acentos, pela ordem de `canais`
+  Timer? _atrasoPesquisa;
+  int _versaoFavoritos = 0;
+  String? _chaveVisiveis;
+  List<Canal> _visiveis = const [];
+
+  // ao voltar do player: o canal que estava a tocar recebe o foco
+  final _scrollCanais = ScrollController();
+  final _focoRegresso = FocusNode();
+  Canal? _canalAFocar;
+  static const _alturaCanal = 56.0;
+
   @override
   void initState() {
     super.initState();
@@ -44,6 +63,9 @@ class _TelaConteudoState extends State<TelaConteudo> {
   @override
   void dispose() {
     _cancelamento?.cancelar();
+    _atrasoPesquisa?.cancel();
+    _scrollCanais.dispose();
+    _focoRegresso.dispose();
     super.dispose();
   }
 
@@ -57,12 +79,44 @@ class _TelaConteudoState extends State<TelaConteudo> {
     }
   }
 
-  void _mostrar(ConteudoLista c) => setState(() {
-        _conteudo = c;
-        _contagens = c.contagens();
-        _erro = null;
-        _grupo ??= widget.lista.favoritos.isNotEmpty ? grupoFavoritos : (c.grupos.isEmpty ? null : c.grupos.first);
-      });
+  void _mostrar(ConteudoLista c) {
+    final porGrupo = <String, List<Canal>>{};
+    for (final x in c.canais) {
+      (porGrupo[x.grupo] ??= []).add(x);
+    }
+    setState(() {
+      _conteudo = c;
+      _contagens = {for (final e in porGrupo.entries) e.key: e.value.length};
+      _porGrupo = porGrupo;
+      _nomes = null;
+      _chaveVisiveis = null;
+      _erro = null;
+      _grupo ??= widget.lista.favoritos.isNotEmpty ? grupoFavoritos : (c.grupos.isEmpty ? null : c.grupos.first);
+    });
+    _indexarNomes(c);
+  }
+
+  /// Os nomes sem acentos, para a pesquisa: numa lista grande, fora da thread da interface.
+  Future<void> _indexarNomes(ConteudoLista c) async {
+    final nomes = [for (final x in c.canais) x.nome];
+    final List<String> r;
+    if (nomes.length < 5000) {
+      r = [for (final n in nomes) semAcentos(n)];
+    } else {
+      r = await _normalizarNumIsolate(nomes);
+    }
+    if (!mounted || !identical(c, _conteudo)) return;
+    _nomes = r;
+    if (_qCanais.trim().isNotEmpty) setState(() => _chaveVisiveis = null);
+  }
+
+  void _pesquisar(String v) {
+    _atrasoPesquisa?.cancel();
+    // espera que se pare de escrever: cada tecla não refaz a pesquisa
+    _atrasoPesquisa = Timer(const Duration(milliseconds: 150), () {
+      if (mounted) setState(() => _qCanais = v);
+    });
+  }
 
   Future<void> _carregar() async {
     _cancelamento?.cancelar();
@@ -100,14 +154,48 @@ class _TelaConteudoState extends State<TelaConteudo> {
     final c = _conteudo;
     if (c == null) return const [];
     final q = semAcentos(_qCanais.trim());
-    if (q.isNotEmpty) return [for (final x in c.canais) if (semAcentos(x.nome).contains(q)) x];
-    if (_grupo == grupoFavoritos) return [for (final x in c.canais) if (widget.lista.favoritos.contains(x.id)) x];
-    return _grupo == null ? c.canais : c.doGrupo(_grupo!);
+    final chave = q.isNotEmpty ? 'q:$q' : (_grupo == grupoFavoritos ? 'f:$_versaoFavoritos' : 'g:$_grupo');
+    if (chave == _chaveVisiveis) return _visiveis;
+    _chaveVisiveis = chave;
+    if (q.isNotEmpty) {
+      final nomes = _nomes ??= [for (final x in c.canais) semAcentos(x.nome)];
+      _visiveis = [for (var i = 0; i < c.canais.length; i++) if (nomes[i].contains(q)) c.canais[i]];
+    } else if (_grupo == grupoFavoritos) {
+      _visiveis = [for (final x in c.canais) if (widget.lista.favoritos.contains(x.id)) x];
+    } else {
+      _visiveis = _grupo == null ? c.canais : (_porGrupo[_grupo] ?? const []);
+    }
+    return _visiveis;
   }
 
-  void _abrirCanal(List<Canal> canais, int i) {
-    if (widget.abrir != null) return widget.abrir!(canais, i);
-    abrirCanal(context, widget.lista, canais, i);
+  Future<void> _abrirCanal(List<Canal> canais, int i) async {
+    final volta = widget.abrir != null ? await widget.abrir!(canais, i) : await abrirCanal(context, widget.lista, canais, i);
+    if (volta == null || !mounted || volta < 0 || volta >= canais.length) return;
+    // a lista visível ainda é a mesma que foi para o player? Então foca o canal que tocava.
+    if (!identical(canais, _canaisVisiveis())) return;
+    setState(() => _canalAFocar = canais[volta]);
+    if (_scrollCanais.hasClients) {
+      final p = _scrollCanais.position;
+      _scrollCanais.jumpTo((volta * _alturaCanal - p.viewportDimension / 2 + _alturaCanal / 2)
+          .clamp(0.0, p.maxScrollExtent));
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _focoRegresso.requestFocus();
+    });
+  }
+
+  void _atualizar() {
+    if (_aCarregar) return; // fica ligado (não perde o foco); a meio do carregamento não faz nada
+    _carregar();
+  }
+
+  void _cancelarCarregamento() {
+    _cancelamento?.cancelar();
+    setState(() {
+      _aCarregar = false;
+      // sem canais, o corpo mostra "Tentar de novo" (com o foco), em vez de ficar vazio
+      if (_conteudo == null) _erro = 'carregamento cancelado';
+    });
   }
 
   @override
@@ -118,7 +206,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
         actions: [
           IconButton(
             tooltip: 'Atualizar a lista de canais',
-            onPressed: _aCarregar ? null : _carregar,
+            onPressed: _atualizar,
             icon: const Icon(Icons.refresh),
           ),
         ],
@@ -127,7 +215,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
         if (_aCarregar) _barraCarregar(),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-          child: TextField(
+          child: CampoTv(
             key: const Key('pesquisa-canais'),
             decoration: InputDecoration(
               prefixIcon: const Icon(Icons.search),
@@ -135,7 +223,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
                   ? 'Pesquisar canais'
                   : 'Pesquisar em ${_conteudo!.canais.length} canais de ${_conteudo!.grupos.length} grupos',
             ),
-            onChanged: (v) => setState(() => _qCanais = v),
+            onChanged: _pesquisar,
           ),
         ),
         Expanded(child: _corpo()),
@@ -152,10 +240,9 @@ class _TelaConteudoState extends State<TelaConteudo> {
             const SizedBox(width: 12),
             Expanded(child: Text(_aviso, maxLines: 1, overflow: TextOverflow.ellipsis)),
             TextButton(
-              onPressed: () {
-                _cancelamento?.cancelar();
-                setState(() => _aCarregar = false);
-              },
+              // sem canais para mostrar, é o único sítio útil para o foco
+              autofocus: _conteudo == null,
+              onPressed: _cancelarCarregamento,
               child: const Text('Cancelar'),
             ),
           ]),
@@ -229,7 +316,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
     return Column(children: [
       Padding(
         padding: const EdgeInsets.all(12),
-        child: TextField(
+        child: CampoTv(
           key: const Key('filtro-grupos'),
           decoration: const InputDecoration(prefixIcon: Icon(Icons.filter_list), hintText: 'Filtrar grupos'),
           onChanged: (v) => setState(() => _qGrupos = v),
@@ -242,12 +329,17 @@ class _TelaConteudoState extends State<TelaConteudo> {
             itemBuilder: (_, i) {
               final g = grupos[i];
               final n = g == grupoFavoritos ? widget.lista.favoritos.length : (_contagens[g] ?? 0);
-              return ListTile(
-                dense: true,
-                selected: g == _grupo && _qCanais.trim().isEmpty,
-                title: Text(g, maxLines: 1, overflow: TextOverflow.ellipsis),
-                trailing: Text('$n', style: const TextStyle(color: Cores.texto2)),
-                onTap: () => setState(() => _grupo = g),
+              return RealceFoco(
+                construir: (_, aoMudarFoco) => ListTile(
+                  onFocusChange: aoMudarFoco,
+                  dense: true,
+                  // o foco começa no grupo escolhido
+                  autofocus: g == _grupo,
+                  selected: g == _grupo && _qCanais.trim().isEmpty,
+                  title: Text(g, maxLines: 1, overflow: TextOverflow.ellipsis),
+                  trailing: Text('$n', style: const TextStyle(color: Cores.texto2)),
+                  onTap: () => setState(() => _grupo = g),
+                ),
               );
             },
           ),
@@ -261,27 +353,35 @@ class _TelaConteudoState extends State<TelaConteudo> {
       return const Center(child: Text('Nenhum canal.', style: TextStyle(color: Cores.texto2)));
     }
     final pesquisa = _qCanais.trim().isNotEmpty;
+    // no ecrã estreito (sem coluna de grupos) o foco começa no 1.º canal
+    final focarPrimeiro = MediaQuery.sizeOf(context).width < 720;
     return FocusTraversalGroup(
       child: ListView.builder(
+        controller: _scrollCanais,
         itemCount: canais.length,
-        itemExtent: 56,
+        itemExtent: _alturaCanal,
         itemBuilder: (_, i) {
           final c = canais[i];
           final fav = widget.lista.favoritos.contains(c.id);
-          return ListTile(
-            leading: _Logo(c.logo),
-            title: Text(c.nome, maxLines: 1, overflow: TextOverflow.ellipsis),
-            subtitle: pesquisa ? Text(c.grupo, maxLines: 1, style: const TextStyle(fontSize: 12)) : null,
-            trailing: IconButton(
-              tooltip: fav ? 'Tirar dos favoritos' : 'Pôr nos favoritos',
-              icon: Icon(fav ? Icons.star : Icons.star_border, color: fav ? Cores.aviso : null),
-              onPressed: () {
-                // o conjunto muda logo; a gravação em disco segue em segundo plano
-                widget.biblioteca.alternarFavorito(widget.lista.id, c.id);
-                setState(() {});
-              },
+          return RealceFoco(
+            construir: (_, aoMudarFoco) => ListTile(
+              onFocusChange: aoMudarFoco,
+              focusNode: identical(c, _canalAFocar) ? _focoRegresso : null,
+              autofocus: focarPrimeiro && i == 0,
+              leading: _Logo(c.logo),
+              title: Text(c.nome, maxLines: 1, overflow: TextOverflow.ellipsis),
+              subtitle: pesquisa ? Text(c.grupo, maxLines: 1, style: const TextStyle(fontSize: 12)) : null,
+              trailing: IconButton(
+                tooltip: fav ? 'Tirar dos favoritos' : 'Pôr nos favoritos',
+                icon: Icon(fav ? Icons.star : Icons.star_border, color: fav ? Cores.aviso : null),
+                onPressed: () {
+                  // o conjunto muda logo; a gravação em disco segue em segundo plano
+                  widget.biblioteca.alternarFavorito(widget.lista.id, c.id);
+                  setState(() => _versaoFavoritos++);
+                },
+              ),
+              onTap: () => _abrirCanal(canais, i),
             ),
-            onTap: () => _abrirCanal(canais, i),
           );
         },
       ),
@@ -303,3 +403,7 @@ class _Logo extends StatelessWidget {
     );
   }
 }
+
+// função de topo: a closure mandada para o isolate não pode levar o estado do ecrã
+Future<List<String>> _normalizarNumIsolate(List<String> nomes) =>
+    Isolate.run(() => [for (final n in nomes) semAcentos(n)]);
