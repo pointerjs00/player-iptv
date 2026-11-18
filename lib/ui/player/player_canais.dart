@@ -14,6 +14,7 @@ import 'aviso_buffering.dart';
 import 'cartao_erro.dart';
 import 'compativel_sessao.dart';
 import 'configuracao_mpv.dart';
+import 'continuar_direto.dart';
 import 'controlos_player.dart';
 import 'diagnostico.dart';
 import 'estatisticas.dart';
@@ -106,6 +107,11 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   bool _aAbrir = true;
   int _pedido = 0;
 
+  /// A reabrir o canal porque o buffer acabou (o servidor fechou a ligação): em vez do indicador
+  /// de abertura mostra-se "A carregar…" (ver [ContinuarDireto]).
+  bool _aRetomar = false;
+  final _continuar = ContinuarDireto();
+
   // nunca ecrã preto mudo: o "a abrir" só sai com imagem; sem ela em 20 s, erro
   /// Um stop que não acaba neste tempo é de um mpv que deixou de responder.
   static const _limiteStop = Duration(seconds: 5);
@@ -113,7 +119,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   late final _vigia = VigiaAbertura(
     aoAbrir: () {
       if (!mounted) return;
-      setState(() { _aAbrir = false; _erro = null; });
+      setState(() { _aAbrir = false; _aRetomar = false; _erro = null; });
       _ajustarTaxa(_pedido);
       _vigiarImagem(_pedido);
     },
@@ -121,7 +127,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       if (!mounted) return;
       _player.stop();
       _taxa.repor();
-      setState(() { _erro = motivo; _aAbrir = false; });
+      setState(() { _erro = motivo; _aAbrir = false; _aRetomar = false; });
     },
   );
 
@@ -142,9 +148,10 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       if (mounted && e.isNotEmpty && erroFatalPlayer(e)) {
         _vigia.parar();
         _taxa.repor();
-        setState(() { _erro = mensagemErroPlayer(e); _aAbrir = false; });
+        setState(() { _erro = mensagemErroPlayer(e); _aAbrir = false; _aRetomar = false; });
       }
     }));
+    _subsPlayer.add(_player.stream.completed.listen(_fimDoBuffer));
     _subsPlayer.add(_player.stream.buffering.listen((b) {
       _vigia.buffering(b);
       if (!mounted) return;
@@ -244,11 +251,30 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     _abrir();
   }
 
-  Future<void> _abrir() async {
+  /// O buffer chegou ao fim a meio do canal (o servidor fechou a ligação e o mpv não reconecta):
+  /// pede o canal de novo, com "A carregar…", nunca em ciclo.
+  void _fimDoBuffer(bool fim) {
+    if (!mounted ||
+        !ContinuarDireto.deve(fimDoBuffer: fim, aAbrir: _aAbrir, erro: _erro != null, aTocar: _aTocar)) {
+      return;
+    }
+    if (!_continuar.permitir(DateTime.now())) {
+      _vigia.parar();
+      _taxa.repor();
+      setState(() => _erro = 'o servidor está sempre a cortar a ligação a este canal');
+      return;
+    }
+    _abrir(continuar: true);
+  }
+
+  /// Abre o canal `_i`. `continuar`: o mesmo canal outra vez porque o buffer acabou.
+  Future<void> _abrir({bool continuar = false}) async {
     final pedido = ++_pedido;
     final canal = _canais[_i];
+    if (!continuar) _continuar.reiniciar();
     setState(() {
       _aAbrir = true;
+      _aRetomar = continuar;
       _erro = null;
       _aTocar = true;
       _velocidade = 1;
@@ -256,7 +282,9 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     _relogio.reiniciar();
     // o nome do canal uns segundos (no primeiro canal a barra ainda não foi construída)
     final controlos = _controlos.currentState;
-    if (controlos != null) {
+    if (continuar) {
+      // o mesmo canal: sem o nome por cima
+    } else if (controlos != null) {
       controlos.mostrarInfoCanal();
     } else {
       WidgetsBinding.instance.addPostFrameCallback((_) => _controlos.currentState?.mostrarInfoCanal());
@@ -296,6 +324,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       setState(() {
         _erro = e is ErroLista ? e.mensagem : descreverErro(e);
         _aAbrir = false;
+        _aRetomar = false;
       });
     }
   }
@@ -661,7 +690,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
         comEcraInteiro: widget.alternarEcraInteiro != null,
         child: Stack(fit: StackFit.expand, children: [
           video,
-          if (_aAbrir) const Center(child: CircularProgressIndicator()),
+          if (_aAbrir && !_aRetomar) const Center(child: CircularProgressIndicator()),
           if (_aviso != null)
             Align(
               alignment: Alignment.topCenter,
@@ -676,7 +705,11 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
               ),
             ),
           // a meio do canal, à espera de dados (o arranque tem o indicador de cima)
-          AvisoBuffering(aberto: !_aAbrir && _erro == null, buffering: _buffering, percentagem: _percentagemBuffer),
+          // e ao pedir o canal de novo quando o buffer acabou (o vídeo fica parado)
+          AvisoBuffering(
+              aberto: _erro == null && (!_aAbrir || _aRetomar),
+              buffering: _buffering || _aRetomar,
+              percentagem: _aRetomar ? null : _percentagemBuffer),
           if (_estatisticas)
             Positioned(
               top: 88, // por baixo do botão Voltar da barra
