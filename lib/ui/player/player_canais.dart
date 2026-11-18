@@ -152,14 +152,21 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   /// Num direto cortado: os PTS do que se viu por último (`demuxer-start-time` e `time-pos` no
   /// corte). Depois de reabrir salta-se para lá, para não repetir o que já se viu (quem foi até ao
   /// fim do buffer está à frente do bloco com que o servidor responde a uma ligação nova).
-  ({double? inicio, double? posicao})? _continuarDe;
+  ({double inicio, double posicao})? _continuarDe;
+
+  /// O que a ligação atual deu de imagem nova (sem o ponto do filme nem o salto automático).
+  var _ligacao = LigacaoDireto();
+
+  /// O som enquanto se espera pelo salto depois de reabrir.
+  final _mudo = MudoDuranteSalto();
 
   /// A reabrir com um salto por decidir ([_saltarParaOndeEstava]): sem som e com a última imagem
   /// por cima, para não se ver nem ouvir o bocado repetido.
   bool _saltoPendente = false;
 
-  /// As linhas do ecrã que o vídeo ocupa (para o shader do Android; nas estatísticas).
-  double? _linhasNoEcra;
+  /// As linhas do ecrã que o vídeo ocupa (para o shader do Android; nas estatísticas). Medidas depois
+  /// de cada layout ([MedidorLinhas]): redimensionar reconstrói quem depende delas.
+  final _linhasNoEcra = ValueNotifier<double?>(null);
 
   /// A faixa de áudio escolhida pelo utilizador neste canal (volta a pôr-se depois de reabrir).
   AudioTrack? _audioEscolhido;
@@ -174,6 +181,8 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       final retomou = _aRetomar;
       _abriuEm = DateTime.now();
       _continuar.abriu();
+      _ligacao.abriu(_player.state.position.inMicroseconds / 1e6);
+      _porMudo(_mudo.primeiraImagem(silencio: _sessao.silencio));
       setState(() {
         _aAbrir = false;
         _erro = null;
@@ -349,8 +358,9 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     }
     final abriu = _abriuEm;
     final posCorte = double.tryParse(p['time-pos'] ?? '');
-    // o que a ligação deu de imagem (com os saltos para o fim do buffer), não só a parede
-    final tocou = ContinuarDireto.proveitoDaLigacao(
+    // o que a ligação deu de imagem nova (com os saltos à mão para o fim do buffer; sem o ponto do
+    // filme nem o salto automático depois de reabrir), ou a parede
+    final tocou = _ligacao.proveito(
         parede: abriu == null ? Duration.zero : DateTime.now().difference(abriu), posicaoNoCorte: posCorte);
     if (!_continuar.permitir(tocou: tocou)) {
       _vigia.parar();
@@ -362,7 +372,10 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       return;
     }
     _retomarEm = cortado ? posicao : null;
-    _continuarDe = cortado ? null : (inicio: double.tryParse(p['demuxer-start-time'] ?? ''), posicao: posCorte);
+    // sem os dois PTS não há salto por que esperar (nada de ~6 s sem som)
+    _continuarDe = cortado
+        ? null
+        : ContinuarDireto.pontoDoCorte(inicio: p['demuxer-start-time'] ?? '', posicao: p['time-pos'] ?? '');
     // a última imagem fica no ecrã enquanto se reabre (antes de o stop/open a tirarem)
     await _ultima.guardar(MediaQuery.devicePixelRatioOf(context));
     if (!mounted || pedido != _pedido) {
@@ -412,6 +425,8 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       _continuarDe = null;
     }
     _saltoPendente = false;
+    _mudo.reiniciar();
+    _ligacao = LigacaoDireto();
     _vigiaEntrelacamento?.cancel();
     _entrelacada = null;
     // o aplicarAoAbrir põe deinterlace=no (o d3d11vpp volta a ligar-se com a imagem)
@@ -469,7 +484,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       final de = continuar ? _continuarDe : null;
       if (de != null && mounted && pedido == _pedido) {
         _saltoPendente = true;
-        unawaited(_motor.setProperty('mute', 'yes').catchError((Object _) {}));
+        _porMudo(_mudo.comecar());
         unawaited(_saltarParaOndeEstava(pedido, de).whenComplete(() => _acabouSalto(pedido)));
       }
     } catch (e) {
@@ -544,7 +559,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   /// Depois de reabrir um direto cortado: salta para o que se viu por último (pelos PTS:
   /// [ContinuarDireto.posicaoNoNovo]), para não o repetir. Espera (~6 s) que o cache do stream novo
   /// chegue lá; senão vai até onde dá. Nunca para trás. Leituras fora da UI.
-  Future<void> _saltarParaOndeEstava(int pedido, ({double? inicio, double? posicao}) de) async {
+  Future<void> _saltarParaOndeEstava(int pedido, ({double inicio, double posicao}) de) async {
     for (var i = 0; i < _tentativasRetoma; i++) {
       await Future<void>.delayed(const Duration(milliseconds: 300));
       if (!mounted || pedido != _pedido) return;
@@ -552,13 +567,18 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
         final m = await _motor.getProperties(const ['demuxer-start-time', 'time-pos', 'demuxer-cache-state']);
         if (!mounted || pedido != _pedido) return;
         final pos = double.tryParse(m['time-pos'] ?? '');
-        final alvo = ContinuarDireto.posicaoNoNovo(
-            inicioAntigo: de.inicio, posicaoAntiga: de.posicao, inicioNovo: double.tryParse(m['demuxer-start-time'] ?? ''));
-        if (pos == null || alvo == null) continue; // o stream novo ainda não começou
+        final inicioNovo = double.tryParse(m['demuxer-start-time'] ?? '');
+        if (pos == null || inicioNovo == null) continue; // o stream novo ainda não começou
+        final alvo = ContinuarDireto.posicaoNoNovo(inicioAntigo: de.inicio, posicaoAntiga: de.posicao, inicioNovo: inicioNovo);
+        if (alvo == null) return;
         final fim = fimProcuravel(m['demuxer-cache-state'] ?? '', pos);
         final aFrente = fim == null ? null : fim - pos - SaltosDireto.margemFim.inMicroseconds / 1e6;
         final r = ContinuarDireto.saltoAoRetomar(
-            alvo: alvo, posicao: pos, aFrente: aFrente, ultimaTentativa: i == _tentativasRetoma - 1);
+            alvo: alvo,
+            posicao: pos,
+            aFrente: aFrente,
+            // o servidor já fechou: o cache não cresce mais, decide-se já (nada de esperar ~6 s)
+            ultimaTentativa: i == _tentativasRetoma - 1 || cacheNoFim(m['demuxer-cache-state'] ?? ''));
         if (r.esperar) continue;
         final salto = r.salto;
         final texto = salto == null ? 'sem salto' : 'salta ${salto.toStringAsFixed(1)} s';
@@ -566,6 +586,8 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
         if (salto != null) {
           await _motor.command(['seek', salto.toStringAsFixed(3), 'relative']);
           _relogio.avancou(Duration(microseconds: (salto * 1e6).round()));
+          // o salto não é imagem nova desta ligação (o proveito conta a partir daqui)
+          _ligacao.saltou(pos + salto);
         }
         return;
       } catch (e) {
@@ -582,13 +604,18 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   void _acabouSalto(int pedido) {
     if (!mounted || pedido != _pedido || !_saltoPendente) return;
     _saltoPendente = false;
-    unawaited(_motor.setProperty('mute', _sessao.silencio ? 'yes' : 'no').catchError((Object _) {}));
+    // o som só volta com imagem à vista (senão volta na primeira imagem, no aoAbrir)
+    _porMudo(_mudo.acabouSalto(silencio: _sessao.silencio, temImagem: !_aAbrir));
     if (!_aAbrir && _aRetomar) {
       setState(() {
         _aRetomar = false;
         _ultima.largar();
       });
     }
+  }
+
+  void _porMudo(String? valor) {
+    if (valor != null) unawaited(_motor.setProperty('mute', valor).catchError((Object _) {}));
   }
 
   /// Os Hz do ecrã segundo o Android (o mpv não os sabe com `mediacodec_embed`).
@@ -737,7 +764,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   }
 
   String get _textoDesentrelacamento {
-    final l = _player.state.height ?? 0, n = _linhasNoEcra;
+    final l = _player.state.height ?? 0, n = _linhasNoEcra.value;
     if (_meio == MeioDesentrelacamento.shaderFlutter && n != null && n > 0 && !shaderCabe(linhasVideo: l, linhasNoEcra: n)) {
       return 'desligado (imagem reduzida no ecrã)';
     }
@@ -850,7 +877,8 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       ),
       DefinicaoInterruptor('Silêncio', valor: _sessao.silencio, aoMudar: (v) {
         setState(() => _sessao.silencio = v);
-        _motor.setProperty('mute', v ? 'yes' : 'no');
+        // durante a espera do salto o som fica desligado; o silêncio aplica-se no fim dela
+        _porMudo(_mudo.mudouSilencio(v));
       }),
       DefinicaoPassos(
         'Atraso do áudio',
@@ -922,6 +950,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     _esconderAviso?.cancel();
     _vigiaEntrelacamento?.cancel();
     _ultima.largar();
+    _linhasNoEcra.dispose();
     _vigia.parar();
     _taxa.fechar();
     for (final s in _subsPlayer) {
@@ -946,29 +975,30 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       // Android: o shader de desentrelaçamento por cima da textura (o tamanho lê-se na hora: chega
       // depois de o Video ser construído)
       envolverTextura: _meio == MeioDesentrelacamento.shaderFlutter
-          ? (t) => TexturaDesentrelacada(
+          ? (t) => ValueListenableBuilder<double?>(
+              valueListenable: _linhasNoEcra,
+              builder: (_, _, _) => TexturaDesentrelacada(
               programa: _programaFlutter,
               colunas: _player.state.width ?? 0,
               linhas: _player.state.height ?? 0,
-              linhasNoEcra: _linhasNoEcra,
-              child: t)
+              linhasNoEcra: _linhasNoEcra.value,
+              child: t))
           : null,
     );
     if (ajuste.escala != 1) video = ClipRect(child: Transform.scale(scale: ajuste.escala, child: video));
     if (_android) {
       // as linhas do ecrã que o vídeo ocupa: reduzido, o shader não serve (os campos já vêm misturados)
-      final interior = video;
-      video = LayoutBuilder(builder: (context, c) {
-        _linhasNoEcra = linhasMostradas(
-            caixa: c.biggest,
-            dpr: MediaQuery.devicePixelRatioOf(context),
-            colunas: _player.state.width ?? 0,
-            linhas: _player.state.height ?? 0,
-            fit: ajuste.fit,
-            aspecto: ajuste.aspecto,
-            escala: ajuste.escala);
-        return interior;
-      });
+      video = MedidorLinhas(
+          linhas: _linhasNoEcra,
+          medir: (caixa, dpr) => linhasMostradas(
+              caixa: caixa,
+              dpr: dpr,
+              colunas: _player.state.width ?? 0,
+              linhas: _player.state.height ?? 0,
+              fit: ajuste.fit,
+              aspecto: ajuste.aspecto,
+              escala: ajuste.escala),
+          child: video);
     }
     video = _ultima.envolver(video);
 
@@ -1029,8 +1059,8 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
                   if (_android) ('Modo de descodificação', _rotuloModoAtual),
                   ('Saída · hwdec pedido', '${_config.vo} · ${_config.hwdec}'),
                   ('Desentrelaçamento', _textoDesentrelacamento),
-                  if (_android && (_linhasNoEcra ?? 0) > 0)
-                    ('Linhas no ecrã · do vídeo', '${_linhasNoEcra!.round()} · ${_player.state.height ?? 0}'),
+                  if (_android && (_linhasNoEcra.value ?? 0) > 0)
+                    ('Linhas no ecrã · do vídeo', '${_linhasNoEcra.value!.round()} · ${_player.state.height ?? 0}'),
                   if (_hzPedidos != null) ('Taxa do ecrã pedida', '${_hzPedidos!.toStringAsFixed(2)} Hz'),
                 ],
               ),

@@ -213,21 +213,82 @@ void main() {
     });
   });
 
-  group('o proveito de uma ligação conta o que ela trouxe, não só o tempo de parede', () {
-    test('quem salta para o fim do buffer não gasta as reaberturas "sem proveito"', () {
-      // 2 s de parede, mas a ligação deu 29 s de imagem (o utilizador saltou para o fim)
-      final p = ContinuarDireto.proveitoDaLigacao(parede: const Duration(seconds: 2), posicaoNoCorte: 29.5);
-      expect(p, const Duration(milliseconds: 29500));
+  group('ronda 2: o proveito conta só o que cada ligação deu de novo', () {
+    test('um VOD que o servidor corta ao fim de ~1 s (reaberto em start: posição) chega ao cartão', () {
+      // a ligação abre no ponto do filme (time-pos 600) e corta a 601: deu 1 s, não 601
       final c = ContinuarDireto();
-      for (var i = 0; i < 10; i++) {
-        expect(c.permitir(tocou: p), isTrue);
+      var desistiu = false;
+      var pos = 600.0;
+      for (var i = 0; i < 6 && !desistiu; i++) {
+        final l = LigacaoDireto()..abriu(pos);
+        pos += 1;
+        desistiu = !c.permitir(tocou: l.proveito(parede: const Duration(milliseconds: 1200), posicaoNoCorte: pos));
       }
+      expect(desistiu, isTrue);
     });
-    test('sem posição: a parede', () {
-      expect(ContinuarDireto.proveitoDaLigacao(parede: const Duration(seconds: 3), posicaoNoCorte: null),
+
+    test('salto automático depois de reabrir + corte 2 s depois, várias vezes seguidas: chega ao cartão', () {
+      final c = ContinuarDireto();
+      var reaberturas = 0;
+      var desistiu = false;
+      while (!desistiu && reaberturas < 10) {
+        reaberturas++;
+        final l = LigacaoDireto()..abriu(0.3);
+        l.saltou(20.3); // o salto para onde se estava (não é imagem nova)
+        desistiu = !c.permitir(tocou: l.proveito(parede: const Duration(milliseconds: 2800), posicaoNoCorte: 22.3));
+      }
+      expect(desistiu, isTrue);
+      expect(reaberturas, ContinuarDireto.maximoSemProveito + 1);
+    });
+
+    test('quem salta à mão para o fim do buffer: a ligação deu tudo o que se andou', () {
+      final l = LigacaoDireto()..abriu(0.2);
+      expect(l.proveito(parede: const Duration(seconds: 2), posicaoNoCorte: 29.5), const Duration(milliseconds: 29300));
+    });
+
+    test('sem posições: a parede', () {
+      expect(LigacaoDireto().proveito(parede: const Duration(seconds: 3), posicaoNoCorte: null), const Duration(seconds: 3));
+      expect((LigacaoDireto()..abriu(5)).proveito(parede: const Duration(seconds: 3), posicaoNoCorte: 4),
           const Duration(seconds: 3));
-      expect(ContinuarDireto.proveitoDaLigacao(parede: const Duration(seconds: 7), posicaoNoCorte: 2),
-          const Duration(seconds: 7));
+    });
+  });
+
+  group('ronda 2: o ponto do corte só com os dois PTS', () {
+    test('sem demuxer-start-time ou sem time-pos: não se espera pelo salto', () {
+      expect(ContinuarDireto.pontoDoCorte(inicio: '', posicao: '29.5'), isNull);
+      expect(ContinuarDireto.pontoDoCorte(inicio: '10420.003', posicao: ''), isNull);
+      expect(ContinuarDireto.pontoDoCorte(inicio: 'nan', posicao: '1'), isNull);
+      expect(ContinuarDireto.pontoDoCorte(inicio: '10420.003', posicao: '29.497'), (inicio: 10420.003, posicao: 29.497));
+    });
+  });
+
+  group('ronda 2: o som durante o salto depois de reabrir', () {
+    test('sem som enquanto se espera; volta só depois do salto e da primeira imagem', () {
+      final m = MudoDuranteSalto();
+      expect(m.comecar(), 'yes');
+      expect(m.acabouSalto(silencio: false, temImagem: false), isNull, reason: 'ainda sem imagem: o som não volta');
+      expect(m.primeiraImagem(silencio: false), 'no');
+      expect(m.primeiraImagem(silencio: false), isNull, reason: 'uma vez só');
+    });
+
+    test('com imagem já à vista, o som volta com o salto (conforme o silêncio da sessão)', () {
+      final m = MudoDuranteSalto()..comecar();
+      expect(m.primeiraImagem(silencio: false), isNull, reason: 'o salto ainda não acabou');
+      expect(m.acabouSalto(silencio: true, temImagem: true), 'yes');
+    });
+
+    test('mudar o silêncio durante a espera não liga o som escondido', () {
+      final m = MudoDuranteSalto()..comecar();
+      expect(m.mudouSilencio(false), isNull);
+      expect(m.acabouSalto(silencio: false, temImagem: true), 'no');
+      expect(m.mudouSilencio(true), 'yes', reason: 'fora da espera vai logo para o mpv');
+    });
+
+    test('canal novo: esquece', () {
+      final m = MudoDuranteSalto()..comecar();
+      m.reiniciar();
+      expect(m.mudouSilencio(false), 'no');
+      expect(m.primeiraImagem(silencio: false), isNull);
     });
   });
 }

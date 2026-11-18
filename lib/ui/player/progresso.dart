@@ -168,6 +168,16 @@ double? fimProcuravel(String cacheState, double pos) {
   return null;
 }
 
+/// O servidor já fechou a ligação (`eof` no `demuxer-cache-state`): o cache não vai crescer mais.
+bool cacheNoFim(String cacheState) {
+  try {
+    final e = jsonDecode(cacheState);
+    return e is Map && e['eof'] == true;
+  } on FormatException {
+    return false;
+  }
+}
+
 /// "00:00:02", "01:01:01" (as frações cortam-se); desconhecido: "--:--:--".
 String textoTempo(Duration? d) {
   if (d == null) return '--:--:--';

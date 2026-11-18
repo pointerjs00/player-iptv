@@ -190,4 +190,11 @@ void main() {
       expect(direto.decorridoEm(90), const Duration(seconds: 30));
     });
   });
+
+  test('o servidor já fechou (eof no demuxer-cache-state): não vem mais nada para o cache', () {
+    expect(cacheNoFim('{"eof":true,"seekable-ranges":[]}'), isTrue);
+    expect(cacheNoFim('{"eof":false}'), isFalse);
+    expect(cacheNoFim(''), isFalse);
+    expect(cacheNoFim('lixo'), isFalse);
+  });
 }

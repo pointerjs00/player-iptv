@@ -88,14 +88,12 @@ class ContinuarDireto {
     return (salto: aFrente != null && aFrente >= 1 ? aFrente : null, esperar: false);
   }
 
-  /// O proveito de uma ligação: o que ela trouxe de imagem (a posição no corte, com os saltos para
-  /// a frente) ou o tempo de parede, o maior. Quem salta para o fim do buffer chega ao corte mais
-  /// cedo, mas a ligação valeu a pena.
-  static Duration proveitoDaLigacao({required Duration parede, required double? posicaoNoCorte}) {
-    final p = posicaoNoCorte == null || !posicaoNoCorte.isFinite || posicaoNoCorte < 0
-        ? Duration.zero
-        : Duration(microseconds: (posicaoNoCorte * 1e6).round());
-    return p > parede ? p : parede;
+  /// O ponto do corte num direto: os dois PTS ([posicaoNoNovo]), ou null se falta algum (então não
+  /// há salto por que esperar).
+  static ({double inicio, double posicao})? pontoDoCorte({required String inicio, required String posicao}) {
+    final i = double.tryParse(inicio.trim()), p = double.tryParse(posicao.trim());
+    if (i == null || p == null || !i.isFinite || !p.isFinite) return null;
+    return (inicio: i, posicao: p);
   }
 
   /// Regista uma reabertura depois de `tocou` de imagem desde a anterior; falso = desistir.
@@ -141,5 +139,65 @@ class ContinuarDireto {
     _pedidoAgendado = null;
     _agendada?.cancel();
     _agendada = null;
+  }
+}
+
+/// O que uma ligação deu de imagem nova, para o [ContinuarDireto.permitir]: a posição no corte menos
+/// a posição de onde a ligação começou (num VOD reaberto em `start:`, o ponto do filme; depois do
+/// salto automático para onde se estava, o ponto depois do salto), ou o tempo de parede, o maior.
+/// Assim os saltos à mão para o fim do buffer contam, mas o salto automático e o ponto do filme não.
+class LigacaoDireto {
+  double? _inicio;
+
+  /// A primeira imagem chegou com o `time-pos` em `posicao` (só a primeira vez conta).
+  void abriu(double? posicao) => _inicio ??= posicao;
+
+  /// O salto automático depois de reabrir deixou o `time-pos` em `posicao`.
+  void saltou(double posicao) => _inicio = posicao;
+
+  Duration proveito({required Duration parede, required double? posicaoNoCorte}) {
+    final c = posicaoNoCorte;
+    final deu = c == null || !c.isFinite ? 0.0 : c - (_inicio ?? 0);
+    final d = deu <= 0 ? Duration.zero : Duration(microseconds: (deu * 1e6).round());
+    return d > parede ? d : parede;
+  }
+}
+
+/// O som enquanto se espera pelo salto depois de reabrir: desligado (o bocado repetido não se ouve),
+/// e só volta com o salto feito e a primeira imagem à vista. Mudar o silêncio da sessão durante a
+/// espera não o liga. Cada método devolve o que pôr em `mute` no mpv agora (null: nada).
+class MudoDuranteSalto {
+  bool _aEsconder = false;
+  bool _esperaImagem = false;
+
+  String comecar() {
+    _aEsconder = true;
+    _esperaImagem = false;
+    return 'yes';
+  }
+
+  String? acabouSalto({required bool silencio, required bool temImagem}) {
+    if (!_aEsconder) return null;
+    if (!temImagem) {
+      _esperaImagem = true;
+      return null;
+    }
+    _aEsconder = false;
+    return silencio ? 'yes' : 'no';
+  }
+
+  String? primeiraImagem({required bool silencio}) {
+    if (!_aEsconder || !_esperaImagem) return null;
+    _aEsconder = false;
+    _esperaImagem = false;
+    return silencio ? 'yes' : 'no';
+  }
+
+  /// O utilizador mudou o silêncio: vai para o mpv, menos enquanto se esconde o som.
+  String? mudouSilencio(bool silencio) => _aEsconder ? null : (silencio ? 'yes' : 'no');
+
+  void reiniciar() {
+    _aEsconder = false;
+    _esperaImagem = false;
   }
 }
