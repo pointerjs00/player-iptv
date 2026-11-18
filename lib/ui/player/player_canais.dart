@@ -119,6 +119,9 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   /// Quando o canal deu imagem pela última vez (para saber se uma reabertura valeu a pena).
   DateTime? _abriuEm;
 
+  /// Num ficheiro com fim cortado pelo servidor, onde reabrir (null num direto: vai para o direto).
+  Duration? _retomarEm;
+
   /// A faixa de áudio escolhida pelo utilizador neste canal (volta a pôr-se depois de reabrir).
   AudioTrack? _audioEscolhido;
 
@@ -272,8 +275,13 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     if (!fim || !mounted) return;
     final pedido = _pedido;
     // um ficheiro com fim (filme de uma lista M3U) acaba: só os diretos se pedem de novo
-    final direto = ContinuarDireto.eDireto(await _motor.getProperty('seekable'));
+    final eDireto = ContinuarDireto.eDireto(await _motor.getProperty('seekable'));
     if (!mounted || pedido != _pedido) return;
+    // ou um ficheiro que o servidor cortou muito antes do fim (fica-se parado na última imagem):
+    // reabre-se no ponto onde parou
+    final posicao = _player.state.position;
+    final cortado = !eDireto && ContinuarDireto.cortadoAntesDoFim(posicao: posicao, duracao: _player.state.duration);
+    final direto = eDireto || cortado;
     if (!ContinuarDireto.deve(
         fimDoBuffer: fim, aAbrir: _aAbrir, erro: _erro != null, aTocar: _aTocar, direto: direto)) {
       return;
@@ -286,18 +294,20 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       setState(() => _erro = 'o servidor está sempre a cortar a ligação a este canal');
       return;
     }
+    _retomarEm = cortado ? posicao : null;
     _abrir(continuar: true);
   }
 
   /// Uma reabertura (depois de um corte) falhou: tenta outra vez daqui a um pouco, com "A
   /// carregar…" à vista. Falso = já se tentou o suficiente (o cartão de erro aparece).
+  /// Uma espera por tentativa: os vários erros da mesma falha (o `tcp` e o "Failed to open")
+  /// não gastam as esperas seguintes.
   bool _tentarContinuarDepois(int pedido) {
-    final espera = _continuar.esperaAntesDeTentar();
-    if (espera == null) return false;
-    _vigia.parar();
-    Future<void>.delayed(espera, () {
+    final r = _continuar.falhou(pedido, () {
       if (mounted && pedido == _pedido && _aRetomar) _abrir(continuar: true);
     });
+    if (r == Retoma.desistir) return false;
+    if (r == Retoma.agendada) _vigia.parar();
     return true;
   }
 
@@ -324,6 +334,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       _continuar.reiniciar();
       _audioEscolhido = null;
       _abriuEm = null;
+      _retomarEm = null;
     }
     setState(() {
       _aAbrir = true;
@@ -369,7 +380,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       _larguraVista = 0;
       await VezDoAudio.instancia.esperar();
       if (!mounted || pedido != _pedido) return;
-      await _player.open(Media(f.url, httpHeaders: f.headers));
+      await _player.open(Media(f.url, httpHeaders: f.headers, start: continuar ? _retomarEm : null));
       // o modo de ecrã pede-se já (o fps sabe-se logo que o canal abre): a TV pisca a mudar de
       // modo enquanto o indicador de abertura ainda está à vista, não por cima da imagem
       if (mounted && pedido == _pedido) unawaited(_ajustarTaxa(pedido));
@@ -709,6 +720,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _continuar.reiniciar(); // nenhuma reabertura marcada depois de sair
     _esconderAviso?.cancel();
     _vigia.parar();
     _taxa.fechar();

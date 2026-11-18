@@ -72,4 +72,65 @@ void main() {
       expect(c.esperaAntesDeTentar(), const Duration(seconds: 1));
     });
   });
+
+  group('ContinuarDireto.falhou (o que o player chama em cada erro durante "A carregar…")', () {
+    testWidgets('dois erros da mesma tentativa (tcp + "Failed to open") gastam uma só espera; '
+        'a sequência 1 -> 2 -> 4 s acontece toda antes do cartão', (t) async {
+      final c = ContinuarDireto();
+      var pedido = 1;
+      final reaberturas = <Duration>[];
+      var decorrido = Duration.zero;
+      void reabrir() {
+        reaberturas.add(decorrido);
+        pedido++;
+      }
+
+      Future<void> avancar(Duration d) async {
+        decorrido += d;
+        await t.pump(d);
+      }
+
+      for (final espera in ContinuarDireto.esperas) {
+        // a ligação falha: o media_kit manda a linha do tcp e a do "Failed to open"
+        expect(c.falhou(pedido, reabrir), Retoma.agendada);
+        expect(c.falhou(pedido, reabrir), Retoma.jaAgendada, reason: 'o 2.º erro do mesmo pedido não gasta outra');
+        await avancar(espera - const Duration(milliseconds: 1));
+        expect(reaberturas.length, ContinuarDireto.esperas.indexOf(espera), reason: 'ainda à espera');
+        await avancar(const Duration(milliseconds: 1));
+      }
+      expect(reaberturas, const [Duration(seconds: 1), Duration(seconds: 3), Duration(seconds: 7)]);
+      expect(c.falhou(pedido, reabrir), Retoma.desistir, reason: 'só agora o cartão (~7 s depois do corte)');
+      expect(c.falhou(pedido, reabrir), Retoma.desistir);
+    });
+
+    testWidgets('voltar a haver imagem esquece as falhas; canal novo cancela a reabertura marcada', (t) async {
+      final c = ContinuarDireto();
+      var reabriu = 0;
+      expect(c.falhou(1, () => reabriu++), Retoma.agendada);
+      c.reiniciar(); // o utilizador mudou de canal
+      await t.pump(const Duration(seconds: 2));
+      expect(reabriu, 0);
+      expect(c.falhou(2, () => reabriu++), Retoma.agendada);
+      await t.pump(const Duration(seconds: 1));
+      expect(reabriu, 1);
+      c.abriu();
+      expect(c.falhou(3, () => reabriu++), Retoma.agendada);
+      await t.pump(const Duration(seconds: 1));
+      expect(reabriu, 2, reason: 'depois de abrir, a próxima falha volta a esperar 1 s');
+    });
+  });
+
+  group('ContinuarDireto.cortadoAntesDoFim (um ficheiro com fim que parou cedo)', () {
+    test('parou mais de 10 s antes da duração: foi um corte', () {
+      expect(ContinuarDireto.cortadoAntesDoFim(posicao: const Duration(minutes: 20), duracao: const Duration(minutes: 90)),
+          isTrue);
+    });
+    test('chegou (quase) ao fim: acabou', () {
+      expect(ContinuarDireto.cortadoAntesDoFim(posicao: const Duration(seconds: 5395), duracao: const Duration(minutes: 90)),
+          isFalse);
+    });
+    test('duração desconhecida: não se sabe, não é corte', () {
+      expect(ContinuarDireto.cortadoAntesDoFim(posicao: const Duration(minutes: 1), duracao: Duration.zero), isFalse);
+    });
+  });
 }
