@@ -1,5 +1,5 @@
-/// As ações de um cartão do Player (pressão longa, clique direito, OK mantido ou "⋮"):
-/// Abrir, Atualizar canais, Editar, Copiar link, Enviar para o Gestor e Eliminar.
+/// As ações de um cartão do Player (pressão longa, clique direito ou OK mantido):
+/// Abrir, Atualizar canais, Editar, Copiar link, Enviar para o Gestor e Remover lista.
 library;
 
 import 'package:flutter/services.dart';
@@ -17,7 +17,7 @@ enum AcaoLista {
   editar('Editar', Icons.edit_outlined),
   copiarLink('Copiar link', Icons.link_rounded),
   enviarGestor('Enviar para o Gestor', Icons.send_outlined),
-  eliminar('Eliminar', Icons.delete_outline_rounded);
+  eliminar('Remover lista', Icons.delete_outline_rounded);
 
   const AcaoLista(this.rotulo, this.icone);
   final String rotulo;
@@ -115,17 +115,17 @@ Future<AcaoLista?> mostrarMenuLista(BuildContext context, Lista lista, {bool com
       },
     );
 
-/// "Eliminar": pede confirmação (a lista sai com os favoritos e a cache de canais).
+/// "Remover lista": pede confirmação (a lista sai com os favoritos e a cache de canais).
 Future<bool> confirmarEliminar(BuildContext context, Lista l) async =>
     await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         icon: const Icon(Icons.delete_outline_rounded, color: Tokens.mau, size: 32),
-        title: const Text('Eliminar lista?'),
+        title: const Text('Remover lista?'),
         content: Text('A lista ${l.nomeMostrado} sai do Player (os favoritos e a cache de canais também).'),
         actions: [
           TextButton(autofocus: true, onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Eliminar')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Remover')),
         ],
       ),
     ) ==

@@ -357,12 +357,24 @@ class ControlosPlayerState extends State<ControlosPlayer> {
         top: Tokens.e16,
         left: Tokens.e16,
         right: Tokens.e16,
-        child: Row(children: [
-          _Vidro(child: botao(Icons.arrow_back, 'Voltar', AcaoPlayer.sair)),
-          const Spacer(),
-          if (widget.comEcraInteiro)
-            _Vidro(child: botao(Icons.fullscreen, 'Ecrã inteiro (F11)', AcaoPlayer.ecraInteiro)),
-        ]),
+        // BAIXO nos botões de cima volta sempre ao play/pausa (a procura direcional escolhia o
+        // botão da barra mais perto na horizontal, ou um botão do vídeo pelo meio)
+        child: Focus(
+          canRequestFocus: false,
+          skipTraversal: true,
+          includeSemantics: false,
+          onKeyEvent: (_, e) {
+            if (e is KeyUpEvent || e.logicalKey != LogicalKeyboardKey.arrowDown) return KeyEventResult.ignored;
+            _play.requestFocus();
+            return KeyEventResult.handled;
+          },
+          child: Row(children: [
+            _Vidro(child: botao(Icons.arrow_back, 'Voltar', AcaoPlayer.sair)),
+            const Spacer(),
+            if (widget.comEcraInteiro)
+              _Vidro(child: botao(Icons.fullscreen, 'Ecrã inteiro (F11)', AcaoPlayer.ecraInteiro)),
+          ]),
+        ),
       ),
       Align(
         alignment: Alignment.bottomCenter,

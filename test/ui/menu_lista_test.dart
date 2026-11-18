@@ -41,7 +41,7 @@ String _focado() {
   return textos.join(' | ');
 }
 
-const _acoes = ['Abrir', 'Atualizar canais', 'Editar', 'Copiar link', 'Enviar para o Gestor', 'Eliminar'];
+const _acoes = ['Abrir', 'Atualizar canais', 'Editar', 'Copiar link', 'Enviar para o Gestor', 'Remover lista'];
 
 void main() {
   late Directory pasta;
@@ -99,7 +99,7 @@ void main() {
     expect(find.widgetWithText(ListTile, 'Abrir'), findsNothing);
   }
 
-  testWidgets('toque longo, clique direito e "Mais opções" abrem o mesmo menu (sem "Verificar de novo")',
+  testWidgets('toque longo e clique direito abrem o mesmo menu (sem "Verificar de novo" nem "Mais opções")',
       (t) async {
     await montar(t);
     await t.longPress(find.text('001SRV 161027'));
@@ -110,10 +110,7 @@ void main() {
     await t.pumpAndSettle();
     verMenu();
     await fecharMenu(t);
-    await t.tap(find.byTooltip('Mais opções').first);
-    await t.pumpAndSettle();
-    verMenu();
-    await fecharMenu(t);
+    expect(find.byTooltip('Mais opções'), findsNothing);
   });
 
   testWidgets('OK mantido no cartão abre o menu; setas escolhem; Voltar devolve o foco ao cartão', (t) async {
@@ -248,25 +245,25 @@ void main() {
     expect(area.listas.single.ultima!.estado, 'funciona');
   });
 
-  testWidgets('Eliminar pede confirmação; Cancelar não apaga; Eliminar apaga e o foco fica num cartão',
+  testWidgets('Remover lista pede confirmação; Cancelar não apaga; Remover apaga e o foco fica num cartão',
       (t) async {
     FocusManager.instance.highlightStrategy = FocusHighlightStrategy.alwaysTraditional;
     addTearDown(() => FocusManager.instance.highlightStrategy = FocusHighlightStrategy.automatic);
     await montar(t);
     await t.longPress(find.text('001SRV 161027'));
     await t.pumpAndSettle();
-    await t.tap(find.widgetWithText(ListTile, 'Eliminar'));
+    await t.tap(find.widgetWithText(ListTile, 'Remover lista'));
     await t.pumpAndSettle();
-    expect(find.text('Eliminar lista?'), findsOneWidget);
+    expect(find.text('Remover lista?'), findsOneWidget);
     await t.tap(find.text('Cancelar'));
     await t.pumpAndSettle();
     expect(bib.listas, hasLength(2));
 
     await t.longPress(find.text('001SRV 161027'));
     await t.pumpAndSettle();
-    await t.tap(find.widgetWithText(ListTile, 'Eliminar'));
+    await t.tap(find.widgetWithText(ListTile, 'Remover lista'));
     await t.pumpAndSettle();
-    await t.tap(find.widgetWithText(FilledButton, 'Eliminar'));
+    await t.tap(find.widgetWithText(FilledButton, 'Remover'));
     await t.pump();
     await esperar(t, () => find.text('001SRV 161027').evaluate().isEmpty);
     await t.pumpAndSettle();

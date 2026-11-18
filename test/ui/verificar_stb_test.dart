@@ -115,7 +115,7 @@ void main() {
         supportedLocales: const [Locale('pt', 'PT')],
         localizationsDelegates: GlobalMaterialLocalizations.delegates,
         home: Scaffold(body: TelaVerificar(biblioteca: bib, area: area, servico: ServicoVerificacao(bib, colecao: area)))));
-    await t.tap(find.byType(OutlinedButton).first);
+    await t.tap(find.widgetWithIcon(OutlinedButton, Icons.calendar_today).first);
     await t.pumpAndSettle();
     expect(find.text('Cancelar'), findsOneWidget);
   });
