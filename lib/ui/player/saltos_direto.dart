@@ -20,20 +20,28 @@ class SaltosDireto {
   Future<double?> _posicao() async => double.tryParse(await mpv.getProperty('time-pos'));
 
   /// Quanto se pode avançar daqui: até ao fim do intervalo do cache em que se está (o mais recente
-  /// recebido; `seekable-ranges` do `demuxer-cache-state`). Um seek exatamente até lá fica no
-  /// cache (visto no mpv da app); o `demuxer-cache-duration` passava esse fim até ~1,6 s ("Cached
-  /// seek not possible"), por isso só serve sem o cache-state, com [margemSemCacheState].
-  /// null: não se sabe.
+  /// recebido; `seekable-ranges` do `demuxer-cache-state`), menos [margemFim]. Um seek exatamente
+  /// até esse fim fica no cache (visto no libmpv da app), mas o seek é relativo à posição de quando
+  /// chega ao mpv: a imagem anda entre a leitura e o seek, e no emulador o 3.º → seguido passou o
+  /// fim ("Cannot seek in this stream"). O `demuxer-cache-duration` passava o fim até ~1,6 s
+  /// ("Cached seek not possible"), por isso só serve sem o cache-state, com
+  /// [margemSemCacheState]. null: não se sabe.
   Future<double?> _aFrente() async {
     final pos = await _posicao();
     if (pos == null) return null;
     final fim = fimProcuravel(await mpv.getProperty('demuxer-cache-state'), pos);
-    if (fim != null) return fim - pos < 0 ? 0 : fim - pos;
+    if (fim != null) {
+      final m = fim - pos - margemFim.inMicroseconds / 1e6;
+      return m < 0 ? 0 : m;
+    }
     final d = double.tryParse(await mpv.getProperty('demuxer-cache-duration'));
     if (d == null) return null;
     final m = d - margemSemCacheState.inMicroseconds / 1e6;
     return m < 0 ? 0 : m;
   }
+
+  /// Quanto fica antes do fim do buffer (o que a imagem anda entre ler o fim e o seek chegar ao mpv).
+  static const margemFim = Duration(milliseconds: 500);
 
   /// Sem o `demuxer-cache-state`, quanto fica antes do fim pela duração à frente.
   static const margemSemCacheState = Duration(seconds: 1);
