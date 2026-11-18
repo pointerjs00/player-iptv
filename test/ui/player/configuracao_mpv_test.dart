@@ -49,10 +49,12 @@ void main() {
   });
 
   group('Windows', () {
-    test('libmpv (a única saída que desenha dentro da janela Flutter) + auto-safe + display-resample', () {
+    test('libmpv (a única saída que desenha dentro da janela Flutter) + d3d11va-copy + display-resample', () {
       final c = ConfiguracaoMpv.para(PlataformaVideo.windows);
       expect(c.vo, 'libmpv');
-      expect(c.hwdec, 'auto-safe');
+      // as imagens d3d11va na GPU (d3d11-egl do libmpv completo) mostravam às vezes a superfície do
+      // descodificador inteira: barra verde em baixo (HEVC 720p: 768 linhas). Com a cópia não.
+      expect(c.hwdec, 'd3d11va-copy');
       expect(c.propriedades, containsPair('video-sync', 'display-resample'));
       expect(c.propriedades.containsKey('ao'), isFalse);
       expect(c.reamostraRitmo, isTrue);

@@ -60,7 +60,7 @@ void main() {
     });
 
     test('Windows: a descodificação por hardware muda-se sem recriar o player (hwdec)', () async {
-      expect((await _abrir(Preferencias.omissao())).chamadas, contains('hwdec=auto-safe'));
+      expect((await _abrir(Preferencias.omissao())).chamadas, contains('hwdec=d3d11va-copy'));
     });
 
     test('Android: o hwdec vem da configuração do player (não se mexe ao abrir)', () async {

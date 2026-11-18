@@ -107,7 +107,14 @@ class ConfiguracaoMpv {
         // a única saída que fica dentro da janela é a "libmpv" (com "gpu" o mpv abria uma
         // janela sua por cima). A libmpv usa o mesmo renderizador que a "gpu".
         vo = 'libmpv';
-        hwdec = hardware ? 'auto-safe' : 'no';
+        // d3d11va com cópia para a memória (como o libmpv mínimo do media_kit fazia). Com o libmpv
+        // completo o auto-safe passou a d3d11va sem cópia (as imagens ficam na GPU e chegam ao
+        // ANGLE pelo d3d11-egl): em algumas aberturas o mpv mostrava a superfície do descodificador
+        // inteira, com as linhas de alinhamento por escrever, e a imagem ficava encolhida com uma
+        // barra verde em baixo (HEVC 1280x720 numa superfície de 768 linhas: 6 % da altura). Com a
+        // cópia o mpv carrega só a imagem. O desentrelaçamento passa a ser o bwdif (vf), por campo
+        // como o d3d11vpp (medido: 1080i25 -> 50 imagens/s).
+        hwdec = hardware ? 'd3d11va-copy' : 'no';
     }
     final reamostra = p != PlataformaVideo.android;
     return ConfiguracaoMpv._(
