@@ -73,9 +73,9 @@ class _TelaInicioState extends State<TelaInicio> {
   /// fecha-se pelo botão de fechar, como sempre.
   bool get _confirmarSaida => defaultTargetPlatform == TargetPlatform.android;
 
-  /// O foco de cada aba (o InkWell da aba): CIMA a partir do topo do separador vai para a aba
-  /// ativa (e não para a que estiver mais perto na horizontal).
-  final _nosAbas = <int, FocusNode>{};
+  /// O nome de cada aba: o foco da aba (o InkWell à volta) acha-se a partir dele. CIMA a partir
+  /// do topo do separador vai para a aba ativa (e não para a que estiver mais perto na horizontal).
+  final _chavesAbas = [GlobalKey(debugLabel: 'Aba Player'), GlobalKey(debugLabel: 'Aba Gestor')];
 
   /// CIMA no conteúdo sem nada por cima: a aba do separador à vista.
   KeyEventResult _teclaCorpo(BuildContext context, KeyEvent e) {
@@ -88,7 +88,8 @@ class _TelaInicioState extends State<TelaInicio> {
     final haAcima = _focoCorpo.traversalDescendants
         .any((n) => n != atual && n.canRequestFocus && !n.skipTraversal && n.context != null && n.rect.center.dy < r.top);
     if (haAcima) return KeyEventResult.ignored;
-    final aba = _nosAbas[DefaultTabController.of(context).index];
+    final ctxAba = _chavesAbas[DefaultTabController.of(context).index].currentContext;
+    final aba = ctxAba == null ? null : Focus.maybeOf(ctxAba);
     if (aba == null || aba.context == null) return KeyEventResult.ignored;
     aba.requestFocus();
     return KeyEventResult.handled;
@@ -389,13 +390,7 @@ class _TelaInicioState extends State<TelaInicio> {
                           setState(() => _abaFocada = f ? i : (_abaFocada == i ? null : _abaFocada)),
                       tabs: [
                         for (final (i, t) in const ['Player', 'Gestor'].indexed)
-                          Tab(
-                            child: Builder(builder: (c) {
-                              final no = Focus.maybeOf(c);
-                              if (no != null) _nosAbas[i] = no;
-                              return MolduraFoco(focado: _abaFocada == i, raio: 8, child: _Aba(t));
-                            }),
-                          ),
+                          Tab(child: MolduraFoco(focado: _abaFocada == i, raio: 8, child: _Aba(t, key: _chavesAbas[i]))),
                       ],
                     ),
                   ),
@@ -447,7 +442,7 @@ class _Marca extends StatelessWidget {
 
 /// O nome de uma aba (com espaço para a borda do realce).
 class _Aba extends StatelessWidget {
-  const _Aba(this.texto);
+  const _Aba(this.texto, {super.key});
   final String texto;
 
   @override
