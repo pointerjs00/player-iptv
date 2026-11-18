@@ -33,7 +33,8 @@ class _Ensaio {
 
 final _chave = GlobalKey<ControlosPlayerState>();
 
-Future<_Ensaio> _montar(WidgetTester t, {bool ecraInteiro = false, bool semAnimacoes = false, bool tv = false}) async {
+Future<_Ensaio> _montar(WidgetTester t,
+    {bool ecraInteiro = false, bool semAnimacoes = false, bool tv = false, bool botaoNoVideo = true}) async {
   EcraTv.nativo = tv;
   addTearDown(() => EcraTv.nativo = false);
   FocusManager.instance.highlightStrategy = FocusHighlightStrategy.alwaysTraditional;
@@ -80,12 +81,15 @@ Future<_Ensaio> _montar(WidgetTester t, {bool ecraInteiro = false, bool semAnima
                 DefinicaoInterruptor('Silêncio', valor: e.silencio, aoMudar: (v) => setState(() => e.silencio = v)),
                 DefinicaoEscolha('Formato de imagem', opcoes: const ['Ajustar', 'Zoom'], atual: 0, aoMudar: (_) {}),
               ],
-              child: Center(
-                child: TextButton(
-                  onPressed: () => e.acoes.add(AcaoPlayer.tentarDeNovo),
-                  child: const Text('Tentar de novo'),
-                ),
-              ),
+              // (o vídeo; com botaoNoVideo, um botão no meio como o do cartão de erro)
+              child: botaoNoVideo
+                  ? Center(
+                      child: TextButton(
+                        onPressed: () => e.acoes.add(AcaoPlayer.tentarDeNovo),
+                        child: const Text('Tentar de novo'),
+                      ),
+                    )
+                  : const SizedBox.expand(),
             );
           },
         ),
@@ -376,23 +380,26 @@ void main() {
     });
   }
 
-  testWidgets('auditoria D-pad: CIMA da barra chega ao "Voltar" e BAIXO regressa; no painel CIMA/BAIXO não '
-      'saem do painel', (t) async {
-    final e = await _montar(t, tv: true);
+  testWidgets('auditoria D-pad: CIMA da barra chega ao "Voltar" e BAIXO regressa ao play/pausa; no painel '
+      'CIMA/BAIXO não saem do painel', (t) async {
+    // só o vídeo por baixo (o cartão de erro é de outra frente)
+    final e = await _montar(t, tv: true, botaoNoVideo: false);
     await _tecla(t, LogicalKeyboardKey.select);
     expect(_focado(), 'Pausa');
-    // (no ensaio o vídeo tem um botão no meio, como o cartão de erro: CIMA pode passar por ele)
-    for (var i = 0; i < 3 && _focado() != 'Voltar'; i++) {
-      await _tecla(t, LogicalKeyboardKey.arrowUp);
-    }
-    expect(_focado(), 'Voltar', reason: 'o botão de cima alcança-se com CIMA');
+    await _tecla(t, LogicalKeyboardKey.arrowUp);
+    expect(_focado(), 'Voltar', reason: 'CIMA no play/pausa vai ao "Voltar" de cima');
     await _tecla(t, LogicalKeyboardKey.arrowUp);
     expect(_focado(), 'Voltar', reason: 'acima não há nada');
-    for (var i = 0; i < 3 && (_focado() == null || _focado() == 'Voltar'); i++) {
-      await _tecla(t, LogicalKeyboardKey.arrowDown);
-    }
-    expect(_focado(), isNotNull, reason: 'BAIXO regressa à barra');
-    expect(_barraVisivel(t), isTrue);
+    await _tecla(t, LogicalKeyboardKey.arrowDown);
+    expect(_focado(), 'Pausa', reason: 'BAIXO no "Voltar" regressa ao play/pausa');
+    // de outro botão da barra, CIMA vai ao "Voltar" e BAIXO regressa ao play/pausa
+    await _tecla(t, LogicalKeyboardKey.arrowLeft);
+    await _tecla(t, LogicalKeyboardKey.arrowLeft);
+    expect(_focado(), 'Canal anterior');
+    await _tecla(t, LogicalKeyboardKey.arrowUp);
+    expect(_focado(), 'Voltar');
+    await _tecla(t, LogicalKeyboardKey.arrowDown);
+    expect(_focado(), 'Pausa');
     for (var i = 0; i < 10 && _focado() != 'Definições'; i++) {
       await _tecla(t, LogicalKeyboardKey.arrowRight);
     }
