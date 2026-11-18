@@ -48,11 +48,16 @@ String? hwdecEmTempoReal(PlataformaVideo p, {required bool hardware}) =>
 /// silêncio, atraso do áudio e descodificação por hardware (Windows). Nunca lança (uma
 /// propriedade a menos não impede o canal de abrir).
 ///
-/// O desentrelaçamento decide-se depois, com a imagem (`desentrelacamento.dart`). Aqui o Windows só
-/// fica com `deinterlace=no` (o filtro ou o d3d11vpp ligam-se depois) e, com `limparFiltro`, sem o
-/// `vf` do canal anterior. No Android direto não se toca no mpv para isto.
+/// O desentrelaçamento decide-se depois, com a imagem (`controlo_desentrelacamento.dart`). Aqui o
+/// Windows só fica com `deinterlace=no` (o filtro ou o d3d11vpp ligam-se depois) e, com
+/// `limparFiltro`, sem o `vf` do canal anterior. `manterDesentrelacamento`: o mesmo canal reaberto
+/// depois de um corte do servidor, no mesmo mpv: fica tudo como estava (nem um segundo com riscas
+/// nem os filtros refeitos).
 Future<void> aplicarAoAbrir(MotorMpv mpv, Preferencias p, SessaoPlayer s,
-    {required PlataformaVideo plataforma, required ModoDescodificacao modo, bool limparFiltro = false}) async {
+    {required PlataformaVideo plataforma,
+    required ModoDescodificacao modo,
+    bool limparFiltro = false,
+    bool manterDesentrelacamento = false}) async {
   try {
     await mpv.setRate(1.0);
     await mpv.setVolume(p.volume);
@@ -60,6 +65,7 @@ Future<void> aplicarAoAbrir(MotorMpv mpv, Preferencias p, SessaoPlayer s,
     await mpv.setProperty('audio-delay', _segundos(s.atrasoAudio));
     final hwdec = hwdecEmTempoReal(plataforma, hardware: p.hardware);
     if (hwdec != null) await mpv.setProperty('hwdec', hwdec);
+    if (manterDesentrelacamento) return;
     if (plataforma != PlataformaVideo.android) await mpv.setProperty('deinterlace', 'no');
     // o bwdif do canal anterior: o canal novo decide-se de novo com a imagem dele
     if (limparFiltro) await mpv.setProperty('vf', '');

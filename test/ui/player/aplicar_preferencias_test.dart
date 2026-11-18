@@ -111,6 +111,17 @@ void main() {
       expect(mpv.chamadas.where((c) => c.startsWith('vf')), isEmpty);
     });
 
+    test('o mesmo canal reaberto num corte: o desentrelaçamento fica como estava (sem deinterlace=no nem vf=)',
+        () async {
+      for (final p in [PlataformaVideo.windows, PlataformaVideo.android]) {
+        final mpv = MpvFalso();
+        await aplicarAoAbrir(mpv, Preferencias.omissao(), SessaoPlayer(),
+            plataforma: p, modo: ModoDescodificacao.compativel, manterDesentrelacamento: true);
+        expect(mpv.chamadas.where((c) => c.startsWith('vf') || c.startsWith('deinterlace')), isEmpty, reason: '$p');
+        expect(mpv.chamadas, contains('mute=no'), reason: 'o resto aplica-se na mesma');
+      }
+    });
+
     test('um mpv que falha nunca impede o canal de abrir', () async {
       await aplicarAoAbrir(_MpvQueFalha(), Preferencias.omissao(), SessaoPlayer(),
           plataforma: PlataformaVideo.windows, modo: ModoDescodificacao.direto);
