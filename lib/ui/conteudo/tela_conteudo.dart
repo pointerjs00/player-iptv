@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:isolate';
 
+import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../dados/biblioteca.dart';
@@ -729,45 +730,105 @@ class _TelaConteudoState extends State<TelaConteudo> {
     final pesquisa = _qCanais.trim().isNotEmpty;
     // no ecrã estreito (sem coluna de grupos) o foco começa no 1.º canal
     final focarPrimeiro = MediaQuery.sizeOf(context).width < 720;
-    return FocusTraversalGroup(
-      // virtualizada (itemExtent fixo) e sem animar cada canal: listas de 100 mil
-      child: ListView.builder(
-        key: const Key('lista-canais'),
-        controller: _scrollCanais,
-        padding: const EdgeInsets.all(_margemLista),
-        itemCount: canais.length,
-        itemExtent: _alturaCanal(tv),
-        itemBuilder: (_, i) {
-          final c = canais[i];
-          final fav = widget.lista.favoritos.contains(c.id);
-          return RealceFoco(
-            construir: (_, aoMudarFoco) => ListTile(
-              onFocusChange: aoMudarFoco,
-              focusNode: identical(c, _canalAFocar) ? _focoRegresso : null,
-              autofocus: focarPrimeiro && i == 0,
-              leading: _Logo(c.logo, tamanho: tv ? 56 : 40),
-              minLeadingWidth: tv ? 56 : 40,
-              title: Text(c.nome, maxLines: 1, overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: tv ? 19 : 15, fontWeight: FontWeight.w500)),
-              subtitle: pesquisa
-                  ? Text(c.grupo, maxLines: 1, style: TextStyle(fontSize: tv ? 14 : 12, color: Tokens.texto2))
-                  : null,
-              trailing: IconButton(
-                tooltip: fav ? 'Tirar dos favoritos' : 'Pôr nos favoritos',
-                icon: Icon(fav ? Icons.star_rounded : Icons.star_outline_rounded,
-                    color: fav ? Tokens.aviso : Tokens.texto2, size: tv ? 28 : 24),
-                onPressed: () {
-                  // o conjunto muda logo; a gravação em disco segue em segundo plano
-                  widget.biblioteca.alternarFavorito(widget.lista.id, c.id);
-                  setState(() => _versaoFavoritos++);
-                },
+    return Focus(
+      canRequestFocus: false,
+      skipTraversal: true,
+      includeSemantics: false,
+      onKeyEvent: _teclaCanais,
+      child: FocusTraversalGroup(
+        // virtualizada (itemExtent fixo) e sem animar cada canal: listas de 100 mil
+        child: ListView.builder(
+          key: const Key('lista-canais'),
+          controller: _scrollCanais,
+          padding: const EdgeInsets.all(_margemLista),
+          itemCount: canais.length,
+          itemExtent: _alturaCanal(tv),
+          itemBuilder: (_, i) {
+            final c = canais[i];
+            final fav = widget.lista.favoritos.contains(c.id);
+            void abrir() => _abrirCanal(canais, i);
+            void favorito() => _alternarFavorito(canais, i);
+            // a linha é a única paragem do foco: a estrela só mostra o estado e responde ao
+            // toque/rato; no comando, OK mantido (ou toque longo, ou clique direito) põe/tira
+            return OkMantido(
+              aoCarregar: abrir,
+              aoManter: favorito,
+              child: GestureDetector(
+                onSecondaryTap: favorito,
+                child: RealceFoco(
+                  construir: (_, aoMudarFoco) => ListTile(
+                    onFocusChange: aoMudarFoco,
+                    focusNode: identical(c, _canalAFocar) ? _focoRegresso : null,
+                    autofocus: focarPrimeiro && i == 0,
+                    leading: _Logo(c.logo, tamanho: tv ? 56 : 40),
+                    minLeadingWidth: tv ? 56 : 40,
+                    title: Text(c.nome, maxLines: 1, overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: tv ? 19 : 15, fontWeight: FontWeight.w500)),
+                    subtitle: pesquisa
+                        ? Text(c.grupo, maxLines: 1, style: TextStyle(fontSize: tv ? 14 : 12, color: Tokens.texto2))
+                        : null,
+                    trailing: ExcludeFocus(
+                      child: IconButton(
+                        tooltip: fav ? 'Tirar dos favoritos' : 'Pôr nos favoritos',
+                        icon: Icon(fav ? Icons.star_rounded : Icons.star_outline_rounded,
+                            color: fav ? Tokens.aviso : Tokens.texto2, size: tv ? 28 : 24),
+                        onPressed: favorito,
+                      ),
+                    ),
+                    onTap: abrir,
+                    onLongPress: favorito,
+                  ),
+                ),
               ),
-              onTap: () => _abrirCanal(canais, i),
-            ),
-          );
-        },
+            );
+          },
+        ),
       ),
     );
+  }
+
+  /// Nos canais: DIREITA fica no canal (à direita não há nada; a procura direcional saltava
+  /// para o "Atualizar" lá em cima) e ESQUERDA volta ao grupo escolhido (não ao filtro dos
+  /// grupos, que pode estar mais perto do canal de cima).
+  KeyEventResult _teclaCanais(FocusNode _, KeyEvent e) {
+    if (e is KeyUpEvent) return KeyEventResult.ignored;
+    if (e.logicalKey == LogicalKeyboardKey.arrowRight) return KeyEventResult.handled;
+    if (e.logicalKey == LogicalKeyboardKey.arrowLeft) {
+      final g = _focosGrupos[_grupo];
+      if (g != null && g.context != null && g.canRequestFocus) {
+        g.requestFocus();
+        return KeyEventResult.handled;
+      }
+    }
+    return KeyEventResult.ignored;
+  }
+
+  /// Põe/tira o canal `i` dos favoritos (o conjunto muda logo; a gravação em disco segue em
+  /// segundo plano). No grupo dos favoritos o canal sai da lista: o foco passa ao que fica no
+  /// lugar dele (ou, sem favoritos, ao primeiro grupo).
+  void _alternarFavorito(List<Canal> canais, int i) {
+    final c = canais[i];
+    final agora = !widget.lista.favoritos.contains(c.id);
+    widget.biblioteca.alternarFavorito(widget.lista.id, c.id);
+    final noGrupoFav = _grupo == grupoFavoritos && _qCanais.trim().isEmpty;
+    setState(() => _versaoFavoritos++);
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(agora ? '${c.nome} está nos favoritos' : '${c.nome} saiu dos favoritos')));
+    if (!noGrupoFav || agora) return;
+    final restantes = _canaisVisiveis();
+    if (restantes.isEmpty) {
+      setState(() => _grupo = _primeiroGrupo(_conteudo!));
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final g = _grupo;
+        if (mounted && g != null) _focosGrupos[g]?.requestFocus();
+      });
+      return;
+    }
+    setState(() => _canalAFocar = restantes[i.clamp(0, restantes.length - 1)]);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _focoRegresso.requestFocus();
+    });
   }
 }
 

@@ -5,8 +5,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:player_iptv/dados/biblioteca.dart';
 import 'package:player_iptv/importar/importar.dart';
+import 'package:player_iptv/modelo/canal.dart';
 import 'package:player_iptv/modelo/conta.dart';
-import 'package:player_iptv/ui/design/ecra.dart';
+import 'package:player_iptv/ui/conteudo/tela_conteudo.dart';
+import 'package:player_iptv/ui/design/design.dart';
 import 'package:player_iptv/ui/inicio/tela_inicio.dart';
 import 'package:player_iptv/ui/realce_foco.dart';
 import 'package:player_iptv/ui/tema.dart';
@@ -125,5 +127,106 @@ void main() {
       expect(find.text('Remover lista?'), findsOneWidget);
       expect(_focado(), 'Cancelar', reason: 'o foco começa no lado seguro');
     });
+  });
+
+  group('Conteúdo: a lista de canais de um grupo', () {
+    Future<Lista> mostrar(WidgetTester t, {int n = 20}) async {
+      await t.runAsync(() async {
+        await bib.adicionar([Importada(contaDeLinha('http://x.com/l.m3u')!)]);
+        await bib.guardarCanais(bib.listas.single.id, ConteudoLista(['G', 'H'], [
+          for (var i = 0; i < n; i++) Canal(id: '$i', nome: 'Canal $i', grupo: 'G', url: 'u$i'),
+          const Canal(id: 'h', nome: 'Outro', grupo: 'H', url: 'uh'),
+        ]));
+        await t.pumpWidget(_app(TelaConteudo(biblioteca: bib, lista: bib.listas.single, abrir: (_, _) => null)));
+        await Future<void>.delayed(const Duration(milliseconds: 300));
+      });
+      await t.pump();
+      return bib.listas.single;
+    }
+
+    /// O foco está numa linha de canal (o ListTile), não na estrela nem noutro botão.
+    String? canalFocado() {
+      final ctx = FocusManager.instance.primaryFocus?.context;
+      if (ctx == null) return null;
+      final w = ctx.widget;
+      final tile = w is ListTile ? w : ctx.findAncestorWidgetOfExactType<ListTile>();
+      if (ctx.findAncestorWidgetOfExactType<IconButton>() != null) return null;
+      final titulo = tile?.title;
+      return titulo is Text ? titulo.data : null;
+    }
+
+    testWidgets('CIMA/BAIXO vão sempre de canal em canal (a estrela não é uma paragem)', (t) async {
+      _tv(t);
+      await mostrar(t);
+      expect(_focado(), contains('G'));
+      await _tecla(t, LogicalKeyboardKey.arrowRight);
+      expect(canalFocado(), 'Canal 0', reason: 'foco em: ${_focado()}');
+      for (var i = 1; i < 20; i++) {
+        await _tecla(t, LogicalKeyboardKey.arrowDown);
+        expect(canalFocado(), 'Canal $i', reason: 'BAIXO n.º $i; foco em: ${_focado()}');
+      }
+      for (var i = 18; i >= 0; i--) {
+        await _tecla(t, LogicalKeyboardKey.arrowUp);
+        expect(canalFocado(), 'Canal $i', reason: 'CIMA; foco em: ${_focado()}');
+      }
+      // DIREITA num canal também não vai para a estrela
+      await _tecla(t, LogicalKeyboardKey.arrowRight);
+      expect(canalFocado(), 'Canal 0', reason: 'DIREITA; foco em: ${_focado()}');
+      // ESQUERDA volta aos grupos
+      await _tecla(t, LogicalKeyboardKey.arrowLeft);
+      expect(_focado(), contains('G'));
+    });
+
+    testWidgets('OK mantido num canal põe/tira dos favoritos (com aviso) e o foco fica no canal', (t) async {
+      _tv(t);
+      final l = await mostrar(t, n: 3);
+      await _tecla(t, LogicalKeyboardKey.arrowRight);
+      expect(canalFocado(), 'Canal 0');
+      Future<void> okMantido() async {
+        await t.sendKeyDownEvent(LogicalKeyboardKey.select);
+        await t.pump(duracaoOkMantido + const Duration(milliseconds: 50));
+        await t.sendKeyRepeatEvent(LogicalKeyboardKey.select);
+        await t.sendKeyUpEvent(LogicalKeyboardKey.select);
+        await t.pump();
+      }
+
+      await okMantido();
+      expect(l.favoritos, {'0'});
+      expect(find.text('Canal 0 está nos favoritos'), findsOneWidget);
+      expect(canalFocado(), 'Canal 0', reason: 'o foco fica no canal');
+      await okMantido();
+      expect(l.favoritos, isEmpty);
+      expect(find.text('Canal 0 saiu dos favoritos'), findsOneWidget);
+    });
+  });
+
+  testWidgets('Conteúdo: no grupo dos favoritos, tirar um canal passa o foco ao seguinte', (t) async {
+    _tv(t);
+    await t.runAsync(() async {
+      await bib.adicionar([Importada(contaDeLinha('http://x.com/l.m3u')!)]);
+      final id = bib.listas.single.id;
+      await bib.guardarCanais(id, ConteudoLista(['G'], const [
+        Canal(id: '1', nome: 'Um', grupo: 'G', url: 'u1'),
+        Canal(id: '2', nome: 'Dois', grupo: 'G', url: 'u2'),
+        Canal(id: '3', nome: 'Tres', grupo: 'G', url: 'u3'),
+      ]));
+      for (final c in ['1', '2', '3']) {
+        await bib.alternarFavorito(id, c);
+      }
+      await t.pumpWidget(_app(TelaConteudo(biblioteca: bib, lista: bib.listas.single, abrir: (_, _) => null)));
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+    });
+    await t.pump();
+    expect(_focado(), contains(grupoFavoritos));
+    await _tecla(t, LogicalKeyboardKey.arrowRight);
+    await _tecla(t, LogicalKeyboardKey.arrowDown);
+    expect(_focado(), contains('Dois'));
+    await t.sendKeyDownEvent(LogicalKeyboardKey.select);
+    await t.pump(duracaoOkMantido + const Duration(milliseconds: 50));
+    await t.sendKeyUpEvent(LogicalKeyboardKey.select);
+    await t.pump();
+    await t.pump();
+    expect(bib.listas.single.favoritos, {'1', '3'});
+    expect(_focado(), contains('Tres'), reason: 'o foco não se perde');
   });
 }

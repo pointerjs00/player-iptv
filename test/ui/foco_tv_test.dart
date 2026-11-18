@@ -613,7 +613,8 @@ void main() {
           contains('Verificar todas'), contains('Enviar para o Player'), contains('Remover do Gestor')));
     });
 
-    testWidgets('T1: Conteúdo — grupos, canais, estrela, pesquisa e Atualizar com realce', (t) async {
+    testWidgets('T1: Conteúdo — grupos, canais, pesquisa e Atualizar com realce (a estrela não é paragem)',
+        (t) async {
       _realceTv();
       _tamanho(t, 1200, 800);
       final l = await comCache(t, pequena);
@@ -621,8 +622,8 @@ void main() {
       final vistos = <String>{};
       final falhas = await _semRealceAoPercorrer(t, 14, vistos: vistos);
       expect(falhas, isEmpty);
-      expect(vistos, containsAll(['Portugal | 2', 'PT: RTP 1 HD', 'Pôr nos favoritos', 'Atualizar a lista de canais']),
-          reason: '$vistos');
+      expect(vistos, containsAll(['Portugal | 2', 'PT: RTP 1 HD', 'Atualizar a lista de canais']), reason: '$vistos');
+      expect(vistos, isNot(contains('Pôr nos favoritos')));
     });
 
     testWidgets('T1: Conteúdo estreito — os grupos em chips têm realce', (t) async {
