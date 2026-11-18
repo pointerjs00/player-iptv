@@ -232,7 +232,11 @@ class LigacaoPrincipal {
   int _proximo = 0;
 
   /// Recebe {"lista", "canais", "i"} sempre que a principal manda um canal.
-  final aberturas = StreamController<(String, List<Canal>, int)>.broadcast();
+  /// Não é broadcast: a principal manda a 1.ª abertura logo a seguir ao "ola", antes de a
+  /// janela do player ter lido as preferências e montado a app; um broadcast deitava-a fora
+  /// (ninguém a escutar ainda) e a janela ficava para sempre na rodinha. Assim fica guardada
+  /// até a app a escutar (só a app a escuta, uma vez).
+  final aberturas = StreamController<(String, List<Canal>, int)>();
 
   /// `aoFechar`: a principal fechou (por omissão a janela do player fecha-se também).
   static Future<LigacaoPrincipal> ligar(int porta, {String token = '', void Function()? aoFechar}) async {

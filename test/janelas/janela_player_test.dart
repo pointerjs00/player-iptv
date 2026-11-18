@@ -100,6 +100,23 @@ void main() {
     expect((await l.fonte(0)).url, _link);
   });
 
+  test('a 1.ª abertura não se perde se a janela do player só a escuta depois (preferências, runApp)', () async {
+    final l = await LigacaoPrincipal.ligar(porta!, token: token!, aoFechar: () {});
+    // a principal manda a abertura logo a seguir ao "ola"; a janela do player ainda está a
+    // ler as preferências e a montar a app quando ela chega
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    final aberturas = StreamIterator(l.aberturas.stream);
+    expect(await aberturas.moveNext().timeout(const Duration(seconds: 5), onTimeout: () => false), isTrue,
+        reason: 'sem a abertura a janela do player fica para sempre na rodinha');
+    expect(aberturas.current.$2.single.nome, 'RTP 1');
+
+    // as seguintes (trocar de canal na principal) continuam a chegar
+    await janela.mostrar(_lista, const [Canal(id: '2', nome: 'SIC', grupo: 'g')], 0);
+    expect(await aberturas.moveNext().timeout(const Duration(seconds: 5), onTimeout: () => false), isTrue);
+    expect(aberturas.current.$2.single.nome, 'SIC');
+    await aberturas.cancel();
+  });
+
   group('_aLancar', () {
     test('se lançar o player falha, o erro chega a quem pediu e o próximo pedido tenta de novo', () async {
       var vezes = 0;

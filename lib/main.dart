@@ -32,6 +32,8 @@ Future<void> main(List<String> args) async {
     final ligacao =
         await LigacaoPrincipal.ligar(porta, token: Platform.environment[JanelaPlayer.variavelToken] ?? '');
     // as mesmas preferências do player que no Android (o ficheiro da janela principal)
+    // a abertura que a principal manda já pode chegar durante estas esperas: a ligação
+    // guarda-a até a app a escutar (ver LigacaoPrincipal.aberturas)
     Preferencias.atual = await Preferencias.abrir(await getApplicationSupportDirectory());
     runApp(AppJanelaPlayer(ligacao: ligacao));
     return;
@@ -178,6 +180,7 @@ class _AppJanelaPlayerState extends State<AppJanelaPlayer> {
 
   @override
   Widget build(BuildContext context) => MaterialApp(
+        title: 'Player IPTV',
         debugShowCheckedModeBanner: false,
         theme: temaApp(),
         builder: (_, w) => TemaConformeRealce(child: w!),
