@@ -15,6 +15,7 @@ import '../../verificar/servico.dart';
 import '../campo_tv.dart';
 import '../design/design.dart';
 import '../player/configuracao_mpv.dart';
+import '../player/desentrelacamento.dart' show textoDefinicaoDesentrelacamento;
 
 /// Escolhe um ficheiro e devolve o seu texto (null = cancelado).
 typedef EscolherCopia = Future<String?> Function();
@@ -218,8 +219,8 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
                   ]),
                   _seccao('Preferências do player', 'Valem para todos os canais.', Icons.tune_rounded, [
                     _interruptor('Desentrelaçamento', _android
-                            ? 'Limpa as linhas dos canais entrelaçados (1080i/576i), por campo (50 imagens/s). Na descodificação Direta o canal entrelaçado reabre em Compatível.'
-                            : 'Limpa as linhas dos canais entrelaçados (1080i/576i), por campo (50 imagens/s).', _p.desentrelacar,
+                            ? '$textoDefinicaoDesentrelacamento Na descodificação Direta, um direto entrelaçado reabre em Compatível.'
+                            : textoDefinicaoDesentrelacamento, _p.desentrelacar,
                         (v) => _p.desentrelacar = v),
                     _interruptor('Descodificação por hardware', 'Desligue se a imagem falhar.', _p.hardware,
                         (v) => _p.hardware = v),
