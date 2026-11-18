@@ -138,20 +138,22 @@ Veredicto? diagnosticar(List<AmostraMpv> amostras, {double? hzEcra}) {
   return Veredicto.fluido;
 }
 
-/// Descodificação direta (`mediacodec_embed`) sem imagem: o vídeo está a ser descodificado
-/// (`video-codec` conhecido, `larguraVista` > 0) mas o mpv passou para software (`hwdec-current`
-/// = "no": o `mediacodec_embed` só mostra imagens do MediaCodec) ou a saída de vídeo falhou
-/// (`vo-configured` = "no"). Ouve-se o som com o ecrã preto. Canais só de som não contam.
+/// Descodificação direta (`mediacodec_embed`) sem imagem: havia vídeo (`larguraVista` > 0) e o
+/// mpv diz que não o mostra: a saída de vídeo não ficou configurada (`vo-configured` = "no", ex.:
+/// o MediaCodec não abriu e o mpv largou o vídeo — "Video: no video") ou, com o vídeo a ser
+/// descodificado (`video-codec` conhecido), passou para software (`hwdec-current` = "no": o
+/// `mediacodec_embed` só mostra imagens do MediaCodec). Ouve-se o som com o ecrã preto. Canais só
+/// de som não contam.
 ///
-/// Só com prova: uma propriedade vazia quer dizer que o mpv não respondeu a tempo (pedido sem
-/// resposta) ou que o vídeo ainda está a arrancar, não que não há imagem.
+/// Só com prova: uma propriedade vazia quer dizer que o mpv não respondeu a tempo ou que o vídeo
+/// ainda está a arrancar, não que não há imagem (o mpv preso trata-se à parte: `semResposta`).
 bool semImagemDireta({required int larguraVista, required Map<String, String> propriedades}) {
   if (larguraVista <= 0) return false;
   final hw = propriedades['hwdec-current']?.trim() ?? '';
   final codec = propriedades['video-codec']?.trim() ?? '';
   final vo = propriedades['vo-configured']?.trim() ?? '';
-  if (codec.isEmpty) return false;
-  return hw == 'no' || vo == 'no';
+  if (vo == 'no') return true;
+  return codec.isNotEmpty && hw == 'no';
 }
 
 /// O ecrã não mostra cada imagem o mesmo número de vezes (ex.: 50 fps a 60 Hz: 1 ou 2
