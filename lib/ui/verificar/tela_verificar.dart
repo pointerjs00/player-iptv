@@ -76,7 +76,38 @@ class _TelaVerificarState extends State<TelaVerificar> {
   FocusNode _focoLinha(String id) => _focosLinhas.putIfAbsent(id, () => FocusNode(debugLabel: 'Linha'));
 
   @override
+  void initState() {
+    super.initState();
+    widget.area.addListener(_aoMudarArea);
+  }
+
+  @override
+  void didUpdateWidget(TelaVerificar antigo) {
+    super.didUpdateWidget(antigo);
+    if (antigo.area != widget.area) {
+      antigo.area.removeListener(_aoMudarArea);
+      widget.area.addListener(_aoMudarArea);
+    }
+  }
+
+  /// As listas do Gestor mudaram (verificação, remoção...): fora do build, vê se a linha com o
+  /// foco saiu dos resultados e, depois do frame (quando as linhas antigas já saíram da árvore),
+  /// liberta o foco das linhas que já não existem.
+  void _aoMudarArea() {
+    _vigiarLinhaFocada(_visiveis());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _focosLinhas.removeWhere((id, f) {
+        if (_g.porId(id) != null || f.context != null || f.hasFocus) return false;
+        f.dispose();
+        return true;
+      });
+    });
+  }
+
+  @override
   void dispose() {
+    widget.area.removeListener(_aoMudarArea);
     _focoVerificarTodas.dispose();
     for (final b in _blocos) {
       b.dispose();
@@ -362,17 +393,11 @@ class _TelaVerificarState extends State<TelaVerificar> {
         final s = widget.servico;
         final listas = _g.listas;
         _selecao.removeWhere((id) => _g.porId(id) == null);
-        _focosLinhas.removeWhere((id, f) {
-          if (_g.porId(id) != null || f.hasFocus) return false;
-          f.dispose();
-          return true;
-        });
         final contagens = <String, int>{};
         for (final l in listas) {
           contagens.update(_estado(l), (n) => n + 1, ifAbsent: () => 1);
         }
         final visiveis = _visiveis();
-        _vigiarLinhaFocada(visiveis);
         final vazio = listas.isEmpty;
         // CustomScrollView: os passos em cima e as linhas das listas preguiçosas (SliverList.builder),
         // para não construir centenas de linhas em cada passo da verificação
