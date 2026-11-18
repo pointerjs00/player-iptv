@@ -158,6 +158,9 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   /// por cima, para não se ver nem ouvir o bocado repetido.
   bool _saltoPendente = false;
 
+  /// As linhas do ecrã que o vídeo ocupa (para o shader do Android; nas estatísticas).
+  double? _linhasNoEcra;
+
   /// A faixa de áudio escolhida pelo utilizador neste canal (volta a pôr-se depois de reabrir).
   AudioTrack? _audioEscolhido;
 
@@ -519,11 +522,15 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
         if (fps > 0) {
           if (!mounted || pedido != _pedido) return;
           final hz = await _taxa.ajustarPara(fps);
+          final ecra = _hzEcra?.toStringAsFixed(2) ?? '?';
+          final pedidoTexto = hz == null ? 'nada pedido (já certo ou nenhum modo serve)' : 'pedido ${hz.toStringAsFixed(2)} Hz';
+          debugPrint('taxa do ecrã: canal a ${fps.toStringAsFixed(2)} imagens/s; ecrã a $ecra Hz; $pedidoTexto');
           if (hz != null && mounted) {
             setState(() => _hzPedidos = hz);
             // a TV demora a mudar de modo: os Hz do sistema leem-se depois
             await Future<void>.delayed(const Duration(seconds: 3));
             await _lerHzEcra();
+            debugPrint('taxa do ecrã: depois do pedido o ecrã está a ${_hzEcra?.toStringAsFixed(2) ?? '?'} Hz');
           }
           return;
         }
@@ -729,6 +736,14 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     aplicar?.call();
   }
 
+  String get _textoDesentrelacamento {
+    final l = _player.state.height ?? 0, n = _linhasNoEcra;
+    if (_meio == MeioDesentrelacamento.shaderFlutter && n != null && n > 0 && !shaderCabe(linhasVideo: l, linhasNoEcra: n)) {
+      return 'desligado (imagem reduzida no ecrã)';
+    }
+    return textoDesentrelacamento(_meio, ligado: _prefs.desentrelacar, entrelacada: _entrelacada);
+  }
+
   bool get _shaderFlutterPronto => _programaFlutter != null && FiltroDesentrelacamento.suportado;
 
   /// No Windows há sempre o shader do mpv; no Android, o do Flutter se o aparelho o permitir.
@@ -745,8 +760,9 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       final hwdec = (m['hwdec-current'] ?? '').trim();
       if (hwdec.isNotEmpty) _hwdecAtual = hwdec;
       await _aplicarDesentrelacamento();
-    } catch (_) {
-      return; // o player fechou entretanto
+    } catch (e) {
+      // o player fechou entretanto, ou o mpv falhou: tenta-se na próxima verificação
+      debugPrint('desentrelaçamento: verificação falhou ($e)');
     }
     if (!mounted || pedido != _pedido) return;
     _vigiaEntrelacamento = Timer(_entrelacada == null ? const Duration(seconds: 1) : _intervaloEntrelacamento,
@@ -763,7 +779,11 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
           hwdec: _hwdecAtual,
           shaderFlutter: _shaderFlutterPronto);
       if (meio == _meio || !mounted) return;
-      if (!_android) await aplicarMeioMpv(_motor, meio, caminhoShader: await (_shaderMpv ?? Future.value()));
+      // com limite: um setProperty preso não pode deixar a fila parada (as mudanças seguintes)
+      if (!_android) {
+        await aplicarMeioMpv(_motor, meio, caminhoShader: await (_shaderMpv ?? Future.value()))
+            .timeout(const Duration(seconds: 3));
+      }
       if (mounted) setState(() => _meio = meio);
     }).catchError((Object e) => debugPrint('desentrelaçamento: $e'));
   }
@@ -930,10 +950,26 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
               programa: _programaFlutter,
               colunas: _player.state.width ?? 0,
               linhas: _player.state.height ?? 0,
+              linhasNoEcra: _linhasNoEcra,
               child: t)
           : null,
     );
     if (ajuste.escala != 1) video = ClipRect(child: Transform.scale(scale: ajuste.escala, child: video));
+    if (_android) {
+      // as linhas do ecrã que o vídeo ocupa: reduzido, o shader não serve (os campos já vêm misturados)
+      final interior = video;
+      video = LayoutBuilder(builder: (context, c) {
+        _linhasNoEcra = linhasMostradas(
+            caixa: c.biggest,
+            dpr: MediaQuery.devicePixelRatioOf(context),
+            colunas: _player.state.width ?? 0,
+            linhas: _player.state.height ?? 0,
+            fit: ajuste.fit,
+            aspecto: ajuste.aspecto,
+            escala: ajuste.escala);
+        return interior;
+      });
+    }
     video = _ultima.envolver(video);
 
     return ColoredBox(
@@ -992,8 +1028,9 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
                 extra: [
                   if (_android) ('Modo de descodificação', _rotuloModoAtual),
                   ('Saída · hwdec pedido', '${_config.vo} · ${_config.hwdec}'),
-                  ('Desentrelaçamento',
-                      textoDesentrelacamento(_meio, ligado: _prefs.desentrelacar, entrelacada: _entrelacada)),
+                  ('Desentrelaçamento', _textoDesentrelacamento),
+                  if (_android && (_linhasNoEcra ?? 0) > 0)
+                    ('Linhas no ecrã · do vídeo', '${_linhasNoEcra!.round()} · ${_player.state.height ?? 0}'),
                   if (_hzPedidos != null) ('Taxa do ecrã pedida', '${_hzPedidos!.toStringAsFixed(2)} Hz'),
                 ],
               ),
