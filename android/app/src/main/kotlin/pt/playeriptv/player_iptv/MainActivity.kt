@@ -4,17 +4,30 @@ import android.Manifest
 import android.content.ContentValues
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.Bundle
 import android.os.Environment
 import android.provider.MediaStore
 import android.view.Display
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.embedding.engine.renderer.FlutterRenderer
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
 
 class MainActivity : FlutterActivity() {
     private var pedidoPermissao: (() -> Unit)? = null
     private var falhaPermissao: (() -> Unit)? = null
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        // A textura do vídeo (SurfaceProducer do media_kit_video) passa a SurfaceTexture também no
+        // API 29+. O ImageReader que o Flutter usaria lá não aplica o recorte que o MediaCodec põe em
+        // cada imagem (handlesCropAndRotation() = false): mostrava o buffer inteiro do descodificador,
+        // com as linhas de alinhamento a zeros (verde) no fundo, em canais 720p/576 (e HEVC). Na
+        // SurfaceTexture o recorte vai na matriz da textura. Só com o Impeller em OpenGL ES (manifesto).
+        // Tem de ser antes do super.onCreate: o motor e os plugins arrancam lá.
+        FlutterRenderer.debugForceSurfaceProducerGlTextures = true
+        super.onCreate(savedInstanceState)
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)

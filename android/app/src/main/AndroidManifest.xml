@@ -12,6 +12,11 @@
         android:icon="@mipmap/ic_launcher"
         android:banner="@drawable/banner"
         android:usesCleartextTraffic="true">
+        <!-- O vídeo usa texturas GL (SurfaceTexture, ver MainActivity.onCreate): o Flutter só as garante
+             com o Impeller em OpenGL ES. -->
+        <meta-data
+            android:name="io.flutter.embedding.android.ImpellerBackend"
+            android:value="opengles" />
         <activity
             android:name=".MainActivity"
             android:exported="true"
