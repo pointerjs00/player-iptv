@@ -376,6 +376,38 @@ void main() {
     });
   }
 
+  testWidgets('auditoria D-pad: CIMA da barra chega ao "Voltar" e BAIXO regressa; no painel CIMA/BAIXO não '
+      'saem do painel', (t) async {
+    final e = await _montar(t, tv: true);
+    await _tecla(t, LogicalKeyboardKey.select);
+    expect(_focado(), 'Pausa');
+    // (no ensaio o vídeo tem um botão no meio, como o cartão de erro: CIMA pode passar por ele)
+    for (var i = 0; i < 3 && _focado() != 'Voltar'; i++) {
+      await _tecla(t, LogicalKeyboardKey.arrowUp);
+    }
+    expect(_focado(), 'Voltar', reason: 'o botão de cima alcança-se com CIMA');
+    await _tecla(t, LogicalKeyboardKey.arrowUp);
+    expect(_focado(), 'Voltar', reason: 'acima não há nada');
+    for (var i = 0; i < 3 && (_focado() == null || _focado() == 'Voltar'); i++) {
+      await _tecla(t, LogicalKeyboardKey.arrowDown);
+    }
+    expect(_focado(), isNotNull, reason: 'BAIXO regressa à barra');
+    expect(_barraVisivel(t), isTrue);
+    for (var i = 0; i < 10 && _focado() != 'Definições'; i++) {
+      await _tecla(t, LogicalKeyboardKey.arrowRight);
+    }
+    expect(_focado(), 'Definições');
+    await _tecla(t, LogicalKeyboardKey.select);
+    expect(_focado(), 'Silêncio');
+    await _tecla(t, LogicalKeyboardKey.arrowUp);
+    expect(_focado(), 'Silêncio', reason: 'CIMA no 1.º item fica no painel');
+    await _tecla(t, LogicalKeyboardKey.arrowDown);
+    expect(_focado(), 'Formato de imagem');
+    await _tecla(t, LogicalKeyboardKey.arrowDown);
+    expect(_focado(), 'Formato de imagem', reason: 'BAIXO no último item fica no painel');
+    expect(e.acoes, isEmpty, reason: 'nenhuma seta mudou de canal');
+  });
+
   testWidgets('a barra mostra resolução, imagens/s e débito; escondida não lê o player', (t) async {
     final e = await _montar(t);
     await t.pump(const Duration(seconds: 3));
