@@ -654,15 +654,35 @@ class _TelaConteudoState extends State<TelaConteudo> {
     );
   }
 
-  Widget _cabecalhoCanais(int n, bool pesquisa) => Padding(
-        padding: const EdgeInsets.fromLTRB(Tokens.e16, Tokens.e12, Tokens.e16, Tokens.e4),
-        child: Text(
-          pesquisa
-              ? (n == 1 ? '1 canal encontrado' : '$n canais encontrados')
-              : '${_grupo ?? 'Todos'} · ${n == 1 ? '1 canal' : '$n canais'}',
-          style: TextStyle(color: Tokens.texto2, fontWeight: FontWeight.w700, fontSize: ecraTv(context) ? 15 : 13),
+  /// O grupo e o número de canais; com o comando (TV ou modo de realce do teclado), à direita, a
+  /// dica discreta "OK mantido: favorito" (a estrela não recebe o foco).
+  Widget _cabecalhoCanais(int n, bool pesquisa) {
+    Theme.of(context); // reconstrói quando o modo de realce muda (TemaConformeRealce troca o tema)
+    final tv = ecraTv(context);
+    final comando = tv || FocusManager.instance.highlightMode == FocusHighlightMode.traditional;
+    final tamanho = tv ? 15.0 : 13.0;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(Tokens.e16, Tokens.e12, Tokens.e16, Tokens.e4),
+      child: Row(children: [
+        Expanded(
+          child: Text(
+            pesquisa
+                ? (n == 1 ? '1 canal encontrado' : '$n canais encontrados')
+                : '${_grupo ?? 'Todos'} · ${n == 1 ? '1 canal' : '$n canais'}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: Tokens.texto2, fontWeight: FontWeight.w700, fontSize: tamanho),
+          ),
         ),
-      );
+        if (comando && n > 0) ...[
+          const SizedBox(width: Tokens.e12),
+          Icon(Icons.star_outline_rounded, size: tamanho + 3, color: Tokens.texto2),
+          const SizedBox(width: 4),
+          Text('OK mantido: favorito', style: TextStyle(color: Tokens.texto2, fontSize: tamanho - 1)),
+        ],
+      ]),
+    );
+  }
 
   Widget _colunaGrupos() {
     final grupos = _gruposVisiveis();

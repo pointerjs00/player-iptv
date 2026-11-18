@@ -14,50 +14,11 @@ import 'package:player_iptv/ui/definicoes/tela_definicoes.dart';
 import 'package:player_iptv/ui/design/design.dart';
 import 'package:player_iptv/ui/inicio/tela_inicio.dart';
 import 'package:player_iptv/ui/player/painel_definicoes.dart';
-import 'package:player_iptv/ui/realce_foco.dart';
-import 'package:player_iptv/ui/tema.dart';
+
+import 'ajuda_dpad.dart';
 
 /// Regressões do feedback 1 (Android TV): tudo só com teclas (setas, OK, Voltar).
 
-Widget _app(Widget w) =>
-    MaterialApp(theme: temaApp(), builder: (_, c) => TemaConformeRealce(child: c!), home: w);
-
-/// Android TV 1080p: 960×540 lógicos, tamanhos de TV, realce sempre ligado.
-void _tv(WidgetTester t, {double largura = 960, double altura = 540}) {
-  t.view.physicalSize = Size(largura, altura);
-  t.view.devicePixelRatio = 1;
-  addTearDown(t.view.reset);
-  EcraTv.nativo = true;
-  addTearDown(() => EcraTv.nativo = false);
-  FocusManager.instance.highlightStrategy = FocusHighlightStrategy.alwaysTraditional;
-  addTearDown(() => FocusManager.instance.highlightStrategy = FocusHighlightStrategy.automatic);
-}
-
-/// Os textos dentro do widget com o foco.
-String _focado() {
-  final no = FocusManager.instance.primaryFocus;
-  final ctx = no?.context;
-  if (ctx == null || no is FocusScopeNode) return '';
-  final textos = <String>[];
-  void visitar(Element e) {
-    final w = e.widget;
-    if (w is Text) textos.add(w.data ?? '');
-    e.visitChildren(visitar);
-  }
-
-  (ctx as Element).visitChildren(visitar);
-  if (textos.isEmpty) {
-    final dica = ctx.findAncestorWidgetOfExactType<Tooltip>()?.message;
-    if (dica != null) textos.add(dica);
-  }
-  return textos.join(' | ');
-}
-
-Future<void> _tecla(WidgetTester t, LogicalKeyboardKey k) async {
-  await t.sendKeyEvent(k);
-  await t.pump();
-  await t.pump(const Duration(milliseconds: 300)); // o scroll até ao foco
-}
 
 void main() {
   late Directory pasta;
@@ -78,25 +39,25 @@ void main() {
       await t.runAsync(() => bib.adicionar([
             for (var i = 0; i < n; i++) Importada(contaDeLinha('http://h$i.com/l$i.m3u')!),
           ]));
-      await t.pumpWidget(_app(TelaInicio(biblioteca: bib)));
+      await t.pumpWidget(appTeste(TelaInicio(biblioteca: bib)));
       await t.pump();
       await t.pump();
     }
 
     testWidgets('BAIXO chega a todas as linhas e CIMA volta à primeira', (t) async {
-      _tv(t);
+      ecraTvTeste(t);
       await comListas(t, 15); // 3 colunas a 960 → 5 linhas (as últimas fora do ecrã)
-      expect(_focado(), contains('001H'));
+      expect(textosFocados(), contains('001H'));
       final caminho = <String>[];
       for (var i = 0; i < 6; i++) {
-        await _tecla(t, LogicalKeyboardKey.arrowDown);
-        caminho.add(_focado().split(' | ').first);
+        await teclaDpad(t, LogicalKeyboardKey.arrowDown);
+        caminho.add(textosFocados().split(' | ').first);
       }
       expect(caminho.any((c) => c.contains('013H')), isTrue, reason: 'BAIXO: $caminho');
       final subir = <String>[];
       for (var i = 0; i < 8; i++) {
-        await _tecla(t, LogicalKeyboardKey.arrowUp);
-        subir.add(_focado().split(' | ').first);
+        await teclaDpad(t, LogicalKeyboardKey.arrowUp);
+        subir.add(textosFocados().split(' | ').first);
         if (subir.last.contains('001H')) break;
       }
       expect(subir.last, contains('001H'), reason: 'CIMA: $subir');
@@ -104,13 +65,13 @@ void main() {
 
     testWidgets('os cartões não têm "..." (Mais opções): OK mantido abre o menu com todas as ações, '
         'incluindo "Remover lista"', (t) async {
-      _tv(t);
+      ecraTvTeste(t);
       await comListas(t, 2);
       expect(find.byTooltip('Mais opções'), findsNothing);
       expect(find.byIcon(Icons.more_vert), findsNothing);
       // BAIXO no cartão não entra em nenhum botão de dentro: o foco fica num cartão
-      await _tecla(t, LogicalKeyboardKey.arrowDown);
-      expect(_focado(), contains('001H'), reason: 'foco em: ${_focado()}');
+      await teclaDpad(t, LogicalKeyboardKey.arrowDown);
+      expect(textosFocados(), contains('001H'), reason: 'foco em: ${textosFocados()}');
       await t.sendKeyDownEvent(LogicalKeyboardKey.select);
       for (var i = 0; i < 12; i++) {
         await t.pump(const Duration(milliseconds: 50));
@@ -123,13 +84,13 @@ void main() {
       }
       // a última ação alcança-se com BAIXO
       for (var i = 0; i < 6; i++) {
-        await _tecla(t, LogicalKeyboardKey.arrowDown);
+        await teclaDpad(t, LogicalKeyboardKey.arrowDown);
       }
-      expect(_focado(), 'Remover lista');
-      await _tecla(t, LogicalKeyboardKey.select);
+      expect(textosFocados(), 'Remover lista');
+      await teclaDpad(t, LogicalKeyboardKey.select);
       await t.pumpAndSettle();
       expect(find.text('Remover lista?'), findsOneWidget);
-      expect(_focado(), 'Cancelar', reason: 'o foco começa no lado seguro');
+      expect(textosFocados(), 'Cancelar', reason: 'o foco começa no lado seguro');
     });
   });
 
@@ -141,7 +102,7 @@ void main() {
           for (var i = 0; i < n; i++) Canal(id: '$i', nome: 'Canal $i', grupo: 'G', url: 'u$i'),
           const Canal(id: 'h', nome: 'Outro', grupo: 'H', url: 'uh'),
         ]));
-        await t.pumpWidget(_app(TelaConteudo(biblioteca: bib, lista: bib.listas.single, abrir: (_, _) => null)));
+        await t.pumpWidget(appTeste(TelaConteudo(biblioteca: bib, lista: bib.listas.single, abrir: (_, _) => null)));
         await Future<void>.delayed(const Duration(milliseconds: 300));
       });
       await t.pump();
@@ -160,31 +121,31 @@ void main() {
     }
 
     testWidgets('CIMA/BAIXO vão sempre de canal em canal (a estrela não é uma paragem)', (t) async {
-      _tv(t);
+      ecraTvTeste(t);
       await mostrar(t);
-      expect(_focado(), contains('G'));
-      await _tecla(t, LogicalKeyboardKey.arrowRight);
-      expect(canalFocado(), 'Canal 0', reason: 'foco em: ${_focado()}');
+      expect(textosFocados(), contains('G'));
+      await teclaDpad(t, LogicalKeyboardKey.arrowRight);
+      expect(canalFocado(), 'Canal 0', reason: 'foco em: ${textosFocados()}');
       for (var i = 1; i < 20; i++) {
-        await _tecla(t, LogicalKeyboardKey.arrowDown);
-        expect(canalFocado(), 'Canal $i', reason: 'BAIXO n.º $i; foco em: ${_focado()}');
+        await teclaDpad(t, LogicalKeyboardKey.arrowDown);
+        expect(canalFocado(), 'Canal $i', reason: 'BAIXO n.º $i; foco em: ${textosFocados()}');
       }
       for (var i = 18; i >= 0; i--) {
-        await _tecla(t, LogicalKeyboardKey.arrowUp);
-        expect(canalFocado(), 'Canal $i', reason: 'CIMA; foco em: ${_focado()}');
+        await teclaDpad(t, LogicalKeyboardKey.arrowUp);
+        expect(canalFocado(), 'Canal $i', reason: 'CIMA; foco em: ${textosFocados()}');
       }
       // DIREITA num canal também não vai para a estrela
-      await _tecla(t, LogicalKeyboardKey.arrowRight);
-      expect(canalFocado(), 'Canal 0', reason: 'DIREITA; foco em: ${_focado()}');
+      await teclaDpad(t, LogicalKeyboardKey.arrowRight);
+      expect(canalFocado(), 'Canal 0', reason: 'DIREITA; foco em: ${textosFocados()}');
       // ESQUERDA volta aos grupos
-      await _tecla(t, LogicalKeyboardKey.arrowLeft);
-      expect(_focado(), contains('G'));
+      await teclaDpad(t, LogicalKeyboardKey.arrowLeft);
+      expect(textosFocados(), contains('G'));
     });
 
     testWidgets('OK mantido num canal põe/tira dos favoritos (com aviso) e o foco fica no canal', (t) async {
-      _tv(t);
+      ecraTvTeste(t);
       final l = await mostrar(t, n: 3);
-      await _tecla(t, LogicalKeyboardKey.arrowRight);
+      await teclaDpad(t, LogicalKeyboardKey.arrowRight);
       expect(canalFocado(), 'Canal 0');
       Future<void> okMantido() async {
         await t.sendKeyDownEvent(LogicalKeyboardKey.select);
@@ -205,7 +166,7 @@ void main() {
   });
 
   testWidgets('Conteúdo: no grupo dos favoritos, tirar um canal passa o foco ao seguinte', (t) async {
-    _tv(t);
+    ecraTvTeste(t);
     await t.runAsync(() async {
       await bib.adicionar([Importada(contaDeLinha('http://x.com/l.m3u')!)]);
       final id = bib.listas.single.id;
@@ -217,21 +178,21 @@ void main() {
       for (final c in ['1', '2', '3']) {
         await bib.alternarFavorito(id, c);
       }
-      await t.pumpWidget(_app(TelaConteudo(biblioteca: bib, lista: bib.listas.single, abrir: (_, _) => null)));
+      await t.pumpWidget(appTeste(TelaConteudo(biblioteca: bib, lista: bib.listas.single, abrir: (_, _) => null)));
       await Future<void>.delayed(const Duration(milliseconds: 300));
     });
     await t.pump();
-    expect(_focado(), contains(grupoFavoritos));
-    await _tecla(t, LogicalKeyboardKey.arrowRight);
-    await _tecla(t, LogicalKeyboardKey.arrowDown);
-    expect(_focado(), contains('Dois'));
+    expect(textosFocados(), contains(grupoFavoritos));
+    await teclaDpad(t, LogicalKeyboardKey.arrowRight);
+    await teclaDpad(t, LogicalKeyboardKey.arrowDown);
+    expect(textosFocados(), contains('Dois'));
     await t.sendKeyDownEvent(LogicalKeyboardKey.select);
     await t.pump(duracaoOkMantido + const Duration(milliseconds: 50));
     await t.sendKeyUpEvent(LogicalKeyboardKey.select);
     await t.pump();
     await t.pump();
     expect(bib.listas.single.favoritos, {'1', '3'});
-    expect(_focado(), contains('Tres'), reason: 'o foco não se perde');
+    expect(textosFocados(), contains('Tres'), reason: 'o foco não se perde');
   });
 
   group('Definições: CIMA/BAIXO andam sempre entre as definições', () {
@@ -240,20 +201,20 @@ void main() {
       final ctx = FocusManager.instance.primaryFocus?.context;
       if (ctx == null) return '';
       if (ctx.findAncestorWidgetOfExactType<Slider>() != null) return 'Slider@${ctx.hashCode}';
-      final f = _focado();
+      final f = textosFocados();
       return f.isNotEmpty ? f : '${ctx.widget.runtimeType}@${ctx.hashCode}';
     }
 
     testWidgets('no Android TV (navegação "tradicional") nenhum controlo prende CIMA/BAIXO', (t) async {
-      _tv(t);
+      ecraTvTeste(t);
       final (area, prefs) = (await t.runAsync(() async => (await AreaGestor.abrir(pasta), await Preferencias.abrir(pasta))))!;
-      await t.pumpWidget(_app(TelaDefinicoes(biblioteca: bib, area: area, preferencias: prefs, android: true)));
+      await t.pumpWidget(appTeste(TelaDefinicoes(biblioteca: bib, area: area, preferencias: prefs, android: true)));
       await t.pump(const Duration(milliseconds: 400));
       final inicio = id();
       final timeout = prefs.timeoutVerificacao, volume = prefs.volume;
       final descer = <String>[inicio];
       for (var i = 0; i < 40 && !descer.last.contains('Exportar cópia'); i++) {
-        await _tecla(t, LogicalKeyboardKey.arrowDown);
+        await teclaDpad(t, LogicalKeyboardKey.arrowDown);
         descer.add(id());
         // a mesma paragem duas vezes seguidas = BAIXO preso
         expect(descer[descer.length - 1], isNot(descer[descer.length - 2]), reason: 'BAIXO preso: $descer');
@@ -265,7 +226,7 @@ void main() {
       // CIMA até ao topo (pára na primeira linha de chips, a dos canais de teste)
       final subir = <String>[descer.last];
       for (var i = 0; i < 40; i++) {
-        await _tecla(t, LogicalKeyboardKey.arrowUp);
+        await teclaDpad(t, LogicalKeyboardKey.arrowUp);
         if (id() == subir.last) break;
         subir.add(id());
       }
@@ -273,28 +234,28 @@ void main() {
       expect(find.ancestor(of: find.text(subir.last), matching: find.byType(FilterChip)), findsOneWidget,
           reason: 'CIMA chega aos canais de teste: $subir');
       for (var i = 0; i < 6 && id() != inicio; i++) {
-        await _tecla(t, LogicalKeyboardKey.arrowLeft);
+        await teclaDpad(t, LogicalKeyboardKey.arrowLeft);
       }
       expect(id(), inicio);
       expect(prefs.timeoutVerificacao, timeout);
       // ESQUERDA/DIREITA no deslizador continuam a mudar o valor
       final iSlider = descer.indexWhere((d) => d.startsWith('Slider'));
       for (var i = 0; i < iSlider; i++) {
-        await _tecla(t, LogicalKeyboardKey.arrowDown);
+        await teclaDpad(t, LogicalKeyboardKey.arrowDown);
       }
       expect(id(), startsWith('Slider'));
-      await _tecla(t, LogicalKeyboardKey.arrowRight);
+      await teclaDpad(t, LogicalKeyboardKey.arrowRight);
       expect(prefs.timeoutVerificacao, timeout + 1);
-      await _tecla(t, LogicalKeyboardKey.arrowLeft);
+      await teclaDpad(t, LogicalKeyboardKey.arrowLeft);
       expect(prefs.timeoutVerificacao, timeout);
     });
   });
 
   testWidgets('Painel de definições do player: CIMA/BAIXO passam por todos os tipos de item; '
       'ESQUERDA/DIREITA mudam o valor sem sair', (t) async {
-    _tv(t);
+    ecraTvTeste(t);
     var escolha = 0, ligado = false, passos = 0;
-    await t.pumpWidget(_app(Scaffold(
+    await t.pumpWidget(appTeste(Scaffold(
       body: StatefulBuilder(
         builder: (_, set) => PainelDefinicoes(itens: [
           DefinicaoEscolha('Formato', opcoes: const ['A', 'B', 'C'], atual: escolha,
@@ -307,28 +268,61 @@ void main() {
       ),
     )));
     await t.pump();
-    String titulo() => _focado().split(' | ').first;
+    String titulo() => textosFocados().split(' | ').first;
     expect(titulo(), 'Formato');
     final caminho = <String>[titulo()];
     for (var i = 0; i < 3; i++) {
-      await _tecla(t, LogicalKeyboardKey.arrowDown);
+      await teclaDpad(t, LogicalKeyboardKey.arrowDown);
       caminho.add(titulo());
     }
     expect(caminho, ['Formato', 'Desentrelaçar', 'Volume', 'Estatísticas'], reason: 'o item desligado salta-se');
     for (final k in [LogicalKeyboardKey.arrowUp, LogicalKeyboardKey.arrowUp]) {
-      await _tecla(t, k);
+      await teclaDpad(t, k);
     }
     expect(titulo(), 'Desentrelaçar');
-    await _tecla(t, LogicalKeyboardKey.arrowRight);
+    await teclaDpad(t, LogicalKeyboardKey.arrowRight);
     expect(ligado, isTrue);
     expect(titulo(), 'Desentrelaçar', reason: 'DIREITA não sai do item');
-    await _tecla(t, LogicalKeyboardKey.arrowDown);
-    await _tecla(t, LogicalKeyboardKey.arrowRight);
+    await teclaDpad(t, LogicalKeyboardKey.arrowDown);
+    await teclaDpad(t, LogicalKeyboardKey.arrowRight);
     expect(passos, 1);
-    await _tecla(t, LogicalKeyboardKey.arrowUp);
-    await _tecla(t, LogicalKeyboardKey.arrowUp);
+    await teclaDpad(t, LogicalKeyboardKey.arrowUp);
+    await teclaDpad(t, LogicalKeyboardKey.arrowUp);
     expect(titulo(), 'Formato');
-    await _tecla(t, LogicalKeyboardKey.arrowLeft);
+    await teclaDpad(t, LogicalKeyboardKey.arrowLeft);
     expect(escolha, 2);
+  });
+
+  group('Conteúdo: a dica "OK mantido: favorito"', () {
+    Future<void> mostrarCanais(WidgetTester t) async {
+      await t.runAsync(() async {
+        await bib.adicionar([Importada(contaDeLinha('http://x.com/l.m3u')!)]);
+        await bib.guardarCanais(bib.listas.single.id, ConteudoLista(['G'], const [
+          Canal(id: '1', nome: 'Um', grupo: 'G', url: 'u1'),
+        ]));
+        await t.pumpWidget(appTeste(TelaConteudo(biblioteca: bib, lista: bib.listas.single, abrir: (_, _) => null)));
+        await Future<void>.delayed(const Duration(milliseconds: 300));
+      });
+      await t.pump();
+    }
+
+    testWidgets('na TV aparece por cima dos canais', (t) async {
+      ecraTvTeste(t);
+      await mostrarCanais(t);
+      expect(find.text('OK mantido: favorito'), findsOneWidget);
+    });
+
+    testWidgets('com o comando/teclado (modo de realce tradicional) aparece; no toque não', (t) async {
+      t.view.physicalSize = const Size(1200, 800);
+      t.view.devicePixelRatio = 1;
+      addTearDown(t.view.reset);
+      FocusManager.instance.highlightStrategy = FocusHighlightStrategy.alwaysTouch;
+      addTearDown(() => FocusManager.instance.highlightStrategy = FocusHighlightStrategy.automatic);
+      await mostrarCanais(t);
+      expect(find.text('OK mantido: favorito'), findsNothing, reason: 'no telemóvel há a estrela');
+      FocusManager.instance.highlightStrategy = FocusHighlightStrategy.alwaysTraditional;
+      await t.pump();
+      expect(find.text('OK mantido: favorito'), findsOneWidget);
+    });
   });
 }
