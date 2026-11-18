@@ -251,6 +251,55 @@ class _CartaoModernoState extends State<CartaoModerno> {
   }
 }
 
+/// Um [Slider] para o comando: ESQUERDA/DIREITA mudam o valor e CIMA/BAIXO passam sempre ao
+/// controlo de cima/de baixo. O Slider do Material, no modo de navegação "tradicional" (o que o
+/// Android TV dá), também usa CIMA/BAIXO para mudar o valor e o foco ficava preso nele. Com o foco
+/// (modo do comando), ganha a borda de realce.
+class DeslizadorTv extends StatefulWidget {
+  const DeslizadorTv({super.key, required this.value, required this.onChanged, this.min = 0, this.max = 1,
+      this.divisions, this.label});
+
+  final double value;
+  final ValueChanged<double>? onChanged;
+  final double min;
+  final double max;
+  final int? divisions;
+  final String? label;
+
+  @override
+  State<DeslizadorTv> createState() => _DeslizadorTvState();
+}
+
+class _DeslizadorTvState extends State<DeslizadorTv> {
+  bool _focado = false;
+
+  @override
+  Widget build(BuildContext context) => MolduraFoco(
+        focado: _focado,
+        raio: Tokens.raioCampo,
+        child: Focus(
+          canRequestFocus: false,
+          skipTraversal: true,
+          includeSemantics: false,
+          onFocusChange: (f) {
+            if (mounted && f != _focado) setState(() => _focado = f);
+          },
+          // só o Slider vê a navegação "direcional": não apanha CIMA/BAIXO
+          child: MediaQuery(
+            data: MediaQuery.of(context).copyWith(navigationMode: NavigationMode.directional),
+            child: Slider(
+              value: widget.value,
+              onChanged: widget.onChanged,
+              min: widget.min,
+              max: widget.max,
+              divisions: widget.divisions,
+              label: widget.label,
+            ),
+          ),
+        ),
+      );
+}
+
 /// O estado da última verificação numa pílula colorida (verde, vermelho, âmbar ou cinzento).
 class PilulaEstado extends StatelessWidget {
   const PilulaEstado(this.estado, {super.key, this.grande = false});

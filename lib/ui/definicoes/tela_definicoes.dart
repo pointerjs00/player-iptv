@@ -205,7 +205,7 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
                   ]),
                   _seccao('Verificação', 'Quanto tempo se espera por cada canal.', Icons.timer_outlined, [
                     Text('Tempo limite: ${_p.timeoutVerificacao} s'),
-                    Slider(
+                    DeslizadorTv(
                       min: Preferencias.minTimeoutVerificacao.toDouble(),
                       max: Preferencias.maxTimeoutVerificacao.toDouble(),
                       divisions: Preferencias.maxTimeoutVerificacao - Preferencias.minTimeoutVerificacao,
@@ -249,7 +249,7 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
                     ]),
                     const SizedBox(height: Tokens.e12),
                     Text('Volume: ${_p.volume.round()} %'),
-                    Slider(
+                    DeslizadorTv(
                       min: 0,
                       max: 100,
                       divisions: 20,

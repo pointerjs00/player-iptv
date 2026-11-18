@@ -3,13 +3,17 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:player_iptv/dados/area_gestor.dart';
 import 'package:player_iptv/dados/biblioteca.dart';
+import 'package:player_iptv/dados/preferencias.dart';
 import 'package:player_iptv/importar/importar.dart';
 import 'package:player_iptv/modelo/canal.dart';
 import 'package:player_iptv/modelo/conta.dart';
 import 'package:player_iptv/ui/conteudo/tela_conteudo.dart';
+import 'package:player_iptv/ui/definicoes/tela_definicoes.dart';
 import 'package:player_iptv/ui/design/design.dart';
 import 'package:player_iptv/ui/inicio/tela_inicio.dart';
+import 'package:player_iptv/ui/player/painel_definicoes.dart';
 import 'package:player_iptv/ui/realce_foco.dart';
 import 'package:player_iptv/ui/tema.dart';
 
@@ -228,5 +232,103 @@ void main() {
     await t.pump();
     expect(bib.listas.single.favoritos, {'1', '3'});
     expect(_focado(), contains('Tres'), reason: 'o foco não se perde');
+  });
+
+  group('Definições: CIMA/BAIXO andam sempre entre as definições', () {
+    /// Uma identificação do controlo com o foco (o texto, ou o tipo do widget se não tem texto).
+    String id() {
+      final ctx = FocusManager.instance.primaryFocus?.context;
+      if (ctx == null) return '';
+      if (ctx.findAncestorWidgetOfExactType<Slider>() != null) return 'Slider@${ctx.hashCode}';
+      final f = _focado();
+      return f.isNotEmpty ? f : '${ctx.widget.runtimeType}@${ctx.hashCode}';
+    }
+
+    testWidgets('no Android TV (navegação "tradicional") nenhum controlo prende CIMA/BAIXO', (t) async {
+      _tv(t);
+      final (area, prefs) = (await t.runAsync(() async => (await AreaGestor.abrir(pasta), await Preferencias.abrir(pasta))))!;
+      await t.pumpWidget(_app(TelaDefinicoes(biblioteca: bib, area: area, preferencias: prefs, android: true)));
+      await t.pump(const Duration(milliseconds: 400));
+      final inicio = id();
+      final timeout = prefs.timeoutVerificacao, volume = prefs.volume;
+      final descer = <String>[inicio];
+      for (var i = 0; i < 40 && !descer.last.contains('Exportar cópia'); i++) {
+        await _tecla(t, LogicalKeyboardKey.arrowDown);
+        descer.add(id());
+        // a mesma paragem duas vezes seguidas = BAIXO preso
+        expect(descer[descer.length - 1], isNot(descer[descer.length - 2]), reason: 'BAIXO preso: $descer');
+      }
+      expect(descer.last, contains('Exportar cópia'), reason: 'BAIXO: $descer');
+      expect(descer.where((d) => d.startsWith('Slider')), hasLength(2), reason: 'os dois deslizadores: $descer');
+      expect(prefs.timeoutVerificacao, timeout, reason: 'CIMA/BAIXO não mudam o tempo limite');
+      expect(prefs.volume, volume, reason: 'CIMA/BAIXO não mudam o volume');
+      // CIMA até ao topo (pára na primeira linha de chips, a dos canais de teste)
+      final subir = <String>[descer.last];
+      for (var i = 0; i < 40; i++) {
+        await _tecla(t, LogicalKeyboardKey.arrowUp);
+        if (id() == subir.last) break;
+        subir.add(id());
+      }
+      expect(subir.where((d) => d.startsWith('Slider')), hasLength(2), reason: 'CIMA: $subir');
+      expect(find.ancestor(of: find.text(subir.last), matching: find.byType(FilterChip)), findsOneWidget,
+          reason: 'CIMA chega aos canais de teste: $subir');
+      for (var i = 0; i < 6 && id() != inicio; i++) {
+        await _tecla(t, LogicalKeyboardKey.arrowLeft);
+      }
+      expect(id(), inicio);
+      expect(prefs.timeoutVerificacao, timeout);
+      // ESQUERDA/DIREITA no deslizador continuam a mudar o valor
+      final iSlider = descer.indexWhere((d) => d.startsWith('Slider'));
+      for (var i = 0; i < iSlider; i++) {
+        await _tecla(t, LogicalKeyboardKey.arrowDown);
+      }
+      expect(id(), startsWith('Slider'));
+      await _tecla(t, LogicalKeyboardKey.arrowRight);
+      expect(prefs.timeoutVerificacao, timeout + 1);
+      await _tecla(t, LogicalKeyboardKey.arrowLeft);
+      expect(prefs.timeoutVerificacao, timeout);
+    });
+  });
+
+  testWidgets('Painel de definições do player: CIMA/BAIXO passam por todos os tipos de item; '
+      'ESQUERDA/DIREITA mudam o valor sem sair', (t) async {
+    _tv(t);
+    var escolha = 0, ligado = false, passos = 0;
+    await t.pumpWidget(_app(Scaffold(
+      body: StatefulBuilder(
+        builder: (_, set) => PainelDefinicoes(itens: [
+          DefinicaoEscolha('Formato', opcoes: const ['A', 'B', 'C'], atual: escolha,
+              aoMudar: (v) => set(() => escolha = v)),
+          DefinicaoInterruptor('Desentrelaçar', valor: ligado, aoMudar: (v) => set(() => ligado = v)),
+          const DefinicaoEscolha('Áudio', opcoes: ['Só um'], atual: 0, nota: 'Só há uma faixa'),
+          DefinicaoPassos('Volume', valor: '$passos', menos: () => set(() => passos--), mais: () => set(() => passos++)),
+          DefinicaoAcao('Estatísticas', valor: 'Ver', aoCarregar: () {}),
+        ]),
+      ),
+    )));
+    await t.pump();
+    String titulo() => _focado().split(' | ').first;
+    expect(titulo(), 'Formato');
+    final caminho = <String>[titulo()];
+    for (var i = 0; i < 3; i++) {
+      await _tecla(t, LogicalKeyboardKey.arrowDown);
+      caminho.add(titulo());
+    }
+    expect(caminho, ['Formato', 'Desentrelaçar', 'Volume', 'Estatísticas'], reason: 'o item desligado salta-se');
+    for (final k in [LogicalKeyboardKey.arrowUp, LogicalKeyboardKey.arrowUp]) {
+      await _tecla(t, k);
+    }
+    expect(titulo(), 'Desentrelaçar');
+    await _tecla(t, LogicalKeyboardKey.arrowRight);
+    expect(ligado, isTrue);
+    expect(titulo(), 'Desentrelaçar', reason: 'DIREITA não sai do item');
+    await _tecla(t, LogicalKeyboardKey.arrowDown);
+    await _tecla(t, LogicalKeyboardKey.arrowRight);
+    expect(passos, 1);
+    await _tecla(t, LogicalKeyboardKey.arrowUp);
+    await _tecla(t, LogicalKeyboardKey.arrowUp);
+    expect(titulo(), 'Formato');
+    await _tecla(t, LogicalKeyboardKey.arrowLeft);
+    expect(escolha, 2);
   });
 }
