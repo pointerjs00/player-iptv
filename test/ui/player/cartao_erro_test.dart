@@ -99,4 +99,32 @@ void main() {
     await _tecla(t, LogicalKeyboardKey.arrowUp);
     expect(e.acoes, [AcaoPlayer.avancar, AcaoPlayer.canalSeguinte]);
   });
+
+  testWidgets('a barra aparece e esconde-se (5 s) com o cartão à vista: direita leva a "Voltar"', (t) async {
+    final e = await _montar(t);
+    await t.tapAt(const Offset(40, 1000)); // toque no vídeo: mostra a barra
+    await t.pumpAndSettle();
+    expect(find.byTooltip('Definições').hitTestable(), findsOneWidget, reason: 'a barra está à vista');
+    await t.pump(const Duration(seconds: 6)); // esconde-se sozinha
+    await t.pumpAndSettle();
+    expect(find.byTooltip('Definições').hitTestable(), findsNothing);
+    expect(_focado(), 'Tentar de novo', reason: 'o foco volta ao cartão, não à raiz do player');
+    await _tecla(t, LogicalKeyboardKey.arrowRight);
+    expect(_focado(), 'Voltar');
+    await _tecla(t, LogicalKeyboardKey.select);
+    expect(e.voltas, 1);
+    expect(e.tentativas, 0);
+  });
+
+  testWidgets('Voltar na barra com o cartão à vista: o foco volta ao cartão', (t) async {
+    final e = await _montar(t);
+    await t.tapAt(const Offset(40, 1000));
+    await t.pumpAndSettle();
+    await t.binding.handlePopRoute(); // Voltar do sistema: esconde a barra
+    await t.pumpAndSettle();
+    expect(find.byTooltip('Definições').hitTestable(), findsNothing);
+    await _tecla(t, LogicalKeyboardKey.arrowRight);
+    await _tecla(t, LogicalKeyboardKey.select);
+    expect(e.voltas, 1);
+  });
 }

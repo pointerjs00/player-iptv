@@ -216,6 +216,9 @@ class ControlosPlayerState extends State<ControlosPlayer> {
       case AcaoPlayer.esconderControlos:
         _raiz.requestFocus(); // antes de a barra deixar de ser focável
         _depoisMudarVista();
+        // com o cartão de erro à vista, o foco volta a um botão dele (na raiz, esquerda/direita
+        // não chegavam ao "Voltar" e o OK era sempre "tentar de novo")
+        if (widget.estado.erro) _depoisDoFrame(_focarCartaoErro);
       case AcaoPlayer.fecharPainel:
         _depoisMudarVista();
         _depoisDoFrame(_botaoDefinicoes.requestFocus);
@@ -236,6 +239,13 @@ class ControlosPlayerState extends State<ControlosPlayer> {
       default:
         widget.aoAgir(a);
     }
+  }
+
+  /// O primeiro botão do cartão de erro (com a barra escondida, os únicos focáveis por baixo da
+  /// raiz são os do vídeo: a barra fica fora da navegação e o painel não está à vista).
+  void _focarCartaoErro() {
+    if (_m.vista != VistaPlayer.escondida || !widget.estado.erro) return;
+    _raiz.traversalDescendants.where((n) => n.canRequestFocus).firstOrNull?.requestFocus();
   }
 
   /// Um botão da barra: faz a ação e adia o esconder.
