@@ -149,6 +149,25 @@ JanelaProgresso? janelaDe(Map<String, String> m) {
   );
 }
 
+/// O fim do intervalo procurável do cache (`seekable-ranges` do `demuxer-cache-state`) que tem
+/// `pos` (1 s de folga, como em [janelaDe]): até onde um seek fica no cache. null sem intervalo.
+double? fimProcuravel(String cacheState, double pos) {
+  try {
+    final estado = jsonDecode(cacheState);
+    final r = estado is Map ? estado['seekable-ranges'] : null;
+    if (r is! List) return null;
+    for (final i in r) {
+      if (i is Map && i['start'] is num && i['end'] is num) {
+        final a = (i['start'] as num).toDouble(), b = (i['end'] as num).toDouble();
+        if (pos >= a - 1 && pos <= b + 1) return b;
+      }
+    }
+  } on FormatException {
+    // sem cache-state
+  }
+  return null;
+}
+
 /// "00:00:02", "01:01:01" (as frações cortam-se); desconhecido: "--:--:--".
 String textoTempo(Duration? d) {
   if (d == null) return '--:--:--';

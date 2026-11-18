@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import 'configuracao_mpv.dart';
+import 'progresso.dart' show fimProcuravel;
 import 'relogio_direto.dart';
 
 /// Recuar/avançar 10 s e "Voltar ao direto" num canal em direto, com o cache do mpv (seek
@@ -17,6 +18,30 @@ class SaltosDireto {
   static const salto = Duration(seconds: 10);
 
   Future<double?> _posicao() async => double.tryParse(await mpv.getProperty('time-pos'));
+
+  /// Quanto se pode avançar daqui: até ao fim do intervalo do cache em que se está (o mais recente
+  /// recebido; `seekable-ranges` do `demuxer-cache-state`). Um seek exatamente até lá fica no
+  /// cache (visto no mpv da app); o `demuxer-cache-duration` passava esse fim até ~1,6 s ("Cached
+  /// seek not possible"), por isso só serve sem o cache-state, com [margemSemCacheState].
+  /// null: não se sabe.
+  Future<double?> _aFrente() async {
+    final pos = await _posicao();
+    if (pos == null) return null;
+    final fim = fimProcuravel(await mpv.getProperty('demuxer-cache-state'), pos);
+    if (fim != null) return fim - pos < 0 ? 0 : fim - pos;
+    final d = double.tryParse(await mpv.getProperty('demuxer-cache-duration'));
+    if (d == null) return null;
+    final m = d - margemSemCacheState.inMicroseconds / 1e6;
+    return m < 0 ? 0 : m;
+  }
+
+  /// Sem o `demuxer-cache-state`, quanto fica antes do fim pela duração à frente.
+  static const margemSemCacheState = Duration(seconds: 1);
+
+  /// Abaixo disto à frente já se está no fim do buffer.
+  static const _minimo = Duration(milliseconds: 500);
+
+  static Duration _duracao(double s) => Duration(microseconds: (s * 1e6).round());
 
   Future<void> _seek(String segundos) async {
     await mpv.command(['seek', segundos, 'relative']);
@@ -67,9 +92,20 @@ class SaltosDireto {
     return null;
   }
 
+  /// Avança até `pedido`, nunca para lá do fim do buffer (o mais recente recebido). O relógio já
+  /// não limita: o servidor pode ter mandado mais à frente do que o "direto" que o relógio conta
+  /// (um portal mandou 28 s de uma vez), e o utilizador pode querer ir para o mais recente. Quando
+  /// a imagem chega ao fim do buffer o mpv espera por dados (o indicador de buffering).
   Future<String?> _avancar(Duration pedido) async {
-    final d = relogio.avancoPossivel(pedido);
-    if (d < const Duration(milliseconds: 500)) return 'Já está em direto';
+    final double? aFrente;
+    try {
+      aFrente = await _aFrente();
+    } catch (e) {
+      debugPrint('mpv: avançar falhou ($e)');
+      return null;
+    }
+    final d = aFrente == null ? pedido : (pedido < _duracao(aFrente) ? pedido : _duracao(aFrente));
+    if (d < _minimo) return 'Já está no fim do buffer';
     try {
       final antes = await _posicao();
       await _seek(_s(d));
@@ -83,28 +119,30 @@ class SaltosDireto {
         avancou = Duration(milliseconds: (s * 1000).round());
       }
       relogio.avancou(avancou);
-      if (avancou < const Duration(milliseconds: 500)) return 'Para chegar ao direto use "Voltar ao direto"';
+      if (avancou < _minimo) return 'Já está no fim do buffer';
     } catch (e) {
       debugPrint('mpv: avançar falhou ($e)');
     }
     return null;
   }
 
-  /// Volta ao direto. Pelo seek só se o atraso todo estiver no buffer à frente; senão (pausa
-  /// longa: o buffer encheu, o mpv deixou de ler e o canal ficou mesmo para trás; ou o buffer não
-  /// se sabe) devolve [VoltaAoDireto.reabrir]: quem chama reabre o canal (link novo), a única
-  /// forma de chegar ao direto verdadeiro.
+  /// Volta ao direto: até ao fim do buffer (o mais recente recebido, que pode estar à frente do
+  /// direto que o relógio conta). Pelo seek só se o atraso todo estiver no buffer à frente; senão
+  /// (pausa longa: o buffer encheu, o mpv deixou de ler e o canal ficou mesmo para trás; ou o
+  /// buffer não se sabe) devolve [VoltaAoDireto.reabrir]: quem chama reabre o canal (link novo), a
+  /// única forma de chegar ao direto verdadeiro.
   /// `aindaValido`: falso se entretanto se mudou de canal (não se faz nada no canal novo).
   Future<VoltaAoDireto> voltarAoDireto({bool Function()? aindaValido}) async {
     final d = relogio.atraso;
-    if (d < const Duration(milliseconds: 500)) return VoltaAoDireto.jaEmDireto;
     try {
-      final aFrente = double.tryParse(await mpv.getProperty('demuxer-cache-duration'));
+      final aFrente = await _aFrente();
       if (aindaValido != null && !aindaValido()) return VoltaAoDireto.cancelado;
+      final noFim = aFrente != null && _duracao(aFrente) < _minimo;
+      if (d < _minimo && (noFim || aFrente == null)) return VoltaAoDireto.jaEmDireto;
       if (aFrente == null || d.inMicroseconds / 1e6 - aFrente > margemReabrir.inSeconds) {
         return VoltaAoDireto.reabrir;
       }
-      await _seek(_s(d));
+      if (!noFim) await _seek(aFrente.toStringAsFixed(3));
       relogio.voltouAoDireto();
       return VoltaAoDireto.porSeek;
     } catch (e) {

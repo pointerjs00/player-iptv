@@ -21,17 +21,15 @@ void main() {
     passar(5000);
     expect(r.atraso, const Duration(seconds: 10));
     expect(r.emDireto, isFalse);
-    expect(r.avancoPossivel(const Duration(seconds: 10)), const Duration(seconds: 10));
     r.avancou(const Duration(seconds: 10));
     expect(r.emDireto, isTrue);
   });
 
-  test('não se avança para lá do direto', () {
+  test('avançar para lá do direto (o buffer à frente) deixa o atraso em zero, nunca negativo', () {
     r.recuou(const Duration(seconds: 4));
-    expect(r.avancoPossivel(const Duration(seconds: 10)), const Duration(seconds: 4));
     r.avancou(const Duration(seconds: 10));
     expect(r.atraso, Duration.zero);
-    expect(r.avancoPossivel(const Duration(seconds: 10)), Duration.zero);
+    expect(r.emDireto, isTrue);
   });
 
   test('a pausa conta como atraso (o direto continua)', () {

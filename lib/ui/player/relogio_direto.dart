@@ -62,16 +62,12 @@ class RelogioDireto {
     _base += d;
   }
 
+  /// Avançar pode passar o "direto" do relógio (o buffer à frente; ver [SaltosDireto]): o atraso
+  /// fica em zero.
   void avancou(Duration d) {
     _marcar();
     _base -= d;
     if (_base.isNegative) _base = Duration.zero;
-  }
-
-  /// Quanto se pode avançar de `pedido` sem passar o direto.
-  Duration avancoPossivel(Duration pedido) {
-    final a = atraso;
-    return pedido < a ? pedido : a;
   }
 
   void voltouAoDireto() {

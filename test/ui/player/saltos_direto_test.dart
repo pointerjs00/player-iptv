@@ -9,6 +9,8 @@ class _MpvCache implements MotorMpv {
   double posicao = 100;
   double inicioCache = 40;
   double fimCache = 103;
+  double excessoDuracao = 1.6;
+  bool semCacheState = false;
   final comandos = <String>[];
 
   @override
@@ -20,7 +22,12 @@ class _MpvCache implements MotorMpv {
   @override
   Future<String> getProperty(String p) async => switch (p) {
         'time-pos' => '$posicao',
-        'demuxer-cache-duration' => '${fimCache - posicao}',
+        // como o mpv: a duração à frente pode passar o fim procurável (até ~1,6 s, visto num
+        // portal); o fim procurável é o do intervalo em seekable-ranges
+        'demuxer-cache-duration' => '${fimCache + excessoDuracao - posicao}',
+        'demuxer-cache-state' => semCacheState
+            ? ''
+            : '{"seekable-ranges":[{"start":$inicioCache,"end":$fimCache}],"cache-end":${fimCache + 0.4}}',
         _ => '',
       };
 
@@ -59,26 +66,53 @@ void main() {
     expect(relogio.atraso, const Duration(seconds: 6));
   });
 
-  test('avançar não passa o direto; em direto avisa e não faz seek', () async {
-    expect(await saltos.avancar(), 'Já está em direto');
-    expect(mpv.comandos, isEmpty);
-    relogio.recuou(const Duration(seconds: 4));
+  test('avançar vai até ao fim do buffer (o mais recente recebido), mesmo já "em direto"', () async {
+    // em direto pelo relógio, mas com 3 s já recebidos à frente
     expect(await saltos.avancar(), isNull);
-    expect(mpv.comandos, ['seek 4.000 relative']);
+    expect(mpv.comandos, ['seek 3.000 relative'], reason: 'o fim procurável, não a duração à frente (que passa o fim)');
+    expect(mpv.posicao, 103);
     expect(relogio.emDireto, isTrue);
+    expect(relogio.atraso, Duration.zero);
   });
 
-  test('voltar ao direto: com o atraso todo no buffer à frente, seek pelo atraso todo', () async {
+  test('no fim do buffer: avisa e não faz seek', () async {
+    mpv.fimCache = 100.3;
+    expect(await saltos.avancar(), 'Já está no fim do buffer');
+    expect(mpv.comandos, isEmpty);
+  });
+
+  test('avançar 10 s com mais buffer à frente: anda os 10 s', () async {
+    mpv.fimCache = 130;
+    relogio.recuou(const Duration(seconds: 4));
+    expect(await saltos.avancar(), isNull);
+    expect(mpv.comandos, ['seek 10.000 relative'], reason: 'o relógio já não limita: o buffer à frente é que manda');
+    expect(relogio.atraso, Duration.zero);
+  });
+
+  test('sem demuxer-cache-state: pela duração à frente, com 1 s de margem', () async {
+    mpv.semCacheState = true;
+    mpv.excessoDuracao = 0;
+    expect(await saltos.avancar(), isNull);
+    expect(mpv.comandos, ['seek 2.000 relative']);
+  });
+
+  test('voltar ao direto: com o atraso todo no buffer à frente, vai até ao fim do buffer', () async {
     await saltos.recuar();
     await saltos.recuar();
     mpv.comandos.clear();
     expect(await saltos.voltarAoDireto(), VoltaAoDireto.porSeek);
-    expect(mpv.comandos, ['seek 20.000 relative']);
+    expect(mpv.comandos, ['seek 23.000 relative'], reason: 'os 20 s de atraso e os 3 s já recebidos à frente');
     expect(relogio.emDireto, isTrue);
-    expect(mpv.posicao, 100);
+    expect(mpv.posicao, 103);
   });
 
-  test('em direto, "voltar ao direto" não faz nada', () async {
+  test('em direto mas com buffer à frente: "voltar ao direto" vai até ao fim do buffer', () async {
+    expect(await saltos.voltarAoDireto(), VoltaAoDireto.porSeek);
+    expect(mpv.comandos, ['seek 3.000 relative']);
+  });
+
+  test('em direto e no fim do buffer: "voltar ao direto" não faz nada', () async {
+    mpv.fimCache = 100.2;
     expect(await saltos.voltarAoDireto(), VoltaAoDireto.jaEmDireto);
     expect(mpv.comandos, isEmpty);
   });
@@ -131,22 +165,29 @@ void main() {
       expect(relogio.atraso, const Duration(seconds: 60));
     });
 
-    test('para a frente: não passa o direto (o relógio) nem conta mais do que andou', () async {
+    test('para a frente: até ao fim do buffer, nunca para lá dele', () async {
       await saltos.irPara(70);
       mpv.comandos.clear();
       expect(await saltos.irPara(85), isNull);
       expect(mpv.comandos, ['seek 15.000 relative']);
       expect(relogio.atraso, const Duration(seconds: 15));
-      // pedir para lá do direto: só o atraso que falta
+      // pedir para lá do fim do buffer: só até ao fim (o mais recente recebido)
       mpv.comandos.clear();
       await saltos.irPara(500);
-      expect(mpv.comandos, ['seek 15.000 relative']);
+      expect(mpv.comandos, ['seek 18.000 relative']);
+      expect(mpv.posicao, 103);
       expect(relogio.atraso, Duration.zero);
     });
 
-    test('já em direto, para a frente: avisa e não faz seek', () async {
-      expect(await saltos.irPara(103), 'Já está em direto');
+    test('já no fim do buffer, para a frente: avisa e não faz seek', () async {
+      mpv.fimCache = 100.4;
+      expect(await saltos.irPara(103), 'Já está no fim do buffer');
       expect(mpv.comandos, isEmpty);
+    });
+
+    test('em direto pelo relógio, arrastar para o fim do buffer: vai lá', () async {
+      expect(await saltos.irPara(103), isNull);
+      expect(mpv.comandos, ['seek 3.000 relative']);
     });
 
     test('menos de 1 s: não faz nada (nem diz "Não há mais para recuar"); sem time-pos: não faz nada', () async {
