@@ -10,6 +10,7 @@ class CompativelNaSessao {
   final _semImagem = <String>{};
   final _filtro = <String>{};
   final _progressivos = <String>{};
+  final _lentos = <String>{};
 
   ModoDescodificacao modoPara(String chave, ModoDescodificacao preferido) =>
       preferido == ModoDescodificacao.direto && (_semImagem.contains(chave) || _filtro.contains(chave))
@@ -22,7 +23,7 @@ class CompativelNaSessao {
   /// Marca o canal para o filtro de desentrelaçamento; true se é a primeira vez e não se sabe já
   /// que é progressivo (reabrir em Compatível).
   bool marcarParaFiltro(String chave) =>
-      !_progressivos.contains(chave) && !_semImagem.contains(chave) && _filtro.add(chave);
+      !_progressivos.contains(chave) && !_lentos.contains(chave) && !_semImagem.contains(chave) && _filtro.add(chave);
 
   /// O canal, visto em Compatível, é progressivo (o idet do mpv): da próxima vez abre no direto e
   /// não volta a ser reaberto para o filtro nesta sessão.
@@ -32,6 +33,13 @@ class CompativelNaSessao {
   }
 
   bool eProgressivo(String chave) => _progressivos.contains(chave);
+
+  /// Em Compatível com o filtro o aparelho perde imagens (não aguenta a cópia + o bwdif): o canal
+  /// volta ao direto (com o shader) e não volta a ser reaberto para o filtro nesta sessão.
+  void lento(String chave) {
+    _lentos.add(chave);
+    _filtro.remove(chave);
+  }
 
   /// Reaberto para o filtro (e ainda não visto progressivo).
   bool paraFiltro(String chave) => _filtro.contains(chave);

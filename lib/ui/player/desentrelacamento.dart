@@ -43,7 +43,14 @@ List<String> propriedadesEntrelacamento(PlataformaVideo p) => [
       'core-idle',
       'eof-reached',
       'vf',
-      if (p == PlataformaVideo.android) ...['seekable', 'partially-seekable', 'vf-metadata/$rotuloIdet'],
+      if (p == PlataformaVideo.android) ...[
+        'seekable',
+        'partially-seekable',
+        'vf-metadata/$rotuloIdet',
+        // as imagens perdidas com o filtro (o Compatível que não aguenta volta ao direto)
+        'frame-drop-count',
+        'decoder-frame-drop-count',
+      ],
     ];
 
 double? _numero(String? s) => double.tryParse(s?.trim() ?? '');

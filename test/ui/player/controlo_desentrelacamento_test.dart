@@ -56,6 +56,7 @@ Map<String, String> _leitura({
   String seekable = 'no',
   String idet = '',
   String parcial = 'no',
+  String perdidas = '0',
 }) =>
     {
       'mpv-version': versao,
@@ -70,6 +71,8 @@ Map<String, String> _leitura({
       'seekable': seekable,
       'partially-seekable': parcial,
       'vf-metadata/$rotuloIdet': idet,
+      'frame-drop-count': perdidas,
+      'decoder-frame-drop-count': '0',
     };
 
 /// Tudo vazio: o que o MotorForaDaUi devolve num pedido sem resposta (limite de 10 s ou fechado).
@@ -90,8 +93,9 @@ void main() {
 
   ControloDesentrelacamento windows() =>
       ControloDesentrelacamento(PlataformaVideo.windows, sessao: sessao, compativel: compativel);
-  ControloDesentrelacamento android({bool armv7 = false}) =>
-      ControloDesentrelacamento(PlataformaVideo.android, sessao: sessao, compativel: compativel, armv7: armv7);
+  var agora = DateTime(2026, 11, 18, 20);
+  ControloDesentrelacamento android({bool armv7 = false}) => ControloDesentrelacamento(PlataformaVideo.android,
+      sessao: sessao, compativel: compativel, armv7: armv7, relogio: () => agora);
 
   Future<void> aplicar(ControloDesentrelacamento c, MotorMpv mpv, {bool direto = false, bool valido = true}) =>
       c.aplicar(mpv,
@@ -405,6 +409,83 @@ void main() {
       expect(compativel.modoPara('k', ModoDescodificacao.direto), ModoDescodificacao.direto);
       expect(android().ler(direto(), ligado: true, direto: true, chave: 'k'), isFalse,
           reason: 'já se sabe que é progressivo: não reabre outra vez');
+    });
+  });
+
+  group('Android: o Compatível com o bwdif que perde imagens volta ao direto', () {
+    const k = 'lista|7';
+    Map<String, String> direto() => _leitura(hwdec: 'mediacodec', interlaced: '');
+    final vf = '@$rotuloIdet:idet,$_bwdif';
+    Map<String, String> aDobrar(int perdidas) =>
+        _leitura(hwdec: 'mediacodec-copy', interlaced: '', vf: vf, vfFps: '50.000000', perdidas: '$perdidas',
+            idet: _idet(tff: 200, prog: 0));
+
+    /// O canal reaberto em Compatível para o filtro, com o bwdif confirmado (a dobrar).
+    Future<ControloDesentrelacamento> confirmado(_Mpv mpv) async {
+      final c = android();
+      expect(c.ler(direto(), ligado: true, direto: true, chave: k), isTrue);
+      c.abrir(continuar: false, playerNovo: true);
+      await passo(c, mpv, _leitura(hwdec: 'mediacodec-copy', interlaced: ''), chave: k);
+      await passo(c, mpv, aDobrar(0), chave: k);
+      expect(c.confirmado, isTrue);
+      return c;
+    }
+
+    test('mais de 2 imagens perdidas por segundo durante 10 s: reabre no direto (e fica nesta sessão)', () async {
+      final mpv = _Mpv();
+      final c = await confirmado(mpv);
+      agora = agora.add(const Duration(seconds: 10));
+      expect(await passo(c, mpv, aDobrar(40), chave: k), isTrue);
+      expect(c.avisoReabrir, contains('Direta'));
+      expect(compativel.modoPara(k, ModoDescodificacao.direto), ModoDescodificacao.direto);
+      expect(android().ler(direto(), ligado: true, direto: true, chave: k), isFalse,
+          reason: 'não volta a reabrir em Compatível para o filtro nesta sessão');
+    });
+
+    test('poucas perdidas (as do arranque, ou < 2/s): fica no Compatível com o bwdif', () async {
+      final mpv = _Mpv();
+      final c = await confirmado(mpv);
+      for (var i = 1; i <= 6; i++) {
+        agora = agora.add(const Duration(seconds: 10));
+        expect(await passo(c, mpv, aDobrar(5 * i), chave: k), isFalse);
+      }
+      expect(c.meio, MeioDesentrelacamento.filtroMpv);
+      expect(compativel.modoPara(k, ModoDescodificacao.direto), ModoDescodificacao.compativel);
+    });
+
+    test('uma janela curta (< 8 s) nunca decide, mesmo com muitas perdidas', () async {
+      final mpv = _Mpv();
+      final c = await confirmado(mpv);
+      agora = agora.add(const Duration(seconds: 3));
+      expect(await passo(c, mpv, aDobrar(60), chave: k), isFalse);
+    });
+
+    test('em pausa / a carregar não conta (as perdidas e o tempo da janela recomeçam)', () async {
+      final mpv = _Mpv();
+      final c = await confirmado(mpv);
+      agora = agora.add(const Duration(seconds: 30));
+      final parado = {...aDobrar(10), 'core-idle': 'yes'};
+      expect(await passo(c, mpv, parado, chave: k), isFalse);
+      agora = agora.add(const Duration(seconds: 10));
+      expect(await passo(c, mpv, aDobrar(20), chave: k), isFalse, reason: '10 perdidas em 10 s: 1/s');
+    });
+
+    test('um canal que o utilizador pôs em Compatível (não reaberto para o filtro) nunca muda de modo', () async {
+      final mpv = _Mpv();
+      final c = android();
+      await passo(c, mpv, _leitura(hwdec: 'mediacodec-copy', interlaced: ''), chave: k);
+      await passo(c, mpv, aDobrar(0), chave: k);
+      agora = agora.add(const Duration(seconds: 10));
+      expect(await passo(c, mpv, aDobrar(100), chave: k), isFalse);
+    });
+
+    test('Windows nunca muda de modo por perdidas', () async {
+      final mpv = _Mpv();
+      final c = windows();
+      await passo(c, mpv, _leitura());
+      await passo(c, mpv, {..._leitura(vf: _bwdif, vfFps: '50.000000'), 'frame-drop-count': '0'});
+      agora = agora.add(const Duration(seconds: 10));
+      expect(await passo(c, mpv, {..._leitura(vf: _bwdif, vfFps: '50.000000'), 'frame-drop-count': '500'}), isFalse);
     });
   });
 }

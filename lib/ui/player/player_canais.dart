@@ -807,9 +807,10 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     try {
       final m = await _motor.getProperties(propriedadesEntrelacamento(_plataforma));
       if (!mounted || pedido != _pedido) return;
-      // Android direto: o filtro não se aplica, o canal reabre em Compatível (uma vez por canal)
+      // Android direto: o filtro não se aplica, o canal reabre em Compatível (uma vez por canal); e
+      // um Compatível com o filtro que perde imagens volta ao direto
       if (_deint.ler(m, ligado: _prefs.desentrelacar, direto: _diretoAndroid, chave: _chave(_canais[_i]))) {
-        _mostrarAviso('Modo compatível ativado para desentrelaçar este canal');
+        _mostrarAviso(_deint.avisoReabrir ?? 'Modo compatível ativado para desentrelaçar este canal');
         _abrir();
         return;
       }

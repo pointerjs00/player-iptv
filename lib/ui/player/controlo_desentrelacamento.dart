@@ -38,10 +38,21 @@ class FiltrosNaSessao {
 /// filtro funciona de facto (medido, ver [efeitoFiltro]). Sem mpv nem UI: o `PlayerCanais` lê as
 /// propriedades ([propriedadesEntrelacamento]), passa-as a [ler] e chama [aplicar].
 class ControloDesentrelacamento {
-  ControloDesentrelacamento(this.plataforma, {FiltrosNaSessao? sessao, CompativelNaSessao? compativel, bool? armv7})
+  ControloDesentrelacamento(this.plataforma,
+      {FiltrosNaSessao? sessao, CompativelNaSessao? compativel, bool? armv7, DateTime Function()? relogio})
       : sessao = sessao ?? FiltrosNaSessao.instancia,
         compativel = compativel ?? CompativelNaSessao.instancia,
-        armv7 = armv7 ?? (plataforma == PlataformaVideo.android && Abi.current() == Abi.androidArm);
+        armv7 = armv7 ?? (plataforma == PlataformaVideo.android && Abi.current() == Abi.androidArm),
+        _relogio = relogio ?? DateTime.now;
+
+  final DateTime Function() _relogio;
+
+  /// Android, reaberto em Compatível para o filtro: a partir de quantas imagens perdidas por segundo
+  /// (o `frame-drop-count` mais o `decoder-frame-drop-count` do mpv) o aparelho não aguenta a cópia
+  /// das imagens + o bwdif e o canal volta ao direto. 2/s é 4 % das 50 imagens/s do bwdif: já se vê
+  /// a imagem a saltar; as poucas do arranque não chegam lá numa janela de [janelaPerdidas].
+  static const perdidasPorSegundo = 2.0;
+  static const janelaPerdidas = Duration(seconds: 8);
 
   final PlataformaVideo plataforma;
   final FiltrosNaSessao sessao;
@@ -63,6 +74,11 @@ class ControloDesentrelacamento {
   int _semEfeito = 0;
   int _leiturasIdet = 0;
   Future<void> _fila = Future.value();
+  ({DateTime quando, int perdidas})? _basePerdidas;
+  String? _avisoReabrir;
+
+  /// O que dizer ao utilizador quando [ler] pede para reabrir o canal.
+  String? get avisoReabrir => _avisoReabrir;
 
   /// A imagem é entrelaçada? null: ainda não se sabe.
   bool? get entrelacada => _entrelacada;
@@ -106,6 +122,7 @@ class ControloDesentrelacamento {
   }
 
   void _esquecerCanal() {
+    _basePerdidas = null;
     _entrelacada = null;
     _falhouNoCanal = false;
     _leiturasIdet = 0;
@@ -116,6 +133,7 @@ class ControloDesentrelacamento {
   /// [CompativelNaSessao] já ficou marcado.
   bool ler(Map<String, String> m, {required bool ligado, required bool direto, required String chave}) {
     if ((m['mpv-version'] ?? '').trim().isEmpty) return false;
+    _avisoReabrir = null;
     sessao.versao(m['mpv-version']);
     final hw = (m['hwdec-current'] ?? '').trim();
     if (hw.isNotEmpty) _hwdec = hw;
@@ -125,15 +143,48 @@ class ControloDesentrelacamento {
     } else if (lida != null) {
       _entrelacada = lida;
     }
+    if (_naoAguenta(m, chave)) {
+      compativel.lento(chave);
+      _avisoReabrir = 'O aparelho perde imagens com o desentrelaçamento por campo: volta a descodificação Direta';
+      debugPrint('desentrelaçamento: o Compatível com o filtro perde imagens; o canal volta ao direto');
+      return true;
+    }
     if (plataforma == PlataformaVideo.android &&
         ligado &&
         direto &&
         filtros &&
         pareceEntrelacadaNoDireto(m) &&
         compativel.marcarParaFiltro(chave)) {
+      _avisoReabrir = 'Modo compatível ativado para desentrelaçar este canal';
       return true;
     }
     return false;
+  }
+
+  /// Android, num canal reaberto em Compatível para o filtro, com o filtro a dobrar as imagens: as
+  /// imagens perdidas numa janela de pelo menos [janelaPerdidas] passam de [perdidasPorSegundo]? Em
+  /// pausa, a carregar ou no fim do buffer a janela recomeça (essas paragens não são do aparelho).
+  bool _naoAguenta(Map<String, String> m, String chave) {
+    if (plataforma != PlataformaVideo.android ||
+        _meio != MeioDesentrelacamento.filtroMpv ||
+        !_confirmado ||
+        !compativel.paraFiltro(chave)) {
+      _basePerdidas = null;
+      return false;
+    }
+    final perdidas = (int.tryParse((m['frame-drop-count'] ?? '').trim()) ?? 0) +
+        (int.tryParse((m['decoder-frame-drop-count'] ?? '').trim()) ?? 0);
+    final agora = _relogio();
+    final parado = (m['core-idle'] ?? '').trim() == 'yes' || (m['eof-reached'] ?? '').trim() == 'yes';
+    final base = _basePerdidas;
+    if (parado || base == null || perdidas < base.perdidas) {
+      _basePerdidas = parado ? null : (quando: agora, perdidas: perdidas);
+      return false;
+    }
+    final passou = agora.difference(base.quando);
+    if (passou < janelaPerdidas) return false;
+    _basePerdidas = (quando: agora, perdidas: perdidas);
+    return (perdidas - base.perdidas) / (passou.inMilliseconds / 1000) > perdidasPorSegundo;
   }
 
   bool get _comIdet => plataforma == PlataformaVideo.android && _hwdec.startsWith('mediacodec');
