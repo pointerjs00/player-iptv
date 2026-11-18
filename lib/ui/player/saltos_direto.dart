@@ -24,17 +24,38 @@ class SaltosDireto {
 
   static String _s(Duration d) => (d.inMicroseconds / 1e6).toStringAsFixed(3);
 
-  Future<String?> recuar() async {
+  Future<String?> recuar() => _recuar(salto, '-${salto.inSeconds}');
+
+  Future<String?> avancar() => _avancar(salto);
+
+  /// Vai para `alvo` (segundos do `time-pos`; a barra de progresso). Sempre pelo seek relativo
+  /// destes saltos: dentro do cache, sem reabrir o canal, e o [relogio] conta o que o mpv andou de
+  /// facto. Menos de meio segundo (ou sem posição) não faz nada.
+  Future<String?> irPara(double alvo) async {
+    final double? agora;
+    try {
+      agora = await _posicao();
+    } catch (e) {
+      debugPrint('mpv: ir para $alvo falhou ($e)');
+      return null;
+    }
+    if (agora == null) return null;
+    final d = Duration(microseconds: ((alvo - agora) * 1e6).round());
+    if (d.abs() < const Duration(milliseconds: 500)) return null;
+    return d.isNegative ? _recuar(-d, '-${_s(-d)}') : _avancar(d);
+  }
+
+  Future<String?> _recuar(Duration pedido, String segundos) async {
     try {
       final antes = await _posicao();
-      await _seek('-${salto.inSeconds}');
+      await _seek(segundos);
       if (esperar > Duration.zero) await Future<void>.delayed(esperar);
       final depois = await _posicao();
-      var recuou = salto;
+      var recuou = pedido;
       if (antes != null && depois != null) {
         // o que tocou durante a espera também conta
         final tocou = relogio.pausado ? 0.0 : esperar.inMicroseconds / 1e6 * relogio.velocidade;
-        final s = (antes + tocou - depois).clamp(0.0, salto.inSeconds + 1.0);
+        final s = (antes + tocou - depois).clamp(0.0, pedido.inMicroseconds / 1e6 + 1.0);
         recuou = Duration(milliseconds: (s * 1000).round());
       }
       if (recuou < const Duration(seconds: 1)) return 'Não há mais para recuar';
@@ -45,8 +66,8 @@ class SaltosDireto {
     return null;
   }
 
-  Future<String?> avancar() async {
-    final d = relogio.avancoPossivel(salto);
+  Future<String?> _avancar(Duration pedido) async {
+    final d = relogio.avancoPossivel(pedido);
     if (d < const Duration(milliseconds: 500)) return 'Já está em direto';
     try {
       final antes = await _posicao();

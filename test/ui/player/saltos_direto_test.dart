@@ -111,6 +111,47 @@ void main() {
     expect(relogio.emDireto, isFalse);
   });
 
+  group('irPara (barra de progresso: arrastar/setas)', () {
+    test('para trás no cache: seek relativo pela diferença e o atraso cresce o que recuou', () async {
+      expect(await saltos.irPara(70), isNull);
+      expect(mpv.comandos, ['seek -30.000 relative']);
+      expect(mpv.posicao, 70);
+      expect(relogio.atraso, const Duration(seconds: 30));
+    });
+
+    test('nunca sai do cache para trás: conta só o que o mpv recuou', () async {
+      await saltos.irPara(10);
+      expect(mpv.posicao, 40);
+      expect(relogio.atraso, const Duration(seconds: 60));
+    });
+
+    test('para a frente: não passa o direto (o relógio) nem conta mais do que andou', () async {
+      await saltos.irPara(70);
+      mpv.comandos.clear();
+      expect(await saltos.irPara(85), isNull);
+      expect(mpv.comandos, ['seek 15.000 relative']);
+      expect(relogio.atraso, const Duration(seconds: 15));
+      // pedir para lá do direto: só o atraso que falta
+      mpv.comandos.clear();
+      await saltos.irPara(500);
+      expect(mpv.comandos, ['seek 15.000 relative']);
+      expect(relogio.atraso, Duration.zero);
+    });
+
+    test('já em direto, para a frente: avisa e não faz seek', () async {
+      expect(await saltos.irPara(103), 'Já está em direto');
+      expect(mpv.comandos, isEmpty);
+    });
+
+    test('menos de meio segundo: não faz nada; sem time-pos: não faz nada', () async {
+      expect(await saltos.irPara(100.3), isNull);
+      expect(mpv.comandos, isEmpty);
+      final s = SaltosDireto(_SemPosicao(), relogio, esperar: Duration.zero);
+      expect(await s.irPara(50), isNull);
+      expect(relogio.atraso, Duration.zero);
+    });
+  });
+
   test('sem time-pos (mpv a abrir): conta o pedido', () async {
     final s = SaltosDireto(_SemPosicao(), relogio, esperar: Duration.zero);
     await s.recuar();

@@ -19,10 +19,12 @@ import 'controlos_player.dart';
 import 'diagnostico.dart';
 import 'estatisticas.dart';
 import 'faixas.dart';
+import 'leitor_partilhado.dart';
 import 'maquina_controlos.dart';
 import 'mpv_fora_da_ui.dart';
 import 'numero_canal.dart';
 import 'painel_definicoes.dart';
+import 'progresso.dart';
 import 'relogio_direto.dart';
 import 'saltos_direto.dart';
 import 'taxa_ecra.dart';
@@ -87,6 +89,10 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   late Player _player;
   late MotorForaDaUi _motor;
   late SaltosDireto _saltos;
+
+  /// As leituras do mpv da barra, da barra de progresso e das estatísticas: de uma vez (um
+  /// isolate por leitura, nunca na thread da UI) e partilhadas entre elas.
+  late final _leitor = LeitorPartilhado((ps) => _motor.getProperties(ps));
   late VideoController _video;
   late Future<void> _configurado;
   final _subsPlayer = <StreamSubscription>[];
@@ -160,6 +166,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     _player = Player(configuration: _config.configuracaoPlayer);
     _motor = MotorForaDaUi.doPlayer(_player);
     _saltos = SaltosDireto(_motor, _relogio);
+    _leitor.esquecer();
     _subsPlayer.add(_player.stream.error.listen((e) {
       if (mounted && e.isNotEmpty && erroFatalPlayer(e)) {
         // a reabrir depois de um corte: uma falha passageira (rede, 401) tenta-se outra vez
@@ -344,6 +351,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       _velocidade = 1;
     });
     _relogio.reiniciar();
+    _leitor.esquecer();
     // o nome do canal uns segundos (no primeiro canal a barra ainda não foi construída)
     final controlos = _controlos.currentState;
     if (continuar) {
@@ -399,8 +407,23 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   }
 
   /// As propriedades do mpv para as estatísticas (texto; "" quando não há).
-  Future<Map<String, String>> _lerMpv() async =>
-      {for (final p in propriedadesDiagnostico) p: await _motor.getProperty(p)};
+  Future<Map<String, String>> _lerMpv() => _leitor.ler(propriedadesDiagnostico);
+
+  /// A barra de progresso: num direto pelos saltos do cache ([SaltosDireto.irPara]: seek
+  /// relativo, nunca reabre o canal, o relógio do direto fica certo); num filme, seek absoluto.
+  Future<void> _procurar(JanelaProgresso janela, double alvo) async {
+    final pedido = _pedido;
+    String? aviso;
+    if (janela.direto) {
+      aviso = await _saltos.irPara(alvo);
+    } else {
+      await _motor.command(['seek', alvo.toStringAsFixed(3), 'absolute']);
+    }
+    _leitor.esquecer(); // a posição mudou
+    if (!mounted || pedido != _pedido) return;
+    if (aviso != null) _mostrarAviso(aviso);
+    setState(() {});
+  }
 
   /// Android TV / Fire TV: pede o modo de ecrã que combina com o fps do canal (50 fps -> 50 Hz),
   /// para cada imagem ficar o mesmo tempo no ecrã (sem judder).
@@ -759,7 +782,9 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
         ),
         aoNumero: _irParaNumero,
         atraso: () => _relogio.atraso,
-        lerInfoStream: () async => {for (final p in propriedadesInfoStream) p: await _motor.getProperty(p)},
+        lerInfoStream: () => _leitor.ler(propriedadesInfoStream),
+        lerProgresso: () async => janelaDe(await _leitor.ler(propriedadesProgresso)),
+        aoProcurar: _procurar,
         aoAgir: _agir,
         aoMudarVelocidade: _mudarVelocidade,
         definicoes: _definicoes,

@@ -1,4 +1,5 @@
 import 'package:flutter/gestures.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
@@ -6,7 +7,10 @@ import 'package:player_iptv/ui/design/ecra.dart';
 import 'package:player_iptv/ui/player/controlos_player.dart';
 import 'package:player_iptv/ui/player/maquina_controlos.dart';
 import 'package:player_iptv/ui/player/numero_canal.dart';
+import 'package:player_iptv/ui/design/componentes.dart';
+import 'package:player_iptv/ui/player/barra_progresso.dart';
 import 'package:player_iptv/ui/player/painel_definicoes.dart';
+import 'package:player_iptv/ui/player/progresso.dart';
 import 'package:player_iptv/ui/realce_foco.dart';
 import 'package:player_iptv/ui/tema.dart';
 
@@ -20,9 +24,15 @@ class _Ensaio {
   double velocidade = 1;
   bool erro = false;
   bool ecraInteiro = false;
+  String canal = 'RTP 1';
   var silencio = false;
   StateSetter? reconstruir;
   var leiturasInfo = 0;
+
+  /// A barra de progresso (com `comProgresso`): a janela que o "player" devolve.
+  JanelaProgresso? janela;
+  var leiturasProgresso = 0;
+  final procuras = <double>[];
   Map<String, String> infoStream = const {
     'width': '1280',
     'height': '720',
@@ -34,7 +44,12 @@ class _Ensaio {
 final _chave = GlobalKey<ControlosPlayerState>();
 
 Future<_Ensaio> _montar(WidgetTester t,
-    {bool ecraInteiro = false, bool semAnimacoes = false, bool tv = false, bool botaoNoVideo = true}) async {
+    {bool ecraInteiro = false,
+    bool semAnimacoes = false,
+    bool tv = false,
+    bool botaoNoVideo = true,
+    bool comProgresso = false,
+    JanelaProgresso? janela}) async {
   EcraTv.nativo = tv;
   addTearDown(() => EcraTv.nativo = false);
   FocusManager.instance.highlightStrategy = FocusHighlightStrategy.alwaysTraditional;
@@ -42,7 +57,9 @@ Future<_Ensaio> _montar(WidgetTester t,
   t.view.physicalSize = const Size(1920, 1080);
   t.view.devicePixelRatio = tv ? 2 : 1;
   addTearDown(t.view.reset);
-  final e = _Ensaio()..ecraInteiro = ecraInteiro;
+  final e = _Ensaio()
+    ..ecraInteiro = ecraInteiro
+    ..janela = janela;
   await t.pumpWidget(
     MaterialApp(
       theme: temaApp(),
@@ -58,7 +75,7 @@ Future<_Ensaio> _montar(WidgetTester t,
             return ControlosPlayer(
               key: _chave,
               estado: EstadoControlos(
-                canal: 'RTP 1',
+                canal: e.canal,
                 subtitulo: 'Generalistas · 3/120 · Lista A',
                 aTocar: e.aTocar,
                 velocidade: e.velocidade,
@@ -70,6 +87,18 @@ Future<_Ensaio> _montar(WidgetTester t,
               lerInfoStream: () async {
                 e.leiturasInfo++;
                 return e.infoStream;
+              },
+              lerProgresso: comProgresso
+                  ? () async {
+                      e.leiturasProgresso++;
+                      return e.janela;
+                    }
+                  : null,
+              // o "mpv": vai para o alvo (a leitura seguinte já o mostra)
+              aoProcurar: (j, alvo) async {
+                e.procuras.add(alvo);
+                e.janela = JanelaProgresso(
+                    inicio: j.inicio, fim: j.fim, posicao: alvo, direto: j.direto, bufferAte: j.bufferAte);
               },
               aoAgir: (a) => setState(() => e.acoes.add(a)),
               aoMudarVelocidade: (v) => setState(() {
@@ -114,7 +143,9 @@ Future<void> _tecla(WidgetTester t, LogicalKeyboardKey k) async {
 
 /// O texto/tooltip do controlo com o foco.
 String? _focado() {
-  final ctx = FocusManager.instance.primaryFocus?.context;
+  final foco = FocusManager.instance.primaryFocus;
+  if (foco?.debugLabel == 'progresso') return 'Progresso';
+  final ctx = foco?.context;
   if (ctx == null) return null;
   final linha = ctx.findAncestorWidgetOfExactType<LinhaDefinicao>();
   if (linha != null) return linha.item.titulo;
@@ -511,6 +542,204 @@ void main() {
       expect(_focado(), 'Canal visto antes');
       await _tecla(t, LogicalKeyboardKey.select);
       expect(e.acoes.last, AcaoPlayer.alternarCanal);
+    });
+  });
+
+  group('barra de progresso', () {
+    // um filme de 10 min a 1:40
+    const filme = JanelaProgresso(inicio: 0, fim: 600, posicao: 100, direto: false, bufferAte: 130);
+    // um direto: 40 s para trás no cache, recebido até 103
+    const direto = JanelaProgresso(inicio: 60, fim: 103, posicao: 100, direto: true, bufferAte: 103);
+
+    testWidgets('mostra o decorrido e o total em hh:mm:ss; sem janela, traços no mesmo espaço', (t) async {
+      final e = await _montar(t, comProgresso: true);
+      await _tecla(t, LogicalKeyboardKey.select);
+      expect(find.text('--:--:--'), findsNWidgets(2));
+      final barra = find.byType(BarraProgresso);
+      final antes = t.getRect(barra);
+      final painel = t.getRect(find.byType(SuperficieVidro).last);
+      e.janela = direto;
+      await t.pump(const Duration(milliseconds: 600));
+      await t.pumpAndSettle();
+      expect(find.text('00:00:40'), findsOneWidget, reason: 'a posição desde o mais antigo no cache');
+      expect(find.text('00:00:43'), findsOneWidget, reason: 'o comprimento da janela');
+      expect(t.getRect(barra), antes, reason: 'sem saltos no layout');
+      expect(t.getRect(find.byType(SuperficieVidro).last), painel);
+    });
+
+    testWidgets('lê poucas vezes por segundo, só com a barra à vista', (t) async {
+      final e = await _montar(t, comProgresso: true, janela: filme);
+      await t.pump(const Duration(seconds: 3));
+      expect(e.leiturasProgresso, 0, reason: 'escondida não lê');
+      await _tecla(t, LogicalKeyboardKey.select);
+      final n = e.leiturasProgresso;
+      await t.pump(const Duration(seconds: 2));
+      expect(e.leiturasProgresso - n, inInclusiveRange(3, 5));
+      await _tecla(t, LogicalKeyboardKey.escape);
+      final m = e.leiturasProgresso;
+      await t.pump(const Duration(seconds: 3));
+      expect(e.leiturasProgresso, m);
+    });
+
+    for (final tv in [false, true]) {
+      testWidgets('D-pad: CIMA do play/pausa chega à barra; esquerda/direita andam 10 s; OK é play/pausa '
+          '(TV: $tv)', (t) async {
+        final e = await _montar(t, tv: tv, comProgresso: true, janela: filme, botaoNoVideo: false);
+        await _tecla(t, LogicalKeyboardKey.select);
+        expect(_focado(), 'Pausa');
+        await _tecla(t, LogicalKeyboardKey.arrowUp);
+        expect(_focado(), 'Progresso');
+        await _tecla(t, LogicalKeyboardKey.arrowRight);
+        expect(e.procuras, [110]);
+        expect(find.text('00:01:50'), findsOneWidget);
+        await _tecla(t, LogicalKeyboardKey.arrowLeft);
+        await _tecla(t, LogicalKeyboardKey.arrowLeft);
+        expect(e.procuras, [110, 100, 90]);
+        expect(_focado(), 'Progresso', reason: 'esquerda/direita não saem da barra');
+        await _tecla(t, LogicalKeyboardKey.select);
+        expect(e.acoes, [AcaoPlayer.playPausa]);
+        expect(_focado(), 'Progresso');
+      });
+    }
+
+    testWidgets('D-pad: CIMA/BAIXO nunca ficam presos na barra (CIMA vai ao "Voltar", BAIXO ao play/pausa)',
+        (t) async {
+      final e = await _montar(t, tv: true, comProgresso: true, janela: direto, botaoNoVideo: false);
+      await _tecla(t, LogicalKeyboardKey.select);
+      await _tecla(t, LogicalKeyboardKey.arrowUp);
+      expect(_focado(), 'Progresso');
+      await _tecla(t, LogicalKeyboardKey.arrowDown);
+      expect(_focado(), 'Pausa');
+      // de outro botão também se chega à barra
+      await _tecla(t, LogicalKeyboardKey.arrowRight);
+      await _tecla(t, LogicalKeyboardKey.arrowRight);
+      expect(_focado(), 'Canal seguinte');
+      await _tecla(t, LogicalKeyboardKey.arrowUp);
+      expect(_focado(), 'Progresso');
+      await _tecla(t, LogicalKeyboardKey.arrowUp);
+      expect(_focado(), 'Voltar');
+      await _tecla(t, LogicalKeyboardKey.arrowDown);
+      expect(_focado(), 'Pausa', reason: 'BAIXO no "Voltar" regressa ao play/pausa');
+      expect(e.acoes, isEmpty, reason: 'nenhuma seta mudou de canal');
+      expect(e.procuras, isEmpty);
+    });
+
+    testWidgets('direita presa repete (a cada 250 ms) e não passa do fim da janela', (t) async {
+      final e = await _montar(t, comProgresso: true, botaoNoVideo: false,
+          janela: const JanelaProgresso(inicio: 60, fim: 103, posicao: 62, direto: true));
+      await _tecla(t, LogicalKeyboardKey.select);
+      await _tecla(t, LogicalKeyboardKey.arrowUp);
+      await t.sendKeyDownEvent(LogicalKeyboardKey.arrowRight);
+      await t.pump();
+      for (var i = 0; i < 10; i++) {
+        await t.sendKeyRepeatEvent(LogicalKeyboardKey.arrowRight);
+        await t.pump(const Duration(milliseconds: 100));
+      }
+      await t.sendKeyUpEvent(LogicalKeyboardKey.arrowRight);
+      await t.pumpAndSettle();
+      expect(e.procuras, [72, 82, 92, 102, 103]);
+      expect(_focado(), 'Progresso');
+      expect(e.acoes, isEmpty);
+    });
+
+    testWidgets('esquerda recua até ao mais antigo no cache, nunca para lá', (t) async {
+      final e = await _montar(t, comProgresso: true, janela: direto, botaoNoVideo: false);
+      await _tecla(t, LogicalKeyboardKey.select);
+      await _tecla(t, LogicalKeyboardKey.arrowUp);
+      for (var i = 0; i < 6; i++) {
+        await _tecla(t, LogicalKeyboardKey.arrowLeft);
+      }
+      expect(e.procuras, [90, 80, 70, 60], reason: 'no início não há seek a fazer');
+      expect(find.text('00:00:00'), findsOneWidget);
+    });
+
+    testWidgets('arrastar o botão (rato/toque) vai para esse ponto quando se larga', (t) async {
+      final e = await _montar(t, comProgresso: true, janela: filme);
+      await _tecla(t, LogicalKeyboardKey.select);
+      final pista = find.byKey(const ValueKey('pista'));
+      final r = t.getRect(pista);
+      final g = await t.startGesture(r.centerLeft + const Offset(20, 0), kind: PointerDeviceKind.mouse);
+      await g.moveBy(const Offset(40, 0));
+      await t.pump();
+      await g.moveTo(r.center);
+      await t.pump();
+      expect(e.procuras, isEmpty, reason: 'só ao largar');
+      await g.up();
+      await t.pumpAndSettle();
+      expect(e.procuras, hasLength(1));
+      expect(e.procuras.single, closeTo(300, 3));
+      expect(e.acoes, isEmpty);
+    });
+
+    testWidgets('um toque na pista vai para esse ponto', (t) async {
+      final e = await _montar(t, comProgresso: true, janela: filme);
+      await _tecla(t, LogicalKeyboardKey.select);
+      final r = t.getRect(find.byKey(const ValueKey('pista')));
+      await t.tapAt(r.center);
+      await t.pumpAndSettle();
+      expect(e.procuras.single, closeTo(300, 3));
+      expect(_barraVisivel(t), isTrue, reason: 'o toque na pista não esconde a barra');
+    });
+
+    testWidgets('ao mudar de canal a janela do canal anterior sai logo (traços até à leitura nova)', (t) async {
+      final e = await _montar(t, comProgresso: true, janela: filme);
+      await _tecla(t, LogicalKeyboardKey.select);
+      expect(find.text('00:01:40'), findsOneWidget);
+      e.janela = null;
+      e.reconstruir!(() => e.canal = 'RTP 2');
+      await t.pump();
+      expect(find.text('00:01:40'), findsNothing);
+      expect(find.text('--:--:--'), findsNWidgets(2));
+    });
+
+    testWidgets('leitor de ecrã: é um deslizador com a posição, e aumentar/diminuir andam 10 s', (t) async {
+      final semantica = t.ensureSemantics();
+      final e = await _montar(t, comProgresso: true, janela: filme);
+      await _tecla(t, LogicalKeyboardKey.select);
+      final barra = find.descendant(of: find.byType(BarraProgresso), matching: find.byType(Semantics)).first;
+      expect(t.getSemantics(barra), matchesSemantics(
+        isSlider: true,
+        label: 'Posição',
+        value: '00:01:40 de 00:10:00',
+        hint: 'Esquerda e direita: 10 s para trás ou para a frente',
+        hasIncreaseAction: true,
+        hasDecreaseAction: true,
+        isFocusable: true,
+        hasFocusAction: true,
+      ));
+      t.semantics.performAction(find.semantics.byLabel('Posição'), SemanticsAction.increase);
+      await t.pumpAndSettle();
+      expect(e.procuras, [110]);
+      semantica.dispose();
+    });
+
+    testWidgets('sem janela (a abrir): esquerda/direita fazem os saltos de sempre', (t) async {
+      final e = await _montar(t, comProgresso: true, botaoNoVideo: false);
+      await _tecla(t, LogicalKeyboardKey.select);
+      await _tecla(t, LogicalKeyboardKey.arrowUp);
+      await _tecla(t, LogicalKeyboardKey.arrowLeft);
+      await _tecla(t, LogicalKeyboardKey.arrowRight);
+      expect(e.acoes, [AcaoPlayer.recuar, AcaoPlayer.avancar]);
+      expect(e.procuras, isEmpty);
+    });
+
+    testWidgets('a barra escondida não tem o foco: as setas continuam a mudar de canal', (t) async {
+      final e = await _montar(t, comProgresso: true, janela: filme);
+      await _tecla(t, LogicalKeyboardKey.arrowUp);
+      await _tecla(t, LogicalKeyboardKey.arrowLeft);
+      expect(e.acoes, [AcaoPlayer.canalSeguinte, AcaoPlayer.recuar]);
+      expect(e.procuras, isEmpty);
+    });
+
+    testWidgets('reduzir movimento: o realce do foco na barra aparece sem animação', (t) async {
+      await _montar(t, comProgresso: true, janela: filme, semAnimacoes: true);
+      await _tecla(t, LogicalKeyboardKey.select);
+      await t.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      await t.pump();
+      expect(_focado(), 'Progresso');
+      final animado = t.widget<TweenAnimationBuilder<double>>(
+          find.descendant(of: find.byType(BarraProgresso), matching: find.byType(TweenAnimationBuilder<double>)));
+      expect(animado.duration, Duration.zero);
     });
   });
 }

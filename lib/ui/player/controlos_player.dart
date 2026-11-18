@@ -8,9 +8,11 @@ import '../design/ecra.dart';
 import '../design/movimento.dart';
 import '../design/tokens.dart';
 import 'aplicar_preferencias.dart';
+import 'barra_progresso.dart';
 import 'maquina_controlos.dart';
 import 'numero_canal.dart';
 import 'painel_definicoes.dart';
+import 'progresso.dart';
 import 'relogio_direto.dart';
 
 /// O que a barra mostra do canal a tocar.
@@ -51,6 +53,8 @@ class ControlosPlayer extends StatefulWidget {
     required this.child,
     this.comEcraInteiro = false,
     this.lerInfoStream,
+    this.lerProgresso,
+    this.aoProcurar,
     this.esconderApos = const Duration(seconds: 5),
     this.aoNumero,
   });
@@ -74,6 +78,18 @@ class ControlosPlayer extends StatefulWidget {
   /// à vista, a cada segundo (no player verdadeiro, fora da thread da UI).
   final Future<Map<String, String>> Function()? lerInfoStream;
 
+  /// Lê a janela da barra de progresso ([janelaDe]): só com a barra à vista, [intervaloProgresso]
+  /// (no player verdadeiro, fora da thread da UI e partilhada com as outras leituras). null = sem
+  /// barra de progresso.
+  final Future<JanelaProgresso?> Function()? lerProgresso;
+
+  /// Seek da barra de progresso (arrastar, esquerda/direita com ela focada) para `alvo` (segundos
+  /// do mpv, dentro da janela).
+  final Future<void> Function(JanelaProgresso janela, double alvo)? aoProcurar;
+
+  /// A barra de progresso lê o player assim (a informação do stream e o atraso a cada 2).
+  static const intervaloProgresso = Duration(milliseconds: 500);
+
   /// Windows: botão de ecrã inteiro e duplo clique.
   final bool comEcraInteiro;
   final Duration esconderApos;
@@ -89,6 +105,8 @@ class ControlosPlayerState extends State<ControlosPlayer> {
   final _raiz = FocusNode(debugLabel: 'player', skipTraversal: true);
   final _play = FocusNode(debugLabel: 'play/pausa');
   final _botaoDefinicoes = FocusNode(debugLabel: 'definições');
+  final _botaoVoltar = FocusNode(debugLabel: 'voltar');
+  final _progresso = FocusNode(debugLabel: 'progresso');
   final _painel = FocusNode(debugLabel: 'painel', skipTraversal: true);
   Timer? _esconder;
   Timer? _relogio;
@@ -97,12 +115,19 @@ class ControlosPlayerState extends State<ControlosPlayer> {
   bool _infoCanal = false;
   String? _infoStream;
   bool _aLerInfo = false;
+  JanelaProgresso? _janela;
+  Future<void>? _leituraProgresso;
+  int _tique = 0;
 
   VistaPlayer get vista => _m.vista;
 
   @override
   void didUpdateWidget(ControlosPlayer oldWidget) {
     super.didUpdateWidget(oldWidget);
+    // outro canal: a janela do anterior não vale (traços até à leitura seguinte)
+    if (oldWidget.estado.canal != widget.estado.canal || oldWidget.estado.subtitulo != widget.estado.subtitulo) {
+      _janela = null;
+    }
     // o cartão de erro saiu com o foco num botão dele: o foco volta ao player (senão nenhuma
     // tecla chegava aqui)
     if (oldWidget.estado.erro && !widget.estado.erro) {
@@ -124,6 +149,8 @@ class ControlosPlayerState extends State<ControlosPlayer> {
     _raiz.dispose();
     _play.dispose();
     _botaoDefinicoes.dispose();
+    _botaoVoltar.dispose();
+    _progresso.dispose();
     _painel.dispose();
     super.dispose();
   }
@@ -150,10 +177,17 @@ class ControlosPlayerState extends State<ControlosPlayer> {
     final ver = _m.vista != VistaPlayer.escondida;
     if (ver && _relogio == null) {
       _lerInfo();
-      _relogio = Timer.periodic(const Duration(seconds: 1), (_) {
+      _lerProgresso();
+      // uma só cadência para tudo o que a barra lê: a janela do progresso a cada tique, o atraso
+      // e a informação do stream a cada segundo
+      _tique = 0;
+      _relogio = Timer.periodic(ControlosPlayer.intervaloProgresso, (_) {
         if (!mounted) return;
-        setState(() {});
-        _lerInfo();
+        _lerProgresso();
+        if ((++_tique).isEven) {
+          setState(() {});
+          _lerInfo();
+        }
       });
     } else if (!ver) {
       _relogio?.cancel();
@@ -173,6 +207,39 @@ class ControlosPlayerState extends State<ControlosPlayer> {
     } finally {
       _aLerInfo = false;
     }
+  }
+
+  /// Lê a janela do progresso (uma leitura de cada vez; `nova`: depois de um seek, espera pela
+  /// que está a caminho e lê outra — a que estava a caminho pode ser de antes do seek).
+  Future<void> _lerProgresso({bool nova = false}) async {
+    final ler = widget.lerProgresso;
+    if (ler == null || _m.vista == VistaPlayer.escondida) return;
+    final emCurso = _leituraProgresso;
+    if (emCurso != null) {
+      if (!nova) return;
+      await emCurso;
+      return _lerProgresso();
+    }
+    final leitura = () async {
+      try {
+        final j = await ler();
+        if (mounted) setState(() => _janela = j);
+      } catch (_) {
+        // o player pode estar a fechar: fica a última janela
+      }
+    }();
+    _leituraProgresso = leitura;
+    try {
+      await leitura;
+    } finally {
+      _leituraProgresso = null;
+    }
+  }
+
+  Future<void> _procurar(JanelaProgresso j, double alvo) async {
+    _agendar();
+    await widget.aoProcurar?.call(j, alvo);
+    if (mounted) await _lerProgresso(nova: true);
   }
 
   void _depoisDoFrame(VoidCallback f) => WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -376,8 +443,8 @@ class ControlosPlayerState extends State<ControlosPlayer> {
     final atraso = widget.atraso();
     final emDireto = atraso < RelogioDireto.limiar;
     final icone = tv ? 32.0 : 26.0;
-    Widget botao(IconData i, String dica, AcaoPlayer a) =>
-        IconButton(icon: Icon(i, size: icone), tooltip: dica, color: Tokens.texto, onPressed: () => _botao(a));
+    Widget botao(IconData i, String dica, AcaoPlayer a, {FocusNode? foco}) => IconButton(
+        focusNode: foco, icon: Icon(i, size: icone), tooltip: dica, color: Tokens.texto, onPressed: () => _botao(a));
     return Stack(children: [
       // em cima: Voltar (fechar a janela/sair) e ecrã inteiro (Windows)
       Positioned(
@@ -396,7 +463,7 @@ class ControlosPlayerState extends State<ControlosPlayer> {
             return KeyEventResult.handled;
           },
           child: Row(children: [
-            _Vidro(child: botao(Icons.arrow_back, 'Voltar', AcaoPlayer.sair)),
+            _Vidro(child: botao(Icons.arrow_back, 'Voltar', AcaoPlayer.sair, foco: _botaoVoltar)),
             const Spacer(),
             if (widget.comEcraInteiro)
               _Vidro(child: botao(Icons.fullscreen, 'Ecrã inteiro (F11)', AcaoPlayer.ecraInteiro)),
@@ -442,6 +509,22 @@ class ControlosPlayerState extends State<ControlosPlayer> {
                     const SizedBox(width: Tokens.e16),
                     _IndicadorDireto(emDireto: emDireto, atraso: atraso),
                   ]),
+                  // sempre lá (mesmo sem nada lido): a barra não muda de altura
+                  if (widget.lerProgresso != null) ...[
+                    const SizedBox(height: Tokens.e8),
+                    BarraProgresso(
+                      janela: _janela,
+                      focusNode: _progresso,
+                      aoProcurar: _procurar,
+                      // CIMA vai ao "Voltar" de cima e BAIXO ao play/pausa (a procura direcional
+                      // podia escolher outro botão, ou nenhum)
+                      aoCima: _botaoVoltar.requestFocus,
+                      aoBaixo: _play.requestFocus,
+                      aoPlayPausa: () => _botao(AcaoPlayer.playPausa),
+                      aoAtividade: _agendar,
+                      semJanela: (s) => _botao(s < 0 ? AcaoPlayer.recuar : AcaoPlayer.avancar),
+                    ),
+                  ],
                   const SizedBox(height: Tokens.e12),
                   Wrap(
                     alignment: WrapAlignment.center,
