@@ -33,6 +33,7 @@ import 'relogio_direto.dart';
 import 'saltos_direto.dart';
 import 'taxa_ecra.dart';
 import 'troca_player.dart';
+import 'ultima_imagem.dart';
 import 'vigia_abertura.dart';
 
 /// A mensagem do leitor sem links: nas contas Xtream o link leva o utilizador e a password.
@@ -124,6 +125,10 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   /// O shader do Flutter (Android) e o ficheiro do shader do mpv (Windows), uma vez por processo.
   ui.FragmentProgram? _programaFlutter;
   static Future<String?>? _shaderMpv;
+
+  /// A imagem que estava no ecrã quando o servidor cortou: fica por baixo do "A carregar…" até à
+  /// primeira imagem do canal reaberto (em vez do preto).
+  final _ultima = UltimaImagem();
   Tracks _faixas = const Tracks();
   Track _faixa = const Track();
   late List<Canal> _canais = widget.canais;
@@ -157,7 +162,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       final retomou = _aRetomar;
       _abriuEm = DateTime.now();
       _continuar.abriu();
-      setState(() { _aAbrir = false; _aRetomar = false; _erro = null; });
+      setState(() { _aAbrir = false; _aRetomar = false; _erro = null; _ultima.largar(); });
       _vigiarImagem(_pedido);
       _verEntrelacamento(_pedido);
       if (retomou) _reporFaixaAudio(_pedido);
@@ -166,7 +171,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       if (!mounted) return;
       _player.stop();
       _taxa.repor();
-      setState(() { _erro = motivo; _aAbrir = false; _aRetomar = false; });
+      setState(() { _erro = motivo; _aAbrir = false; _aRetomar = false; _ultima.largar(); });
     },
   );
 
@@ -201,7 +206,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
         if (_aRetomar && _tentarContinuarDepois(_pedido)) return;
         _vigia.parar();
         _taxa.repor();
-        setState(() { _erro = mensagemErroPlayer(e); _aAbrir = false; _aRetomar = false; });
+        setState(() { _erro = mensagemErroPlayer(e); _aAbrir = false; _aRetomar = false; _ultima.largar(); });
       }
     }));
     _subsPlayer.add(_player.stream.completed.listen(_fimDoBuffer));
@@ -327,10 +332,19 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     if (!_continuar.permitir(tocou: tocou)) {
       _vigia.parar();
       _taxa.repor();
-      setState(() => _erro = 'o servidor está sempre a cortar a ligação a este canal');
+      setState(() {
+        _erro = 'o servidor está sempre a cortar a ligação a este canal';
+        _ultima.largar();
+      });
       return;
     }
     _retomarEm = cortado ? posicao : null;
+    // a última imagem fica no ecrã enquanto se reabre (antes de o stop/open a tirarem)
+    await _ultima.guardar(MediaQuery.devicePixelRatioOf(context));
+    if (!mounted || pedido != _pedido) {
+      _ultima.largar();
+      return;
+    }
     _abrir(continuar: true);
   }
 
@@ -377,6 +391,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     // o aplicarAoAbrir põe deinterlace=no (o d3d11vpp volta a ligar-se com a imagem)
     if (_meio == MeioDesentrelacamento.d3d11vpp) _meio = MeioDesentrelacamento.nenhum;
     setState(() {
+      if (!continuar) _ultima.largar();
       _aAbrir = true;
       _aRetomar = continuar;
       _erro = null;
@@ -435,6 +450,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
         _erro = e is ErroLista ? e.mensagem : descreverErro(e);
         _aAbrir = false;
         _aRetomar = false;
+        _ultima.largar();
       });
     }
   }
@@ -806,6 +822,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     _continuar.reiniciar(); // nenhuma reabertura marcada depois de sair
     _esconderAviso?.cancel();
     _vigiaEntrelacamento?.cancel();
+    _ultima.largar();
     _vigia.parar();
     _taxa.fechar();
     for (final s in _subsPlayer) {
@@ -838,6 +855,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
           : null,
     );
     if (ajuste.escala != 1) video = ClipRect(child: Transform.scale(scale: ajuste.escala, child: video));
+    video = _ultima.envolver(video);
 
     return ColoredBox(
       color: Colors.black,
@@ -862,6 +880,8 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
         comEcraInteiro: widget.alternarEcraInteiro != null,
         child: Stack(fit: StackFit.expand, children: [
           video,
+          // ao reabrir depois de um corte: a última imagem por baixo do "A carregar…"
+          if (_aRetomar) ?_ultima.sobreposicao(),
           if (_aAbrir && !_aRetomar) const Center(child: CircularProgressIndicator()),
           if (_aviso != null)
             Align(
