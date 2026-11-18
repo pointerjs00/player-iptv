@@ -117,4 +117,37 @@ void main() {
     expect(meioDesentrelacamento(PlataformaVideo.android, ligado: true, entrelacada: p, hwdec: 'mediacodec', shaderFlutter: true),
         MeioDesentrelacamento.nenhum);
   });
+
+  testWidgets('as linhas no ecrã acompanham o tamanho (redimensionar muda a decisão do shader)', (t) async {
+    final n = ValueNotifier<double?>(null);
+    addTearDown(n.dispose);
+    Widget arvore(double altura) => Directionality(
+          textDirection: TextDirection.ltr,
+          child: Center(
+            child: SizedBox(
+              width: altura * 16 / 9,
+              height: altura,
+              child: MedidorLinhas(
+                  linhas: n,
+                  medir: (caixa, dpr) => linhasMostradas(
+                      caixa: caixa, dpr: dpr, colunas: 1920, linhas: 1080, fit: BoxFit.contain),
+                  child: ValueListenableBuilder<double?>(
+                    valueListenable: n,
+                    builder: (_, v, _) => Text('${v?.round()}'),
+                  )),
+            ),
+          ),
+        );
+    t.view.devicePixelRatio = 1;
+    t.view.physicalSize = const Size(1920, 1080);
+    addTearDown(t.view.reset);
+    await t.pumpWidget(arvore(1080));
+    await t.pump();
+    expect(n.value, 1080);
+    expect(find.text('1080'), findsOneWidget);
+    await t.pumpWidget(arvore(540));
+    await t.pump();
+    expect(n.value, 540);
+    expect(find.text('540'), findsOneWidget, reason: 'quem depende das linhas é reconstruído');
+  });
 }

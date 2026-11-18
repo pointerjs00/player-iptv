@@ -131,3 +131,27 @@ class _TexturaDesentrelacadaState extends State<TexturaDesentrelacada> {
     return ImageFiltered(imageFilter: (w.filtro ?? ui.ImageFilter.shader)(shader), child: w.child);
   }
 }
+
+/// Mede as linhas do ecrã que o vídeo ocupa (`medir`, com a caixa e o dpr) e põe-nas em `linhas`
+/// depois de cada layout em que mudem: quem as escuta (o [TexturaDesentrelacada] dentro do `Video`)
+/// é reconstruído, por isso redimensionar a janela muda a decisão do shader.
+class MedidorLinhas extends StatelessWidget {
+  const MedidorLinhas({super.key, required this.linhas, required this.medir, required this.child});
+
+  final ValueNotifier<double?> linhas;
+  final double Function(Size caixa, double dpr) medir;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? View.of(context).devicePixelRatio;
+    return LayoutBuilder(builder: (context, c) {
+      final v = medir(c.biggest, dpr);
+      if (v != linhas.value) {
+        // depois do layout: mudar o valor a meio dele marcava widgets abaixo a meio da construção
+        WidgetsBinding.instance.addPostFrameCallback((_) => linhas.value = v);
+      }
+      return child;
+    });
+  }
+}
