@@ -57,6 +57,9 @@ class _TelaInicioState extends State<TelaInicio> {
   /// O "+": recebe o foco depois de "Ir para o Gestor" (o botão do ecrã vazio desaparece).
   final _focoMais = FocusNode(debugLabel: 'Adicionar listas');
 
+  /// O conteúdo do separador ativo: BAIXO nas abas entra no primeiro controlo dele.
+  final _focoCorpo = FocusNode(debugLabel: 'Corpo', canRequestFocus: false, skipTraversal: true);
+
   /// O foco de cada cartão (pelo id da lista): depois de eliminar, o foco passa ao cartão ao lado.
   final _focos = <String, FocusNode>{};
 
@@ -69,6 +72,44 @@ class _TelaInicioState extends State<TelaInicio> {
   /// Android/TV: Voltar no Início (sem nada por cima) não fecha logo a app. No Windows a janela
   /// fecha-se pelo botão de fechar, como sempre.
   bool get _confirmarSaida => defaultTargetPlatform == TargetPlatform.android;
+
+  /// O foco de cada aba (o InkWell da aba): CIMA a partir do topo do separador vai para a aba
+  /// ativa (e não para a que estiver mais perto na horizontal).
+  final _nosAbas = <int, FocusNode>{};
+
+  /// CIMA no conteúdo sem nada por cima: a aba do separador à vista.
+  KeyEventResult _teclaCorpo(BuildContext context, KeyEvent e) {
+    if (e is KeyUpEvent || e.logicalKey != LogicalKeyboardKey.arrowUp || widget.separadorGestor == null) {
+      return KeyEventResult.ignored;
+    }
+    final atual = FocusManager.instance.primaryFocus;
+    if (atual == null || !atual.ancestors.contains(_focoCorpo)) return KeyEventResult.ignored;
+    final r = atual.rect;
+    final haAcima = _focoCorpo.traversalDescendants
+        .any((n) => n != atual && n.canRequestFocus && !n.skipTraversal && n.context != null && n.rect.center.dy < r.top);
+    if (haAcima) return KeyEventResult.ignored;
+    final aba = _nosAbas[DefaultTabController.of(context).index];
+    if (aba == null || aba.context == null) return KeyEventResult.ignored;
+    aba.requestFocus();
+    return KeyEventResult.handled;
+  }
+
+  /// O controlo mais acima (e mais à esquerda) do separador à vista.
+  FocusNode? _primeiroDoCorpo() {
+    final corpo = _focoCorpo.context?.findRenderObject();
+    if (corpo is! RenderBox || !corpo.hasSize) return null;
+    final area = corpo.localToGlobal(Offset.zero) & corpo.size;
+    FocusNode? melhor;
+    for (final n in _focoCorpo.traversalDescendants) {
+      if (!n.canRequestFocus || n.context == null) continue;
+      final r = n.rect;
+      // só os que estão à vista (o separador escondido e o que já saiu de cima não contam)
+      if (!area.contains(r.center)) continue;
+      final m = melhor?.rect;
+      if (m == null || r.top < m.top - 4 || ((r.top - m.top).abs() <= 4 && r.left < m.left)) melhor = n;
+    }
+    return melhor;
+  }
 
   void _voltar(BuildContext context) {
     if (_podeSair?.isActive ?? false) {
@@ -86,6 +127,7 @@ class _TelaInicioState extends State<TelaInicio> {
   void dispose() {
     _podeSair?.cancel();
     _focoMais.dispose();
+    _focoCorpo.dispose();
     for (final f in _focos.values) {
       f.dispose();
     }
@@ -320,13 +362,25 @@ class _TelaInicioState extends State<TelaInicio> {
                     canRequestFocus: false,
                     skipTraversal: true,
                     includeSemantics: false,
-                    onKeyEvent: (_, e) => e is! KeyUpEvent &&
-                            e.logicalKey == LogicalKeyboardKey.arrowRight &&
-                            _abaFocada == 1 &&
-                            !(gestorAtivo && area != null) &&
-                            widget.definicoes == null
-                        ? KeyEventResult.handled
-                        : KeyEventResult.ignored,
+                    onKeyEvent: (_, e) {
+                      if (e is KeyUpEvent) return KeyEventResult.ignored;
+                      if (e.logicalKey == LogicalKeyboardKey.arrowRight &&
+                          _abaFocada == 1 &&
+                          !(gestorAtivo && area != null) &&
+                          widget.definicoes == null) {
+                        return KeyEventResult.handled;
+                      }
+                      // BAIXO numa aba: o primeiro controlo do separador (a procura direcional
+                      // escolhia o que estivesse mais perto da aba, por exemplo o 2.º botão)
+                      if (e.logicalKey == LogicalKeyboardKey.arrowDown && _abaFocada != null) {
+                        final primeiro = _primeiroDoCorpo();
+                        if (primeiro != null) {
+                          primeiro.requestFocus();
+                          return KeyEventResult.handled;
+                        }
+                      }
+                      return KeyEventResult.ignored;
+                    },
                     child: TabBar(
                       isScrollable: true,
                       tabAlignment: TabAlignment.start,
@@ -335,7 +389,13 @@ class _TelaInicioState extends State<TelaInicio> {
                           setState(() => _abaFocada = f ? i : (_abaFocada == i ? null : _abaFocada)),
                       tabs: [
                         for (final (i, t) in const ['Player', 'Gestor'].indexed)
-                          Tab(child: MolduraFoco(focado: _abaFocada == i, raio: 8, child: _Aba(t))),
+                          Tab(
+                            child: Builder(builder: (c) {
+                              final no = Focus.maybeOf(c);
+                              if (no != null) _nosAbas[i] = no;
+                              return MolduraFoco(focado: _abaFocada == i, raio: 8, child: _Aba(t));
+                            }),
+                          ),
                       ],
                     ),
                   ),
@@ -358,7 +418,12 @@ class _TelaInicioState extends State<TelaInicio> {
             ),
         ],
       ),
-      body: temGestor ? TabBarView(children: [_listas(), widget.separadorGestor!]) : _listas(),
+      body: Focus(
+        focusNode: _focoCorpo,
+        includeSemantics: false,
+        onKeyEvent: (_, e) => _teclaCorpo(context, e),
+        child: temGestor ? TabBarView(children: [_listas(), widget.separadorGestor!]) : _listas(),
+      ),
     );
   }
 }
