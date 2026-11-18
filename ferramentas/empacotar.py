@@ -5,6 +5,7 @@ Nunca altera definições do sistema.
 """
 import argparse
 import fnmatch
+import hashlib
 import os
 import shutil
 import subprocess
@@ -22,6 +23,9 @@ PASTA_WINDOWS = Path("build/windows/x64/runner/Release")
 RAIZ_ZIP = "PlayerIPTV"
 PROIBIDOS = ["Accounts*.json", "*.ini", "historico.json", "biblioteca.json"]
 MSG_SYMLINK = "Building with plugins requires symlink support"
+# o libmpv completo (com os filtros do ffmpeg: bwdif...) que o windows/libmpv_completo.cmake instala;
+# o do media_kit é mínimo e deixaria o desentrelaçamento só com o shader
+SHA256_LIBMPV = "88504ee5560942a955405e99dfb5971368e4cf851321f36565bf2a667271db1b"
 
 LEIA_ME = """\
 PLAYER IPTV - COMO INSTALAR
@@ -85,6 +89,19 @@ def verificar_conteudo(pasta: Path) -> None:
                 )
 
 
+def verificar_libmpv(pasta: Path) -> None:
+    """Recusa empacotar sem o libmpv completo (SHA-256 fixado) e sem os avisos de licença dele."""
+    dll = Path(pasta) / "libmpv-2.dll"
+    if not dll.is_file():
+        raise SystemExit("Empacotamento recusado: falta o libmpv-2.dll.")
+    if hashlib.sha256(dll.read_bytes()).hexdigest() != SHA256_LIBMPV:
+        raise SystemExit(
+            "Empacotamento recusado: o libmpv-2.dll não é o libmpv completo (windows/libmpv_completo.cmake)."
+        )
+    if not (Path(pasta) / "licencas-libmpv" / "AVISOS-LICENCAS.txt").is_file():
+        raise SystemExit("Empacotamento recusado: faltam os avisos de licença do libmpv (licencas-libmpv/).")
+
+
 def copiar_apks(origem: Path, dist: Path) -> list[Path]:
     dist.mkdir(parents=True, exist_ok=True)
     feitos = []
@@ -101,6 +118,7 @@ def copiar_apks(origem: Path, dist: Path) -> list[Path]:
 def criar_zip_windows(pasta_release: Path, destino: Path) -> Path:
     pasta_release = Path(pasta_release)
     verificar_conteudo(pasta_release)
+    verificar_libmpv(pasta_release)
     destino = Path(destino)
     destino.parent.mkdir(parents=True, exist_ok=True)
     destino.unlink(missing_ok=True)

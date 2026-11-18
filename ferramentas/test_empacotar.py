@@ -1,6 +1,8 @@
+import hashlib
 import sys
 import tempfile
 import unittest
+import unittest.mock
 import zipfile
 from pathlib import Path
 
@@ -23,6 +25,40 @@ class VerificarConteudo(unittest.TestCase):
                 (sub / nome).write_text("{}")
                 with self.assertRaises(SystemExit):
                     empacotar.verificar_conteudo(Path(t))
+
+
+class VerificarLibmpv(unittest.TestCase):
+    def _pasta(self, t, conteudo=b"x", licencas=True):
+        p = Path(t)
+        (p / "libmpv-2.dll").write_bytes(conteudo)
+        if licencas:
+            (p / "licencas-libmpv").mkdir()
+            (p / "licencas-libmpv" / "AVISOS-LICENCAS.txt").write_text("x")
+        return p
+
+    def test_dll_certa_passa(self):
+        with tempfile.TemporaryDirectory() as t:
+            conteudo = b"dll completa"
+            with unittest.mock.patch.object(empacotar, "SHA256_LIBMPV", hashlib.sha256(conteudo).hexdigest()):
+                empacotar.verificar_libmpv(self._pasta(t, conteudo))
+
+    def test_dll_minima_do_media_kit_recusa(self):
+        with tempfile.TemporaryDirectory() as t:
+            with self.assertRaises(SystemExit) as e:
+                empacotar.verificar_libmpv(self._pasta(t, b"outra dll"))
+            self.assertIn("libmpv", str(e.exception))
+
+    def test_sem_dll_recusa(self):
+        with tempfile.TemporaryDirectory() as t:
+            with self.assertRaises(SystemExit):
+                empacotar.verificar_libmpv(Path(t))
+
+    def test_sem_licencas_recusa(self):
+        with tempfile.TemporaryDirectory() as t:
+            conteudo = b"dll completa"
+            with unittest.mock.patch.object(empacotar, "SHA256_LIBMPV", hashlib.sha256(conteudo).hexdigest()):
+                with self.assertRaises(SystemExit):
+                    empacotar.verificar_libmpv(self._pasta(t, conteudo, licencas=False))
 
 
 class NomesApk(unittest.TestCase):
@@ -55,10 +91,16 @@ class ZipWindows(unittest.TestCase):
             (rel / "data").mkdir(parents=True)
             (rel / "player_iptv.exe").write_text("exe")
             (rel / "data" / "app.so").write_text("so")
+            (rel / "libmpv-2.dll").write_bytes(b"completa")
+            (rel / "licencas-libmpv").mkdir()
+            (rel / "licencas-libmpv" / "AVISOS-LICENCAS.txt").write_text("x")
             destino = Path(t) / "dist" / "PlayerIPTV-windows.zip"
-            empacotar.criar_zip_windows(rel, destino)
+            with unittest.mock.patch.object(empacotar, "SHA256_LIBMPV", hashlib.sha256(b"completa").hexdigest()):
+                empacotar.criar_zip_windows(rel, destino)
             with zipfile.ZipFile(destino) as z:
                 nomes = z.namelist()
+            self.assertIn("PlayerIPTV/libmpv-2.dll", nomes)
+            self.assertIn("PlayerIPTV/licencas-libmpv/AVISOS-LICENCAS.txt", nomes)
             self.assertIn("PlayerIPTV/player_iptv.exe", nomes)
             self.assertIn("PlayerIPTV/data/app.so", nomes)
             self.assertTrue(all(n.startswith("PlayerIPTV/") for n in nomes))
