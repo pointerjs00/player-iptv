@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 
 import 'configuracao_mpv.dart';
+import 'progresso.dart' show eDiretoMpv;
 
 /// O desentrelaçamento do player (canais 1080i/576i/480i).
 ///
@@ -42,7 +43,7 @@ List<String> propriedadesEntrelacamento(PlataformaVideo p) => [
       'core-idle',
       'eof-reached',
       'vf',
-      if (p == PlataformaVideo.android) ...['seekable', 'vf-metadata/$rotuloIdet'],
+      if (p == PlataformaVideo.android) ...['seekable', 'partially-seekable', 'vf-metadata/$rotuloIdet'],
     ];
 
 double? _numero(String? s) => double.tryParse(s?.trim() ?? '');
@@ -77,7 +78,9 @@ bool? imagemEntrelacada(Map<String, String> m) {
 /// filme a 24/23,976 fica no direto. O que não se sabe aqui (um 1080p25 progressivo) decide-o o idet
 /// já em Compatível, e o canal volta ao direto da próxima vez (`CompativelNaSessao.progressivo`).
 bool pareceEntrelacadaNoDireto(Map<String, String> m) {
-  if ((m['seekable'] ?? '').trim() == 'yes') return false;
+  // como a barra de progresso: um direto com o cache ligado pode dizer seekable=yes e
+  // partially-seekable=yes (ver eDiretoMpv)
+  if (!eDiretoMpv(seekable: m['seekable'] ?? '', partiallySeekable: m['partially-seekable'] ?? '')) return false;
   final altura = _numero(m['height']);
   final fps = _fps(m);
   if (altura == null || fps == null || !_linhasEntrelacadas.contains(altura.round())) return false;
@@ -175,13 +178,16 @@ MeioDesentrelacamento meioDesentrelacamento(PlataformaVideo p,
     required String hwdec,
     required bool shaderFlutter,
     bool filtros = false,
-    bool direto = false}) {
+    bool direto = false,
+    bool d3d11vpp = true}) {
   if (!ligado || entrelacada != true) return MeioDesentrelacamento.nenhum;
   if (p == PlataformaVideo.android) {
     if (filtros && !direto) return MeioDesentrelacamento.filtroMpv;
     return shaderFlutter ? MeioDesentrelacamento.shaderFlutter : MeioDesentrelacamento.nenhum;
   }
-  if (hwdec.trim() == 'd3d11va') return MeioDesentrelacamento.d3d11vpp;
+  // `d3d11vpp`: false quando falhou ou foi recusado neste canal (aí fica o shader do mpv, que corre
+  // nas imagens d3d11; o bwdif não as apanha)
+  if (hwdec.trim() == 'd3d11va') return d3d11vpp ? MeioDesentrelacamento.d3d11vpp : MeioDesentrelacamento.shaderMpv;
   return filtros ? MeioDesentrelacamento.filtroMpv : MeioDesentrelacamento.shaderMpv;
 }
 

@@ -136,14 +136,17 @@ void main() {
     });
 
     test('Android direto: só um direto com as linhas e a cadência da TV entrelaçada pede o Compatível', () {
-      bool parece(String h, String fps, {String seekable = 'no'}) => pareceEntrelacadaNoDireto(
-          {'height': h, 'container-fps': fps, 'hwdec-current': 'mediacodec', 'seekable': seekable});
+      bool parece(String h, String fps, {String seekable = 'no', String parcial = 'no'}) => pareceEntrelacadaNoDireto(
+          {'height': h, 'container-fps': fps, 'hwdec-current': 'mediacodec', 'seekable': seekable,
+            'partially-seekable': parcial});
       expect(parece('1080', '25.000000'), isTrue);
       expect(parece('576', '25'), isTrue);
       expect(parece('480', '29.970030'), isTrue);
       expect(parece('1080', '23.976024'), isFalse, reason: 'filme: progressivo');
       expect(parece('1080', '24'), isFalse);
       expect(parece('1080', '25', seekable: 'yes'), isFalse, reason: 'um filme (VOD)');
+      expect(parece('1080', '25', seekable: 'yes', parcial: 'yes'), isTrue, reason: 'direto com o cache ligado');
+      expect(propriedadesEntrelacamento(PlataformaVideo.android), contains('partially-seekable'));
       expect(parece('720', '25'), isFalse);
       expect(parece('1080', '50'), isFalse);
       expect(parece('', '25'), isFalse);

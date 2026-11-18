@@ -182,7 +182,8 @@ class ControloDesentrelacamento {
           hwdec: _hwdec,
           shaderFlutter: shaderFlutter,
           filtros: filtros,
-          direto: plataforma == PlataformaVideo.android && direto);
+          direto: plataforma == PlataformaVideo.android && direto,
+          d3d11vpp: !_falhouNoCanal);
 
   /// Põe o meio que serve agora (preferência, imagem, aparelho). Em fila: uma mudança da preferência
   /// a meio de uma verificação não fica trocada. `valido`: o pedido ainda é do canal atual (vê-se já

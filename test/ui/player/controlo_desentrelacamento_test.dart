@@ -30,6 +30,15 @@ class _Mpv implements MotorMpv {
   Future<void> command(List<String> c) async {}
 }
 
+/// O mpv recusa o deinterlace=yes (o d3d11vpp não pode ser criado).
+class _MpvRecusaDeinterlace extends _Mpv {
+  @override
+  Future<int?> setProperty(String p, String v) async {
+    await super.setProperty(p, v);
+    return p == 'deinterlace' && v == 'yes' ? -9 : 0;
+  }
+}
+
 const _versao = 'mpv v0.42.0-38-gbcde6b93c';
 const _bwdif = 'bwdif=mode=send_field:deint=interlaced';
 
@@ -46,6 +55,7 @@ Map<String, String> _leitura({
   String eof = 'no',
   String seekable = 'no',
   String idet = '',
+  String parcial = 'no',
 }) =>
     {
       'mpv-version': versao,
@@ -58,6 +68,7 @@ Map<String, String> _leitura({
       'core-idle': coreIdle,
       'eof-reached': eof,
       'seekable': seekable,
+      'partially-seekable': parcial,
       'vf-metadata/$rotuloIdet': idet,
     };
 
@@ -203,6 +214,36 @@ void main() {
       expect(mpv.chamadas.where((s) => s.startsWith('vf=') && s != 'vf='), isEmpty);
     });
 
+    test('d3d11vpp sem efeito (25 imagens/s) 4 leituras seguidas: volta o shader do mpv (sai do "a medir")', () async {
+      final mpv = _Mpv();
+      final c = windows();
+      await passo(c, mpv, _leitura(hwdec: 'd3d11va'));
+      expect(c.meio, MeioDesentrelacamento.d3d11vpp);
+      for (var i = 0; i < ControloDesentrelacamento.leiturasSemEfeito; i++) {
+        await passo(c, mpv, _leitura(hwdec: 'd3d11va', interlaced: 'no'));
+      }
+      expect(c.meio, MeioDesentrelacamento.shaderMpv);
+      expect(mpv.chamadas.last, 'glsl-shaders=shader.glsl');
+      expect(mpv.chamadas, contains('deinterlace=no'));
+      expect(c.verificarCedo, isFalse);
+      // outro canal: o d3d11vpp tenta-se de novo
+      c.abrir(continuar: false, playerNovo: false);
+      await passo(c, mpv, _leitura(hwdec: 'd3d11va'));
+      expect(c.meio, MeioDesentrelacamento.d3d11vpp);
+    });
+
+    test('d3d11vpp recusado pelo mpv (deinterlace=yes < 0): fica o shader, não o d3d11vpp outra vez', () async {
+      final mpv = _MpvRecusaDeinterlace();
+      final c = windows();
+      await passo(c, mpv, _leitura(hwdec: 'd3d11va'));
+      expect(c.meio, MeioDesentrelacamento.shaderMpv);
+      expect(mpv.chamadas.where((x) => x == 'deinterlace=yes').length, 1, reason: 'não se volta a pedir');
+      expect(mpv.chamadas.last, 'glsl-shaders=shader.glsl');
+      await passo(c, mpv, _leitura(hwdec: 'd3d11va'));
+      expect(c.meio, MeioDesentrelacamento.shaderMpv);
+      expect(mpv.chamadas.where((x) => x == 'deinterlace=yes').length, 1);
+    });
+
     test('pedido sem resposta ao pôr o vf (null): não é recusa; tenta-se na próxima', () async {
       final c = windows();
       await passo(c, _Mpv(semResposta: true), _leitura());
@@ -282,8 +323,9 @@ void main() {
   });
 
   group('Android', () {
-    Map<String, String> direto({String altura = '1080', String fps = '25.000000', String seekable = 'no'}) =>
-        _leitura(hwdec: 'mediacodec', interlaced: '', altura: altura, fps: fps, seekable: seekable);
+    Map<String, String> direto(
+            {String altura = '1080', String fps = '25.000000', String seekable = 'no', String parcial = 'no'}) =>
+        _leitura(hwdec: 'mediacodec', interlaced: '', altura: altura, fps: fps, seekable: seekable, parcial: parcial);
 
     test('direto: só reabre em Compatível um direto (não um filme) com 1080/576/480 a 25 ou 30 imagens/s', () {
       bool reabre(Map<String, String> m, {String chave = 'k'}) =>
@@ -294,6 +336,8 @@ void main() {
       expect(reabre(direto(fps: '23.976024'), chave: 'k4'), isFalse, reason: 'filme a 24 imagens/s: progressivo');
       expect(reabre(direto(fps: '24.000000'), chave: 'k5'), isFalse);
       expect(reabre(direto(seekable: 'yes'), chave: 'k6'), isFalse, reason: 'um filme (VOD), não um direto');
+      expect(reabre(direto(seekable: 'yes', parcial: 'yes'), chave: 'k9'), isTrue,
+          reason: 'um direto com o cache ligado diz seekable=yes e partially-seekable=yes');
       expect(reabre(direto(altura: '720', fps: '50'), chave: 'k7'), isFalse);
       expect(reabre(direto(fps: '50'), chave: 'k8'), isFalse, reason: '1080p50');
     });
