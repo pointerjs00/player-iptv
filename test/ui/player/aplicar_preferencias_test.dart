@@ -44,11 +44,9 @@ Future<MpvFalso> _abrir(Preferencias p,
 
 void main() {
   group('ao abrir cada canal', () {
-    test('por omissão: 1×, volume, sem silêncio, sem atraso do áudio, desentrelaçamento ligado', () async {
+    test('por omissão: 1×, volume, sem silêncio, sem atraso do áudio', () async {
       final mpv = await _abrir(Preferencias.omissao());
-      expect(mpv.chamadas,
-          containsAll(['rate=1.0', 'volume=100.0', 'mute=no', 'audio-delay=0.000', 'deinterlace=auto']));
-      expect(mpv.props['deinterlace'], 'auto');
+      expect(mpv.chamadas, containsAll(['rate=1.0', 'volume=100.0', 'mute=no', 'audio-delay=0.000']));
     });
 
     test('as preferências guardadas são as aplicadas', () async {
@@ -57,8 +55,7 @@ void main() {
         ..desentrelacar = false
         ..hardware = false;
       final mpv = await _abrir(p);
-      expect(mpv.chamadas, containsAll(['volume=40.0', 'deinterlace=no', 'vf=', 'hwdec=no']));
-      expect(mpv.chamadas, isNot(contains('deinterlace=auto')));
+      expect(mpv.chamadas, containsAll(['volume=40.0', 'hwdec=no']));
     });
 
     test('Windows: a descodificação por hardware muda-se sem recriar o player (hwdec)', () async {
@@ -84,55 +81,20 @@ void main() {
     });
   });
 
-  group('desentrelaçamento', () {
-    test('Android direto: não se toca no mpv (o descodificador do aparelho trata disso)', () async {
-      final mpv = await _abrir(Preferencias.omissao(), plataforma: PlataformaVideo.android);
-      expect(mpv.chamadas.where((c) => c.startsWith('deinterlace') || c.startsWith('vf')), isEmpty);
-    });
-
-    test('Android Compatível com libmpv sem "auto": nenhum filtro lavfi (o ffmpeg incluído não tem '
-        'bwdif nem yadif; o filtro deixava o canal sem vídeo)', () async {
-      // visto no emulador e no libmpv do Windows: "No such filter: 'bwdif'" -> "EOF code: 6",
-      // o vídeo desligava-se e o canal acabava no "sem imagem em 20 s"
-      final mpv = await _abrir(Preferencias.omissao(),
-          plataforma: PlataformaVideo.android, modo: ModoDescodificacao.compativel, aceitaAuto: false);
-      expect(mpv.chamadas.where((c) => c.startsWith('vf=lavfi')), isEmpty);
-      expect(mpv.props['vf'], '');
+  group('desentrelaçamento ao abrir (o meio decide-se com a imagem: desentrelacamento.dart)', () {
+    test('Windows: deinterlace=no (o yadif que o deinterlace=yes pedia não existe no ffmpeg incluído)', () async {
+      // visto no libmpv da app: "filter 'yadif' not found or failed to allocate"
+      final mpv = await _abrir(Preferencias.omissao());
       expect(mpv.props['deinterlace'], 'no');
-    });
-
-    test('Windows com hardware e libmpv sem "auto": deinterlace=yes (o mpv escolhe o desentrelaçador '
-        'das imagens da GPU; um filtro lavfi nelas partia o vídeo)', () async {
-      final mpv = await _abrir(Preferencias.omissao(), aceitaAuto: false);
-      expect(mpv.props['deinterlace'], 'yes');
-      expect(mpv.props['vf'], '');
+      expect(mpv.chamadas.where((c) => c.startsWith('deinterlace=yes') || c.startsWith('deinterlace=auto')), isEmpty);
       expect(mpv.chamadas.where((c) => c.startsWith('vf=lavfi')), isEmpty);
     });
 
-    test('Windows em software e libmpv sem "auto": nenhum filtro lavfi (imagens na memória)', () async {
-      final mpv = await _abrir(Preferencias.omissao()..hardware = false, aceitaAuto: false);
-      expect(mpv.chamadas.where((c) => c.startsWith('vf=lavfi')), isEmpty);
-      expect(mpv.props['vf'], '');
-    });
-
-    test('imagens na memória sem "auto": fica desligado (devolve falso)', () async {
-      final mpv = MpvFalso(aceitaAuto: false);
-      expect(await aplicarDesentrelacamento(mpv, ligado: true, temEfeito: true, imagensNaGpu: false), isFalse);
-      expect(mpv.props['vf'], '');
-      expect(mpv.props['deinterlace'], 'no');
-    });
-
-    test('com "auto" (libmpv ≥ 0.38) liga-se sem filtro', () async {
-      final mpv = MpvFalso();
-      expect(await aplicarDesentrelacamento(mpv, ligado: true, temEfeito: true, imagensNaGpu: false), isTrue);
-      expect(mpv.props['deinterlace'], 'auto');
-      expect(mpv.props['vf'], '');
-    });
-
-    test('sem efeito: devolve falso e não mexe', () async {
-      final mpv = MpvFalso();
-      expect(await aplicarDesentrelacamento(mpv, ligado: true, temEfeito: false, imagensNaGpu: true), isFalse);
-      expect(mpv.chamadas, isEmpty);
+    test('Android (direto ou Compatível): não se toca no deinterlace nem no vf do mpv', () async {
+      for (final modo in ModoDescodificacao.values) {
+        final mpv = await _abrir(Preferencias.omissao(), plataforma: PlataformaVideo.android, modo: modo);
+        expect(mpv.chamadas.where((c) => c.startsWith('deinterlace') || c.startsWith('vf')), isEmpty);
+      }
     });
 
     test('um mpv que falha nunca impede o canal de abrir', () async {

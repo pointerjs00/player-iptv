@@ -16,6 +16,11 @@ junto com a cópia local do media_kit (`third_party/media_kit`).
     libertada (`VideoOutputManager.Dispose`), o mpv larga-a (`vo=null`): o descodificador deixava
     de poder desenhar numa superfície já libertada.
 
+- `lib/src/video/video_texture.dart`: `Video.envolverTextura` (opcional) envolve o `Texture` do
+  vídeo, só a imagem. O player usa-o no Android para o shader de desentrelaçamento
+  (`lib/ui/player/filtro_desentrelacamento.dart`): com o `mediacodec_embed` as imagens nunca passam
+  pelo mpv, por isso é o Flutter que as filtra.
+
 ## Porquê
 
 No Android a UI do Flutter corre na thread principal. Estas chamadas esperam pelo núcleo do mpv;

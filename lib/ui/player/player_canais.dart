@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:material_ui/material_ui.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../../dados/preferencias.dart';
 import '../../modelo/canal.dart';
@@ -16,9 +18,11 @@ import 'compativel_sessao.dart';
 import 'configuracao_mpv.dart';
 import 'continuar_direto.dart';
 import 'controlos_player.dart';
+import 'desentrelacamento.dart';
 import 'diagnostico.dart';
 import 'estatisticas.dart';
 import 'faixas.dart';
+import 'filtro_desentrelacamento.dart';
 import 'leitor_partilhado.dart';
 import 'maquina_controlos.dart';
 import 'mpv_fora_da_ui.dart';
@@ -107,7 +111,19 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   double? _percentagemBuffer;
   bool _aTocar = true;
   double _velocidade = 1;
-  bool _desentrelacamentoAtivo = false;
+
+  /// O desentrelaçamento: decide-se com a imagem, depois da primeira e a cada
+  /// [_intervaloEntrelacamento] (ver `desentrelacamento.dart`). null: ainda não se sabe.
+  bool? _entrelacada;
+  String _hwdecAtual = '';
+  MeioDesentrelacamento _meio = MeioDesentrelacamento.nenhum;
+  Timer? _vigiaEntrelacamento;
+  Future<void> _filaDesentrelacamento = Future.value();
+  static const _intervaloEntrelacamento = Duration(seconds: 10);
+
+  /// O shader do Flutter (Android) e o ficheiro do shader do mpv (Windows), uma vez por processo.
+  ui.FragmentProgram? _programaFlutter;
+  static Future<String?>? _shaderMpv;
   Tracks _faixas = const Tracks();
   Track _faixa = const Track();
   late List<Canal> _canais = widget.canais;
@@ -143,6 +159,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       _continuar.abriu();
       setState(() { _aAbrir = false; _aRetomar = false; _erro = null; });
       _vigiarImagem(_pedido);
+      _verEntrelacamento(_pedido);
       if (retomou) _reporFaixaAudio(_pedido);
     },
     aoFalhar: (motivo) {
@@ -157,6 +174,17 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    if (_android && FiltroDesentrelacamento.suportado) {
+      FiltroDesentrelacamento.programa().then((p) {
+        if (mounted) setState(() => _programaFlutter = p);
+      });
+    }
+    if (!_android) {
+      _shaderMpv ??= getApplicationSupportDirectory().then(escreverShaderMpv, onError: (Object e) {
+        debugPrint('desentrelaçamento: sem pasta para o shader ($e)');
+        return null;
+      });
+    }
     _criarPlayer();
     _abrir();
   }
@@ -344,6 +372,10 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       _abriuEm = null;
       _retomarEm = null;
     }
+    _vigiaEntrelacamento?.cancel();
+    _entrelacada = null;
+    // o aplicarAoAbrir põe deinterlace=no (o d3d11vpp volta a ligar-se com a imagem)
+    if (_meio == MeioDesentrelacamento.d3d11vpp) _meio = MeioDesentrelacamento.nenhum;
     setState(() {
       _aAbrir = true;
       _aRetomar = continuar;
@@ -383,7 +415,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       await _configurado;
       if (!mounted || pedido != _pedido) return;
       // as preferências em cada canal: 1×, volume, silêncio, atraso do áudio, desentrelaçamento…
-      _desentrelacamentoAtivo = await aplicarAoAbrir(_motor, _prefs, _sessao, plataforma: _plataforma, modo: _modo);
+      await aplicarAoAbrir(_motor, _prefs, _sessao, plataforma: _plataforma, modo: _modo);
       if (!mounted || pedido != _pedido) return;
       _vigia.abrindo();
       _larguraVista = 0;
@@ -602,15 +634,43 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     aplicar?.call();
   }
 
-  bool get _desentrelacamentoTemEfeito =>
-      ConfiguracaoMpv.desentrelacamentoTemEfeito(_plataforma, _modo, hardware: _hardware);
+  bool get _shaderFlutterPronto => _programaFlutter != null && FiltroDesentrelacamento.suportado;
 
-  Future<void> _aplicarDesentrelacamento() async {
-    final ativo = await aplicarDesentrelacamento(_motor,
-        ligado: _prefs.desentrelacar,
-        temEfeito: _desentrelacamentoTemEfeito,
-        imagensNaGpu: imagensNaGpu(_plataforma, hardware: _prefs.hardware));
-    if (mounted) setState(() => _desentrelacamentoAtivo = ativo);
+  /// No Windows há sempre o shader do mpv; no Android, o do Flutter se o aparelho o permitir.
+  bool get _desentrelacamentoPossivel => !_android || _shaderFlutterPronto;
+
+  /// Lê do mpv se a imagem é entrelaçada (de uma vez, fora da UI) e põe o meio certo; repete a cada
+  /// [_intervaloEntrelacamento] (um canal pode passar de progressivo a entrelaçado).
+  Future<void> _verEntrelacamento(int pedido) async {
+    _vigiaEntrelacamento?.cancel();
+    try {
+      final m = await _motor.getProperties(propriedadesEntrelacamento(_plataforma));
+      if (!mounted || pedido != _pedido) return;
+      _entrelacada = imagemEntrelacada(m) ?? _entrelacada;
+      final hwdec = (m['hwdec-current'] ?? '').trim();
+      if (hwdec.isNotEmpty) _hwdecAtual = hwdec;
+      await _aplicarDesentrelacamento();
+    } catch (_) {
+      return; // o player fechou entretanto
+    }
+    if (!mounted || pedido != _pedido) return;
+    _vigiaEntrelacamento = Timer(_entrelacada == null ? const Duration(seconds: 1) : _intervaloEntrelacamento,
+        () => _verEntrelacamento(pedido));
+  }
+
+  /// Põe o meio que serve agora (preferência, imagem, aparelho). Em fila: uma mudança da
+  /// preferência a meio de uma verificação não fica trocada.
+  Future<void> _aplicarDesentrelacamento() {
+    return _filaDesentrelacamento = _filaDesentrelacamento.then((_) async {
+      final meio = meioDesentrelacamento(_plataforma,
+          ligado: _prefs.desentrelacar,
+          entrelacada: _entrelacada,
+          hwdec: _hwdecAtual,
+          shaderFlutter: _shaderFlutterPronto);
+      if (meio == _meio || !mounted) return;
+      if (!_android) await aplicarMeioMpv(_motor, meio, caminhoShader: await (_shaderMpv ?? Future.value()));
+      if (mounted) setState(() => _meio = meio);
+    }).catchError((Object e) => debugPrint('desentrelaçamento: $e'));
   }
 
   /// O modo de descodificação do Android no painel: 0 direta, 1 compatível, 2 software.
@@ -623,16 +683,15 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     final video = escolhaVideo(_faixas.video, _faixa.video);
     final audio = escolhaAudio(_faixas.audio, _faixa.audio);
     final legendas = escolhaLegendas(_faixas.subtitle, _faixa.subtitle);
-    final temEfeito = _desentrelacamentoTemEfeito;
+    final possivel = _desentrelacamentoPossivel;
     return [
       DefinicaoInterruptor(
         'Desentrelaçamento',
-        valor: temEfeito && _prefs.desentrelacar,
-        aoMudar: temEfeito ? (v) => _preferir((p) => p.desentrelacar = v, _aplicarDesentrelacamento) : null,
-        nota: temEfeito
+        valor: possivel && _prefs.desentrelacar,
+        aoMudar: possivel ? (v) => _preferir((p) => p.desentrelacar = v, _aplicarDesentrelacamento) : null,
+        nota: possivel
             ? 'Só nas imagens entrelaçadas (canais 1080i/576i)'
-            : 'Na descodificação direta é o próprio aparelho que desentrelaça. Para usar o do '
-                'player, escolha "Compatível" em Descodificação.',
+            : 'Este aparelho não permite o desentrelaçamento do player',
       ),
       DefinicaoEscolha(
         'Formato de imagem',
@@ -746,6 +805,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     WidgetsBinding.instance.removeObserver(this);
     _continuar.reiniciar(); // nenhuma reabertura marcada depois de sair
     _esconderAviso?.cancel();
+    _vigiaEntrelacamento?.cancel();
     _vigia.parar();
     _taxa.fechar();
     for (final s in _subsPlayer) {
@@ -767,8 +827,18 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       fill: Colors.black,
       fit: ajuste.fit,
       aspectRatio: ajuste.aspecto,
+      // Android: o shader de desentrelaçamento por cima da textura (o tamanho lê-se na hora: chega
+      // depois de o Video ser construído)
+      envolverTextura: _meio == MeioDesentrelacamento.shaderFlutter
+          ? (t) => TexturaDesentrelacada(
+              programa: _programaFlutter,
+              colunas: _player.state.width ?? 0,
+              linhas: _player.state.height ?? 0,
+              child: t)
+          : null,
     );
     if (ajuste.escala != 1) video = ClipRect(child: Transform.scale(scale: ajuste.escala, child: video));
+
     return ColoredBox(
       color: Colors.black,
       child: ControlosPlayer(
@@ -823,7 +893,8 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
                 extra: [
                   if (_android) ('Modo de descodificação', _rotuloModoAtual),
                   ('Saída · hwdec pedido', '${_config.vo} · ${_config.hwdec}'),
-                  ('Desentrelaçamento', _desentrelacamentoAtivo ? 'ligado' : 'desligado'),
+                  ('Desentrelaçamento',
+                      textoDesentrelacamento(_meio, ligado: _prefs.desentrelacar, entrelacada: _entrelacada)),
                   if (_hzPedidos != null) ('Taxa do ecrã pedida', '${_hzPedidos!.toStringAsFixed(2)} Hz'),
                 ],
               ),

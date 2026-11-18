@@ -116,6 +116,10 @@ class Video extends StatefulWidget {
   /// FocusNode for keyboard input.
   final FocusNode? focusNode;
 
+  /// player-iptv: envolve o [Texture] do vídeo (só a imagem, sem as barras pretas à volta), por
+  /// exemplo num [ImageFiltered] com o shader de desentrelaçamento. null: o [Texture] sozinho.
+  final Widget Function(Widget textura)? envolverTextura;
+
   /// {@macro video}
   const Video({
     super.key,
@@ -135,6 +139,7 @@ class Video extends StatefulWidget {
     this.onEnterFullscreen = defaultEnterNativeFullscreen,
     this.onExitFullscreen = defaultExitNativeFullscreen,
     this.focusNode,
+    this.envolverTextura,
   });
 
   @override
@@ -417,11 +422,15 @@ class VideoState extends State<Video> with WidgetsBindingObserver {
                                           children: [
                                             const SizedBox(),
                                             Positioned.fill(
-                                              child: Texture(
-                                                textureId: id,
-                                                filterQuality:
-                                                    videoViewParameters
-                                                        .filterQuality,
+                                              // player-iptv: [Video.envolverTextura]
+                                              child: (widget.envolverTextura ??
+                                                  (t) => t)(
+                                                Texture(
+                                                  textureId: id,
+                                                  filterQuality:
+                                                      videoViewParameters
+                                                          .filterQuality,
+                                                ),
                                               ),
                                             ),
                                             // Keep the |Texture| hidden before the first frame renders. In native implementation, if no default frame size is passed (through VideoController), a starting 1 pixel sized texture/surface is created to initialize the render context & check for H/W support.

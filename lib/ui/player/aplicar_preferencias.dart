@@ -40,58 +40,18 @@ String textoAtrasoAudio(Duration d) {
 
 String _segundos(Duration d) => (d.inMicroseconds / Duration.microsecondsPerSecond).toStringAsFixed(3);
 
-/// Liga/desliga o desentrelaçamento do mpv; devolve se ficou ligado.
-///
-/// Ligado = `deinterlace=auto` (só as imagens entrelaçadas; mpv ≥ 0.38). A libmpv incluída
-/// (0.36) não conhece `auto` e ignora-o; aí:
-/// - imagens que podem estar na GPU (Windows com hardware, `d3d11va`/`nvdec`): `deinterlace=yes`.
-///   O mpv escolhe o desentrelaçador certo para o tipo de imagem (`d3d11vpp`, `bwdif_cuda`) e, se
-///   não o conseguir pôr, segue sem ele;
-/// - imagens na memória (Android Compatível — `mediacodec-copy` —, software): fica desligado. O
-///   ffmpeg incluído não tem desentrelaçadores de software (`No such filter: 'bwdif'`, `filter
-///   'yadif' not found`), e um filtro `lavfi` que não existe desliga o vídeo todo ("EOF code: 6"):
-///   o canal ficava sem imagem até ao "sem imagem em 20 s" (visto no emulador e no Windows).
-///
-/// `temEfeito: false` (Android direto: o descodificador do aparelho trata das imagens
-/// entrelaçadas) não mexe no mpv. Nunca lança.
-Future<bool> aplicarDesentrelacamento(MotorMpv mpv,
-    {required bool ligado, required bool temEfeito, required bool imagensNaGpu}) async {
-  if (!temEfeito) return false;
-  try {
-    if (!ligado) {
-      await mpv.setProperty('deinterlace', 'no');
-      await mpv.setProperty('vf', '');
-      return false;
-    }
-    await mpv.setProperty('vf', '');
-    await mpv.setProperty('deinterlace', 'auto');
-    if (await mpv.getProperty('deinterlace') == 'auto') return true;
-    if (!imagensNaGpu) {
-      await mpv.setProperty('deinterlace', 'no');
-      debugPrint('mpv: deinterlace=auto indisponível e sem desentrelaçador de software; fica desligado');
-      return false;
-    }
-    await mpv.setProperty('deinterlace', 'yes');
-    debugPrint('mpv: deinterlace=auto indisponível; a usar deinterlace=yes');
-    return true;
-  } catch (e) {
-    debugPrint('mpv: desentrelaçamento não aplicado ($e)');
-    return false;
-  }
-}
-
-/// As imagens descodificadas podem ficar na GPU (o filtro lavfi de software não serve)?
-bool imagensNaGpu(PlataformaVideo p, {required bool hardware}) => p != PlataformaVideo.android && hardware;
-
 /// O hwdec a pôr em tempo real (Windows); no Android fixa-se ao criar o player.
 String? hwdecEmTempoReal(PlataformaVideo p, {required bool hardware}) =>
     p == PlataformaVideo.android ? null : ConfiguracaoMpv.para(p, hardware: hardware).hwdec;
 
 /// Aplica as preferências e o estado da sessão ao mpv antes de abrir cada canal: 1×, volume,
-/// silêncio, atraso do áudio, descodificação por hardware (Windows) e desentrelaçamento. Nunca
-/// lança (uma propriedade a menos não impede o canal de abrir). Devolve se o desentrelaçamento
-/// do mpv ficou ligado.
-Future<bool> aplicarAoAbrir(MotorMpv mpv, Preferencias p, SessaoPlayer s,
+/// silêncio, atraso do áudio e descodificação por hardware (Windows). Nunca lança (uma
+/// propriedade a menos não impede o canal de abrir).
+///
+/// O desentrelaçamento decide-se depois, com a imagem (`desentrelacamento.dart`). Aqui o Windows só
+/// fica com `deinterlace=no`: o `deinterlace=yes` pedia o `yadif`, que o ffmpeg incluído não tem
+/// (o d3d11vpp, quando serve, liga-se depois). O Android não usa o mpv para isto.
+Future<void> aplicarAoAbrir(MotorMpv mpv, Preferencias p, SessaoPlayer s,
     {required PlataformaVideo plataforma, required ModoDescodificacao modo}) async {
   try {
     await mpv.setRate(1.0);
@@ -100,13 +60,10 @@ Future<bool> aplicarAoAbrir(MotorMpv mpv, Preferencias p, SessaoPlayer s,
     await mpv.setProperty('audio-delay', _segundos(s.atrasoAudio));
     final hwdec = hwdecEmTempoReal(plataforma, hardware: p.hardware);
     if (hwdec != null) await mpv.setProperty('hwdec', hwdec);
+    if (plataforma != PlataformaVideo.android) await mpv.setProperty('deinterlace', 'no');
   } catch (e) {
     debugPrint('mpv: preferências não aplicadas ($e)');
   }
-  return aplicarDesentrelacamento(mpv,
-      ligado: p.desentrelacar,
-      temEfeito: ConfiguracaoMpv.desentrelacamentoTemEfeito(plataforma, modo, hardware: p.hardware),
-      imagensNaGpu: imagensNaGpu(plataforma, hardware: p.hardware));
 }
 
 /// Põe o atraso do áudio no mpv (passos do painel).

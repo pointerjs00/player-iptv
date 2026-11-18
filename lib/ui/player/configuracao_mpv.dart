@@ -21,9 +21,9 @@ enum ModoDescodificacao {
   /// diretamente na superfície do vídeo, sem cópias (o mais leve num Fire TV Stick).
   direto('direto', 'Direta (recomendada)'),
 
-  /// `vo=gpu` + `hwdec=mediacodec-copy`: as imagens voltam à memória e passam pelo mpv
-  /// (permite filtros como o desentrelaçamento do mpv; mais pesado). Para aparelhos onde o
-  /// direto mostra ecrã preto ou cores erradas.
+  /// `vo=gpu` + `hwdec=mediacodec-copy`: as imagens voltam à memória e passam pelo mpv (mais
+  /// pesado). Para aparelhos onde o direto mostra ecrã preto ou cores erradas. (O desentrelaçamento
+  /// é o mesmo nos dois modos: um shader no Flutter, ver `desentrelacamento.dart`.)
   compativel('compativel', 'Compatível');
 
   const ModoDescodificacao(this.nome, this.rotulo);
@@ -76,13 +76,6 @@ class ConfiguracaoMpv {
   PlayerConfiguration get configuracaoPlayer => const PlayerConfiguration(bufferSize: bufferBytes);
 
   VideoControllerConfiguration get configuracaoVideo => VideoControllerConfiguration(vo: vo, hwdec: hwdec);
-
-  /// Com `mediacodec_embed` as imagens nunca passam pelo mpv: o filtro de desentrelaçamento
-  /// não se aplica (o descodificador de hardware do aparelho é que trata das imagens
-  /// entrelaçadas). Nos outros casos aplica-se (o desentrelaçamento é posto a cada canal, em
-  /// `aplicar_preferencias.dart`).
-  static bool desentrelacamentoTemEfeito(PlataformaVideo p, ModoDescodificacao modo, {bool hardware = true}) =>
-      !(p == PlataformaVideo.android && modo == ModoDescodificacao.direto && hardware);
 
   /// `hardware: false`: descodificação por software (preferência para aparelhos com problemas;
   /// no Android passa a `vo=gpu`, como o "Compatível").

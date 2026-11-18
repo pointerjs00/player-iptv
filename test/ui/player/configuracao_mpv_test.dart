@@ -81,20 +81,6 @@ void main() {
         expect(ConfiguracaoMpv.para(p).propriedades.containsKey('deinterlace'), isFalse);
       }
     });
-
-    test('Android direto: o descodificador de hardware trata disso (o filtro do mpv não tem efeito)', () {
-      expect(ConfiguracaoMpv.desentrelacamentoTemEfeito(PlataformaVideo.android, ModoDescodificacao.direto),
-          isFalse);
-      expect(
-          ConfiguracaoMpv.desentrelacamentoTemEfeito(PlataformaVideo.android, ModoDescodificacao.compativel),
-          isTrue);
-      expect(
-          ConfiguracaoMpv.desentrelacamentoTemEfeito(PlataformaVideo.android, ModoDescodificacao.direto,
-              hardware: false),
-          isTrue);
-      expect(ConfiguracaoMpv.desentrelacamentoTemEfeito(PlataformaVideo.windows, ModoDescodificacao.direto),
-          isTrue);
-    });
   });
 
   test('nomes guardados do modo', () {
