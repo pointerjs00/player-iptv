@@ -101,6 +101,21 @@ class ControlosPlayerState extends State<ControlosPlayer> {
   VistaPlayer get vista => _m.vista;
 
   @override
+  void didUpdateWidget(ControlosPlayer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // o cartão de erro saiu com o foco num botão dele: o foco volta ao player (senão nenhuma
+    // tecla chegava aqui)
+    if (oldWidget.estado.erro && !widget.estado.erro) {
+      _depoisDoFrame(() {
+        final foco = FocusManager.instance.primaryFocus;
+        if (_m.vista == VistaPlayer.escondida && (foco == null || foco is FocusScopeNode)) {
+          _raiz.requestFocus();
+        }
+      });
+    }
+  }
+
+  @override
   void dispose() {
     _esconder?.cancel();
     _relogio?.cancel();
@@ -240,7 +255,9 @@ class ControlosPlayerState extends State<ControlosPlayer> {
       return _m.vista == VistaPlayer.escondida ? KeyEventResult.handled : KeyEventResult.ignored;
     }
     if (widget.aoNumero == null && algarismoDe(e.logicalKey) != null) return KeyEventResult.ignored;
-    final a = _m.tecla(e.logicalKey, erro: widget.estado.erro);
+    // o foco saiu da raiz com o vídeo sozinho: está num botão do cartão de erro
+    final focoNoErro = widget.estado.erro && _m.vista == VistaPlayer.escondida && !_raiz.hasPrimaryFocus;
+    final a = _m.tecla(e.logicalKey, erro: widget.estado.erro, focoNoErro: focoNoErro);
     if (a == AcaoPlayer.passar) return KeyEventResult.ignored;
     _executar(a);
     return KeyEventResult.handled;

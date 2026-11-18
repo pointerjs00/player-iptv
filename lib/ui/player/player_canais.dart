@@ -11,6 +11,7 @@ import '../../rede/http.dart';
 import '../design/componentes.dart';
 import 'aplicar_preferencias.dart';
 import 'aviso_buffering.dart';
+import 'cartao_erro.dart';
 import 'compativel_sessao.dart';
 import 'configuracao_mpv.dart';
 import 'controlos_player.dart';
@@ -692,24 +693,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
               ),
             ),
           if (_erro != null)
-            Center(
-              child: Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(mainAxisSize: MainAxisSize.min, children: [
-                    const Icon(Icons.error_outline, size: 40, color: Colors.redAccent),
-                    const SizedBox(height: 8),
-                    Text('${canal.nome}: $_erro', textAlign: TextAlign.center),
-                    const SizedBox(height: 12),
-                    Row(mainAxisSize: MainAxisSize.min, children: [
-                      FilledButton(onPressed: _abrir, child: const Text('Tentar de novo')),
-                      const SizedBox(width: 8),
-                      TextButton(onPressed: widget.aoSair, child: const Text('Voltar')),
-                    ]),
-                  ]),
-                ),
-              ),
-            ),
+            CartaoErroCanal(texto: '${canal.nome}: $_erro', aoTentar: _abrir, aoVoltar: widget.aoSair),
         ]),
       ),
     );

@@ -32,6 +32,15 @@ void main() {
       expect(m.vista, VistaPlayer.escondida);
     });
 
+    test('com o cartão de erro, esquerda/direita andam nos botões e o OK é do botão com o foco', () {
+      final m = MaquinaControlos();
+      expect(m.tecla(K.arrowRight, erro: true), AcaoPlayer.passar);
+      expect(m.tecla(K.arrowLeft, erro: true), AcaoPlayer.passar);
+      expect(m.tecla(K.select, erro: true, focoNoErro: true), AcaoPlayer.passar);
+      expect(m.tecla(K.arrowUp, erro: true), AcaoPlayer.canalSeguinte);
+      expect(m.vista, VistaPlayer.escondida);
+    });
+
     test('Voltar/Esc sai do player', () {
       expect(MaquinaControlos().tecla(K.goBack), AcaoPlayer.sair);
       expect(MaquinaControlos().tecla(K.escape), AcaoPlayer.sair);
