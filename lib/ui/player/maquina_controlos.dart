@@ -103,8 +103,9 @@ class MaquinaControlos {
     return n;
   }
 
-  /// A ação de uma tecla premida (`erro`: está à vista o cartão de erro do canal).
-  AcaoPlayer tecla(LogicalKeyboardKey k, {bool erro = false}) {
+  /// A ação de uma tecla premida (`erro`: está à vista o cartão de erro do canal; `focoNoErro`:
+  /// o foco está num botão desse cartão — o OK é do botão).
+  AcaoPlayer tecla(LogicalKeyboardKey k, {bool erro = false, bool focoNoErro = false}) {
     // os algarismos escrevem o número do canal em qualquer vista (nenhuma outra tecla os usa)
     final d = algarismoDe(k);
     if (d != null) {
@@ -122,8 +123,11 @@ class MaquinaControlos {
     if (sempre != null) return sempre;
     if (_voltar.contains(k)) return voltar();
     if (vista != VistaPlayer.escondida) return AcaoPlayer.passar;
+    // com o cartão de erro, esquerda/direita andam entre "Tentar de novo" e "Voltar" (um canal
+    // que falhou não tem nada para recuar/avançar); cima/baixo continuam a mudar de canal
+    if (erro && (k == LogicalKeyboardKey.arrowLeft || k == LogicalKeyboardKey.arrowRight)) return AcaoPlayer.passar;
     if (_ok.contains(k)) {
-      if (erro) return AcaoPlayer.tentarDeNovo;
+      if (erro) return focoNoErro ? AcaoPlayer.passar : AcaoPlayer.tentarDeNovo;
       vista = VistaPlayer.controlos;
       return AcaoPlayer.mostrarControlos;
     }

@@ -69,8 +69,9 @@ class _PaginaPlayerState extends State<_PaginaPlayer> {
         canais: widget.canais,
         indice: widget.i,
         nomeLista: widget.lista.nomeMostrado,
-        resolver: (c) {
-          widget.aoVer?.call(c);
+        resolver: (c, {continuar = false}) {
+          // um corte do servidor não é ver o canal outra vez
+          if (!continuar) widget.aoVer?.call(c);
           return Protocolo.para(conta).fonte(conta, c);
         },
         aoSair: () => Navigator.of(context).maybePop(),

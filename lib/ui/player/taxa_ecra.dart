@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart' show AppLifecycleListener;
 
 /// O modo de ecrã (Hz) para mostrar um canal de `fps` imagens por segundo sem judder: um dos
 /// `suportadas` que seja múltiplo inteiro do fps (cada imagem fica o mesmo número de
@@ -35,17 +36,53 @@ bool _preferir(double a, double b) {
 
 typedef InvocarNativo = Future<Object?> Function(String metodo, [Object? argumentos]);
 
-/// Pede ao Android TV / Fire TV o modo de ecrã que combina com o canal, e repõe-no ao sair.
+/// Pede ao Android TV / Fire TV o modo de ecrã que combina com o canal.
 /// Usa o canal nativo `player_iptv/ecra` (MainActivity): `taxas` -> {atual, suportadas}
 /// (para a resolução atual), `pedir` {hz}, `repor`.
 ///
-/// Nunca deixa a TV presa no modo pedido: [repor] (canal com erro, app em segundo plano) e
-/// [fechar] (o player saiu) são idempotentes, e um pedido que só responde depois de repor/fechar
-/// é desfeito logo.
+/// Mudar de modo faz a TV piscar (ecrã preto uns segundos, a ligação HDMI volta a sincronizar).
+/// Por isso, ao sair do player ([fechar]), o modo fica: sair é imediato e o canal seguinte com o
+/// mesmo fps já não muda nada. O modo deixado é reposto quando a app vai para segundo plano
+/// ([aoIrParaSegundoPlano]) ou herdado pelo player seguinte (que o repõe num erro).
+///
+/// Nunca deixa a TV presa no modo pedido fora da app: [repor] (canal com erro, app em segundo
+/// plano) é idempotente, e um pedido que só responde depois de repor é desfeito logo.
 class TaxaEcra {
-  TaxaEcra({InvocarNativo? invocar}) : _invocar = invocar ?? _canal.invokeMethod;
+  TaxaEcra({InvocarNativo? invocar}) : _invocar = invocar ?? _canal.invokeMethod {
+    // o modo que o player anterior deixou passa a ser deste (repõe-o num erro ou em segundo plano)
+    final deixada = _deixada;
+    if (deixada != null) {
+      _deixada = null;
+      _pediu = deixada._pediu;
+      deixada._pediu = false;
+    }
+  }
 
   static const _canal = MethodChannel('player_iptv/ecra');
+
+  /// Regista `f` para quando a app for para segundo plano (ou fechar). Nos testes, um falso.
+  /// O `AppLifecycleListener` nunca é desfeito, de propósito: regista-se uma vez por processo
+  /// (`_comOuvinte`), na primeira vez que um player deixa um modo pedido, e tem de durar até a app
+  /// fechar (é ele que repõe o modo deixado, já sem nenhum player aberto).
+  static void Function(VoidCallback f) aoIrParaSegundoPlano =
+      (f) => AppLifecycleListener(onHide: f, onDetach: f);
+
+  /// O player que saiu com um modo pedido (fica até a app ir para segundo plano).
+  static TaxaEcra? _deixada;
+  static bool _comOuvinte = false;
+
+  @visibleForTesting
+  static void reiniciarGlobal() {
+    _deixada = null;
+    _comOuvinte = false;
+  }
+
+  static void _reporDeixada() {
+    final d = _deixada;
+    _deixada = null;
+    d?._reporNativo();
+  }
+
   final InvocarNativo _invocar;
 
   /// Há (ou pode haver, se ainda não respondeu) um modo pedido por nós.
@@ -80,10 +117,15 @@ class TaxaEcra {
       if (hz == null || (atual != null && (atual - hz).abs() < 0.05)) return null;
       _pediu = true; // antes do await: um repor/fechar a meio já sabe que tem de desfazer
       await _invocar('pedir', {'hz': hz});
-      if (_fechado || geracao != _geracao) {
-        // saiu-se (ou repôs-se) enquanto o pedido estava a caminho: desfaz
+      if (geracao != _geracao) {
+        // repôs-se enquanto o pedido estava a caminho: desfaz
         _pediu = true;
         await _reporNativo();
+        return null;
+      }
+      if (_fechado) {
+        // saiu-se enquanto o pedido estava a caminho: fica, como ao sair (ver [fechar])
+        _deixar();
         return null;
       }
       return hz;
@@ -99,10 +141,18 @@ class TaxaEcra {
     await _reporNativo();
   }
 
-  /// O player saiu: repõe e não volta a pedir.
+  /// O player saiu: não volta a pedir. O modo pedido fica (sem piscar a TV ao sair) até a app ir
+  /// para segundo plano ou o player seguinte o repor.
   Future<void> fechar() async {
     _fechado = true;
-    await repor();
+    if (_pediu) _deixar();
+  }
+
+  void _deixar() {
+    _deixada = this;
+    if (_comOuvinte) return;
+    _comOuvinte = true;
+    aoIrParaSegundoPlano(_reporDeixada);
   }
 
   Future<void> _reporNativo() async {

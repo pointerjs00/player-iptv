@@ -101,6 +101,21 @@ class ControlosPlayerState extends State<ControlosPlayer> {
   VistaPlayer get vista => _m.vista;
 
   @override
+  void didUpdateWidget(ControlosPlayer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // o cartão de erro saiu com o foco num botão dele: o foco volta ao player (senão nenhuma
+    // tecla chegava aqui)
+    if (oldWidget.estado.erro && !widget.estado.erro) {
+      _depoisDoFrame(() {
+        final foco = FocusManager.instance.primaryFocus;
+        if (_m.vista == VistaPlayer.escondida && (foco == null || foco is FocusScopeNode)) {
+          _raiz.requestFocus();
+        }
+      });
+    }
+  }
+
+  @override
   void dispose() {
     _esconder?.cancel();
     _relogio?.cancel();
@@ -201,6 +216,9 @@ class ControlosPlayerState extends State<ControlosPlayer> {
       case AcaoPlayer.esconderControlos:
         _raiz.requestFocus(); // antes de a barra deixar de ser focável
         _depoisMudarVista();
+        // com o cartão de erro à vista, o foco volta a um botão dele (na raiz, esquerda/direita
+        // não chegavam ao "Voltar" e o OK era sempre "tentar de novo")
+        if (widget.estado.erro) _depoisDoFrame(_focarCartaoErro);
       case AcaoPlayer.fecharPainel:
         _depoisMudarVista();
         _depoisDoFrame(_botaoDefinicoes.requestFocus);
@@ -223,6 +241,13 @@ class ControlosPlayerState extends State<ControlosPlayer> {
     }
   }
 
+  /// O primeiro botão do cartão de erro (com a barra escondida, os únicos focáveis por baixo da
+  /// raiz são os do vídeo: a barra fica fora da navegação e o painel não está à vista).
+  void _focarCartaoErro() {
+    if (_m.vista != VistaPlayer.escondida || !widget.estado.erro) return;
+    _raiz.traversalDescendants.where((n) => n.canRequestFocus).firstOrNull?.requestFocus();
+  }
+
   /// Um botão da barra: faz a ação e adia o esconder.
   void _botao(AcaoPlayer a) {
     _agendar();
@@ -240,7 +265,9 @@ class ControlosPlayerState extends State<ControlosPlayer> {
       return _m.vista == VistaPlayer.escondida ? KeyEventResult.handled : KeyEventResult.ignored;
     }
     if (widget.aoNumero == null && algarismoDe(e.logicalKey) != null) return KeyEventResult.ignored;
-    final a = _m.tecla(e.logicalKey, erro: widget.estado.erro);
+    // o foco saiu da raiz com o vídeo sozinho: está num botão do cartão de erro
+    final focoNoErro = widget.estado.erro && _m.vista == VistaPlayer.escondida && !_raiz.hasPrimaryFocus;
+    final a = _m.tecla(e.logicalKey, erro: widget.estado.erro, focoNoErro: focoNoErro);
     if (a == AcaoPlayer.passar) return KeyEventResult.ignored;
     _executar(a);
     return KeyEventResult.handled;

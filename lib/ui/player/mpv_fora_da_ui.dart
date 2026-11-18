@@ -301,27 +301,63 @@ void pararSemEsperar(int handle) {
 /// estiver a tocar nesse momento, a thread de áudio dele chama um método nulo e a app morre
 /// ("JNI DETECTED ERROR: mid == null", visto no emulador ao sair e entrar no player). Por isso um
 /// player novo só abre um canal depois de os players largados terem fechado o áudio (o `dispose`
-/// do media_kit faz `stop`). Cada player largado conta no máximo [limite] desde que foi largado:
-/// um player preso (o `dispose` dele nunca acaba) atrasa uma abertura uma vez, nunca as seguintes.
+/// do media_kit faz `stop`).
+///
+/// Cada player largado conta no máximo [limite] desde a primeira abertura que espera por ele (um
+/// `dispose` lento que acabe depois continua a ser esperado: a ordem do áudio fica) e nunca mais
+/// de [maximo] desde que foi largado. Um player preso (o `dispose` dele nunca acaba) atrasa uma
+/// abertura uma vez, nunca as seguintes, e um largado há muito não atrasa ninguém.
 class VezDoAudio {
-  VezDoAudio({this.limite = const Duration(seconds: 4)});
+  VezDoAudio({this.limite = const Duration(seconds: 4), this.maximo = const Duration(seconds: 15)});
   static final instancia = VezDoAudio();
 
   final Duration limite;
-  final _largados = <Future<void>>{};
+  final Duration maximo;
+  final _largados = <_Largado>{};
 
   /// `fechado` acaba quando o player largado tiver fechado o áudio (destruído).
   void largar(Future<void> fechado) {
-    late final Future<void> f;
-    f = fechado.then<void>((_) {}, onError: (_) {}).timeout(limite, onTimeout: () {
-      debugPrint('mpv: um player largado não fechou o áudio em ${limite.inMilliseconds} ms; deixa de se esperar por ele');
-    }).whenComplete(() => _largados.remove(f));
-    _largados.add(f);
+    final l = _Largado(fechado.then<void>((_) {}, onError: (_) {}), DateTime.now().add(maximo));
+    _largados.add(l);
+    l.esquecer = Timer(maximo, () => _largados.remove(l));
+    unawaited(l.fechado.whenComplete(() {
+      _largados.remove(l);
+      l.esquecer?.cancel();
+    }));
   }
 
-  /// Espera que os players largados fechem o áudio (cada um no máximo [limite] desde que foi largado).
+  /// Espera que os players largados fechem o áudio (cada um no máximo [limite] desde a primeira
+  /// espera por ele e [maximo] desde que foi largado).
   Future<void> esperar() async {
     if (_largados.isEmpty) return;
-    await Future.wait(_largados.toList());
+    final agora = DateTime.now();
+    await Future.wait([
+      for (final l in _largados.toList()) _esperarPor(l, agora),
+    ]);
   }
+
+  Future<void> _esperarPor(_Largado l, DateTime agora) {
+    l.prazo ??= agora.add(limite);
+    final fim = l.prazo!.isBefore(l.fimMaximo) ? l.prazo! : l.fimMaximo;
+    final falta = fim.difference(agora);
+    if (falta <= Duration.zero) {
+      _largados.remove(l);
+      return Future.value();
+    }
+    return l.fechado.timeout(falta, onTimeout: () {
+      _largados.remove(l);
+      l.esquecer?.cancel();
+      debugPrint('mpv: um player largado não fechou o áudio a tempo; deixa de se esperar por ele');
+    });
+  }
+}
+
+class _Largado {
+  _Largado(this.fechado, this.fimMaximo);
+  final Future<void> fechado;
+  final DateTime fimMaximo;
+
+  /// O fim da espera por este player, contado da primeira abertura que esperou por ele.
+  DateTime? prazo;
+  Timer? esquecer;
 }

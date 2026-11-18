@@ -40,19 +40,17 @@ String textoAtrasoAudio(Duration d) {
 
 String _segundos(Duration d) => (d.inMicroseconds / Duration.microsecondsPerSecond).toStringAsFixed(3);
 
-/// O filtro de recurso: bwdif só nas imagens marcadas como entrelaçadas (o mesmo que `auto`).
-const filtroDesentrelacamento = 'lavfi=[bwdif=deint=interlaced]';
-
 /// Liga/desliga o desentrelaçamento do mpv; devolve se ficou ligado.
 ///
 /// Ligado = `deinterlace=auto` (só as imagens entrelaçadas; mpv ≥ 0.38). A libmpv incluída
 /// (0.36) não conhece `auto` e ignora-o; aí:
-/// - imagens na memória (Android Compatível — `mediacodec-copy` —, software): o filtro
-///   [filtroDesentrelacamento], que só toca nas imagens entrelaçadas;
 /// - imagens que podem estar na GPU (Windows com hardware, `d3d11va`/`nvdec`): `deinterlace=yes`.
-///   O mpv escolhe o desentrelaçador certo para o tipo de imagem (`d3d11vpp`, `bwdif_cuda`,
-///   `bwdif` em software) e, se não o conseguir pôr, segue sem ele. Um filtro lavfi de software
-///   à força em imagens da GPU podia deixar o vídeo sem imagem (M6 da tarefa 9).
+///   O mpv escolhe o desentrelaçador certo para o tipo de imagem (`d3d11vpp`, `bwdif_cuda`) e, se
+///   não o conseguir pôr, segue sem ele;
+/// - imagens na memória (Android Compatível — `mediacodec-copy` —, software): fica desligado. O
+///   ffmpeg incluído não tem desentrelaçadores de software (`No such filter: 'bwdif'`, `filter
+///   'yadif' not found`), e um filtro `lavfi` que não existe desliga o vídeo todo ("EOF code: 6"):
+///   o canal ficava sem imagem até ao "sem imagem em 20 s" (visto no emulador e no Windows).
 ///
 /// `temEfeito: false` (Android direto: o descodificador do aparelho trata das imagens
 /// entrelaçadas) não mexe no mpv. Nunca lança.
@@ -68,13 +66,13 @@ Future<bool> aplicarDesentrelacamento(MotorMpv mpv,
     await mpv.setProperty('vf', '');
     await mpv.setProperty('deinterlace', 'auto');
     if (await mpv.getProperty('deinterlace') == 'auto') return true;
-    if (imagensNaGpu) {
-      await mpv.setProperty('deinterlace', 'yes');
-    } else {
+    if (!imagensNaGpu) {
       await mpv.setProperty('deinterlace', 'no');
-      await mpv.setProperty('vf', filtroDesentrelacamento);
+      debugPrint('mpv: deinterlace=auto indisponível e sem desentrelaçador de software; fica desligado');
+      return false;
     }
-    debugPrint('mpv: deinterlace=auto indisponível; a usar ${imagensNaGpu ? 'deinterlace=yes' : 'bwdif'}');
+    await mpv.setProperty('deinterlace', 'yes');
+    debugPrint('mpv: deinterlace=auto indisponível; a usar deinterlace=yes');
     return true;
   } catch (e) {
     debugPrint('mpv: desentrelaçamento não aplicado ($e)');

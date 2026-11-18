@@ -134,8 +134,11 @@ class ConfiguracaoMpv {
         'cache-pause-initial': 'yes',
         'cache-pause-wait': '2',
         'network-timeout': '15',
-        // cortes curtos na ligação não param o canal
-        'stream-lavf-o': 'reconnect=1,reconnect_streamed=1,reconnect_delay_max=5',
+        // sem reconexão dentro do mesmo stream (o mpv liga-a por omissão no http): o servidor
+        // responde a uma ligação nova com um bloco do que já passou, os tempos recomeçam e o
+        // vídeo voltava atrás dezenas de segundos; no Stalker o link nem serve duas vezes (HTTP
+        // 462). O buffer toca até ao fim e o player pede o canal de novo (ContinuarDireto).
+        'stream-lavf-o': 'reconnect=0,reconnect_streamed=0',
         'framedrop': 'vo',
         if (p == PlataformaVideo.android) 'ao': 'audiotrack,opensles',
         if (reamostra) 'video-sync': 'display-resample',

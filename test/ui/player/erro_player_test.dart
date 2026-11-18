@@ -13,4 +13,11 @@ void main() {
     expect(erroFatalPlayer('Failed to open http://h/1.ts'), isTrue);
     expect(erroFatalPlayer('Failed to recognize file format.'), isTrue);
   });
+
+  test('um pacote estragado no corte da ligação não é falha do canal (o mpv continua)', () {
+    // visto no emulador: quando o servidor corta, o último pacote chega a meio e o mpv diz
+    // "Error decoding audio." mesmo antes do fim do buffer; o cartão aparecia em vez de continuar
+    expect(erroFatalPlayer('Error decoding audio.'), isFalse);
+    expect(erroFatalPlayer('Error decoding video.'), isFalse);
+  });
 }

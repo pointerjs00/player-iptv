@@ -11,8 +11,10 @@ import '../../rede/http.dart';
 import '../design/componentes.dart';
 import 'aplicar_preferencias.dart';
 import 'aviso_buffering.dart';
+import 'cartao_erro.dart';
 import 'compativel_sessao.dart';
 import 'configuracao_mpv.dart';
+import 'continuar_direto.dart';
 import 'controlos_player.dart';
 import 'diagnostico.dart';
 import 'estatisticas.dart';
@@ -35,12 +37,16 @@ String mensagemErroPlayer(String e) {
 }
 
 /// O erro do mpv faz o canal falhar? Não quando é só a queixa do seek que o media_kit faz ao
-/// ligar a superfície de vídeo do Android (num direto não se pode recuar, mas continua a tocar).
-bool erroFatalPlayer(String e) => !e.contains('force-seekable') && !e.startsWith('Cannot seek');
+/// ligar a superfície de vídeo do Android (num direto não se pode recuar, mas continua a tocar),
+/// nem um pacote que não se descodificou (no corte da ligação o último chega a meio; o mpv salta-o
+/// e continua, e o fim do buffer trata-se em [ContinuarDireto]).
+bool erroFatalPlayer(String e) =>
+    !e.contains('force-seekable') && !e.startsWith('Cannot seek') && !e.startsWith('Error decoding');
 
 /// Dá o link (e os headers) de um canal. No Android chama o protocolo; na janela do player
-/// do Windows pede-o à janela principal.
-typedef ResolverFonte = Future<FonteVideo> Function(Canal canal);
+/// do Windows pede-o à janela principal. `continuar`: o mesmo canal outra vez porque o servidor
+/// cortou a ligação (não é um canal "visto" de novo).
+typedef ResolverFonte = Future<FonteVideo> Function(Canal canal, {bool continuar});
 
 /// O player: toca o canal `indice` de `canais`, com a barra de controlos e o painel de
 /// definições ([ControlosPlayer]). As preferências ([Preferencias.atual]) aplicam-se a cada canal.
@@ -105,6 +111,20 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   bool _aAbrir = true;
   int _pedido = 0;
 
+  /// A reabrir o canal porque o buffer acabou (o servidor fechou a ligação): em vez do indicador
+  /// de abertura mostra-se "A carregar…" (ver [ContinuarDireto]).
+  bool _aRetomar = false;
+  final _continuar = ContinuarDireto();
+
+  /// Quando o canal deu imagem pela última vez (para saber se uma reabertura valeu a pena).
+  DateTime? _abriuEm;
+
+  /// Num ficheiro com fim cortado pelo servidor, onde reabrir (null num direto: vai para o direto).
+  Duration? _retomarEm;
+
+  /// A faixa de áudio escolhida pelo utilizador neste canal (volta a pôr-se depois de reabrir).
+  AudioTrack? _audioEscolhido;
+
   // nunca ecrã preto mudo: o "a abrir" só sai com imagem; sem ela em 20 s, erro
   /// Um stop que não acaba neste tempo é de um mpv que deixou de responder.
   static const _limiteStop = Duration(seconds: 5);
@@ -112,15 +132,18 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   late final _vigia = VigiaAbertura(
     aoAbrir: () {
       if (!mounted) return;
-      setState(() { _aAbrir = false; _erro = null; });
-      _ajustarTaxa(_pedido);
+      final retomou = _aRetomar;
+      _abriuEm = DateTime.now();
+      _continuar.abriu();
+      setState(() { _aAbrir = false; _aRetomar = false; _erro = null; });
       _vigiarImagem(_pedido);
+      if (retomou) _reporFaixaAudio(_pedido);
     },
     aoFalhar: (motivo) {
       if (!mounted) return;
       _player.stop();
       _taxa.repor();
-      setState(() { _erro = motivo; _aAbrir = false; });
+      setState(() { _erro = motivo; _aAbrir = false; _aRetomar = false; });
     },
   );
 
@@ -139,11 +162,14 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     _saltos = SaltosDireto(_motor, _relogio);
     _subsPlayer.add(_player.stream.error.listen((e) {
       if (mounted && e.isNotEmpty && erroFatalPlayer(e)) {
+        // a reabrir depois de um corte: uma falha passageira (rede, 401) tenta-se outra vez
+        if (_aRetomar && _tentarContinuarDepois(_pedido)) return;
         _vigia.parar();
         _taxa.repor();
-        setState(() { _erro = mensagemErroPlayer(e); _aAbrir = false; });
+        setState(() { _erro = mensagemErroPlayer(e); _aAbrir = false; _aRetomar = false; });
       }
     }));
+    _subsPlayer.add(_player.stream.completed.listen(_fimDoBuffer));
     _subsPlayer.add(_player.stream.buffering.listen((b) {
       _vigia.buffering(b);
       if (!mounted) return;
@@ -243,11 +269,76 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     _abrir();
   }
 
-  Future<void> _abrir() async {
+  /// O buffer chegou ao fim a meio do canal (o servidor fechou a ligação e o mpv não reconecta):
+  /// pede o canal de novo, com "A carregar…", nunca em ciclo.
+  Future<void> _fimDoBuffer(bool fim) async {
+    if (!fim || !mounted) return;
+    final pedido = _pedido;
+    // um ficheiro com fim (filme de uma lista M3U) acaba: só os diretos se pedem de novo
+    final eDireto = ContinuarDireto.eDireto(await _motor.getProperty('seekable'));
+    if (!mounted || pedido != _pedido) return;
+    // ou um ficheiro que o servidor cortou muito antes do fim (fica-se parado na última imagem):
+    // reabre-se no ponto onde parou
+    final posicao = _player.state.position;
+    final cortado = !eDireto && ContinuarDireto.cortadoAntesDoFim(posicao: posicao, duracao: _player.state.duration);
+    final direto = eDireto || cortado;
+    if (!ContinuarDireto.deve(
+        fimDoBuffer: fim, aAbrir: _aAbrir, erro: _erro != null, aTocar: _aTocar, direto: direto)) {
+      return;
+    }
+    final abriu = _abriuEm;
+    final tocou = abriu == null ? Duration.zero : DateTime.now().difference(abriu);
+    if (!_continuar.permitir(tocou: tocou)) {
+      _vigia.parar();
+      _taxa.repor();
+      setState(() => _erro = 'o servidor está sempre a cortar a ligação a este canal');
+      return;
+    }
+    _retomarEm = cortado ? posicao : null;
+    _abrir(continuar: true);
+  }
+
+  /// Uma reabertura (depois de um corte) falhou: tenta outra vez daqui a um pouco, com "A
+  /// carregar…" à vista. Falso = já se tentou o suficiente (o cartão de erro aparece).
+  /// Uma espera por tentativa: os vários erros da mesma falha (o `tcp` e o "Failed to open")
+  /// não gastam as esperas seguintes.
+  bool _tentarContinuarDepois(int pedido) {
+    final r = _continuar.falhou(pedido, () {
+      if (mounted && pedido == _pedido && _aRetomar) _abrir(continuar: true);
+    });
+    if (r == Retoma.desistir) return false;
+    if (r == Retoma.agendada) _vigia.parar();
+    return true;
+  }
+
+  /// Volta a pôr a faixa de áudio escolhida depois de o canal ser reaberto (se ainda existir).
+  Future<void> _reporFaixaAudio(int pedido) async {
+    final escolhido = _audioEscolhido;
+    if (escolhido == null) return;
+    // as faixas chegam com o canal; espera-se um pouco por elas
+    for (var i = 0; i < 10 && mounted && pedido == _pedido; i++) {
+      final igual = _faixas.audio.where((a) => a.id == escolhido.id).firstOrNull;
+      if (igual != null) {
+        if (_faixa.audio.id != igual.id) await _player.setAudioTrack(igual);
+        return;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+    }
+  }
+
+  /// Abre o canal `_i`. `continuar`: o mesmo canal outra vez porque o buffer acabou.
+  Future<void> _abrir({bool continuar = false}) async {
     final pedido = ++_pedido;
     final canal = _canais[_i];
+    if (!continuar) {
+      _continuar.reiniciar();
+      _audioEscolhido = null;
+      _abriuEm = null;
+      _retomarEm = null;
+    }
     setState(() {
       _aAbrir = true;
+      _aRetomar = continuar;
       _erro = null;
       _aTocar = true;
       _velocidade = 1;
@@ -255,7 +346,9 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     _relogio.reiniciar();
     // o nome do canal uns segundos (no primeiro canal a barra ainda não foi construída)
     final controlos = _controlos.currentState;
-    if (controlos != null) {
+    if (continuar) {
+      // o mesmo canal: sem o nome por cima
+    } else if (controlos != null) {
       controlos.mostrarInfoCanal();
     } else {
       WidgetsBinding.instance.addPostFrameCallback((_) => _controlos.currentState?.mostrarInfoCanal());
@@ -276,7 +369,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
         limiteStop: _limiteStop,
       );
       if (!mounted || pedido != _pedido) return;
-      final f = await widget.resolver(canal);
+      final f = await widget.resolver(canal, continuar: continuar);
       if (!mounted || pedido != _pedido) return;
       await _configurado;
       if (!mounted || pedido != _pedido) return;
@@ -287,14 +380,20 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       _larguraVista = 0;
       await VezDoAudio.instancia.esperar();
       if (!mounted || pedido != _pedido) return;
-      await _player.open(Media(f.url, httpHeaders: f.headers));
+      await _player.open(Media(f.url, httpHeaders: f.headers, start: continuar ? _retomarEm : null));
+      // o modo de ecrã pede-se já (o fps sabe-se logo que o canal abre): a TV pisca a mudar de
+      // modo enquanto o indicador de abertura ainda está à vista, não por cima da imagem
+      if (mounted && pedido == _pedido) unawaited(_ajustarTaxa(pedido));
     } catch (e) {
       if (!mounted || pedido != _pedido) return;
+      // a reabrir depois de um corte: uma falha passageira (rede, create_link, 401) tenta-se outra vez
+      if (continuar && _tentarContinuarDepois(pedido)) return;
       _vigia.parar();
       _taxa.repor();
       setState(() {
         _erro = e is ErroLista ? e.mensagem : descreverErro(e);
         _aAbrir = false;
+        _aRetomar = false;
       });
     }
   }
@@ -355,7 +454,8 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
         final m = {
           for (final p in const ['video-codec', 'hwdec-current', 'vo-configured']) p: await mpv.getProperty(p),
         };
-        if (!semImagemDireta(larguraVista: _larguraVista, propriedades: m)) return;
+        // um mpv que não respondeu não diz nada sobre a imagem (é trocado no próximo canal)
+        if (mpv.semResposta || !semImagemDireta(larguraVista: _larguraVista, propriedades: m)) return;
       }
     } catch (_) {
       return; // o player fechou entretanto
@@ -528,7 +628,13 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
         'Faixa de áudio',
         opcoes: audio.opcoes,
         atual: audio.atual,
-        aoMudar: audio.opcoes.length > 2 ? (i) => _player.setAudioTrack(audio.faixa(i)) : null,
+        aoMudar: audio.opcoes.length > 2
+            ? (i) {
+                final faixa = audio.faixa(i);
+                _audioEscolhido = faixa.id == 'auto' ? null : faixa;
+                _player.setAudioTrack(faixa);
+              }
+            : null,
         nota: audio.opcoes.length <= 2 ? 'Este canal só tem uma' : null,
       ),
       DefinicaoEscolha(
@@ -614,6 +720,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _continuar.reiniciar(); // nenhuma reabertura marcada depois de sair
     _esconderAviso?.cancel();
     _vigia.parar();
     _taxa.fechar();
@@ -659,7 +766,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
         comEcraInteiro: widget.alternarEcraInteiro != null,
         child: Stack(fit: StackFit.expand, children: [
           video,
-          if (_aAbrir) const Center(child: CircularProgressIndicator()),
+          if (_aAbrir && !_aRetomar) const Center(child: CircularProgressIndicator()),
           if (_aviso != null)
             Align(
               alignment: Alignment.topCenter,
@@ -674,7 +781,11 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
               ),
             ),
           // a meio do canal, à espera de dados (o arranque tem o indicador de cima)
-          AvisoBuffering(aberto: !_aAbrir && _erro == null, buffering: _buffering, percentagem: _percentagemBuffer),
+          // e ao pedir o canal de novo quando o buffer acabou (o vídeo fica parado)
+          AvisoBuffering(
+              aberto: _erro == null && (!_aAbrir || _aRetomar),
+              buffering: _buffering || _aRetomar,
+              percentagem: _aRetomar ? null : _percentagemBuffer),
           if (_estatisticas)
             Positioned(
               top: 88, // por baixo do botão Voltar da barra
@@ -692,24 +803,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
               ),
             ),
           if (_erro != null)
-            Center(
-              child: Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(mainAxisSize: MainAxisSize.min, children: [
-                    const Icon(Icons.error_outline, size: 40, color: Colors.redAccent),
-                    const SizedBox(height: 8),
-                    Text('${canal.nome}: $_erro', textAlign: TextAlign.center),
-                    const SizedBox(height: 12),
-                    Row(mainAxisSize: MainAxisSize.min, children: [
-                      FilledButton(onPressed: _abrir, child: const Text('Tentar de novo')),
-                      const SizedBox(width: 8),
-                      TextButton(onPressed: widget.aoSair, child: const Text('Voltar')),
-                    ]),
-                  ]),
-                ),
-              ),
-            ),
+            CartaoErroCanal(texto: '${canal.nome}: $_erro', aoTentar: _abrir, aoVoltar: widget.aoSair),
         ]),
       ),
     );

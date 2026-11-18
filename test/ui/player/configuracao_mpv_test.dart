@@ -16,8 +16,10 @@ void main() {
         expect(c.propriedades, containsPair('cache-pause-initial', 'yes'));
         expect(c.propriedades, containsPair('cache-pause-wait', '2'));
         expect(c.propriedades, containsPair('network-timeout', '15'));
-        expect(c.propriedades,
-            containsPair('stream-lavf-o', 'reconnect=1,reconnect_streamed=1,reconnect_delay_max=5'));
+        // sem reconexão dentro do mesmo stream: os servidores IPTV respondem a uma ligação nova
+        // com um bloco de segundos já vistos (o mpv voltava atrás dezenas de segundos); o player
+        // toca o buffer até ao fim e só então pede o canal de novo (ContinuarDireto)
+        expect(c.propriedades, containsPair('stream-lavf-o', 'reconnect=0,reconnect_streamed=0'));
         expect(c.propriedades, containsPair('framedrop', 'vo'));
         expect(ConfiguracaoMpv.bufferBytes, 64 * 1024 * 1024);
         expect(c.configuracaoPlayer.bufferSize, 64 * 1024 * 1024);

@@ -45,29 +45,53 @@ class AndroidVideoController extends PlatformVideoController {
     }
   }
 
+  /// player-iptv: com `mediacodec_embed`, o tamanho real da superfície (do último
+  /// `VideoOutput.Resize`) e o do vídeo (do último `videoParams`, que dá a proporção no ecrã).
+  Rect? _rectSuperficie;
+  Rect? _rectVideo;
+
+  /// player-iptv: o [rect] depois de um `VideoOutput.Resize`. Com `mediacodec_embed` a superfície
+  /// tem tamanho fixo e o [rect] é a proporção do vídeo: quando a superfície é recriada (app em
+  /// segundo plano e de volta), o `videoParams` não volta a chegar e um vídeo 4:3 ficava esticado
+  /// a 16:9. Fica o do último vídeo; sem vídeo ainda (ou com outro vo), o da superfície.
+  static Rect rectDepoisDeResize({required String? vo, required Rect superficie, required Rect? video}) =>
+      vo == 'mediacodec_embed' && video != null ? video : superficie;
+
   /// Listener for updating the --wid property.
   Future<void> widListener() {
     return lock.synchronized(() async {
-      final width = rect.value?.width.toInt() ?? 1;
-      final height = rect.value?.height.toInt() ?? 1;
+      // player-iptv: com mediacodec_embed, o tamanho da superfície (o [rect] é o do vídeo)
+      final tamanho = configuration.vo == 'mediacodec_embed' ? (_rectSuperficie ?? rect.value) : rect.value;
+      final width = tamanho?.width.toInt() ?? 1;
+      final height = tamanho?.height.toInt() ?? 1;
       final androidSurfaceSizeValue = [width, height].join('x');
       final widValue = wid.value?.toString() ?? '0';
       // When --wid is 0, vo=null is required to avoid SIGSEGV.
       final voValue = widValue == '0' ? 'null' : configuration.vo!;
       final vidValue = widValue == '0' ? 'no' : 'auto';
+      final embed = configuration.vo == 'mediacodec_embed';
       // It is important to re-initialize --vo after --android-surface-size.
       await setProperty('vo', 'null');
+      // player-iptv: com mediacodec_embed o descodificador sai antes de mudar a superfície e só
+      // volta depois do vo (antes, o MediaCodec arrancava na superfície nova com o vo ainda
+      // "null" e era recriado logo a seguir: no emulador o mpv ficava preso)
+      if (embed) await setProperty('vid', 'no');
       await setProperties(
         {
           // ORDER IS IMPORTANT.
           'android-surface-size': androidSurfaceSizeValue,
           'wid': widValue,
           'vo': voValue,
-          // It is important to re-initialize --vid in-case of --vo=mediacodec_embed.
-          // Not doing so causes error "Could not open codec." & video never gets rendered.
-          if (configuration.vo == 'mediacodec_embed') 'vid': vidValue,
         },
       );
+      // It is important to re-initialize --vid in-case of --vo=mediacodec_embed.
+      // Not doing so causes error "Could not open codec." & video never gets rendered.
+      if (embed) {
+        await setProperty('vid', vidValue);
+        // player-iptv: sem o seek: num direto, um seek com o MediaCodec acabado de arrancar
+        // prendia o mpv (todos os pedidos seguintes ficavam sem resposta)
+        return;
+      }
       // Instead of seeking to the start (Duration.zero), seek to the current playback position
       // without jumping the user to the start of the media.
       final currentPosition = player.state.position;
@@ -98,9 +122,24 @@ class AndroidVideoController extends PlatformVideoController {
         }
 
         final isZero = width == 0 || height == 0;
-        final isSame = width == rect.value?.width.toInt() &&
-            height == rect.value?.height.toInt();
+        // player-iptv: com mediacodec_embed compara-se com o último vídeo (o [rect] pode ser o da
+        // superfície depois de ela ser recriada)
+        final anterior = configuration.vo == 'mediacodec_embed' ? _rectVideo : rect.value;
+        final isSame = width == anterior?.width.toInt() && height == anterior?.height.toInt();
         if (isZero || isSame) {
+          return;
+        }
+
+        if (configuration.vo == 'mediacodec_embed') {
+          // player-iptv: com mediacodec_embed a superfície tem um tamanho fixo (ver [create]: o
+          // MediaCodec escala a imagem para ela) e só muda a proporção do vídeo no ecrã. Mudar
+          // o tamanho da superfície obrigava a religar o vo e o descodificador a meio do canal
+          // (ecrã preto e, no emulador, o mpv preso).
+          _rectVideo = Rect.fromLTWH(0.0, 0.0, width.toDouble(), height.toDouble());
+          rect.value = _rectVideo;
+          if (!waitUntilFirstFrameRenderedCompleter.isCompleted) {
+            waitUntilFirstFrameRenderedCompleter.complete();
+          }
           return;
         }
 
@@ -212,6 +251,20 @@ class AndroidVideoController extends PlatformVideoController {
       },
     );
 
+    // player-iptv: com mediacodec_embed a superfície existe antes do primeiro canal, com um
+    // tamanho fixo: o vo e o descodificador ligam-se a ela uma vez (o MediaCodec desenha logo a
+    // primeira imagem nela) em vez de a meio do canal, quando se soubesse o tamanho do vídeo.
+    if (configuration.vo == 'mediacodec_embed') {
+      await _channel.invokeMethod(
+        'VideoOutputManager.SetSurfaceSize',
+        {
+          'handle': handle.toString(),
+          'width': '$larguraSuperficieFixa',
+          'height': '$alturaSuperficieFixa',
+        },
+      );
+    }
+
     // Return the [PlatformVideoController].
     return controller;
   }
@@ -252,6 +305,10 @@ class AndroidVideoController extends PlatformVideoController {
     );
   }
 
+  /// player-iptv: o tamanho da superfície com `mediacodec_embed` (o de um ecrã Full HD).
+  static const larguraSuperficieFixa = 1920;
+  static const alturaSuperficieFixa = 1080;
+
   /// Currently created [AndroidVideoController]s.
   static final _controllers = HashMap<int, AndroidVideoController>();
 
@@ -276,7 +333,10 @@ class AndroidVideoController extends PlatformVideoController {
                     );
                     final int id = call.arguments['id'];
                     final int wid = call.arguments['wid'];
-                    _controllers[handle]?.rect.value = rect;
+                    final controller = _controllers[handle];
+                    controller?._rectSuperficie = rect;
+                    controller?.rect.value = rectDepoisDeResize(
+                        vo: controller.configuration.vo, superficie: rect, video: controller._rectVideo);
                     _controllers[handle]?.id.value = id;
                     _controllers[handle]?.wid.value = wid;
                     break;

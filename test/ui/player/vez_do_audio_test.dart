@@ -54,11 +54,29 @@ void main() {
     }
   });
 
-  test('o limite de cada player largado conta desde que foi largado', () async {
+  test('um dispose lento (acaba depois do limite contado desde largar) continua a ser esperado', () async {
+    // a ordem do áudio: o limite conta desde a primeira espera; antes contava desde largar e um
+    // dispose que acabasse depois dele deixava o player novo abrir com o áudio do antigo aberto
+    // (o crash "mid == null" do audiotrack)
     const limite = Duration(milliseconds: 200);
-    final vez = VezDoAudio(limite: limite);
+    final vez = VezDoAudio(limite: limite, maximo: const Duration(seconds: 2));
+    final lento = Completer<void>();
+    vez.largar(lento.future);
+    Timer(const Duration(milliseconds: 350), lento.complete);
+    await Future<void>.delayed(const Duration(milliseconds: 250)); // já passou o limite desde largar
+    var abriu = false;
+    final f = vez.esperar().then((_) => abriu = true);
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    expect(abriu, isFalse, reason: 'o anterior ainda está a fechar o áudio');
+    await f.timeout(const Duration(seconds: 1));
+    expect(lento.isCompleted, isTrue);
+  });
+
+  test('um player largado há muito (para lá do máximo) já não atrasa ninguém', () async {
+    const limite = Duration(milliseconds: 200);
+    final vez = VezDoAudio(limite: limite, maximo: const Duration(milliseconds: 300));
     vez.largar(Completer<void>().future);
-    await Future<void>.delayed(limite * 1.5);
+    await Future<void>.delayed(const Duration(milliseconds: 400));
     final relogio = Stopwatch()..start();
     await vez.esperar();
     expect(relogio.elapsed, lessThan(limite ~/ 2));
