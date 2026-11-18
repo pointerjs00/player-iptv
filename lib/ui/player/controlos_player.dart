@@ -119,14 +119,21 @@ class ControlosPlayerState extends State<ControlosPlayer> {
   Future<void>? _leituraProgresso;
   int _tique = 0;
 
+  /// Muda a cada canal: uma leitura de um canal anterior que chegue depois é deitada fora.
+  int _geracao = 0;
+
+  static String _chaveCanal(EstadoControlos e) => '${e.canal}\u0000${e.subtitulo}';
+
   VistaPlayer get vista => _m.vista;
 
   @override
   void didUpdateWidget(ControlosPlayer oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // outro canal: a janela do anterior não vale (traços até à leitura seguinte)
-    if (oldWidget.estado.canal != widget.estado.canal || oldWidget.estado.subtitulo != widget.estado.subtitulo) {
+    // outro canal: a janela do anterior não vale (traços até à leitura seguinte), nem as leituras
+    // dela que ainda estão a caminho
+    if (_chaveCanal(oldWidget.estado) != _chaveCanal(widget.estado)) {
       _janela = null;
+      _geracao++;
     }
     // o cartão de erro saiu com o foco num botão dele: o foco volta ao player (senão nenhuma
     // tecla chegava aqui)
@@ -220,10 +227,11 @@ class ControlosPlayerState extends State<ControlosPlayer> {
       await emCurso;
       return _lerProgresso();
     }
+    final geracao = _geracao;
     final leitura = () async {
       try {
         final j = await ler();
-        if (mounted) setState(() => _janela = j);
+        if (mounted && geracao == _geracao) setState(() => _janela = j);
       } catch (_) {
         // o player pode estar a fechar: fica a última janela
       }
@@ -513,6 +521,8 @@ class ControlosPlayerState extends State<ControlosPlayer> {
                   if (widget.lerProgresso != null) ...[
                     const SizedBox(height: Tokens.e8),
                     BarraProgresso(
+                      // outro canal: estado novo (um alvo do canal anterior não fica nem é reenviado)
+                      key: ValueKey(_chaveCanal(e)),
                       janela: _janela,
                       focusNode: _progresso,
                       aoProcurar: _procurar,

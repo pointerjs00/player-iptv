@@ -282,7 +282,8 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     if (!fim || !mounted) return;
     final pedido = _pedido;
     // um ficheiro com fim (filme de uma lista M3U) acaba: só os diretos se pedem de novo
-    final eDireto = ContinuarDireto.eDireto(await _motor.getProperty('seekable'));
+    final p = await _motor.getProperties(const ['seekable', 'partially-seekable']);
+    final eDireto = ContinuarDireto.eDireto(p['seekable']!, partiallySeekable: p['partially-seekable']!);
     if (!mounted || pedido != _pedido) return;
     // ou um ficheiro que o servidor cortou muito antes do fim (fica-se parado na última imagem):
     // reabre-se no ponto onde parou
@@ -416,7 +417,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     String? aviso;
     if (janela.direto) {
       aviso = await _saltos.irPara(alvo);
-    } else {
+    } else if (pedido == _pedido) {
       await _motor.command(['seek', alvo.toStringAsFixed(3), 'absolute']);
     }
     _leitor.esquecer(); // a posição mudou

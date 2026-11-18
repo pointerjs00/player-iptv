@@ -91,9 +91,10 @@ void main() {
         'time-pos': '7',
         'duration': '',
         'seekable': 'yes',
+        'partially-seekable': 'yes',
         'demuxer-cache-state': _cache(fim: 9),
       })!;
-      expect(j.direto, isTrue, reason: 'sem duração não é um filme');
+      expect(j.direto, isTrue, reason: 'sem partially-seekable=no, é direto');
       expect((j.inicio, j.fim), (7.0, 9.0));
       expect(j.decorrido, Duration.zero);
       expect(j.total, const Duration(seconds: 2));
@@ -118,6 +119,22 @@ void main() {
       expect(j.fracaoBuffer, 0);
     });
 
+    test('seekable de verdade mas sem duração: janela do cache, seek de ficheiro (não é direto)', () {
+      final j = janelaDe({
+        'time-pos': '20',
+        'seekable': 'yes',
+        'partially-seekable': 'no',
+        'demuxer-cache-state': _cache(intervalos: [(0, 40)], fim: 40),
+      })!;
+      expect(j.direto, isFalse, reason: 'o mesmo que o ContinuarDireto: um ficheiro com fim');
+      expect((j.inicio, j.fim), (0.0, 40.0));
+    });
+
+    test('seekable=no com uma duração qualquer (direto TS no corte): direto', () {
+      final j = janelaDe({'time-pos': '20', 'duration': '30', 'seekable': 'no'})!;
+      expect(j.direto, isTrue);
+    });
+
     test('filme sem cache-state: sem buffer à frente', () {
       final j = janelaDe(const {'time-pos': '10', 'duration': '100', 'seekable': 'yes'})!;
       expect(j.direto, isFalse);
@@ -136,15 +153,37 @@ void main() {
 
     test('deslocado ±10 s a partir da posição (ou de um alvo ainda a caminho)', () {
       expect(direto.deslocado(const Duration(seconds: -10)), 90);
-      expect(direto.deslocado(const Duration(seconds: -10), de: 65), 60, reason: 'não sai do cache para trás');
       expect(direto.deslocado(const Duration(seconds: 10)), 103, reason: 'nem para lá do mais recente');
     });
 
+    test('direto: o início dos seeks fica 3 s para dentro do cache (o mais antigo vai saindo, e o seek vai '
+        'à imagem-chave antes)', () {
+      expect(JanelaProgresso.margemInicio, const Duration(seconds: 3));
+      expect(direto.deslocado(const Duration(seconds: -10), de: 65), 63);
+      expect(direto.alvoPorFracao(0), 63);
+      expect(direto.alvoPorFracao(-1), 63);
+      // a barra desenha-se na mesma desde o início do cache
+      expect(direto.inicio, 60);
+      expect(direto.fracao(60), 0);
+    });
+
+    test('direto: já dentro da margem, recuar não empurra para a frente', () {
+      final perto = JanelaProgresso(inicio: 60, fim: 103, posicao: 61, direto: true);
+      expect(perto.deslocado(const Duration(seconds: -10)), 61);
+      final curta = JanelaProgresso(inicio: 7, fim: 9, posicao: 7, direto: true);
+      expect(curta.alvoPorFracao(0), 7);
+      expect(curta.deslocado(const Duration(seconds: -10)), 7);
+    });
+
+    test('filme: sem margem (vai ao 0)', () {
+      final filme = JanelaProgresso(inicio: 0, fim: 600, posicao: 5, direto: false);
+      expect(filme.deslocado(const Duration(seconds: -10)), 0);
+      expect(filme.alvoPorFracao(0), 0);
+    });
+
     test('por fração (arrasto/toque), limitada a [0, 1]', () {
-      expect(direto.alvoPorFracao(0), 60);
       expect(direto.alvoPorFracao(.5), 81.5);
       expect(direto.alvoPorFracao(1.7), 103);
-      expect(direto.alvoPorFracao(-1), 60);
     });
 
     test('o tempo à esquerda de um alvo é relativo ao início da janela', () {

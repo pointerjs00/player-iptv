@@ -3,6 +3,14 @@ import 'dart:convert';
 /// O que a barra de progresso lê do mpv (de uma vez, fora da UI: ver [janelaDe]).
 const propriedadesProgresso = ['time-pos', 'duration', 'seekable', 'partially-seekable', 'demuxer-cache-state'];
 
+/// Direto ou ficheiro com fim, pelas propriedades do mpv (o mesmo para a barra de progresso e
+/// para o [ContinuarDireto]). Um ficheiro deixa andar (`seekable=yes`) e não só pelo cache
+/// (`partially-seekable` não é `yes`). Um direto TS no corte diz `seekable=no` (visto no
+/// emulador); com o cache ligado pode dizer `seekable=yes` e `partially-seekable=yes`. Sem
+/// resposta (vazio): direto.
+bool eDiretoMpv({required String seekable, String partiallySeekable = ''}) =>
+    seekable.trim() != 'yes' || partiallySeekable.trim() == 'yes';
+
 /// A parte do vídeo por onde se pode andar, em segundos do mpv (os do `time-pos`).
 /// - Filme (seekable, duração conhecida): de 0 à duração.
 /// - Direto (ou duração desconhecida): o que o mpv tem no cache — do mais antigo guardado para
@@ -30,6 +38,11 @@ class JanelaProgresso {
 
   double get comprimento => fim - inicio;
 
+  /// Num direto, os seeks ficam este tanto para dentro do mais antigo no cache: com o buffer para
+  /// trás cheio, o mais antigo sai a cada segundo, e o seek vai à imagem-chave antes do alvo — no
+  /// início exato cairia fora do cache.
+  static const margemInicio = Duration(seconds: 3);
+
   /// O tempo à esquerda: a posição contada do início da janela.
   Duration get decorrido => decorridoEm(posicao);
 
@@ -45,10 +58,25 @@ class JanelaProgresso {
   double get fracaoBuffer => fracao(bufferAte ?? posicao);
 
   /// O alvo de um seek de `d` a partir da posição (ou de `de`: um alvo ainda a caminho).
-  double deslocado(Duration d, {double? de}) => _limitar((de ?? posicao) + d.inMicroseconds / 1e6);
+  double deslocado(Duration d, {double? de}) {
+    final origem = _limitar(de ?? posicao);
+    return _limitarAlvo(origem + d.inMicroseconds / 1e6, origem);
+  }
 
   /// O alvo num ponto da barra (arrasto/toque).
-  double alvoPorFracao(double f) => inicio + comprimento * f.clamp(0.0, 1.0);
+  double alvoPorFracao(double f) => _limitarAlvo(inicio + comprimento * f.clamp(0.0, 1.0), _limitar(posicao));
+
+  /// Dentro da janela e, num direto, a [margemInicio] para dentro do início — mas recuar nunca
+  /// empurra para a frente de `origem` (já dentro da margem, fica onde está).
+  double _limitarAlvo(double s, double origem) {
+    final alto = fim < inicio ? inicio : fim;
+    var baixo = inicio;
+    if (direto) {
+      final m = inicio + margemInicio.inMicroseconds / 1e6;
+      baixo = m < origem ? m : origem;
+    }
+    return s.clamp(baixo, alto);
+  }
 
   double _limitar(double s) => s.clamp(inicio, fim < inicio ? inicio : fim);
 
@@ -66,10 +94,9 @@ JanelaProgresso? janelaDe(Map<String, String> m) {
   final pos = _numero(m['time-pos']);
   if (pos == null) return null;
   final duracao = _numero(m['duration']);
-  // com o cache ligado o mpv diz `seekable` num direto, mas também `partially-seekable` (só pelo
-  // cache); um filme tem duração
-  final filme = m['seekable']?.trim() == 'yes' && m['partially-seekable']?.trim() != 'yes' &&
-      duracao != null && duracao > 0;
+  final direto = eDiretoMpv(seekable: m['seekable'] ?? '', partiallySeekable: m['partially-seekable'] ?? '');
+  // um ficheiro com duração vai de 0 ao fim; sem ela (ou num direto), a janela do cache
+  final filme = !direto && duracao != null && duracao > 0;
 
   double? fimCache;
   final intervalos = <(double, double)>[];
@@ -102,7 +129,7 @@ JanelaProgresso? janelaDe(Map<String, String> m) {
     );
   }
 
-  // direto: o intervalo do cache que tem a posição (1 s de folga: o cache-state e o time-pos não
+  // direto (ou ficheiro sem duração): o intervalo do cache que tem a posição (1 s de folga: o cache-state e o time-pos não
   // são lidos no mesmo instante); senão o mais recente
   const folga = 1.0;
   final i = intervalos.indexWhere((r) => pos >= r.$1 - folga && pos <= r.$2 + folga);
@@ -117,7 +144,7 @@ JanelaProgresso? janelaDe(Map<String, String> m) {
     inicio: inicio,
     fim: fim,
     posicao: pos,
-    direto: true,
+    direto: direto,
     bufferAte: fimCache?.clamp(pos, fim),
   );
 }

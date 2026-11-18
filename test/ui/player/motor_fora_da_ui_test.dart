@@ -239,6 +239,39 @@ void main() {
     expect(ordem, ['eco:lento', 'eco:rapido']);
   });
 
+  group('getn (várias propriedades num só isolate)', () {
+    test('as respostas vêm pela ordem pedida', () async {
+      final e = ExecutorIsolate.paraTestes(chamadaDeTeste);
+      expect(await e.getProperties(1, ['time-pos', 'duration', 'seekable']).timeout(const Duration(seconds: 5)),
+          ['eco:time-pos', 'eco:duration', 'eco:seekable']);
+    });
+
+    test('na fila do mesmo mpv com as outras chamadas (pela ordem em que chegam)', () async {
+      final e = ExecutorIsolate.paraTestes(chamadaDeTeste);
+      final ordem = <String>[];
+      await Future.wait([
+        e.getProperties(1, ['lento', 'x']).then((v) => ordem.add(v.join(','))),
+        e.getProperty(1, 'rapido').then(ordem.add),
+        e.getProperties(1, ['y']).then((v) => ordem.add(v.join(','))),
+      ]);
+      expect(ordem, ['eco:lento,eco:x', 'eco:rapido', 'eco:y']);
+    });
+
+    test('um getn preso num mpv não atrasa os de outro mpv', () async {
+      final e = ExecutorIsolate.paraTestes(chamadaDeTeste);
+      unawaited(e.getProperties(1, ['pendurar', 'a']).then((_) {}, onError: (_) {}));
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(await e.getProperties(2, ['a', 'b']).timeout(const Duration(seconds: 1)), ['eco:a', 'eco:b']);
+    });
+
+    test('o isolate morre a meio de um getn: falha (não fica pendurado) e o seguinte responde', () async {
+      final e = ExecutorIsolate.paraTestes(chamadaDeTeste);
+      await expectLater(
+          e.getProperties(1, ['morrer', 'a']).timeout(const Duration(seconds: 5)), throwsA(isA<StateError>()));
+      expect(await e.getProperties(1, ['b']).timeout(const Duration(seconds: 5)), ['eco:b']);
+    });
+  });
+
   test('o mpv preso de um player não prende os pedidos de outro player saudável (nem o marca nem o perde)',
       () async {
     final e = ExecutorIsolate.paraTestes(chamadaDeTeste);
@@ -265,6 +298,7 @@ void main() {
 /// "pendurar" fica presa (como uma chamada nativa que não volta); "lento" demora; o resto responde
 /// "eco:...".
 Object? chamadaDeTeste(String op, int handle, List<String> args) {
+  final r = op == 'getn' ? [for (final a in args) 'eco:$a'] : 'eco:${args.first}';
   switch (args.first) {
     case 'morrer':
       Isolate.exit();
@@ -275,5 +309,5 @@ Object? chamadaDeTeste(String op, int handle, List<String> args) {
     case 'lento':
       sleep(const Duration(milliseconds: 300));
   }
-  return 'eco:${args.first}';
+  return r;
 }

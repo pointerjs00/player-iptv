@@ -30,7 +30,8 @@ class SaltosDireto {
 
   /// Vai para `alvo` (segundos do `time-pos`; a barra de progresso). Sempre pelo seek relativo
   /// destes saltos: dentro do cache, sem reabrir o canal, e o [relogio] conta o que o mpv andou de
-  /// facto. Menos de meio segundo (ou sem posição) não faz nada.
+  /// facto. Menos de 1 s (ou sem posição) não faz nada: abaixo disso o recuar diria "Não há mais
+  /// para recuar".
   Future<String?> irPara(double alvo) async {
     final double? agora;
     try {
@@ -41,7 +42,7 @@ class SaltosDireto {
     }
     if (agora == null) return null;
     final d = Duration(microseconds: ((alvo - agora) * 1e6).round());
-    if (d.abs() < const Duration(milliseconds: 500)) return null;
+    if (d.abs() < const Duration(seconds: 1)) return null;
     return d.isNegative ? _recuar(-d, '-${_s(-d)}') : _avancar(d);
   }
 

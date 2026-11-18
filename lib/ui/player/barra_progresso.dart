@@ -95,9 +95,19 @@ class _BarraProgressoState extends State<BarraProgresso> {
     _enviar();
   }
 
+  /// Aumentar/diminuir do leitor de ecrã (também adiam o esconder da barra).
+  void _passoLeitor(int sinal) {
+    widget.aoAtividade();
+    _passo(sinal, repetido: false);
+  }
+
   Future<void> _enviar() async {
     final j = widget.janela, alvo = _alvo;
-    if (_aEnviar || _arrastar || j == null || alvo == null) return;
+    if (j == null) {
+      if (alvo != null && !_aEnviar && mounted) setState(() => _alvo = null); // sem janela, o alvo não vale
+      return;
+    }
+    if (_aEnviar || _arrastar || alvo == null) return;
     _aEnviar = true;
     try {
       await widget.aoProcurar(j, alvo);
@@ -188,8 +198,8 @@ class _BarraProgressoState extends State<BarraProgresso> {
       hint: j == null ? null : 'Esquerda e direita: ${BarraProgresso.salto.inSeconds} s para trás ou para a frente',
       increasedValue: valorApos(1),
       decreasedValue: valorApos(-1),
-      onIncrease: j == null ? null : () => _passo(1, repetido: false),
-      onDecrease: j == null ? null : () => _passo(-1, repetido: false),
+      onIncrease: j == null ? null : () => _passoLeitor(1),
+      onDecrease: j == null ? null : () => _passoLeitor(-1),
       child: MolduraFoco(
         focado: _focado,
         raio: Tokens.raioCampo,
@@ -215,7 +225,7 @@ class _BarraProgressoState extends State<BarraProgresso> {
                       onHorizontalDragStart: (d) => _arrastarPara(d.localPosition.dx, c.maxWidth),
                       onHorizontalDragUpdate: (d) => _arrastarPara(d.localPosition.dx, c.maxWidth),
                       onHorizontalDragEnd: (_) => _largar(),
-                      onHorizontalDragCancel: _largar,
+                      onHorizontalDragCancel: _desistir,
                       onTapDown: (d) => _arrastarPara(d.localPosition.dx, c.maxWidth),
                       onTapUp: (_) => _largar(),
                       // (antes de um arrasto ganhar ao toque: o arrasto continua a partir daqui)

@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:player_iptv/ui/player/continuar_direto.dart';
+import 'package:player_iptv/ui/player/progresso.dart';
 
 void main() {
   group('ContinuarDireto.deve (o buffer acabou: pedir o canal de novo)', () {
@@ -15,6 +16,37 @@ void main() {
     });
     test('um ficheiro (VOD, filme de uma lista M3U) que chegou ao fim acaba: não recomeça', () {
       expect(deve(direto: false), isFalse);
+    });
+  });
+
+  group('ContinuarDireto.eDireto = o classificador da barra de progresso (eDiretoMpv)', () {
+    test('o direto TS no corte (visto no emulador: seekable=no) continua a ser direto e reabre-se', () {
+      expect(ContinuarDireto.eDireto('no', partiallySeekable: ''), isTrue);
+      expect(ContinuarDireto.eDireto('no', partiallySeekable: 'no'), isTrue);
+      expect(
+          ContinuarDireto.deve(
+              fimDoBuffer: true,
+              aAbrir: false,
+              erro: false,
+              aTocar: true,
+              direto: ContinuarDireto.eDireto('no', partiallySeekable: 'no')),
+          isTrue,
+          reason: 'é a reabertura que corrige os saltos para trás');
+    });
+    test('só dá para andar pelo cache (partially-seekable): direto', () {
+      expect(ContinuarDireto.eDireto('yes', partiallySeekable: 'yes'), isTrue);
+    });
+    test('ficheiro com fim (seekable sem ser só pelo cache): não é direto', () {
+      expect(ContinuarDireto.eDireto('yes', partiallySeekable: 'no'), isFalse);
+      expect(eDiretoMpv(seekable: 'yes', partiallySeekable: 'no'), isFalse);
+    });
+    test('o mesmo resultado que a barra de progresso', () {
+      for (final s in ['yes', 'no', '']) {
+        for (final p in ['yes', 'no', '']) {
+          final j = janelaDe({'time-pos': '5', 'duration': '60', 'seekable': s, 'partially-seekable': p})!;
+          expect(j.direto, ContinuarDireto.eDireto(s, partiallySeekable: p), reason: 'seekable=$s partially=$p');
+        }
+      }
     });
   });
 

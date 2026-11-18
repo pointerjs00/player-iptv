@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'progresso.dart';
+
 /// Continuar um direto quando o servidor fecha a ligação.
 ///
 /// Muitos servidores IPTV fecham a ligação ao fim de uns segundos (visto em portais Stalker a
@@ -52,9 +54,10 @@ class ContinuarDireto {
           required bool direto}) =>
       fimDoBuffer && direto && !aAbrir && !erro && aTocar;
 
-  /// Pela propriedade `seekable` do mpv: um direto não deixa andar para o fim. Sem resposta
-  /// (vazio) trata-se como direto.
-  static bool eDireto(String seekable) => seekable.trim() != 'yes';
+  /// Pelas propriedades `seekable` e `partially-seekable` do mpv: o mesmo classificador da barra
+  /// de progresso ([eDiretoMpv]). Sem resposta (vazio) trata-se como direto.
+  static bool eDireto(String seekable, {String partiallySeekable = ''}) =>
+      eDiretoMpv(seekable: seekable, partiallySeekable: partiallySeekable);
 
   /// Um ficheiro com fim que parou bem antes dele (mais de [margemFim]): foi um corte do
   /// servidor, não o fim (sem isto ficava parado na última imagem). Duração desconhecida: não.

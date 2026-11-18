@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
@@ -31,6 +33,12 @@ class _Ensaio {
 
   /// A barra de progresso (com `comProgresso`): a janela que o "player" devolve.
   JanelaProgresso? janela;
+
+  /// Se não for null, a leitura da janela fica à espera dele (uma leitura a caminho).
+  Completer<JanelaProgresso?>? leituraPresa;
+
+  /// Se não for null, o seek fica à espera dele.
+  Completer<void>? procuraPresa;
   var leiturasProgresso = 0;
   final procuras = <double>[];
   Map<String, String> infoStream = const {
@@ -91,7 +99,8 @@ Future<_Ensaio> _montar(WidgetTester t,
               lerProgresso: comProgresso
                   ? () async {
                       e.leiturasProgresso++;
-                      return e.janela;
+                      final presa = e.leituraPresa;
+                      return presa != null ? presa.future : e.janela;
                     }
                   : null,
               // o "mpv": vai para o alvo (a leitura seguinte já o mostra)
@@ -99,6 +108,7 @@ Future<_Ensaio> _montar(WidgetTester t,
                 e.procuras.add(alvo);
                 e.janela = JanelaProgresso(
                     inicio: j.inicio, fim: j.fim, posicao: alvo, direto: j.direto, bufferAte: j.bufferAte);
+                await e.procuraPresa?.future;
               },
               aoAgir: (a) => setState(() => e.acoes.add(a)),
               aoMudarVelocidade: (v) => setState(() {
@@ -649,8 +659,8 @@ void main() {
       for (var i = 0; i < 6; i++) {
         await _tecla(t, LogicalKeyboardKey.arrowLeft);
       }
-      expect(e.procuras, [90, 80, 70, 60], reason: 'no início não há seek a fazer');
-      expect(find.text('00:00:00'), findsOneWidget);
+      expect(e.procuras, [90, 80, 70, 63], reason: '3 s para dentro do cache; depois não há seek a fazer');
+      expect(find.text('00:00:03'), findsOneWidget);
     });
 
     testWidgets('arrastar o botão (rato/toque) vai para esse ponto quando se larga', (t) async {
@@ -690,6 +700,80 @@ void main() {
       await t.pump();
       expect(find.text('00:01:40'), findsNothing);
       expect(find.text('--:--:--'), findsNWidgets(2));
+    });
+
+    testWidgets('zapping com uma leitura do canal anterior a caminho: a janela velha nunca aparece nem dá '
+        'seeks', (t) async {
+      final e = await _montar(t, comProgresso: true, janela: filme, botaoNoVideo: false);
+      await _tecla(t, LogicalKeyboardKey.select);
+      await _tecla(t, LogicalKeyboardKey.arrowUp);
+      expect(find.text('00:01:40'), findsOneWidget);
+      final presa = e.leituraPresa = Completer();
+      final n = e.leiturasProgresso;
+      await t.pump(const Duration(milliseconds: 500)); // a leitura do tique fica a caminho
+      expect(e.leiturasProgresso, n + 1, reason: 'há uma leitura a caminho'); 
+      e.reconstruir!(() => e.canal = 'RTP 2');
+      await t.pump();
+      presa.complete(filme); // a do canal anterior chega depois do zapping
+      e.leituraPresa = null;
+      e.janela = null; // o canal novo ainda não diz nada
+      await t.pump();
+      await t.pump(); // (a leitura acaba entre frames: mais um para se ver o que ela fez)
+      expect(find.text('00:01:40'), findsNothing, reason: 'a janela do canal anterior não volta');
+      expect(find.text('--:--:--'), findsNWidgets(2));
+      await _tecla(t, LogicalKeyboardKey.arrowLeft);
+      expect(e.procuras, isEmpty, reason: 'nenhum seek feito com a janela do canal anterior');
+      expect(e.acoes, [AcaoPlayer.recuar], reason: 'sem janela: o salto de sempre');
+    });
+
+    testWidgets('zapping com um seek a caminho: o alvo do canal anterior não fica na barra nem é reenviado',
+        (t) async {
+      final e = await _montar(t, comProgresso: true, janela: filme, botaoNoVideo: false);
+      await _tecla(t, LogicalKeyboardKey.select);
+      await _tecla(t, LogicalKeyboardKey.arrowUp);
+      final presa = e.procuraPresa = Completer();
+      await _tecla(t, LogicalKeyboardKey.arrowRight);
+      await _tecla(t, LogicalKeyboardKey.arrowRight);
+      expect(e.procuras, [110]);
+      expect(find.text('00:02:00'), findsOneWidget, reason: 'o botão já mostra o alvo seguinte');
+      e.janela = const JanelaProgresso(inicio: 0, fim: 1200, posicao: 5, direto: false);
+      e.reconstruir!(() => e.canal = 'RTP 2');
+      await t.pump();
+      e.procuraPresa = null;
+      presa.complete();
+      await t.pumpAndSettle();
+      expect(e.procuras, [110], reason: 'o alvo do canal anterior não vai para o canal novo');
+      expect(find.text('00:02:00'), findsNothing);
+      await t.pump(const Duration(milliseconds: 600));
+      await t.pumpAndSettle();
+      expect(find.text('00:00:05'), findsOneWidget);
+    });
+
+    testWidgets('um gesto cancelado na pista não faz seek', (t) async {
+      final e = await _montar(t, comProgresso: true, janela: filme);
+      await _tecla(t, LogicalKeyboardKey.select);
+      final r = t.getRect(find.byKey(const ValueKey('pista')));
+      final g = await t.startGesture(r.center, kind: PointerDeviceKind.touch);
+      await t.pump(const Duration(milliseconds: 150));
+      await g.cancel();
+      await t.pumpAndSettle();
+      expect(e.procuras, isEmpty);
+      expect(find.text('00:01:40'), findsOneWidget, reason: 'o botão volta à posição');
+    });
+
+    testWidgets('leitor de ecrã: aumentar/diminuir mantêm a barra aberta (mesmo sem seek, no início)', (t) async {
+      final semantica = t.ensureSemantics();
+      final e = await _montar(t,
+          comProgresso: true, janela: const JanelaProgresso(inicio: 0, fim: 600, posicao: 0, direto: false));
+      await _tecla(t, LogicalKeyboardKey.select);
+      for (var i = 0; i < 3; i++) {
+        await t.pump(const Duration(seconds: 4));
+        t.semantics.performAction(find.semantics.byLabel('Posição'), SemanticsAction.decrease);
+        await t.pump();
+      }
+      expect(_barraVisivel(t), isTrue, reason: '12 s com ações do leitor de ecrã: não se esconde');
+      expect(e.procuras, isEmpty, reason: 'no início não há seek: só a atividade conta');
+      semantica.dispose();
     });
 
     testWidgets('leitor de ecrã: é um deslizador com a posição, e aumentar/diminuir andam 10 s', (t) async {

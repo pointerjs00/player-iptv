@@ -112,6 +112,12 @@ void main() {
   });
 
   group('irPara (barra de progresso: arrastar/setas)', () {
+    test('1 s para trás no cache: faz o seek e não avisa', () async {
+      expect(await saltos.irPara(99), isNull);
+      expect(mpv.comandos, ['seek -1.000 relative']);
+      expect(relogio.atraso, const Duration(seconds: 1));
+    });
+
     test('para trás no cache: seek relativo pela diferença e o atraso cresce o que recuou', () async {
       expect(await saltos.irPara(70), isNull);
       expect(mpv.comandos, ['seek -30.000 relative']);
@@ -143,8 +149,10 @@ void main() {
       expect(mpv.comandos, isEmpty);
     });
 
-    test('menos de meio segundo: não faz nada; sem time-pos: não faz nada', () async {
+    test('menos de 1 s: não faz nada (nem diz "Não há mais para recuar"); sem time-pos: não faz nada', () async {
       expect(await saltos.irPara(100.3), isNull);
+      expect(await saltos.irPara(99.3), isNull, reason: 'o _recuar diria "Não há mais para recuar" abaixo de 1 s');
+      expect(await saltos.irPara(100.8), isNull);
       expect(mpv.comandos, isEmpty);
       final s = SaltosDireto(_SemPosicao(), relogio, esperar: Duration.zero);
       expect(await s.irPara(50), isNull);
