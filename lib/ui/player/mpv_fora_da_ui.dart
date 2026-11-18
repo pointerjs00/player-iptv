@@ -15,7 +15,8 @@ import 'configuracao_mpv.dart';
 /// principal (Flutter ≥ 3.29): presa mais de 5 s, o sistema mata a app (ANR). Por isso estas
 /// chamadas correm aqui, num isolate à parte; a UI nunca espera pelo mpv.
 abstract interface class ExecutorMpv {
-  Future<void> setProperty(int handle, String propriedade, String valor);
+  /// O código do `mpv_set_property_string` (0 aceite, < 0 recusado: ex. um filtro que não existe).
+  Future<int> setProperty(int handle, String propriedade, String valor);
   Future<String> getProperty(int handle, String propriedade);
   Future<void> command(int handle, List<String> comando);
 
@@ -97,9 +98,10 @@ class MotorForaDaUi implements MotorMpv {
     }
   }
 
+  /// O código do mpv (0 aceite, < 0 recusado); null sem resposta (fechado, preso ou sem player).
   @override
-  Future<void> setProperty(String propriedade, String valor) =>
-      _correr(null, (h) => _executor.setProperty(h, propriedade, valor));
+  Future<int?> setProperty(String propriedade, String valor) =>
+      _correr<int?>(null, (h) => _executor.setProperty(h, propriedade, valor));
 
   @override
   Future<String> getProperty(String propriedade) => _correr('', (h) => _executor.getProperty(h, propriedade));
@@ -208,8 +210,8 @@ class ExecutorIsolate implements ExecutorMpv {
   }
 
   @override
-  Future<void> setProperty(int handle, String propriedade, String valor) =>
-      _pedir('set', handle, [propriedade, valor]);
+  Future<int> setProperty(int handle, String propriedade, String valor) async =>
+      (await _pedir('set', handle, [propriedade, valor])) as int? ?? 0;
 
   @override
   Future<String> getProperty(int handle, String propriedade) async =>
@@ -255,9 +257,9 @@ class ExecutorIsolate implements ExecutorMpv {
     return using((arena) {
       switch (op) {
         case 'set':
-          lib.lookupFunction<_SetNativo, _Set>('mpv_set_property_string')(
+          // o código do mpv: um vf recusado (ex.: filtro inexistente, -9) não pode passar por sucesso
+          return lib.lookupFunction<_SetNativo, _Set>('mpv_set_property_string')(
               ctx, args[0].toNativeUtf8(allocator: arena), args[1].toNativeUtf8(allocator: arena));
-          return null;
         case 'get':
           return _ler(lib, ctx, args[0], arena);
         case 'getn':

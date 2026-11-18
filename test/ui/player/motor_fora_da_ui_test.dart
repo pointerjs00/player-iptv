@@ -26,9 +26,11 @@ class _ExecutorPreso implements ExecutorMpv {
   }
 
   @override
-  Future<void> setProperty(int handle, String p, String v) async {
+  Future<int> setProperty(int handle, String p, String v) async {
     await _talvezPreso();
     chamadas.add('$handle:$p=$v');
+    // como o mpv: um filtro que não existe é recusado (MPV_ERROR_PROPERTY_FORMAT)
+    return v == 'recusado' ? -9 : 0;
   }
 
   bool falha = false;
@@ -78,6 +80,16 @@ void main() {
     await motor.setRate(1.5);
     expect(ex.chamadas, ['7:mute=yes', '7:get time-pos', '7:seek -10 relative']);
     expect(velocidades, [1.5]);
+  });
+
+  test('o código de erro do mpv chega a quem põe a propriedade (um vf recusado não é um sucesso)', () async {
+    expect(await motor.setProperty('vf', 'bwdif'), 0);
+    expect(await motor.setProperty('vf', 'recusado'), -9);
+  });
+
+  test('sem resposta do mpv (fechado) o código é null: não se sabe, não é uma recusa', () async {
+    await motor.fechar();
+    expect(await motor.setProperty('vf', 'bwdif'), isNull);
   });
 
   test('várias propriedades de uma vez: um só pedido ao executor (um isolate)', () async {
@@ -239,6 +251,12 @@ void main() {
     expect(ordem, ['eco:lento', 'eco:rapido']);
   });
 
+  test('no isolate o set devolve o código do mpv', () async {
+    final e = ExecutorIsolate.paraTestes(chamadaDeTeste);
+    expect(await e.setProperty(1, 'vf', 'recusado').timeout(const Duration(seconds: 5)), -9);
+    expect(await e.setProperty(1, 'vf', 'bwdif').timeout(const Duration(seconds: 5)), 0);
+  });
+
   group('getn (várias propriedades num só isolate)', () {
     test('as respostas vêm pela ordem pedida', () async {
       final e = ExecutorIsolate.paraTestes(chamadaDeTeste);
@@ -298,6 +316,7 @@ void main() {
 /// "pendurar" fica presa (como uma chamada nativa que não volta); "lento" demora; o resto responde
 /// "eco:...".
 Object? chamadaDeTeste(String op, int handle, List<String> args) {
+  if (op == 'set') return args[1] == 'recusado' ? -9 : 0;
   final r = op == 'getn' ? [for (final a in args) 'eco:$a'] : 'eco:${args.first}';
   switch (args.first) {
     case 'morrer':

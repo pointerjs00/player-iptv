@@ -13,10 +13,11 @@ class MpvFalso implements MotorMpv {
   final props = <String, String>{'deinterlace': 'no', 'vf': ''};
 
   @override
-  Future<void> setProperty(String p, String v) async {
+  Future<int?> setProperty(String p, String v) async {
     chamadas.add('$p=$v');
-    if (p == 'deinterlace' && v == 'auto' && !aceitaAuto) return; // ignorado pelo mpv
+    if (p == 'deinterlace' && v == 'auto' && !aceitaAuto) return 0; // ignorado pelo mpv
     props[p] = v;
+    return 0;
   }
 
   @override
@@ -145,7 +146,7 @@ class _MpvQueFalha implements MotorMpv {
   @override
   Future<String> getProperty(String p) => Future.error(StateError('fechado'));
   @override
-  Future<void> setProperty(String p, String v) => Future.error(StateError('fechado'));
+  Future<int?> setProperty(String p, String v) => Future.error(StateError('fechado'));
   @override
   Future<void> setRate(double r) => Future.error(StateError('fechado'));
   @override

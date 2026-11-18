@@ -624,7 +624,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   }
 
   void _porMudo(String? valor) {
-    if (valor != null) unawaited(_motor.setProperty('mute', valor).catchError((Object _) {}));
+    if (valor != null) unawaited(_motor.setProperty('mute', valor).catchError((Object _) => null));
   }
 
   /// Os Hz do ecrã segundo o Android (o mpv não os sabe com `mediacodec_embed`).

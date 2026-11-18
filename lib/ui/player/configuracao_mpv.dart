@@ -155,7 +155,8 @@ Future<void> aplicarConfiguracao(MotorMpv mpv, ConfiguracaoMpv c) async {
 /// O que o player usa do mpv. O verdadeiro é o `MotorForaDaUi` (as chamadas ao libmpv fora da
 /// thread da UI); os testes usam um falso que regista as chamadas.
 abstract interface class MotorMpv {
-  Future<void> setProperty(String propriedade, String valor);
+  /// O código do mpv (0 aceite, < 0 recusado); null quando não houve resposta (não é recusa).
+  Future<int?> setProperty(String propriedade, String valor);
   Future<String> getProperty(String propriedade);
   Future<void> setRate(double velocidade);
   Future<void> setVolume(double volume);

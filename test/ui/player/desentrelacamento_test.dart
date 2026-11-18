@@ -7,7 +7,10 @@ import 'package:player_iptv/ui/player/desentrelacamento.dart';
 class _Mpv implements MotorMpv {
   final chamadas = <String>[];
   @override
-  Future<void> setProperty(String p, String v) async => chamadas.add('$p=$v');
+  Future<int?> setProperty(String p, String v) async {
+    chamadas.add('$p=$v');
+    return 0;
+  }
   @override
   Future<String> getProperty(String p) async => '';
   @override

@@ -32,7 +32,7 @@ class _MpvCache implements MotorMpv {
       };
 
   @override
-  Future<void> setProperty(String p, String v) async {}
+  Future<int?> setProperty(String p, String v) async => 0;
   @override
   Future<void> setRate(double r) async {}
   @override
@@ -244,7 +244,7 @@ class _SemPosicao implements MotorMpv {
   @override
   Future<String> getProperty(String p) async => falha ? throw StateError('fechado') : '';
   @override
-  Future<void> setProperty(String p, String v) async {}
+  Future<int?> setProperty(String p, String v) async => 0;
   @override
   Future<void> setRate(double r) async {}
   @override
