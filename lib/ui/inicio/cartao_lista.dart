@@ -59,7 +59,7 @@ class CartaoLista extends StatelessWidget {
           ]),
           const Spacer(),
           Wrap(spacing: Tokens.e8, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
-            PilulaEstado(u?.estado, grande: tv),
+            PilulaEstado(estadoDe(lista)),
             if (validade.isNotEmpty)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),

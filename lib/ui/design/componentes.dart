@@ -4,7 +4,6 @@ import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../realce_foco.dart';
-import '../tema.dart';
 import 'movimento.dart';
 import 'sombra.dart';
 import 'tokens.dart';
@@ -298,36 +297,6 @@ class _DeslizadorTvState extends State<DeslizadorTv> {
           ),
         ),
       );
-}
-
-/// O estado da última verificação numa pílula colorida (verde, vermelho, âmbar ou cinzento).
-class PilulaEstado extends StatelessWidget {
-  const PilulaEstado(this.estado, {super.key, this.grande = false});
-
-  /// 'funciona', 'nao_funciona', 'inconclusivo' ou null (por verificar).
-  final String? estado;
-
-  /// Maior (TV).
-  final bool grande;
-
-  @override
-  Widget build(BuildContext context) {
-    final (cor, rotulo, icone) = visualEstado(estado);
-    final tam = grande ? 15.0 : 12.5;
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: grande ? 12 : 10, vertical: grande ? 5 : 3),
-      decoration: BoxDecoration(
-        color: cor.withValues(alpha: .16),
-        borderRadius: BorderRadius.circular(Tokens.raioPilula),
-        border: Border.all(color: cor.withValues(alpha: .4)),
-      ),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(icone, size: tam + 2, color: cor),
-        const SizedBox(width: 6),
-        Text(rotulo, style: TextStyle(color: cor, fontWeight: FontWeight.w600, fontSize: tam)),
-      ]),
-    );
-  }
 }
 
 /// O título de uma secção (600–700), com subtítulo a 60 % e ações à direita.

@@ -499,7 +499,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
     final quando = u == null ? '' : dataRelativa(u.data);
     final secundario = TextStyle(color: Tokens.texto2, fontSize: tv ? 15 : 13);
     return Wrap(spacing: Tokens.e8, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
-      PilulaEstado(u?.estado, grande: tv),
+      PilulaEstado(estadoDe(widget.lista)),
       if (validade.isNotEmpty)
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),

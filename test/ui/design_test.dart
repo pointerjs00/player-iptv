@@ -135,22 +135,6 @@ void main() {
     });
   });
 
-  testWidgets('PilulaEstado: cores e textos dos 4 estados', (t) async {
-    final casos = <String?, (String, Color)>{
-      'funciona': ('Funciona', Tokens.ok),
-      'nao_funciona': ('Não funciona', Tokens.mau),
-      'inconclusivo': ('Inconclusivo', Tokens.aviso),
-      null: ('Por verificar', Tokens.neutro),
-    };
-    for (final MapEntry(key: estado, value: (texto, cor)) in casos.entries) {
-      await t.pumpWidget(_app(PilulaEstado(estado)));
-      expect(t.widget<Text>(find.text(texto)).style?.color, cor, reason: '$estado');
-      final caixa = t.widget<Container>(
-          find.descendant(of: find.byType(PilulaEstado), matching: find.byType(Container)).first);
-      expect((caixa.decoration! as BoxDecoration).color, cor.withValues(alpha: .16), reason: '$estado');
-    }
-  });
-
   group('EsqueletoBrilho', () {
     testWidgets('brilha (anima) enquanto está no ecrã', (t) async {
       await t.pumpWidget(_app(const EsqueletoBrilho(child: BlocoEsqueleto(largura: 100, altura: 20))));
