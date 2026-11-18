@@ -65,6 +65,39 @@ class ContinuarDireto {
       duracao > Duration.zero && duracao - posicao > margemFim;
   static const margemFim = Duration(seconds: 10);
 
+  /// O que se viu por último (`posicaoAntiga` no stream antigo) fica a que `time-pos` do stream
+  /// novo? Pelos PTS: o servidor manda o mesmo TS a cada ligação, só começa noutro ponto
+  /// (`demuxer-start-time`). Visto no libmpv da app: ligação A em 10420.003, saltou para o fim do
+  /// buffer (29.497); ligação B em 10430.008 -> 19.492 s, que abrir B do início repetia.
+  /// null se falta algum.
+  static double? posicaoNoNovo({required double? inicioAntigo, required double? posicaoAntiga, required double? inicioNovo}) =>
+      inicioAntigo == null || posicaoAntiga == null || inicioNovo == null ? null : inicioAntigo + posicaoAntiga - inicioNovo;
+
+  /// Acima disto a diferença dos PTS não faz sentido (o servidor recomeçou os tempos): não se salta.
+  static const saltoMaximo = 600.0;
+
+  /// Depois de reabrir: quanto saltar para a frente (seek relativo) para chegar ao `alvo`
+  /// ([posicaoNoNovo]) sem repetir nada. `aFrente`: quanto se pode avançar no cache. Se o alvo ainda
+  /// não chegou, `esperar`; na `ultimaTentativa` vai até onde dá. Nunca para trás.
+  static ({double? salto, bool esperar}) saltoAoRetomar(
+      {required double alvo, required double posicao, required double? aFrente, required bool ultimaTentativa}) {
+    final falta = alvo - posicao;
+    if (falta < 1 || falta > saltoMaximo) return (salto: null, esperar: false);
+    if (aFrente != null && aFrente >= falta) return (salto: falta, esperar: false);
+    if (!ultimaTentativa) return (salto: null, esperar: true);
+    return (salto: aFrente != null && aFrente >= 1 ? aFrente : null, esperar: false);
+  }
+
+  /// O proveito de uma ligação: o que ela trouxe de imagem (a posição no corte, com os saltos para
+  /// a frente) ou o tempo de parede, o maior. Quem salta para o fim do buffer chega ao corte mais
+  /// cedo, mas a ligação valeu a pena.
+  static Duration proveitoDaLigacao({required Duration parede, required double? posicaoNoCorte}) {
+    final p = posicaoNoCorte == null || !posicaoNoCorte.isFinite || posicaoNoCorte < 0
+        ? Duration.zero
+        : Duration(microseconds: (posicaoNoCorte * 1e6).round());
+    return p > parede ? p : parede;
+  }
+
   /// Regista uma reabertura depois de `tocou` de imagem desde a anterior; falso = desistir.
   bool permitir({required Duration tocou}) {
     if (tocou >= proveito) {

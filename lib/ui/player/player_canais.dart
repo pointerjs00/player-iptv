@@ -149,6 +149,15 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   /// Num ficheiro com fim cortado pelo servidor, onde reabrir (null num direto: vai para o direto).
   Duration? _retomarEm;
 
+  /// Num direto cortado: os PTS do que se viu por último (`demuxer-start-time` e `time-pos` no
+  /// corte). Depois de reabrir salta-se para lá, para não repetir o que já se viu (quem foi até ao
+  /// fim do buffer está à frente do bloco com que o servidor responde a uma ligação nova).
+  ({double? inicio, double? posicao})? _continuarDe;
+
+  /// A reabrir com um salto por decidir ([_saltarParaOndeEstava]): sem som e com a última imagem
+  /// por cima, para não se ver nem ouvir o bocado repetido.
+  bool _saltoPendente = false;
+
   /// A faixa de áudio escolhida pelo utilizador neste canal (volta a pôr-se depois de reabrir).
   AudioTrack? _audioEscolhido;
 
@@ -162,7 +171,15 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       final retomou = _aRetomar;
       _abriuEm = DateTime.now();
       _continuar.abriu();
-      setState(() { _aAbrir = false; _aRetomar = false; _erro = null; _ultima.largar(); });
+      setState(() {
+        _aAbrir = false;
+        _erro = null;
+        // à espera do salto para onde se estava: a última imagem e o "A carregar…" ficam até lá
+        if (!_saltoPendente) {
+          _aRetomar = false;
+          _ultima.largar();
+        }
+      });
       _vigiarImagem(_pedido);
       _verEntrelacamento(_pedido);
       if (retomou) _reporFaixaAudio(_pedido);
@@ -315,7 +332,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     if (!fim || !mounted) return;
     final pedido = _pedido;
     // um ficheiro com fim (filme de uma lista M3U) acaba: só os diretos se pedem de novo
-    final p = await _motor.getProperties(const ['seekable', 'partially-seekable']);
+    final p = await _motor.getProperties(const ['seekable', 'partially-seekable', 'demuxer-start-time', 'time-pos']);
     final eDireto = ContinuarDireto.eDireto(p['seekable']!, partiallySeekable: p['partially-seekable']!);
     if (!mounted || pedido != _pedido) return;
     // ou um ficheiro que o servidor cortou muito antes do fim (fica-se parado na última imagem):
@@ -328,7 +345,10 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       return;
     }
     final abriu = _abriuEm;
-    final tocou = abriu == null ? Duration.zero : DateTime.now().difference(abriu);
+    final posCorte = double.tryParse(p['time-pos'] ?? '');
+    // o que a ligação deu de imagem (com os saltos para o fim do buffer), não só a parede
+    final tocou = ContinuarDireto.proveitoDaLigacao(
+        parede: abriu == null ? Duration.zero : DateTime.now().difference(abriu), posicaoNoCorte: posCorte);
     if (!_continuar.permitir(tocou: tocou)) {
       _vigia.parar();
       _taxa.repor();
@@ -339,6 +359,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       return;
     }
     _retomarEm = cortado ? posicao : null;
+    _continuarDe = cortado ? null : (inicio: double.tryParse(p['demuxer-start-time'] ?? ''), posicao: posCorte);
     // a última imagem fica no ecrã enquanto se reabre (antes de o stop/open a tirarem)
     await _ultima.guardar(MediaQuery.devicePixelRatioOf(context));
     if (!mounted || pedido != _pedido) {
@@ -385,7 +406,9 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       _audioEscolhido = null;
       _abriuEm = null;
       _retomarEm = null;
+      _continuarDe = null;
     }
+    _saltoPendente = false;
     _vigiaEntrelacamento?.cancel();
     _entrelacada = null;
     // o aplicarAoAbrir põe deinterlace=no (o d3d11vpp volta a ligar-se com a imagem)
@@ -440,6 +463,12 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       // o modo de ecrã pede-se já (o fps sabe-se logo que o canal abre): a TV pisca a mudar de
       // modo enquanto o indicador de abertura ainda está à vista, não por cima da imagem
       if (mounted && pedido == _pedido) unawaited(_ajustarTaxa(pedido));
+      final de = continuar ? _continuarDe : null;
+      if (de != null && mounted && pedido == _pedido) {
+        _saltoPendente = true;
+        unawaited(_motor.setProperty('mute', 'yes').catchError((Object _) {}));
+        unawaited(_saltarParaOndeEstava(pedido, de).whenComplete(() => _acabouSalto(pedido)));
+      }
     } catch (e) {
       if (!mounted || pedido != _pedido) return;
       // a reabrir depois de um corte: uma falha passageira (rede, create_link, 401) tenta-se outra vez
@@ -502,6 +531,56 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       }
     } catch (_) {
       // o player fechou entretanto
+    }
+  }
+
+  /// Depois de reabrir um direto cortado: salta para o que se viu por último (pelos PTS:
+  /// [ContinuarDireto.posicaoNoNovo]), para não o repetir. Espera (~6 s) que o cache do stream novo
+  /// chegue lá; senão vai até onde dá. Nunca para trás. Leituras fora da UI.
+  Future<void> _saltarParaOndeEstava(int pedido, ({double? inicio, double? posicao}) de) async {
+    for (var i = 0; i < _tentativasRetoma; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      if (!mounted || pedido != _pedido) return;
+      try {
+        final m = await _motor.getProperties(const ['demuxer-start-time', 'time-pos', 'demuxer-cache-state']);
+        if (!mounted || pedido != _pedido) return;
+        final pos = double.tryParse(m['time-pos'] ?? '');
+        final alvo = ContinuarDireto.posicaoNoNovo(
+            inicioAntigo: de.inicio, posicaoAntiga: de.posicao, inicioNovo: double.tryParse(m['demuxer-start-time'] ?? ''));
+        if (pos == null || alvo == null) continue; // o stream novo ainda não começou
+        final fim = fimProcuravel(m['demuxer-cache-state'] ?? '', pos);
+        final aFrente = fim == null ? null : fim - pos - SaltosDireto.margemFim.inMicroseconds / 1e6;
+        final r = ContinuarDireto.saltoAoRetomar(
+            alvo: alvo, posicao: pos, aFrente: aFrente, ultimaTentativa: i == _tentativasRetoma - 1);
+        if (r.esperar) continue;
+        final salto = r.salto;
+        final texto = salto == null ? 'sem salto' : 'salta ${salto.toStringAsFixed(1)} s';
+        debugPrint('player: reaberto; o que se viu por último fica a ${(alvo - pos).toStringAsFixed(1)} s; $texto');
+        if (salto != null) {
+          await _motor.command(['seek', salto.toStringAsFixed(3), 'relative']);
+          _relogio.avancou(Duration(microseconds: (salto * 1e6).round()));
+        }
+        return;
+      } catch (e) {
+        debugPrint('player: salto depois de reabrir falhou ($e)');
+        return;
+      }
+    }
+  }
+
+  static const _tentativasRetoma = 20; // ~6 s
+
+  /// O salto depois de reabrir acabou (ou desistiu): volta o som e sai a última imagem, se o canal
+  /// já deu imagem (senão o vigia trata disso).
+  void _acabouSalto(int pedido) {
+    if (!mounted || pedido != _pedido || !_saltoPendente) return;
+    _saltoPendente = false;
+    unawaited(_motor.setProperty('mute', _sessao.silencio ? 'yes' : 'no').catchError((Object _) {}));
+    if (!_aAbrir && _aRetomar) {
+      setState(() {
+        _aRetomar = false;
+        _ultima.largar();
+      });
     }
   }
 

@@ -26,11 +26,17 @@ class RelogioDireto {
   /// O relógio usado (o dos testes, nos testes).
   DateTime get agora => _agora();
 
-  /// O atraso agora.
-  Duration get atraso {
+  /// O atraso com sinal: negativo quando se está à frente do direto do relógio (o buffer à frente,
+  /// ver [avancou]).
+  Duration get _bruto {
     final taxa = _pausado ? 0.0 : _velocidade;
     final passou = _agora().difference(_desde);
-    final a = _base + passou * (1 - taxa);
+    return _base + passou * (1 - taxa);
+  }
+
+  /// O atraso agora (nunca negativo: à frente do direto conta como em direto).
+  Duration get atraso {
+    final a = _bruto;
     return a.isNegative ? Duration.zero : a;
   }
 
@@ -38,7 +44,7 @@ class RelogioDireto {
 
   /// Fixa o atraso até agora e começa um novo troço.
   void _marcar() {
-    _base = atraso;
+    _base = _bruto;
     _desde = _agora();
   }
 
@@ -63,11 +69,10 @@ class RelogioDireto {
   }
 
   /// Avançar pode passar o "direto" do relógio (o buffer à frente; ver [SaltosDireto]): o atraso
-  /// fica em zero.
+  /// mostra zero, mas o avanço fica (recuar menos do que se avançou continua em direto).
   void avancou(Duration d) {
     _marcar();
     _base -= d;
-    if (_base.isNegative) _base = Duration.zero;
   }
 
   void voltouAoDireto() {

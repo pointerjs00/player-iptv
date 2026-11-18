@@ -25,6 +25,23 @@ void main() {
     expect(r.emDireto, isTrue);
   });
 
+  test('à frente do direto do relógio: recuar menos do que se avançou continua em direto', () {
+    // revisão (menor 7): o avanço para lá do direto não se perde
+    r.avancou(const Duration(seconds: 20));
+    r.recuou(const Duration(seconds: 10));
+    expect(r.atraso, Duration.zero);
+    expect(r.emDireto, isTrue);
+    r.recuou(const Duration(seconds: 14));
+    expect(r.atraso, const Duration(seconds: 4));
+  });
+
+  test('à frente do direto e em pausa: o direto apanha-o', () {
+    r.avancou(const Duration(seconds: 20));
+    r.pausou();
+    passar(25000);
+    expect(r.atraso, const Duration(seconds: 5));
+  });
+
   test('avançar para lá do direto (o buffer à frente) deixa o atraso em zero, nunca negativo', () {
     r.recuou(const Duration(seconds: 4));
     r.avancou(const Duration(seconds: 10));

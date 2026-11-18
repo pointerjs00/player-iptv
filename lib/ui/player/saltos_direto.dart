@@ -27,7 +27,7 @@ class SaltosDireto {
   /// ("Cached seek not possible"), por isso só serve sem o cache-state, com
   /// [margemSemCacheState]. null: não se sabe.
   Future<double?> _aFrente() async {
-    final pos = await _posicao();
+    final pos = _posLida = await _posicao();
     if (pos == null) return null;
     final fim = fimProcuravel(await mpv.getProperty('demuxer-cache-state'), pos);
     if (fim != null) {
@@ -39,6 +39,10 @@ class SaltosDireto {
     final m = d - margemSemCacheState.inMicroseconds / 1e6;
     return m < 0 ? 0 : m;
   }
+
+  /// A posição lida pelo último [_aFrente] (o avançar usa-a como "antes": uma leitura a menos entre
+  /// a do fim do buffer e o seek).
+  double? _posLida;
 
   /// Quanto fica antes do fim do buffer (o que a imagem anda entre ler o fim e o seek chegar ao mpv).
   static const margemFim = Duration(milliseconds: 500);
@@ -115,7 +119,7 @@ class SaltosDireto {
     final d = aFrente == null ? pedido : (pedido < _duracao(aFrente) ? pedido : _duracao(aFrente));
     if (d < _minimo) return 'Já está no fim do buffer';
     try {
-      final antes = await _posicao();
+      final antes = _posLida ?? await _posicao();
       await _seek(_s(d));
       if (esperar > Duration.zero) await Future<void>.delayed(esperar);
       final depois = await _posicao();

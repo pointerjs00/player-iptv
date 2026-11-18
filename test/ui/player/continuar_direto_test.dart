@@ -165,4 +165,69 @@ void main() {
       expect(ContinuarDireto.cortadoAntesDoFim(posicao: const Duration(minutes: 1), duracao: Duration.zero), isFalse);
     });
   });
+
+  group('reabrir depois de ir até ao fim do buffer: não repete o que já se viu (os PTS)', () {
+    // visto no libmpv da app (mag.max-cdn.com, RTP 1 HD): ligação A com demuxer-start-time 10420.003,
+    // saltou para o fim do buffer (time-pos 29.497); a ligação B começou em 10430.008, por isso o que
+    // A viu por último está em B a 19.492 s — abrir B do início repetia ~19,5 s
+    test('a posição no stream novo do que se viu por último', () {
+      expect(ContinuarDireto.posicaoNoNovo(inicioAntigo: 10420.003, posicaoAntiga: 29.497, inicioNovo: 10430.008),
+          closeTo(19.492, 1e-6));
+      expect(ContinuarDireto.posicaoNoNovo(inicioAntigo: null, posicaoAntiga: 29.5, inicioNovo: 10430), isNull);
+      expect(ContinuarDireto.posicaoNoNovo(inicioAntigo: 1, posicaoAntiga: null, inicioNovo: 10430), isNull);
+      expect(ContinuarDireto.posicaoNoNovo(inicioAntigo: 1, posicaoAntiga: 2, inicioNovo: null), isNull);
+    });
+
+    test('com o alvo no cache: salta logo para lá', () {
+      final r = ContinuarDireto.saltoAoRetomar(alvo: 19.5, posicao: 0.3, aFrente: 29, ultimaTentativa: false);
+      expect(r.salto, closeTo(19.2, 1e-9));
+      expect(r.esperar, isFalse);
+    });
+
+    test('o alvo ainda não chegou: espera; na última tentativa vai até onde dá (nunca para trás)', () {
+      final r = ContinuarDireto.saltoAoRetomar(alvo: 19.5, posicao: 0.3, aFrente: 8, ultimaTentativa: false);
+      expect(r.salto, isNull);
+      expect(r.esperar, isTrue);
+      final u = ContinuarDireto.saltoAoRetomar(alvo: 19.5, posicao: 0.3, aFrente: 8, ultimaTentativa: true);
+      expect(u.salto, 8);
+      expect(u.esperar, isFalse);
+    });
+
+    test('o que se viu está antes do início do stream novo (o caso normal, em direto): não salta', () {
+      // visto: A sem saltos acabou 0,9 s antes do início de B
+      final r = ContinuarDireto.saltoAoRetomar(alvo: -0.888, posicao: 0.2, aFrente: 20, ultimaTentativa: false);
+      expect(r.salto, isNull);
+      expect(r.esperar, isFalse);
+      expect(ContinuarDireto.saltoAoRetomar(alvo: 0.9, posicao: 0.2, aFrente: 20, ultimaTentativa: false).salto, isNull,
+          reason: 'menos de 1 s não vale um seek');
+    });
+
+    test('PTS sem sentido (o servidor recomeçou os tempos): não salta', () {
+      final r = ContinuarDireto.saltoAoRetomar(alvo: 5000, posicao: 0.2, aFrente: 30, ultimaTentativa: true);
+      expect(r.salto, isNull);
+    });
+
+    test('sem saber o buffer à frente: espera e, no fim, não salta às cegas', () {
+      expect(ContinuarDireto.saltoAoRetomar(alvo: 19, posicao: 0, aFrente: null, ultimaTentativa: false).esperar, isTrue);
+      expect(ContinuarDireto.saltoAoRetomar(alvo: 19, posicao: 0, aFrente: null, ultimaTentativa: true).salto, isNull);
+    });
+  });
+
+  group('o proveito de uma ligação conta o que ela trouxe, não só o tempo de parede', () {
+    test('quem salta para o fim do buffer não gasta as reaberturas "sem proveito"', () {
+      // 2 s de parede, mas a ligação deu 29 s de imagem (o utilizador saltou para o fim)
+      final p = ContinuarDireto.proveitoDaLigacao(parede: const Duration(seconds: 2), posicaoNoCorte: 29.5);
+      expect(p, const Duration(milliseconds: 29500));
+      final c = ContinuarDireto();
+      for (var i = 0; i < 10; i++) {
+        expect(c.permitir(tocou: p), isTrue);
+      }
+    });
+    test('sem posição: a parede', () {
+      expect(ContinuarDireto.proveitoDaLigacao(parede: const Duration(seconds: 3), posicaoNoCorte: null),
+          const Duration(seconds: 3));
+      expect(ContinuarDireto.proveitoDaLigacao(parede: const Duration(seconds: 7), posicaoNoCorte: 2),
+          const Duration(seconds: 7));
+    });
+  });
 }
