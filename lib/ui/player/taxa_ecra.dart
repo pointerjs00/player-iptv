@@ -61,6 +61,9 @@ class TaxaEcra {
   static const _canal = MethodChannel('player_iptv/ecra');
 
   /// Regista `f` para quando a app for para segundo plano (ou fechar). Nos testes, um falso.
+  /// O `AppLifecycleListener` nunca é desfeito, de propósito: regista-se uma vez por processo
+  /// (`_comOuvinte`), na primeira vez que um player deixa um modo pedido, e tem de durar até a app
+  /// fechar (é ele que repõe o modo deixado, já sem nenhum player aberto).
   static void Function(VoidCallback f) aoIrParaSegundoPlano =
       (f) => AppLifecycleListener(onHide: f, onDetach: f);
 
