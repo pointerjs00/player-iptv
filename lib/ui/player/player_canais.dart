@@ -37,8 +37,11 @@ String mensagemErroPlayer(String e) {
 }
 
 /// O erro do mpv faz o canal falhar? Não quando é só a queixa do seek que o media_kit faz ao
-/// ligar a superfície de vídeo do Android (num direto não se pode recuar, mas continua a tocar).
-bool erroFatalPlayer(String e) => !e.contains('force-seekable') && !e.startsWith('Cannot seek');
+/// ligar a superfície de vídeo do Android (num direto não se pode recuar, mas continua a tocar),
+/// nem um pacote que não se descodificou (no corte da ligação o último chega a meio; o mpv salta-o
+/// e continua, e o fim do buffer trata-se em [ContinuarDireto]).
+bool erroFatalPlayer(String e) =>
+    !e.contains('force-seekable') && !e.startsWith('Cannot seek') && !e.startsWith('Error decoding');
 
 /// Dá o link (e os headers) de um canal. No Android chama o protocolo; na janela do player
 /// do Windows pede-o à janela principal. `continuar`: o mesmo canal outra vez porque o servidor
