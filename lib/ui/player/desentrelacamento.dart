@@ -4,56 +4,89 @@ import 'package:flutter/foundation.dart';
 
 import 'configuracao_mpv.dart';
 
-/// O desentrelaçamento do player (canais 1080i/576i).
+/// O desentrelaçamento do player (canais 1080i/576i/480i).
 ///
 /// Com um libmpv **completo** (mpv 0.40+ com o ffmpeg com filtros: ver `third_party/libmpv_completo`)
 /// desentrelaça-se com o `bwdif` do ffmpeg em modo `send_field`: uma imagem por campo, 25i -> 50
-/// imagens/s (o que o "sfvip player" faz), só nas imagens marcadas como entrelaçadas
-/// (`deint=interlaced`). No Windows serve com descodificação por software e `d3d11va-copy`; no
-/// Android só fora do modo direto (`vo=mediacodec_embed`: as imagens nem passam pelo mpv), por isso
-/// um canal entrelaçado no direto reabre-se em Compatível (`mediacodec-copy` + `vo=gpu`; o MediaCodec
-/// não marca o entrelaçado, aí o filtro leva `deint=all`, e só se chega lá com a regra das linhas).
+/// imagens/s (30i -> 60), como o "sfvip player", e só nas imagens marcadas como entrelaçadas
+/// (`deint=interlaced`). No Windows serve com descodificação por software e `d3d11va-copy` (as
+/// imagens d3d11va na GPU levam o `d3d11vpp`). No Android só fora do modo direto
+/// (`vo=mediacodec_embed`: as imagens nem passam pelo mpv), por isso um direto entrelaçado reabre-se
+/// em Compatível (`mediacodec-copy` + `vo=gpu`). O MediaCodec não marca as imagens entrelaçadas: aí
+/// o `idet` do ffmpeg vê as riscas e marca-as antes do bwdif (um progressivo passa sem mexer, a 25).
 ///
-/// O libmpv mínimo do media_kit (0.36, `--disable-filters`) não tem nenhum: `deinterlace=yes` pede o
-/// `yadif`, que não existe (`filter 'yadif' not found`). Aí fica o shader do player (um campo +
-/// deteção de riscas, ver [shaderMpvDesentrelacar]): no Windows no renderizador do mpv
-/// (`glsl-shaders`), no Android por cima da textura do vídeo no Flutter (`shaders/desentrelacar.frag`).
-/// O shader fica nas 25 imagens/s do vídeo. O `d3d11vpp` (imagens d3d11 na GPU, por campo) só entra
-/// se o hwdec for mesmo `d3d11va`: com o ANGLE da app o mpv dá `d3d11va-copy`.
+/// Se o filtro não existe (o libmpv mínimo do media_kit, 0.36, `--disable-filters`: o mpv recusa o
+/// `vf` com -9) ou não faz efeito (medido: a saída fica nas imagens/s da entrada), volta o shader do
+/// player (um campo + deteção de riscas, ver [shaderMpvDesentrelacar]): no Windows no renderizador do
+/// mpv (`glsl-shaders`), no Android por cima da textura do vídeo no Flutter
+/// (`shaders/desentrelacar.frag`). O shader fica nas 25 imagens/s do vídeo.
 
-/// O que se lê do mpv para decidir (de uma vez, fora da UI). No Android sem o
-/// `video-frame-info`: o MediaCodec não passa a marca de entrelaçado ao mpv.
+/// O texto das definições: as imagens/s por campo dependem do libmpv e do aparelho (sem o filtro, o
+/// shader limpa as linhas às imagens/s do canal).
+const textoDefinicaoDesentrelacamento = 'Limpa as linhas dos canais entrelaçados (1080i/576i/480i). Por campo, '
+    'quando o aparelho o permite: até 50 imagens/s (60 nos 480i); senão às imagens/s do canal.';
+
+/// O rótulo do `idet` no `vf` (Android): o mpv dá o que ele contou em `vf-metadata/<rótulo>`.
+const rotuloIdet = 'pidet';
+
+/// O que se lê do mpv para decidir (de uma vez, fora da UI). `core-idle`/`eof-reached`: uma leitura
+/// em pausa, a carregar ou no fim do buffer (corte do servidor) não diz nada do filtro; `vf`: se o
+/// mpv ainda o tem. No Android `seekable` (um direto ou um filme) e o que o idet contou.
 List<String> propriedadesEntrelacamento(PlataformaVideo p) => [
       'mpv-version',
-      if (p != PlataformaVideo.android) 'video-frame-info/interlaced',
+      'video-frame-info/interlaced',
       'height',
       'container-fps',
       'estimated-vf-fps',
       'hwdec-current',
+      'core-idle',
+      'eof-reached',
+      'vf',
+      if (p == PlataformaVideo.android) ...['seekable', 'vf-metadata/$rotuloIdet'],
     ];
 
 double? _numero(String? s) => double.tryParse(s?.trim() ?? '');
+
+double? _fps(Map<String, String> m) {
+  final c = _numero(m['container-fps']);
+  return c != null && c > 0 ? c : _numero(m['estimated-vf-fps']);
+}
+
+const _linhasEntrelacadas = [480, 486, 576, 1080, 1088];
 
 /// A imagem é entrelaçada? null: ainda não se sabe (sem altura ou sem fps).
 /// - Quando é o mpv a descodificar (software, `d3d11va-copy`…) a marca dele vale
 ///   (`video-frame-info/interlaced`; visto no Windows: RTP 1 FHD 1920x1080 25 fps -> `yes`).
 /// - Com o MediaCodec (`hwdec-current` mediacodec…) o mpv não sabe: 1080/1088, 576 ou 480/486
-///   linhas a 30 imagens/s ou menos é entrelaçado (é como a TV transmite; 720p e 50p são sempre
-///   progressivos). Um 1080p25 progressivo também leva o shader, que só mexe onde há riscas.
+///   linhas a 30 imagens/s ou menos pode ser entrelaçado (é como a TV transmite; 720p e 50p são
+///   sempre progressivos). Serve para o shader do Flutter, que só mexe onde há riscas; para reabrir
+///   em Compatível conta a regra mais estreita de [pareceEntrelacadaNoDireto].
 bool? imagemEntrelacada(Map<String, String> m) {
   final hwdec = (m['hwdec-current'] ?? '').trim();
   final marca = (m['video-frame-info/interlaced'] ?? '').trim();
   if (!hwdec.startsWith('mediacodec') && (marca == 'yes' || marca == 'no')) return marca == 'yes';
   final altura = _numero(m['height']);
-  var fps = _numero(m['container-fps']);
-  if (fps == null || fps <= 0) fps = _numero(m['estimated-vf-fps']);
+  final fps = _fps(m);
   if (altura == null || altura <= 0 || fps == null || fps <= 0) return null;
-  const linhas = [480, 486, 576, 1080, 1088];
-  return linhas.contains(altura.round()) && fps <= 30.5;
+  return _linhasEntrelacadas.contains(altura.round()) && fps <= 30.5;
+}
+
+/// Android no modo direto (o mpv não vê as imagens): vale a pena reabrir em Compatível para o filtro?
+/// Só um direto (`seekable` não; os filmes VOD são quase sempre progressivos) com as linhas da TV
+/// entrelaçada (1080/576/480) a 25 ou 30 (29,97) imagens/s, as cadências das emissões 50i/60i. Um
+/// filme a 24/23,976 fica no direto. O que não se sabe aqui (um 1080p25 progressivo) decide-o o idet
+/// já em Compatível, e o canal volta ao direto da próxima vez (`CompativelNaSessao.progressivo`).
+bool pareceEntrelacadaNoDireto(Map<String, String> m) {
+  if ((m['seekable'] ?? '').trim() == 'yes') return false;
+  final altura = _numero(m['height']);
+  final fps = _fps(m);
+  if (altura == null || fps == null || !_linhasEntrelacadas.contains(altura.round())) return false;
+  return (fps >= 24.5 && fps <= 25.5) || (fps >= 29.5 && fps <= 30.5);
 }
 
 /// O libmpv tem os filtros do ffmpeg (`bwdif`)? Os builds completos são mpv 0.40+; o mínimo do
-/// media_kit é 0.36 (`mpv-version` = "mpv v0.42.0-38-g…").
+/// media_kit é 0.36 (`mpv-version` = "mpv v0.42.0-38-g…"). É só a primeira condição: o `vf` tem de
+/// ser aceite pelo mpv e medido a dobrar as imagens (ver `FiltrosNaSessao`).
 bool filtrosDoMpv(String? versao) {
   final m = RegExp(r'v?(\d+)\.(\d+)').firstMatch(versao ?? '');
   if (m == null) return false;
@@ -61,27 +94,61 @@ bool filtrosDoMpv(String? versao) {
   return maior > 0 || menor >= 40;
 }
 
-/// O `vf` do desentrelaçamento: o bwdif por campo (`send_field`: 25i -> 50 imagens/s). Só nas imagens
-/// que o mpv marca como entrelaçadas; o MediaCodec não as marca, aí vão todas (só se chega cá com a
-/// regra das linhas de [imagemEntrelacada]).
-String filtroDesentrelacamento(String hwdec) =>
-    'bwdif=mode=send_field:deint=${hwdec.trim().startsWith('mediacodec') ? 'all' : 'interlaced'}';
+/// O `vf` do desentrelaçamento: o bwdif por campo (`send_field`: 25i -> 50 imagens/s), só nas imagens
+/// marcadas como entrelaçadas. O MediaCodec não as marca: aí o `idet` (deteção de riscas do ffmpeg)
+/// marca-as antes; um progressivo passa sem mexer. Medido com o libmpv 0.42 (imagens sem marca):
+/// entrelaçado 25 -> 50, progressivo 25 -> 25 (com `deint=all` o progressivo ia a 50, a perder detalhe).
+String filtroDesentrelacamento(String hwdec) => hwdec.trim().startsWith('mediacodec')
+    ? '@$rotuloIdet:idet,bwdif=mode=send_field:deint=interlaced'
+    : 'bwdif=mode=send_field:deint=interlaced';
 
-/// O Android no modo direto com imagem entrelaçada e filtros no libmpv: o filtro não se aplica no
-/// direto, o canal tem de reabrir em Compatível (uma vez por canal, ver `CompativelNaSessao`).
-bool precisaModoComFiltro(PlataformaVideo p,
-        {required bool ligado, required bool? entrelacada, required bool filtros, required bool direto}) =>
-    p == PlataformaVideo.android && ligado && entrelacada == true && filtros && direto;
+/// O que se mediu do filtro (ou do d3d11vpp) posto no mpv.
+enum EfeitoFiltro {
+  /// A leitura não diz nada: sem resposta, em pausa, a carregar, no fim do buffer, sem fps.
+  porSaber,
 
-/// Com o filtro no `vf` a imagem que sai do mpv já é progressiva (`video-frame-info/interlaced` passa a
-/// `no`): não se reavalia a partir dela, senão o filtro ligava e desligava a cada verificação.
-bool? entrelacadaDepois(MeioDesentrelacamento atual, bool? anterior, bool? lida) =>
-    atual == MeioDesentrelacamento.filtroMpv ? (anterior ?? lida) : (lida ?? anterior);
+  /// A saída tem o dobro das imagens da entrada: desentrelaça por campo.
+  dobra,
 
-/// Com o filtro posto o mpv deixou de ter imagem (altura vazia): o filtro não funcionou aqui; volta-se
-/// ao shader.
-bool filtroFalhou(MeioDesentrelacamento atual, Map<String, String> m) =>
-    atual == MeioDesentrelacamento.filtroMpv && (_numero(m['height']) ?? 0) <= 0;
+  /// A saída tem as imagens da entrada: não fez nada (ou a imagem é progressiva).
+  igual,
+
+  /// A tocar, sem imagem.
+  semImagem,
+
+  /// O mpv já não tem o filtro no `vf`.
+  removido,
+}
+
+EfeitoFiltro efeitoFiltro(MeioDesentrelacamento meio, Map<String, String> m) {
+  if ((m['mpv-version'] ?? '').trim().isEmpty) return EfeitoFiltro.porSaber;
+  if ((m['eof-reached'] ?? '').trim() == 'yes' || (m['core-idle'] ?? '').trim() == 'yes') {
+    return EfeitoFiltro.porSaber;
+  }
+  if (meio == MeioDesentrelacamento.filtroMpv && m.containsKey('vf') && !(m['vf'] ?? '').contains('bwdif')) {
+    return EfeitoFiltro.removido;
+  }
+  if ((_numero(m['height']) ?? 0) <= 0) return EfeitoFiltro.semImagem;
+  final entrada = _numero(m['container-fps']), saida = _numero(m['estimated-vf-fps']);
+  if (entrada == null || entrada <= 0 || saida == null || saida <= 0) return EfeitoFiltro.porSaber;
+  final r = saida / entrada;
+  if (r >= 1.6) return EfeitoFiltro.dobra;
+  if (r <= 1.25) return EfeitoFiltro.igual;
+  return EfeitoFiltro.porSaber;
+}
+
+/// O que o idet contou (`vf-metadata/<rotuloIdet>`, JSON do mpv): true entrelaçado, false progressivo,
+/// null ainda poucas imagens ou sem leitura. `minimo`: imagens contadas para decidir.
+bool? idetEntrelacado(String? metadados, {int minimo = 25}) {
+  final t = (metadados ?? '').trim();
+  if (t.isEmpty) return null;
+  double n(String chave) =>
+      double.tryParse(RegExp('"lavfi\\.idet\\.multiple\\.$chave":"([0-9.]+)"').firstMatch(t)?[1] ?? '') ?? 0;
+  final entrelacadas = n('tff') + n('bff'), progressivas = n('progressive');
+  if (entrelacadas + progressivas < minimo) return null;
+  if (entrelacadas > progressivas) return true;
+  return progressivas > 4 * entrelacadas ? false : null;
+}
 
 enum MeioDesentrelacamento {
   /// Desligado, imagem progressiva ou sem meio neste aparelho.
@@ -119,34 +186,38 @@ MeioDesentrelacamento meioDesentrelacamento(PlataformaVideo p,
 }
 
 /// Põe o meio no mpv (o shader e os filtros só correm no mpv; o do Flutter deixa-o sem nada).
-/// Nunca lança. `hwdec`: o `hwdec-current` (decide o `deint` do filtro).
-Future<void> aplicarMeioMpv(MotorMpv mpv, MeioDesentrelacamento m,
+/// Nunca lança. `hwdec`: o `hwdec-current` (decide o `vf`). Devolve o código do mpv para o que
+/// decide o meio (o `vf` do filtro, o `deinterlace` do d3d11vpp; 0 nos outros), null sem resposta.
+Future<int?> aplicarMeioMpv(MotorMpv mpv, MeioDesentrelacamento m,
     {required String? caminhoShader, String hwdec = ''}) async {
   try {
     if (m == MeioDesentrelacamento.filtroMpv) {
       await mpv.setProperty('glsl-shaders', '');
       await mpv.setProperty('deinterlace', 'no');
-      await mpv.setProperty('vf', filtroDesentrelacamento(hwdec));
-      return;
+      return await mpv.setProperty('vf', filtroDesentrelacamento(hwdec));
     }
     await mpv.setProperty('vf', '');
     if (m == MeioDesentrelacamento.d3d11vpp) {
       await mpv.setProperty('glsl-shaders', '');
-      await mpv.setProperty('deinterlace', 'yes');
-      return;
+      return await mpv.setProperty('deinterlace', 'yes');
     }
     await mpv.setProperty('deinterlace', 'no');
     await mpv.setProperty(
         'glsl-shaders', m == MeioDesentrelacamento.shaderMpv && caminhoShader != null ? caminhoShader : '');
+    return 0;
   } catch (e) {
     debugPrint('mpv: desentrelaçamento não aplicado ($e)');
+    return null;
   }
 }
 
-/// O que as estatísticas mostram.
-String textoDesentrelacamento(MeioDesentrelacamento m, {required bool ligado, required bool? entrelacada}) =>
+/// O que as estatísticas mostram. `confirmado`: o filtro já foi medido a dobrar as imagens.
+String textoDesentrelacamento(MeioDesentrelacamento m,
+        {required bool ligado, required bool? entrelacada, bool confirmado = true}) =>
     switch (m) {
+      MeioDesentrelacamento.filtroMpv when !confirmado => 'ligado (bwdif, a medir)',
       MeioDesentrelacamento.filtroMpv => 'ligado (bwdif, por campo)',
+      MeioDesentrelacamento.d3d11vpp when !confirmado => 'ligado (d3d11vpp, a medir)',
       MeioDesentrelacamento.d3d11vpp => 'ligado (d3d11vpp, por campo)',
       MeioDesentrelacamento.shaderMpv || MeioDesentrelacamento.shaderFlutter => 'ligado (shader do player)',
       MeioDesentrelacamento.nenhum when !ligado => 'desligado',

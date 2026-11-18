@@ -21,4 +21,20 @@ void main() {
     final s = CompativelNaSessao()..marcar('c');
     expect(s.modoPara('c', ModoDescodificacao.compativel), ModoDescodificacao.compativel);
   });
+
+  test('entrelaçado: reabre uma vez para o filtro; visto progressivo volta ao direto e não reabre mais', () {
+    final s = CompativelNaSessao();
+    expect(s.marcarParaFiltro('c'), isTrue);
+    expect(s.modoPara('c', ModoDescodificacao.direto), ModoDescodificacao.compativel);
+    expect(s.marcarParaFiltro('c'), isFalse, reason: 'nunca em ciclo');
+    s.progressivo('c');
+    expect(s.modoPara('c', ModoDescodificacao.direto), ModoDescodificacao.direto);
+    expect(s.marcarParaFiltro('c'), isFalse);
+  });
+
+  test('um canal sem imagem no direto fica em Compatível mesmo que seja progressivo', () {
+    final s = CompativelNaSessao()..marcar('c');
+    s.progressivo('c');
+    expect(s.modoPara('c', ModoDescodificacao.direto), ModoDescodificacao.compativel);
+  });
 }
