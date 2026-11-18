@@ -37,3 +37,14 @@ configuração), portanto o conjunto distribuído é **GPLv3**. Quem distribuir 
 o código-fonte correspondente (mpv, ffmpeg e as bibliotecas ligadas): ver `AVISOS-LICENCAS.txt`
 para os links dos projetos e dos scripts de build usados. O código da app não é alterado por isto
 (o libmpv é carregado como biblioteca dinâmica), mas confirme com quem distribui se a GPLv3 serve.
+
+## Voltar ao libmpv mínimo do media_kit (Android)
+
+`libmpvMinimo=1` em `android/gradle.properties` (ou `-PlibmpvMinimo=1`) desliga o `libmpv_completo.gradle`;
+a app volta ao shader (o código deteta a falta de filtros pelo `mpv-version`, ver `filtrosDoMpv`).
+
+## Estado da verificação
+
+- Windows: testado com a DLL no caminho da app (render API sobre o ANGLE) e na app empacotada (arranca e carrega a DLL).
+- Android: o APK leva os `.so` do mpv-android (mpv 0.41, `bwdif` existe) e o canal abre no modo direto no emulador;
+  falta testá-lo num aparelho real (o emulador usado deixa o mpv sem responder ~3 s depois de abrir, também com o libmpv de antes).

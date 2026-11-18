@@ -46,3 +46,10 @@ leitura das propriedades observadas sem formato, os hooks `on_load`/`on_unload` 
 HTTP, start/end, `mpv_hook_continue`), o `mpv_terminate_destroy` do `dispose` e o
 `mpv_create`/`mpv_initialize` de `InitializerNativeCallable.create`. Um mpv que deixe de responder
 só prende esse isolate, nunca a UI (antes: ANR). Procurar "player-iptv" no código para reaplicar.
+
+## libmpv completo (desentrelaçamento por campo)
+
+O libmpv que o `media_kit_libs_*_video` traz (mpv 0.36, ffmpeg `--disable-filters`) não tem o `bwdif`/`yadif`.
+O Windows (`windows/libmpv_completo.cmake`) e o Android (`android/libmpv_completo.gradle`) da app usam
+um libmpv completo; versões, SHA-256, licenças e como voltar ao mínimo em `third_party/libmpv_completo/LEIA-ME.md`.
+No Android o `media_kit` chama o `av_jni_set_java_vm` do `libavcodec.so` (o `mpv_lavc_set_java_vm` só existe no libmpv do media_kit).

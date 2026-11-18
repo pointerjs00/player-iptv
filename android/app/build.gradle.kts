@@ -47,3 +47,6 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+// libmpv completo (com filtros do ffmpeg) do mpv-android, no lugar do do media_kit
+apply(from = "../libmpv_completo.gradle")
