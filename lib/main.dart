@@ -192,7 +192,7 @@ class _AppJanelaPlayerState extends State<AppJanelaPlayer> {
                   canais: _canais,
                   indice: _i,
                   nomeLista: _lista,
-                  resolver: (c) => widget.ligacao.fonte(_canais.indexOf(c)),
+                  resolver: (c, {continuar = false}) => widget.ligacao.fonte(_canais.indexOf(c)),
                   aoSair: () => exit(0),
                   alternarEcraInteiro: _ecraInteiro,
                 ),

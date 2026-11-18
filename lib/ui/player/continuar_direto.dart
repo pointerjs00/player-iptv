@@ -8,27 +8,58 @@
 /// (`configuracao_mpv.dart`): toca o buffer até ao fim e, só aí, o player pede o canal de novo
 /// (link novo; no Stalker o link antigo já não serve) com "A carregar…" no ecrã. Nunca volta
 /// atrás; salta para a frente só o tempo que demorou a reabrir.
+///
+/// Só nos diretos: um ficheiro com fim (filme de uma lista M3U) acaba normalmente.
 class ContinuarDireto {
-  /// Quantas vezes seguidas se continua dentro da [janela]; mais do que isso é um canal que cai
-  /// sempre (o player mostra o erro em vez de pedir ao servidor sem parar).
-  static const maximo = 5;
-  static const janela = Duration(seconds: 60);
+  /// Uma reabertura que deu pelo menos isto de imagem valeu a pena (um portal que corta a cada
+  /// 6–10 s continua a ver-se).
+  static const proveito = Duration(seconds: 5);
 
-  final _cortes = <DateTime>[];
+  /// Reaberturas seguidas sem [proveito] antes de desistir (canal morto: cartão de erro).
+  static const maximoSemProveito = 3;
 
-  /// O fim do buffer de um canal que estava a tocar: continua-se. A abrir quem decide é o vigia;
-  /// com erro ou em pausa não se faz nada.
-  static bool deve({required bool fimDoBuffer, required bool aAbrir, required bool erro, required bool aTocar}) =>
-      fimDoBuffer && !aAbrir && !erro && aTocar;
+  /// As esperas antes de tentar outra vez uma reabertura que falhou (rede, link, 401 passageiro).
+  static const esperas = [Duration(seconds: 1), Duration(seconds: 2), Duration(seconds: 4)];
 
-  /// Regista um corte; falso se já houve [maximo] na [janela] (não continuar).
-  bool permitir(DateTime agora) {
-    _cortes.removeWhere((t) => agora.difference(t) > janela);
-    if (_cortes.length >= maximo) return false;
-    _cortes.add(agora);
-    return true;
+  int _semProveito = 0;
+  int _falhas = 0;
+
+  /// O fim do buffer de um direto que estava a tocar: continua-se. A abrir quem decide é o vigia;
+  /// com erro, em pausa ou num ficheiro com fim não se faz nada.
+  static bool deve(
+          {required bool fimDoBuffer,
+          required bool aAbrir,
+          required bool erro,
+          required bool aTocar,
+          required bool direto}) =>
+      fimDoBuffer && direto && !aAbrir && !erro && aTocar;
+
+  /// Pela propriedade `seekable` do mpv: um direto não deixa andar para o fim. Sem resposta
+  /// (vazio) trata-se como direto.
+  static bool eDireto(String seekable) => seekable.trim() != 'yes';
+
+  /// Regista uma reabertura depois de `tocou` de imagem desde a anterior; falso = desistir.
+  bool permitir({required Duration tocou}) {
+    if (tocou >= proveito) {
+      _semProveito = 0;
+      return true;
+    }
+    _semProveito++;
+    return _semProveito <= maximoSemProveito;
   }
 
-  /// Canal novo (escolhido pelo utilizador): a contagem recomeça.
-  void reiniciar() => _cortes.clear();
+  /// Uma reabertura falhou: quanto esperar antes de tentar outra vez (null = desistir).
+  Duration? esperaAntesDeTentar() {
+    if (_falhas >= esperas.length) return null;
+    return esperas[_falhas++];
+  }
+
+  /// Voltou a haver imagem: as falhas esquecem-se.
+  void abriu() => _falhas = 0;
+
+  /// Canal novo (escolhido pelo utilizador): tudo recomeça.
+  void reiniciar() {
+    _semProveito = 0;
+    _falhas = 0;
+  }
 }
