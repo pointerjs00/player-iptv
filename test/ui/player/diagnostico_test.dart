@@ -182,11 +182,16 @@ void main() {
     });
     test('o mpv passou para software: o mediacodec_embed não mostra nada', () {
       expect(semImagemDireta(larguraVista: 1920, propriedades: m(hw: 'no')), isTrue);
-      expect(semImagemDireta(larguraVista: 1920, propriedades: m(hw: '')), isTrue);
     });
-    test('a saída de vídeo falhou ("Video: no video")', () {
-      expect(semImagemDireta(larguraVista: 1920, propriedades: m(codec: '', hw: '', vo: 'no')), isTrue);
+    test('a saída de vídeo falhou com o vídeo a ser descodificado', () {
       expect(semImagemDireta(larguraVista: 1920, propriedades: m(vo: 'no')), isTrue);
+    });
+    test('propriedades vazias não são prova: o mpv não respondeu ou o vídeo ainda está a arrancar', () {
+      // visto no emulador: com o mpv preso, as três leituras voltam vazias (o pedido passou o
+      // limite) e o canal passava para "Compatível" sem razão
+      expect(semImagemDireta(larguraVista: 1920, propriedades: m(codec: '', hw: '', vo: '')), isFalse);
+      expect(semImagemDireta(larguraVista: 1920, propriedades: m(hw: '')), isFalse);
+      expect(semImagemDireta(larguraVista: 1920, propriedades: m(codec: '', hw: '', vo: 'no')), isFalse);
     });
     test('canal só de som (rádio): nunca houve vídeo, não é falha', () {
       expect(semImagemDireta(larguraVista: 0, propriedades: m(codec: '', hw: '', vo: 'no')), isFalse);

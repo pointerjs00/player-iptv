@@ -356,7 +356,8 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
         final m = {
           for (final p in const ['video-codec', 'hwdec-current', 'vo-configured']) p: await mpv.getProperty(p),
         };
-        if (!semImagemDireta(larguraVista: _larguraVista, propriedades: m)) return;
+        // um mpv que não respondeu não diz nada sobre a imagem (é trocado no próximo canal)
+        if (mpv.semResposta || !semImagemDireta(larguraVista: _larguraVista, propriedades: m)) return;
       }
     } catch (_) {
       return; // o player fechou entretanto
