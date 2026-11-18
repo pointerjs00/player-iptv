@@ -9,10 +9,10 @@ import 'design/sombra.dart';
 import 'design/tokens.dart';
 import 'tema.dart';
 
-/// O realce do foco para o comando da TV: uma borda de 3 px na cor de acento (índigo) com um
-/// brilho violeta por fora, e um fundo ligeiramente mais claro (e, nos cartões, um aumento).
+/// O realce do foco para o comando da TV: uma borda de 3 px no azul claro do anel de foco com um
+/// brilho azul por fora, e um fundo ligeiramente mais claro (e, nos cartões, um aumento).
 abstract final class Realce {
-  static const borda = BorderSide(color: Cores.acento, width: 3);
+  static const borda = BorderSide(color: Tokens.anelFoco, width: 3);
 
   /// Nos botões cheios (já da cor de acento) a borda clara vê-se melhor.
   static const bordaClara = BorderSide(color: Cores.texto, width: 3);
@@ -21,8 +21,8 @@ abstract final class Realce {
   static final fundo = Cores.acento.withValues(alpha: .22);
   static const duracao = Tokens.duracaoRapida;
 
-  /// O brilho violeta à volta de quem tem o foco (pintado só por fora: não tapa o conteúdo).
-  static const brilho = [BoxShadow(color: Color(0x8C9B6CFF), blurRadius: 16)];
+  /// O brilho azul à volta de quem tem o foco (pintado só por fora: não tapa o conteúdo).
+  static final brilho = [BoxShadow(color: Tokens.anelFoco.withValues(alpha: .55), blurRadius: 16)];
 }
 
 const _canalTv = MethodChannel('player_iptv/tv');

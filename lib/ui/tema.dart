@@ -99,10 +99,10 @@ ThemeData temaApp({bool realceFoco = true}) {
       shape: RoundedRectangleBorder(borderRadius: raioBotao, side: BorderSide(color: Tokens.bordaVidro)),
     ),
     dividerTheme: const DividerThemeData(color: Tokens.bordaVidro, space: 1),
-    listTileTheme: const ListTileThemeData(
+    listTileTheme: ListTileThemeData(
       shape: RoundedRectangleBorder(borderRadius: raioCampo),
       selectedColor: Tokens.texto,
-      selectedTileColor: Color(0x2E6C7BFF),
+      selectedTileColor: Tokens.acento.withValues(alpha: .18),
       iconColor: Tokens.texto2,
     ),
     checkboxTheme: CheckboxThemeData(
@@ -172,7 +172,7 @@ final _temaChips = ChipThemeData(
   side: WidgetStateBorderSide.resolveWith(
       (s) => _focoVisivel(s) ? _bordaFoco : const BorderSide(color: Tokens.bordaVidro)),
   backgroundColor: Tokens.vidro,
-  selectedColor: const Color(0x4D6C7BFF),
+  selectedColor: Tokens.acento.withValues(alpha: .3),
   checkmarkColor: Tokens.texto,
   labelStyle: const TextStyle(fontWeight: FontWeight.w600, color: Tokens.texto),
   shape: const RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(Tokens.raioCampo))),
@@ -205,7 +205,7 @@ Widget _fundoGradiente(BuildContext context, Set<WidgetState> s, Widget? filho) 
       child: filho);
 }
 
-const _brilhoFocoBotao = [BoxShadow(color: Color(0xB39B6CFF), blurRadius: 16, spreadRadius: 4)];
+final _brilhoFocoBotao = [BoxShadow(color: Tokens.anelFoco.withValues(alpha: .7), blurRadius: 16, spreadRadius: 4)];
 
 // os cantos também no fundo: o recorte pela forma do botão só vale para o estilo do próprio widget
 const _raioBotao = BorderRadius.all(Radius.circular(Tokens.raioBotao));

@@ -92,7 +92,7 @@ String? _semRealce() {
   final ctx = no?.context;
   if (ctx == null || no is FocusScopeNode) return 'nada focado';
   bool forte(BorderSide s) =>
-      s.width >= 2 && s.style != BorderStyle.none && (s.color == Cores.acento || s.color == Cores.texto);
+      s.width >= 2 && s.style != BorderStyle.none && (s.color == Realce.borda.color || s.color == Cores.texto);
   bool caixa(Decoration? d) => d is BoxDecoration && d.border is Border && forte((d.border! as Border).top);
   var ok = false;
   void ver(Widget w) {

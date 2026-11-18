@@ -280,11 +280,47 @@ void main() {
     await t.pumpAndSettle();
   });
 
+  test('tokens azuis', () {
+    expect(Tokens.fundo, const Color(0xFF0A1628));
+    expect(Tokens.superficie, const Color(0xFF0D1F3A));
+    expect(Tokens.superficie2, const Color(0xFF132B4D));
+    expect(Tokens.superficie3, const Color(0xFF1A3A66));
+    expect(Tokens.acento, const Color(0xFF2F7BF6));
+    expect(Tokens.acento2, const Color(0xFF1E5BB8));
+    expect(Tokens.anelFoco, const Color(0xFF8EC5FF));
+    expect(Tokens.texto, const Color(0xFFEEF4FF));
+    expect(Tokens.texto2, const Color(0xFFA3B8D6));
+    expect(Tokens.ok, const Color(0xFF5EE0A0));
+    expect(Tokens.aviso, const Color(0xFFFFD27A));
+    expect(Tokens.mau, const Color(0xFFFF9A9A));
+    expect(Tokens.neutro, const Color(0xFFA3B8D6));
+    expect(Tokens.fundoOk, const Color(0xFF123F33));
+    expect(Tokens.fundoAviso, const Color(0xFF4A3A12));
+    expect(Tokens.fundoMau, const Color(0xFF4A1E24));
+    expect(Tokens.fundoNeutro, const Color(0xFF22324A));
+    expect(Tokens.gradienteAcento.colors, const [Color(0xFF2F7BF6), Color(0xFF1E5BB8)]);
+    expect(Tokens.sombraFoco.last.color, const Color(0x738EC5FF));
+  });
+
+  test('contraste do texto', () {
+    expect(contraste(const Color(0xFF000000), const Color(0xFFFFFFFF)), closeTo(21, .01));
+    for (final fundo in [Tokens.fundo, Tokens.superficie2, Tokens.superficie3]) {
+      expect(contraste(Tokens.texto2, fundo), greaterThanOrEqualTo(4.5), reason: '$fundo');
+    }
+    final pares = {
+      'ok': (Tokens.ok, Tokens.fundoOk),
+      'aviso': (Tokens.aviso, Tokens.fundoAviso),
+      'mau': (Tokens.mau, Tokens.fundoMau),
+      'neutro': (Tokens.neutro, Tokens.fundoNeutro),
+    };
+    for (final MapEntry(key: nome, value: (cor, fundo)) in pares.entries) {
+      expect(contraste(cor, fundo), greaterThanOrEqualTo(4.5), reason: nome);
+    }
+  });
+
   test('Tokens: raios, durações e cores do design', () {
-    expect(Tokens.fundo, const Color(0xFF0B0F17));
     expect(Tokens.raioCartao, 20);
     expect(Tokens.raioBotao, 14);
-    expect(Tokens.gradienteAcento.colors, const [Color(0xFF6C7BFF), Color(0xFF9B6CFF)]);
     expect(Tokens.curva, Curves.easeOutCubic);
     for (final d in [Tokens.duracaoRapida, Tokens.duracaoMedia, Tokens.duracaoLenta]) {
       expect(d.inMilliseconds, inInclusiveRange(180, 320));
