@@ -7,6 +7,7 @@ import 'package:window_manager/window_manager.dart';
 
 import 'dados/area_gestor.dart';
 import 'dados/biblioteca.dart';
+import 'dados/licencas.dart';
 import 'dados/preferencias.dart';
 import 'janelas/janela_player.dart';
 import 'modelo/canal.dart';
@@ -25,6 +26,7 @@ import 'verificar/servico.dart';
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
+  registarLicencasLibmpv(); // GPLv3 do libmpv/ffmpeg: Definições -> Licenças
   final i = args.indexOf('--player');
   if (Platform.isWindows && i >= 0 && i + 1 < args.length) {
     // esta é a janela do player (Windows): liga-se à janela principal

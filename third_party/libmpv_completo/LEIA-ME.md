@@ -24,27 +24,32 @@ no build, com o SHA-256 fixado, e o build falha se não bater.
 ## Android
 
 - Origem: <https://github.com/mpv-android/mpv-android/releases/tag/2026-09-17>
-- Ficheiros (de cada APK tiram-se só as `lib/<abi>/*.so`):
+- Ficheiros (de cada APK tiram-se as `lib/<abi>/*.so` listadas em `SHA256.txt`; o `libplayer.so`, o JNI da
+  app do mpv-android, não):
   `app-default-arm64-v8a-release.apk`, `app-default-armeabi-v7a-release.apk`,
   `app-default-x86_64-release.apk` (SHA-256 em `SHA256.txt`).
 - Ver `android/libmpv_completo.gradle`.
 
 ## Licenças
 
-O mpv é GPLv2+ (LGPLv2.1+ se compilado sem as partes GPL) e o ffmpeg é LGPLv2.1+, **mas estes builds
-estão compilados com `--enable-gpl --enable-version3`** (o ffmpeg do mpv-android di-lo na própria
-configuração), portanto o conjunto distribuído é **GPLv3**. Quem distribuir o pacote tem de oferecer
-o código-fonte correspondente (mpv, ffmpeg e as bibliotecas ligadas): ver `AVISOS-LICENCAS.txt`
-para os links dos projetos e dos scripts de build usados. O código da app não é alterado por isto
-(o libmpv é carregado como biblioteca dinâmica), mas confirme com quem distribui se a GPLv3 serve.
+Estes builds do mpv e do ffmpeg estão compilados com `--enable-gpl --enable-version3` (o ffmpeg do
+mpv-android di-lo na própria configuração), por isso estão sob a **GPLv3**. O código-fonte
+correspondente obtém-se nos projetos de origem (mpv, ffmpeg), nas versões indicadas em
+`AVISOS-LICENCAS.txt`; os repositórios da shinchiro e do mpv-android têm os scripts de build, não
+esse código. Os textos da GPLv3 e da LGPLv2.1 estão em `licencas/` e vão com a app: no Windows em
+`licencas-libmpv/` ao lado do executável, no Android dentro do APK (assets da app) e nas duas em
+Definições -> Licenças.
 
-## Voltar ao libmpv mínimo do media_kit (Android)
+## Voltar ao libmpv mínimo do media_kit (só Android)
 
-`libmpvMinimo=1` em `android/gradle.properties` (ou `-PlibmpvMinimo=1`) desliga o `libmpv_completo.gradle`;
-a app volta ao shader (o código deteta a falta de filtros pelo `mpv-version`, ver `filtrosDoMpv`).
+`libmpvMinimo=1` (ou `true`) em `android/gradle.properties` (ou `-PlibmpvMinimo=1`) desliga o
+`libmpv_completo.gradle`; a app volta ao shader (o mpv recusa o `vf`, ver `FiltrosNaSessao`). Outro
+valor (`0`, `false`) não desliga nada. Um APK assim não passa no `ferramentas/empacotar.py` (o
+SHA-256 do `libmpv.so` não é o fixado). No Windows não há interruptor: o `windows/CMakeLists.txt`
+instala sempre o libmpv completo.
 
 ## Estado da verificação
 
 - Windows: testado com a DLL no caminho da app (render API sobre o ANGLE) e na app empacotada (arranca e carrega a DLL).
-- Android: o APK leva os `.so` do mpv-android (mpv 0.41, `bwdif` existe) e o canal abre no modo direto no emulador;
-  falta testá-lo num aparelho real (o emulador usado deixa o mpv sem responder ~3 s depois de abrir, também com o libmpv de antes).
+- Android: o APK leva os `.so` do mpv-android (mpv 0.41, `bwdif` existe; SHA-256 do `libmpv.so` verificado no
+  build e no `empacotar.py`). Ver o relatório da ronda 1 sobre o emulador.

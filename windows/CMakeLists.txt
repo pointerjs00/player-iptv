@@ -98,6 +98,11 @@ install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/libmpv_completo/LEIA-M
         "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/libmpv_completo/AVISOS-LICENCAS.txt"
   DESTINATION "${INSTALL_BUNDLE_LIB_DIR}/licencas-libmpv"
   COMPONENT Runtime)
+# os textos das licencas (GPLv3, LGPLv2.1) junto da DLL
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/libmpv_completo/licencas/GPL-3.0.txt"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/libmpv_completo/licencas/LGPL-2.1.txt"
+  DESTINATION "${INSTALL_BUNDLE_LIB_DIR}/licencas-libmpv/licencas"
+  COMPONENT Runtime)
 
 # Copy the native assets provided by the hook/build.dart from all packages.
 set(NATIVE_ASSETS_DIR "${PROJECT_BUILD_DIR}native_assets/windows/")

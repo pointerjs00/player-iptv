@@ -79,6 +79,12 @@ flutter:
   shaders:
     - shaders/desentrelacar.frag
 
+  # o aviso e os textos das licenças do libmpv/ffmpeg (GPLv3) dentro da app (Definições -> Licenças)
+  assets:
+    - third_party/libmpv_completo/AVISOS-LICENCAS.txt
+    - third_party/libmpv_completo/licencas/GPL-3.0.txt
+    - third_party/libmpv_completo/licencas/LGPL-2.1.txt
+
   # To add assets to your application, add an assets section, like this:
   # assets:
   #   - images/a_dot_burr.jpeg

@@ -301,6 +301,13 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
                       ),
                     ]),
                   ]),
+                  _seccao('Licenças', 'O player usa o mpv e o ffmpeg (GPLv3).', Icons.gavel_rounded, [
+                    OutlinedButton.icon(
+                      onPressed: () => showLicensePage(context: context, applicationName: 'Player IPTV'),
+                      icon: const Icon(Icons.description_outlined),
+                      label: const Text('Ver licenças'),
+                    ),
+                  ]),
                 ]),
               ),
             );

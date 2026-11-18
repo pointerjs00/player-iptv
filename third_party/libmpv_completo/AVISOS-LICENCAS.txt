@@ -1,29 +1,38 @@
 LIBMPV COMPLETO - AVISOS DE LICENCA
 ===================================
 
-Este pacote inclui o libmpv (biblioteca do leitor mpv) e o ffmpeg (libavcodec, libavfilter,
-libavformat, libavutil, libswscale, libswresample), compilados por terceiros:
+Este pacote inclui o libmpv (biblioteca do leitor mpv) e o ffmpeg (libavcodec, libavdevice,
+libavfilter, libavformat, libavutil, libswscale, libswresample), em builds feitos por terceiros:
 
-Windows  libmpv-2.dll
-  Build: https://github.com/shinchiro/mpv-winbuild-cmake  (release 20261111)
+Windows  libmpv-2.dll (mpv e ffmpeg ligados numa so DLL)
+  Build de https://github.com/shinchiro/mpv-winbuild-cmake  (release 20261111,
+  mpv-dev-x86_64-20261111-git-bcde6b93cc.7z)
   mpv v0.42.0-38-gbcde6b93c  -  ffmpeg N-128766-gcd4e96eb3
-  Codigo-fonte e scripts de build: o repositorio acima (o release 20261111 e o commit
-  bcde6b93cc do mpv; as dependencias estao nos pacotes do repositorio).
 
-Android  libmpv.so, libavcodec.so, libavfilter.so, libavformat.so, libavutil.so, libswscale.so,
-         libswresample.so, libc++_shared.so
-  Build: https://github.com/mpv-android/mpv-android  (release 2026-09-17)
-  Scripts de build e codigo-fonte: https://github.com/mpv-android/mpv-android (buildscripts/)
+Android  libmpv.so, libavcodec.so, libavdevice.so, libavfilter.so, libavformat.so, libavutil.so,
+         libswscale.so, libswresample.so, libc++_shared.so
+  Tirados dos APKs "default" de https://github.com/mpv-android/mpv-android  (release 2026-09-17)
+  mpv v0.41.0-1049-g0b7ed670f  -  ffmpeg N-126627-g094a2f8a2a
+
+Esses dois repositorios tem os scripts de build (que versoes e opcoes foram usadas), nao o
+codigo-fonte do mpv e do ffmpeg.
 
 Licencas
 --------
-- mpv: GNU General Public License v2 ou posterior (ou LGPL v2.1+ sem as partes GPL).
-  https://github.com/mpv-player/mpv/blob/master/LICENSE.GPL  e  LICENSE.LGPL
-- ffmpeg: GNU Lesser General Public License v2.1 ou posterior; com --enable-gpl --enable-version3
-  (como estes builds) fica sob GNU General Public License v3.
-  https://ffmpeg.org/legal.html
-- Os builds incluem tambem outras bibliotecas (libass, freetype, harfbuzz, fribidi, libplacebo,
-  lcms2, etc.) com as respetivas licencas, listadas nos repositorios acima.
+Os builds do mpv e do ffmpeg incluidos estao compilados com --enable-gpl --enable-version3, por
+isso estao sob a GNU General Public License versao 3 (GPLv3). O mpv e o ffmpeg tambem tem partes
+sob a GNU Lesser General Public License versao 2.1 ou posterior. Os textos das licencas vao com
+este pacote:
 
-Este software e fornecido sem garantia. Os textos completos das licencas estao nos links acima.
-Se recebeu este pacote e quer o codigo-fonte correspondente, os repositorios acima tem-no.
+  licencas/GPL-3.0.txt    GNU General Public License, versao 3
+  licencas/LGPL-2.1.txt   GNU Lesser General Public License, versao 2.1
+
+O codigo-fonte correspondente do mpv e do ffmpeg obtem-se nos projetos de origem, nas versoes
+indicadas acima:
+  mpv     https://github.com/mpv-player/mpv  (commits bcde6b93c e 0b7ed670f)
+  ffmpeg  https://git.ffmpeg.org/ffmpeg.git  (commits cd4e96eb3 e 094a2f8a2a)
+Os builds incluem tambem outras bibliotecas (libass, freetype, harfbuzz, fribidi, libplacebo,
+lcms2, etc.), cada uma com a sua licenca; a lista e as versoes estao nos scripts de build dos dois
+repositorios acima.
+
+Este software e fornecido sem qualquer garantia.
