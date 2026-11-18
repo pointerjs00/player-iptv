@@ -90,10 +90,14 @@ void main() {
       expect(mpv.chamadas.where((c) => c.startsWith('deinterlace') || c.startsWith('vf')), isEmpty);
     });
 
-    test('Android Compatível com libmpv sem "auto": filtro bwdif só nas imagens entrelaçadas', () async {
+    test('Android Compatível com libmpv sem "auto": nenhum filtro lavfi (o ffmpeg incluído não tem '
+        'bwdif nem yadif; o filtro deixava o canal sem vídeo)', () async {
+      // visto no emulador e no libmpv do Windows: "No such filter: 'bwdif'" -> "EOF code: 6",
+      // o vídeo desligava-se e o canal acabava no "sem imagem em 20 s"
       final mpv = await _abrir(Preferencias.omissao(),
           plataforma: PlataformaVideo.android, modo: ModoDescodificacao.compativel, aceitaAuto: false);
-      expect(mpv.props['vf'], 'lavfi=[bwdif=deint=interlaced]');
+      expect(mpv.chamadas.where((c) => c.startsWith('vf=lavfi')), isEmpty);
+      expect(mpv.props['vf'], '');
       expect(mpv.props['deinterlace'], 'no');
     });
 
@@ -105,18 +109,24 @@ void main() {
       expect(mpv.chamadas.where((c) => c.startsWith('vf=lavfi')), isEmpty);
     });
 
-    test('Windows em software e libmpv sem "auto": o filtro (imagens na memória)', () async {
+    test('Windows em software e libmpv sem "auto": nenhum filtro lavfi (imagens na memória)', () async {
       final mpv = await _abrir(Preferencias.omissao()..hardware = false, aceitaAuto: false);
-      expect(mpv.props['vf'], 'lavfi=[bwdif=deint=interlaced]');
+      expect(mpv.chamadas.where((c) => c.startsWith('vf=lavfi')), isEmpty);
+      expect(mpv.props['vf'], '');
     });
 
-    test('desligar depois do filtro tira-o', () async {
+    test('imagens na memória sem "auto": fica desligado (devolve falso)', () async {
       final mpv = MpvFalso(aceitaAuto: false);
-      expect(await aplicarDesentrelacamento(mpv, ligado: true, temEfeito: true, imagensNaGpu: false), isTrue);
-      expect(mpv.props['vf'], isNot(''));
-      expect(await aplicarDesentrelacamento(mpv, ligado: false, temEfeito: true, imagensNaGpu: false), isFalse);
+      expect(await aplicarDesentrelacamento(mpv, ligado: true, temEfeito: true, imagensNaGpu: false), isFalse);
       expect(mpv.props['vf'], '');
       expect(mpv.props['deinterlace'], 'no');
+    });
+
+    test('com "auto" (libmpv ≥ 0.38) liga-se sem filtro', () async {
+      final mpv = MpvFalso();
+      expect(await aplicarDesentrelacamento(mpv, ligado: true, temEfeito: true, imagensNaGpu: false), isTrue);
+      expect(mpv.props['deinterlace'], 'auto');
+      expect(mpv.props['vf'], '');
     });
 
     test('sem efeito: devolve falso e não mexe', () async {
