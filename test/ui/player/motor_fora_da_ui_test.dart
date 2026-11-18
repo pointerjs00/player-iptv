@@ -46,6 +46,14 @@ class _ExecutorPreso implements ExecutorMpv {
     await _talvezPreso();
     chamadas.add('$handle:${c.join(' ')}');
   }
+
+  @override
+  Future<List<String>> getProperties(int handle, List<String> ps) async {
+    await _talvezPreso();
+    if (falha) throw StateError('o isolate morreu');
+    chamadas.add('$handle:get ${ps.join(',')}');
+    return [for (final p in ps) p == 'nada' ? '' : 'v-$p'];
+  }
 }
 
 void main() {
@@ -70,6 +78,17 @@ void main() {
     await motor.setRate(1.5);
     expect(ex.chamadas, ['7:mute=yes', '7:get time-pos', '7:seek -10 relative']);
     expect(velocidades, [1.5]);
+  });
+
+  test('várias propriedades de uma vez: um só pedido ao executor (um isolate)', () async {
+    expect(await motor.getProperties(['time-pos', 'nada', 'duration']),
+        {'time-pos': 'v-time-pos', 'nada': '', 'duration': 'v-duration'});
+    expect(ex.chamadas, ['7:get time-pos,nada,duration']);
+  });
+
+  test('várias propriedades com o executor a falhar: tudo vazio, não lança', () async {
+    ex.falha = true;
+    expect(await motor.getProperties(['a', 'b']), {'a': '', 'b': ''});
   });
 
   test('um mpv ocupado não prende quem chama (a UI segue; o pedido acaba depois)', () async {

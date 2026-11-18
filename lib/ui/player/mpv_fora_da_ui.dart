@@ -18,6 +18,9 @@ abstract interface class ExecutorMpv {
   Future<void> setProperty(int handle, String propriedade, String valor);
   Future<String> getProperty(int handle, String propriedade);
   Future<void> command(int handle, List<String> comando);
+
+  /// Várias propriedades de uma vez (na ordem pedida; "" quando o mpv não sabe).
+  Future<List<String>> getProperties(int handle, List<String> propriedades);
 }
 
 /// O [MotorMpv] do player: as propriedades e os comandos pelo [ExecutorMpv] (fora da UI); a
@@ -103,6 +106,15 @@ class MotorForaDaUi implements MotorMpv {
 
   @override
   Future<void> command(List<String> comando) => _correr(null, (h) => _executor.command(h, comando));
+
+  /// Várias propriedades num só pedido (um isolate em vez de um por propriedade); "" nas que o
+  /// mpv não sabe, e em todas se o pedido falhar.
+  Future<Map<String, String>> getProperties(List<String> propriedades) async {
+    final vazio = {for (final p in propriedades) p: ''};
+    final r = await _correr<List<String>?>(null, (h) => _executor.getProperties(h, propriedades));
+    if (r == null || r.length != propriedades.length) return vazio;
+    return {for (var i = 0; i < propriedades.length; i++) propriedades[i]: r[i]};
+  }
 
   @override
   Future<void> setRate(double velocidade) => _fechado ? Future.value() : _setRate(velocidade);
@@ -206,6 +218,10 @@ class ExecutorIsolate implements ExecutorMpv {
   @override
   Future<void> command(int handle, List<String> comando) => _pedir('cmd', handle, comando);
 
+  @override
+  Future<List<String>> getProperties(int handle, List<String> propriedades) async =>
+      [for (final v in (await _pedir('getn', handle, propriedades)) as List? ?? const []) v as String? ?? ''];
+
   static DynamicLibrary _libmpv() {
     final nomes = Platform.isWindows ? const ['libmpv-2.dll', 'mpv-2.dll', 'mpv-1.dll'] : const ['libmpv.so'];
     Object? erro;
@@ -219,6 +235,19 @@ class ExecutorIsolate implements ExecutorMpv {
     throw StateError('libmpv não encontrado ($erro)');
   }
 
+  /// No isolate: uma propriedade como texto (null se o mpv não a tem). As propriedades com
+  /// estrutura (ex.: `demuxer-cache-state`) vêm em JSON.
+  static String? _ler(DynamicLibrary lib, Pointer<Void> ctx, String propriedade, Arena arena) {
+    final r = lib.lookupFunction<_GetNativo, _Get>('mpv_get_property_string')(
+        ctx, propriedade.toNativeUtf8(allocator: arena));
+    if (r == nullptr) return null;
+    try {
+      return r.toDartString();
+    } finally {
+      lib.lookupFunction<_FreeNativo, _Free>('mpv_free')(r.cast());
+    }
+  }
+
   /// No isolate: uma chamada ao libmpv.
   static Object? _executar(String op, int handle, List<String> args) {
     final lib = _libmpv();
@@ -230,14 +259,9 @@ class ExecutorIsolate implements ExecutorMpv {
               ctx, args[0].toNativeUtf8(allocator: arena), args[1].toNativeUtf8(allocator: arena));
           return null;
         case 'get':
-          final r = lib.lookupFunction<_GetNativo, _Get>('mpv_get_property_string')(
-              ctx, args[0].toNativeUtf8(allocator: arena));
-          if (r == nullptr) return null;
-          try {
-            return r.toDartString();
-          } finally {
-            lib.lookupFunction<_FreeNativo, _Free>('mpv_free')(r.cast());
-          }
+          return _ler(lib, ctx, args[0], arena);
+        case 'getn':
+          return [for (final p in args) _ler(lib, ctx, p, arena)];
         case 'cmd':
           final arr = arena<Pointer<Utf8>>(args.length + 1);
           for (var i = 0; i < args.length; i++) {
