@@ -1,15 +1,22 @@
-// libmpv completo (mpv + ffmpeg com filtros: bwdif, yadif...) do mpv-android, no lugar do libmpv
+// libmpv completo (mpv + ffmpeg com filtros: bwdif, yadif, idet...) do mpv-android, no lugar do libmpv
 // "minimo" do media_kit_libs_android_video (ffmpeg com --disable-filters, sem desentrelacador).
 //
 // Descarrega (uma vez, fica em build/) os APKs "default" do release 2026-09-17 de
 // https://github.com/mpv-android/mpv-android, verifica o SHA-256 e tira deles as lib/<abi>/*.so
-// (libmpv, libavcodec, libavfilter, ...). Nao vai no repositorio (~30 MB por ABI).
+// listadas (com o SHA-256 de cada uma) em third_party/libmpv_completo/SHA256.txt. Nao vai no
+// repositorio (~30 MB por ABI). Depois de juntar as libs (merge*NativeLibs) confirma que o
+// libmpv.so de cada ABI e o fixado: o pickFirst nao fica a depender da ordem do AGP em silencio.
 // Ver third_party/libmpv_completo/LEIA-ME.md.
 import java.security.MessageDigest
 import java.util.zip.ZipFile
 
-// Para comparar com o libmpv minimo do media_kit: ORG_GRADLE_PROJECT_libmpvMinimo=1 flutter build apk ...
-if (project.hasProperty("libmpvMinimo")) return
+// So para comparar com o libmpv minimo do media_kit (so Android): -PlibmpvMinimo=1 (ou true).
+// Um APK assim nao passa no ferramentas/empacotar.py.
+def minimo = ["1", "true"].contains(String.valueOf(project.findProperty("libmpvMinimo") ?: "").trim().toLowerCase())
+if (minimo) {
+    logger.warn("libmpvMinimo: o APK leva o libmpv minimo do media_kit (sem filtros); nao e para distribuir")
+    return
+}
 
 def release = "2026-09-17"
 def apks = [
@@ -19,6 +26,23 @@ def apks = [
 ]
 def pasta = new File(rootProject.projectDir, "../build/libmpv-completo")
 def pastaJni = new File(pasta, "jniLibs")
+def ficheiroSha = new File(rootProject.projectDir, "../third_party/libmpv_completo/SHA256.txt")
+
+// abi -> (nome do .so -> SHA-256), das linhas "<sha> <pasta>/x/lib/<abi>/<nome>.so"
+def libsFixadas = { ->
+    def r = [:]
+    ficheiroSha.eachLine { l ->
+        def m = (l =~ /^([0-9a-f]{64})\s+\S+\/lib\/([^\/]+)\/([^\/\s]+\.so)$/)
+        if (m.find()) {
+            if (!r.containsKey(m.group(2))) r[m.group(2)] = [:]
+            r[m.group(2)][m.group(3)] = m.group(1)
+        }
+    }
+    apks.keySet().each { abi ->
+        if (!r[abi]?.containsKey("libmpv.so")) throw new GradleException("SHA256.txt sem lib/${abi}/libmpv.so")
+    }
+    r
+}
 
 def sha256 = { File f ->
     def md = MessageDigest.getInstance("SHA-256")
@@ -30,20 +54,42 @@ def sha256 = { File f ->
     md.digest().encodeHex().toString()
 }
 
+def descarregar = { String url, File destino ->
+    if (gradle.startParameter.offline) {
+        throw new GradleException("libmpv completo em falta e o build e --offline: corra uma vez com rede (${url})")
+    }
+    println "A descarregar o libmpv completo: ${url}"
+    def parcial = new File(destino.path + ".parcial")
+    try {
+        def ligacao = new URL(url).openConnection()
+        ligacao.connectTimeout = 30000
+        ligacao.readTimeout = 60000
+        ligacao.inputStream.withStream { is -> parcial.withOutputStream { os -> os << is } }
+        destino.delete()
+        if (!parcial.renameTo(destino)) throw new GradleException("nao consegui gravar ${destino}")
+    } catch (IOException e) {
+        parcial.delete()
+        throw new GradleException("Falhou a descarga do libmpv completo (${url}): ${e.message}", e)
+    }
+}
+
 def baixar = tasks.register("baixarLibmpvCompleto") {
+    inputs.file(ficheiroSha)
     outputs.dir(pastaJni)
     doLast {
+        def fixadas = libsFixadas()
         apks.each { abi, info ->
             def nome = info[0], esperado = info[1]
             def destino = new File(pastaJni, abi)
-            if (new File(destino, "libmpv.so").exists() && new File(destino, ".sha256").exists() &&
-                    new File(destino, ".sha256").text.trim() == esperado) return
+            def libs = fixadas[abi]
+            // a cache so vale completa: todas as libs listadas, cada uma com o SHA-256 certo, e nada a mais
+            def completa = libs.every { so, h -> def f = new File(destino, so); f.isFile() && sha256(f) == h }
+            def aMais = (destino.listFiles() ?: []).findAll { it.name.endsWith(".so") && !libs.containsKey(it.name) }
+            if (completa && aMais.isEmpty()) return
             def apk = new File(pasta, nome)
             if (!apk.exists() || sha256(apk) != esperado) {
                 apk.parentFile.mkdirs()
-                def url = "https://github.com/mpv-android/mpv-android/releases/download/${release}/${nome}"
-                println "A descarregar o libmpv completo: ${url}"
-                apk.withOutputStream { os -> os << new URL(url).openStream() }
+                descarregar("https://github.com/mpv-android/mpv-android/releases/download/${release}/${nome}", apk)
                 if (sha256(apk) != esperado) {
                     apk.delete()
                     throw new GradleException("SHA-256 errado em ${nome}; apagado. Corra o build de novo.")
@@ -53,16 +99,16 @@ def baixar = tasks.register("baixarLibmpvCompleto") {
             destino.mkdirs()
             def zip = new ZipFile(apk)
             try {
-                zip.entries().each { e ->
-                    if (!e.isDirectory() && e.name.startsWith("lib/${abi}/") && e.name.endsWith(".so")) {
-                        new File(destino, new File(e.name).name).withOutputStream { os -> os << zip.getInputStream(e) }
-                    }
+                libs.each { so, h ->
+                    def e = zip.getEntry("lib/${abi}/${so}")
+                    if (e == null) throw new GradleException("${nome} sem lib/${abi}/${so}")
+                    def f = new File(destino, so)
+                    f.withOutputStream { os -> os << zip.getInputStream(e) }
+                    if (sha256(f) != h) throw new GradleException("SHA-256 errado em lib/${abi}/${so} de ${nome}")
                 }
             } finally {
                 zip.close()
             }
-            if (!new File(destino, "libmpv.so").exists()) throw new GradleException("${nome} sem lib/${abi}/libmpv.so")
-            new File(destino, ".sha256").text = esperado
         }
     }
 }
@@ -75,15 +121,58 @@ android {
     }
     packaging {
         jniLibs {
-            // o jar do media_kit_libs_android_video traz um libmpv.so seu: fica o completo
+            // o jar do media_kit_libs_android_video traz um libmpv.so seu: fica o completo (confirmado
+            // abaixo, em cada APK)
             pickFirsts += ["**/libmpv.so"]
-            // o JNI do app do mpv-android (is.xyz.mpv.MPVLib): o media_kit não o usa
+            // o JNI da app do mpv-android (is.xyz.mpv.MPVLib): nao se extrai nem vai no APK
             excludes += ["**/libplayer.so"]
         }
     }
 }
 
+// Cada APK feito: o lib/<abi>/libmpv.so de cada ABI tem de ser o do mpv-android (SHA-256 fixado). Um
+// ABI sem libmpv completo (o x86 de 32 bits so existe no jar do media_kit) falha aqui se for no APK.
+def verificarApk = { String tarefa, File apk ->
+    def fixadas = libsFixadas()
+    def vistos = []
+    def zip = new ZipFile(apk)
+    try {
+        zip.entries().each { e ->
+            def m = (e.name =~ /^lib\/([^\/]+)\/libmpv\.so$/)
+            if (!m.find()) return
+            def abi = m.group(1)
+            def h = fixadas[abi]?.get("libmpv.so")
+            if (h == null) throw new GradleException("${tarefa}: ${apk.name} leva lib/${abi}/libmpv.so sem SHA-256 fixado")
+            def md = MessageDigest.getInstance("SHA-256")
+            zip.getInputStream(e).withStream { is ->
+                byte[] buf = new byte[1 << 16]
+                int n
+                while ((n = is.read(buf)) > 0) md.update(buf, 0, n)
+            }
+            if (md.digest().encodeHex().toString() != h) {
+                throw new GradleException("${tarefa}: lib/${abi}/libmpv.so de ${apk.name} nao e o libmpv completo do mpv-android")
+            }
+            vistos << abi
+        }
+    } finally {
+        zip.close()
+    }
+    if (vistos.isEmpty()) throw new GradleException("${tarefa}: ${apk.name} sem libmpv.so")
+    logger.lifecycle("${tarefa}: ${apk.name}: libmpv completo confirmado (SHA-256) em ${vistos.sort().join(', ')}")
+}
+
 tasks.configureEach { t ->
-    if (t.name.startsWith("merge") && t.name.endsWith("JniLibFolders")) t.dependsOn(baixar)
-    if (t.name.startsWith("merge") && t.name.endsWith("NativeLibs")) t.dependsOn(baixar)
+    if (t.name.startsWith("merge") && (t.name.endsWith("JniLibFolders") || t.name.endsWith("NativeLibs"))) {
+        t.dependsOn(baixar)
+    }
+    if (t.name ==~ /package[A-Z]\w*/ && !t.name.contains("Bundle") && !t.name.contains("AndroidTest")) {
+        t.doLast {
+            t.outputs.files.files.each { saida ->
+                if (saida.isFile() && saida.name.endsWith(".apk")) verificarApk(t.name, saida)
+                if (saida.isDirectory()) {
+                    saida.eachFileRecurse { f -> if (f.name.endsWith(".apk")) verificarApk(t.name, f) }
+                }
+            }
+        }
+    }
 }

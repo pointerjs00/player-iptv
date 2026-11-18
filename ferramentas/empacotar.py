@@ -26,6 +26,31 @@ MSG_SYMLINK = "Building with plugins requires symlink support"
 # o libmpv completo (com os filtros do ffmpeg: bwdif...) que o windows/libmpv_completo.cmake instala;
 # o do media_kit é mínimo e deixaria o desentrelaçamento só com o shader
 SHA256_LIBMPV = "88504ee5560942a955405e99dfb5971368e4cf851321f36565bf2a667271db1b"
+# os textos das licenças do libmpv/ffmpeg (GPLv3) que têm de ir com o pacote
+LICENCAS_WINDOWS = ["AVISOS-LICENCAS.txt", "licencas/GPL-3.0.txt", "licencas/LGPL-2.1.txt"]
+# no APK vão como assets da app (pubspec.yaml), mostrados em Definições -> Licenças
+LICENCAS_APK = [
+    "assets/flutter_assets/third_party/libmpv_completo/AVISOS-LICENCAS.txt",
+    "assets/flutter_assets/third_party/libmpv_completo/licencas/GPL-3.0.txt",
+    "assets/flutter_assets/third_party/libmpv_completo/licencas/LGPL-2.1.txt",
+]
+FICHEIRO_SHA256 = RAIZ / "third_party" / "libmpv_completo" / "SHA256.txt"
+
+
+def ler_sha256_libmpv_android(ficheiro: Path = FICHEIRO_SHA256) -> dict[str, str]:
+    """abi -> SHA-256 do libmpv.so do mpv-android (as linhas "<sha> <pasta>/x/lib/<abi>/libmpv.so")."""
+    r = {}
+    for linha in Path(ficheiro).read_text(encoding="utf-8").splitlines():
+        partes = linha.split()
+        if len(partes) == 2 and partes[1].endswith("/libmpv.so") and "/lib/" in partes[1]:
+            r[partes[1].split("/")[-2]] = partes[0]
+    return r
+
+
+# o libmpv completo de cada APK (android/libmpv_completo.gradle); o do media_kit é mínimo
+SHA256_LIBMPV_ANDROID = ler_sha256_libmpv_android()
+# o ABI de cada APK do Flutter
+ABI_APK = {"app-arm64-v8a-release.apk": "arm64-v8a", "app-armeabi-v7a-release.apk": "armeabi-v7a"}
 
 LEIA_ME = """\
 PLAYER IPTV - COMO INSTALAR
@@ -98,17 +123,40 @@ def verificar_libmpv(pasta: Path) -> None:
         raise SystemExit(
             "Empacotamento recusado: o libmpv-2.dll não é o libmpv completo (windows/libmpv_completo.cmake)."
         )
-    if not (Path(pasta) / "licencas-libmpv" / "AVISOS-LICENCAS.txt").is_file():
-        raise SystemExit("Empacotamento recusado: faltam os avisos de licença do libmpv (licencas-libmpv/).")
+    for nome in LICENCAS_WINDOWS:
+        if not (Path(pasta) / "licencas-libmpv" / nome).is_file():
+            raise SystemExit(f"Empacotamento recusado: falta licencas-libmpv/{nome} (licença do libmpv/ffmpeg).")
+
+
+def verificar_apk(apk: Path, abi: str) -> None:
+    """Recusa um APK sem o libmpv completo no ABI dele (SHA-256 fixado) ou sem os textos das licenças."""
+    with zipfile.ZipFile(apk) as z:
+        nomes = set(z.namelist())
+        lib = f"lib/{abi}/libmpv.so"
+        if lib not in nomes:
+            raise SystemExit(f"Empacotamento recusado: {Path(apk).name} sem {lib}.")
+        h = hashlib.sha256(z.read(lib)).hexdigest()
+        if h != SHA256_LIBMPV_ANDROID.get(abi):
+            raise SystemExit(
+                f"Empacotamento recusado: o {lib} de {Path(apk).name} não é o libmpv completo "
+                "(android/libmpv_completo.gradle; foi construído com libmpvMinimo?)."
+            )
+        for a in LICENCAS_APK:
+            if a not in nomes:
+                raise SystemExit(f"Empacotamento recusado: {Path(apk).name} sem {a} (licença do libmpv/ffmpeg).")
 
 
 def copiar_apks(origem: Path, dist: Path) -> list[Path]:
+    # todos verificados antes de copiar o primeiro: nunca fica um APK sem o libmpv completo em dist/
+    for nome_flutter in APKS:
+        src = Path(origem) / nome_flutter
+        if not src.is_file():
+            raise SystemExit(f"APK em falta: {src}")
+        verificar_apk(src, ABI_APK[nome_flutter])
     dist.mkdir(parents=True, exist_ok=True)
     feitos = []
     for nome_flutter, nome_final in APKS.items():
         src = Path(origem) / nome_flutter
-        if not src.is_file():
-            raise SystemExit(f"APK em falta: {src}")
         destino = dist / nome_final
         shutil.copy2(src, destino)
         feitos.append(destino)
