@@ -81,11 +81,23 @@ install(FILES "${FLUTTER_ICU_DATA_FILE}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}
 install(FILES "${FLUTTER_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
   COMPONENT Runtime)
 
-if(PLUGIN_BUNDLED_LIBRARIES)
-  install(FILES "${PLUGIN_BUNDLED_LIBRARIES}"
+# O libmpv-2.dll do pacote do media_kit nao tem filtros do ffmpeg (sem desentrelacador): usa-se o
+# completo (windows/libmpv_completo.cmake). Os outros ficheiros (ANGLE...) ficam como estavam.
+include(libmpv_completo.cmake)
+set(BUNDLED_SEM_LIBMPV ${PLUGIN_BUNDLED_LIBRARIES})
+list(FILTER BUNDLED_SEM_LIBMPV EXCLUDE REGEX "libmpv-2[.]dll$")
+if(BUNDLED_SEM_LIBMPV)
+  install(FILES ${BUNDLED_SEM_LIBMPV}
     DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
     COMPONENT Runtime)
 endif()
+install(FILES "${LIBMPV_COMPLETO_DLL}"
+  DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+  COMPONENT Runtime)
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/libmpv_completo/LEIA-ME.md"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/libmpv_completo/AVISOS-LICENCAS.txt"
+  DESTINATION "${INSTALL_BUNDLE_LIB_DIR}/licencas-libmpv"
+  COMPONENT Runtime)
 
 # Copy the native assets provided by the hook/build.dart from all packages.
 set(NATIVE_ASSETS_DIR "${PROJECT_BUILD_DIR}native_assets/windows/")

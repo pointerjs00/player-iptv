@@ -1,0 +1,29 @@
+LIBMPV COMPLETO - AVISOS DE LICENCA
+===================================
+
+Este pacote inclui o libmpv (biblioteca do leitor mpv) e o ffmpeg (libavcodec, libavfilter,
+libavformat, libavutil, libswscale, libswresample), compilados por terceiros:
+
+Windows  libmpv-2.dll
+  Build: https://github.com/shinchiro/mpv-winbuild-cmake  (release 20261111)
+  mpv v0.42.0-38-gbcde6b93c  -  ffmpeg N-128766-gcd4e96eb3
+  Codigo-fonte e scripts de build: o repositorio acima (o release 20261111 e o commit
+  bcde6b93cc do mpv; as dependencias estao nos pacotes do repositorio).
+
+Android  libmpv.so, libavcodec.so, libavfilter.so, libavformat.so, libavutil.so, libswscale.so,
+         libswresample.so, libc++_shared.so
+  Build: https://github.com/mpv-android/mpv-android  (release 2026-09-17)
+  Scripts de build e codigo-fonte: https://github.com/mpv-android/mpv-android (buildscripts/)
+
+Licencas
+--------
+- mpv: GNU General Public License v2 ou posterior (ou LGPL v2.1+ sem as partes GPL).
+  https://github.com/mpv-player/mpv/blob/master/LICENSE.GPL  e  LICENSE.LGPL
+- ffmpeg: GNU Lesser General Public License v2.1 ou posterior; com --enable-gpl --enable-version3
+  (como estes builds) fica sob GNU General Public License v3.
+  https://ffmpeg.org/legal.html
+- Os builds incluem tambem outras bibliotecas (libass, freetype, harfbuzz, fribidi, libplacebo,
+  lcms2, etc.) com as respetivas licencas, listadas nos repositorios acima.
+
+Este software e fornecido sem garantia. Os textos completos das licencas estao nos links acima.
+Se recebeu este pacote e quer o codigo-fonte correspondente, os repositorios acima tem-no.
