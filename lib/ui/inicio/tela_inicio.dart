@@ -132,7 +132,7 @@ class _TelaInicioState extends State<TelaInicio> {
     });
   }
 
-  /// O menu de ações do cartão (pressão longa, clique direito, OK mantido ou "Mais opções").
+  /// O menu de ações do cartão (pressão longa, clique direito ou OK mantido).
   Future<void> _menu(Lista l) async {
     final area = widget.area;
     final acao = await mostrarMenuLista(context, l, comGestor: area != null);

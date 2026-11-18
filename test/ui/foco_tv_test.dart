@@ -597,7 +597,8 @@ void main() {
       final vistos = <String>{};
       final falhas = await _semRealceAoPercorrer(t, 30, vistos: vistos);
       expect(falhas, isEmpty);
-      for (final v in ['Player', 'Gestor', 'Todas', 'Mais opções', '[campo ]']) {
+      for (final v in ['Player', 'Gestor', 'Todas', '[campo ]']) {
+        expect(vistos, isNot(contains('Mais opções')), reason: 'o menu é só com pressão longa');
         expect(vistos, contains(v), reason: 'percorreu: $vistos');
       }
       // o Player não gere nada
@@ -671,8 +672,8 @@ void main() {
       expect(vistos.join(' / '), allOf(contains('Escolher ficheiros'), contains('Cancelar'), contains('Adicionar')));
     });
 
-    testWidgets('D1: DIREITA do 1.º cartão foca o 2.º cartão (não o botão de dentro) e só há um realce; '
-        'BAIXO entra nos botões do cartão', (t) async {
+    testWidgets('D1: DIREITA do 1.º cartão foca o 2.º cartão e só há um realce; o cartão é uma só '
+        'paragem (sem botões de dentro)', (t) async {
       // como no emulador da Android TV: 960×540 lógicos e tamanhos de TV
       _realceTv();
       _tamanho(t, 960, 540);
@@ -692,7 +693,7 @@ void main() {
               (w.decoration as BoxDecoration).border == Border.fromBorderSide(Realce.borda))
           .evaluate()
           .length;
-      // o cartão inteiro tem o foco: os textos de dentro (nome, botão...) são todos do foco
+      // o cartão inteiro tem o foco: os textos de dentro (nome, estado...) são todos do foco
       bool cartaoFocado(String nome) => _textosFocados().length > 1 && _focado().contains(nome);
       expect(cartaoFocado('001A'), isTrue, reason: _focado());
       expect(realces(), 1);
@@ -700,17 +701,8 @@ void main() {
       await t.pump();
       expect(cartaoFocado('002B'), isTrue, reason: 'foco em: ${_focado()}');
       expect(realces(), 1, reason: 'um só realce visível');
+      // sem linha por baixo, BAIXO não entra em nada de dentro: o foco fica no cartão
       await _tecla(t, LogicalKeyboardKey.arrowDown);
-      await t.pump();
-      expect(_textosFocados(), hasLength(1), reason: 'BAIXO entra num botão do cartão: ${_focado()}');
-      // o botão tem o seu realce (borda no Material do botão); o cartão deixa de ter o dele
-      expect(realces(), 0, reason: 'com o foco no botão, o cartão já não tem realce');
-      expect(_semRealce(), isNull);
-      // o único botão do cartão do Player é "Mais opções" (verificar é no Gestor)
-      expect(_focado(), 'Mais opções');
-      // do botão de dentro do 2.º cartão (em cima, à direita), ESQUERDA volta ao cartão dele e
-      // depois vai para o 1.º cartão (não para o botão dele)
-      await _tecla(t, LogicalKeyboardKey.arrowLeft);
       await t.pump();
       expect(cartaoFocado('002B'), isTrue, reason: 'foco em: ${_focado()}');
       await _tecla(t, LogicalKeyboardKey.arrowLeft);

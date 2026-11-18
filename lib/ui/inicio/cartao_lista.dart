@@ -8,7 +8,7 @@ import '../tema.dart';
 /// Cartão de uma lista no Player: ícone do tipo, nome, servidor, pílula do último resultado,
 /// validade e motivo (a verificação faz-se no Gestor). Com o foco do comando cresce e brilha
 /// (ver [CartaoModerno]). O menu de ações ([aoMenu]) abre com a pressão longa (toque longo,
-/// clique direito, OK mantido) ou com o botão "Mais opções".
+/// clique direito, OK mantido). O cartão não tem botões de dentro: é uma só paragem do foco.
 class CartaoLista extends StatelessWidget {
   const CartaoLista({super.key, required this.lista, required this.aoAbrir, this.aoMenu, this.autofocus = false,
       this.focusNode});
@@ -56,12 +56,6 @@ class CartaoLista extends StatelessWidget {
                     maxLines: 1, overflow: TextOverflow.ellipsis, style: secundario),
               ]),
             ),
-            if (aoMenu != null)
-              IconButton(
-                tooltip: 'Mais opções',
-                icon: const Icon(Icons.more_vert, size: 20, color: Tokens.texto2),
-                onPressed: aoMenu,
-              ),
           ]),
           const Spacer(),
           Wrap(spacing: Tokens.e8, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
