@@ -1,10 +1,18 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:player_iptv/ui/player/taxa_ecra.dart';
 
 void main() {
   const tv = [24.0, 25.0, 30.0, 50.0, 60.0];
+  // o que a app faz ao ir para segundo plano (registado pela TaxaEcra quando deixa um modo)
+  VoidCallback? segundoPlano;
+  setUp(() {
+    TaxaEcra.reiniciarGlobal();
+    segundoPlano = null;
+    TaxaEcra.aoIrParaSegundoPlano = (f) => segundoPlano = f;
+  });
   group('escolherTaxa', () {
     test('50 fps (TV portuguesa) -> 50 Hz', () => expect(escolherTaxa(50, tv), 50));
     test('25 fps -> 50 Hz (o múltiplo mais alto até 60)', () => expect(escolherTaxa(25, tv), 50));
@@ -65,7 +73,7 @@ void main() {
   });
 
   group('TaxaEcra: saídas e corridas (M1)', () {
-    test('Voltar a meio do pedido: o modo pedido depois de sair é reposto', () async {
+    test('Voltar a meio do pedido: o modo fica (sem piscar) e repõe-se em segundo plano', () async {
       final chamadas = <String>[];
       final pedir = Completer<Object?>();
       final t = TaxaEcra(invocar: (m, [a]) {
@@ -80,7 +88,10 @@ void main() {
       await t.fechar(); // dispose do player enquanto o "pedir" ainda não respondeu
       pedir.complete(true);
       await f;
-      expect(chamadas.last, 'repor', reason: 'nunca fica preso no modo pedido');
+      expect(chamadas, isNot(contains('repor')));
+      segundoPlano!();
+      await Future<void>.delayed(Duration.zero);
+      expect(chamadas.last, 'repor', reason: 'nunca fica preso no modo pedido fora da app');
     });
 
     test('fechado antes de responder às taxas: não pede nada', () async {
@@ -112,9 +123,50 @@ void main() {
       expect(chamadas.where((c) => c == 'pedir').length, 2);
       await t.fechar();
       await t.fechar();
-      expect(chamadas.where((c) => c == 'repor').length, 2);
+      expect(chamadas.where((c) => c == 'repor').length, 1, reason: 'sair do player não repõe');
       expect(await t.ajustarPara(50), isNull);
       expect(chamadas.where((c) => c == 'pedir').length, 2);
+    });
+
+    test('sair do player não repõe o modo (a TV não pisca ao sair)', () async {
+      final chamadas = <String>[];
+      final t = TaxaEcra(invocar: (m, [a]) async {
+        chamadas.add(m);
+        return m == 'taxas' ? {'atual': 60.0, 'suportadas': [50.0, 60.0]} : true;
+      });
+      await t.ajustarPara(50);
+      await t.fechar();
+      expect(chamadas, ['taxas', 'pedir']);
+      expect(segundoPlano, isNotNull, reason: 'fica marcado para repor fora da app');
+    });
+
+    test('o player seguinte herda o modo deixado: um erro dele repõe-no', () async {
+      final chamadas = <String>[];
+      Future<Object?> invocar(String m, [Object? a]) async {
+        chamadas.add(m);
+        return m == 'taxas' ? {'atual': 60.0, 'suportadas': [50.0, 60.0]} : true;
+      }
+      final a = TaxaEcra(invocar: invocar);
+      await a.ajustarPara(50);
+      await a.fechar();
+      final b = TaxaEcra(invocar: invocar);
+      await b.repor();
+      expect(chamadas.last, 'repor');
+      segundoPlano!();
+      await Future<void>.delayed(Duration.zero);
+      expect(chamadas.where((c) => c == 'repor').length, 1, reason: 'já estava reposto');
+    });
+
+    test('sem modo deixado, ir para segundo plano não pede nada', () async {
+      final chamadas = <String>[];
+      final t = TaxaEcra(invocar: (m, [a]) async {
+        chamadas.add(m);
+        return m == 'taxas' ? {'atual': 50.0, 'suportadas': [50.0, 60.0]} : true;
+      });
+      await t.ajustarPara(50); // já estava em 50 Hz: não pede
+      await t.fechar();
+      expect(segundoPlano, isNull);
+      expect(chamadas, ['taxas']);
     });
 
     test('hzAtual: os Hz do ecrã segundo o sistema', () async {

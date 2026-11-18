@@ -120,7 +120,6 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     aoAbrir: () {
       if (!mounted) return;
       setState(() { _aAbrir = false; _aRetomar = false; _erro = null; });
-      _ajustarTaxa(_pedido);
       _vigiarImagem(_pedido);
     },
     aoFalhar: (motivo) {
@@ -317,6 +316,9 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       await VezDoAudio.instancia.esperar();
       if (!mounted || pedido != _pedido) return;
       await _player.open(Media(f.url, httpHeaders: f.headers));
+      // o modo de ecrã pede-se já (o fps sabe-se logo que o canal abre): a TV pisca a mudar de
+      // modo enquanto o indicador de abertura ainda está à vista, não por cima da imagem
+      if (mounted && pedido == _pedido) unawaited(_ajustarTaxa(pedido));
     } catch (e) {
       if (!mounted || pedido != _pedido) return;
       _vigia.parar();
