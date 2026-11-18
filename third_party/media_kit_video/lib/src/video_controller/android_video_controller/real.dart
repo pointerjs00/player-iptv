@@ -45,11 +45,25 @@ class AndroidVideoController extends PlatformVideoController {
     }
   }
 
+  /// player-iptv: com `mediacodec_embed`, o tamanho real da superfície (do último
+  /// `VideoOutput.Resize`) e o do vídeo (do último `videoParams`, que dá a proporção no ecrã).
+  Rect? _rectSuperficie;
+  Rect? _rectVideo;
+
+  /// player-iptv: o [rect] depois de um `VideoOutput.Resize`. Com `mediacodec_embed` a superfície
+  /// tem tamanho fixo e o [rect] é a proporção do vídeo: quando a superfície é recriada (app em
+  /// segundo plano e de volta), o `videoParams` não volta a chegar e um vídeo 4:3 ficava esticado
+  /// a 16:9. Fica o do último vídeo; sem vídeo ainda (ou com outro vo), o da superfície.
+  static Rect rectDepoisDeResize({required String? vo, required Rect superficie, required Rect? video}) =>
+      vo == 'mediacodec_embed' && video != null ? video : superficie;
+
   /// Listener for updating the --wid property.
   Future<void> widListener() {
     return lock.synchronized(() async {
-      final width = rect.value?.width.toInt() ?? 1;
-      final height = rect.value?.height.toInt() ?? 1;
+      // player-iptv: com mediacodec_embed, o tamanho da superfície (o [rect] é o do vídeo)
+      final tamanho = configuration.vo == 'mediacodec_embed' ? (_rectSuperficie ?? rect.value) : rect.value;
+      final width = tamanho?.width.toInt() ?? 1;
+      final height = tamanho?.height.toInt() ?? 1;
       final androidSurfaceSizeValue = [width, height].join('x');
       final widValue = wid.value?.toString() ?? '0';
       // When --wid is 0, vo=null is required to avoid SIGSEGV.
@@ -108,8 +122,10 @@ class AndroidVideoController extends PlatformVideoController {
         }
 
         final isZero = width == 0 || height == 0;
-        final isSame = width == rect.value?.width.toInt() &&
-            height == rect.value?.height.toInt();
+        // player-iptv: com mediacodec_embed compara-se com o último vídeo (o [rect] pode ser o da
+        // superfície depois de ela ser recriada)
+        final anterior = configuration.vo == 'mediacodec_embed' ? _rectVideo : rect.value;
+        final isSame = width == anterior?.width.toInt() && height == anterior?.height.toInt();
         if (isZero || isSame) {
           return;
         }
@@ -119,7 +135,8 @@ class AndroidVideoController extends PlatformVideoController {
           // MediaCodec escala a imagem para ela) e só muda a proporção do vídeo no ecrã. Mudar
           // o tamanho da superfície obrigava a religar o vo e o descodificador a meio do canal
           // (ecrã preto e, no emulador, o mpv preso).
-          rect.value = Rect.fromLTWH(0.0, 0.0, width.toDouble(), height.toDouble());
+          _rectVideo = Rect.fromLTWH(0.0, 0.0, width.toDouble(), height.toDouble());
+          rect.value = _rectVideo;
           if (!waitUntilFirstFrameRenderedCompleter.isCompleted) {
             waitUntilFirstFrameRenderedCompleter.complete();
           }
@@ -316,7 +333,10 @@ class AndroidVideoController extends PlatformVideoController {
                     );
                     final int id = call.arguments['id'];
                     final int wid = call.arguments['wid'];
-                    _controllers[handle]?.rect.value = rect;
+                    final controller = _controllers[handle];
+                    controller?._rectSuperficie = rect;
+                    controller?.rect.value = rectDepoisDeResize(
+                        vo: controller.configuration.vo, superficie: rect, video: controller._rectVideo);
                     _controllers[handle]?.id.value = id;
                     _controllers[handle]?.wid.value = wid;
                     break;
