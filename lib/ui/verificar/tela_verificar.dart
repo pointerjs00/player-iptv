@@ -610,7 +610,8 @@ class _TelaVerificarState extends State<TelaVerificar> {
   }
 
   Widget _linha(Lista l, ServicoVerificacao s) {
-    final (cor, rotulo, icone) = visualEstado(l.ultima?.estado);
+    final estado = estadoDe(l);
+    final (cor, rotulo, icone) = (estado.cor, estado.rotulo, estado.icone);
     final passo = s.passos[l.id];
     return RealceFoco(
       construir: (_, aoMudarFoco) => CheckboxListTile(

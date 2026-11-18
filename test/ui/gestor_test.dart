@@ -97,6 +97,19 @@ void main() {
   Widget gestor() => Scaffold(
       body: TelaVerificar(biblioteca: bib, area: area, servico: ServicoVerificacao(bib, colecao: area)));
 
+  group('Estados no Gestor', () {
+    testWidgets('a linha de uma lista inconclusiva diz "Inconclusiva"', (t) async {
+      await t.runAsync(() => bib.adicionar([
+            Importada(contaDeLinha('http://outro.com/c/ 00:1A:79:00:00:02')!, _u('inconclusivo', motivo: 'tempo esgotado')),
+          ]));
+      _tamanho(t, 1200, 900);
+      await t.pumpWidget(_app(gestor()));
+      await t.pump();
+      expect(find.textContaining('Inconclusiva · tempo esgotado'), findsOneWidget);
+      expect(find.textContaining('Inconclusivo'), findsNothing);
+    });
+  });
+
   group('Player', () {
     testWidgets('os separadores chamam-se Player e Gestor; o "+" só existe com o Gestor ativo', (t) async {
       _tamanho(t, 1200, 900);

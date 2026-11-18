@@ -228,14 +228,6 @@ ButtonStyle _estiloBotao(bool realceFoco, {BorderSide? lado}) => ButtonStyle(
       overlayColor: realceFoco ? _seFocado(_fundoFoco) : null,
     );
 
-/// Cor e texto de um estado da verificação.
-(Color, String, IconData) visualEstado(String? estado) => switch (estado) {
-      'funciona' => (Tokens.ok, 'Funciona', Icons.check_circle_outline),
-      'nao_funciona' => (Tokens.mau, 'Não funciona', Icons.cancel_outlined),
-      'inconclusivo' => (Tokens.aviso, 'Inconclusivo', Icons.warning_amber_rounded),
-      _ => (Tokens.neutro, 'Por verificar', Icons.help_outline),
-    };
-
 /// "há 2 dias", "hoje às 14:05"...
 String dataRelativa(DateTime d, [DateTime? agora]) {
   final a = agora ?? DateTime.now();
