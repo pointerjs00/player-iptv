@@ -217,7 +217,9 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
                         style: TextStyle(color: Tokens.texto2, fontSize: 12.5)),
                   ]),
                   _seccao('Preferências do player', 'Valem para todos os canais.', Icons.tune_rounded, [
-                    _interruptor('Desentrelaçamento', 'Limpa as linhas das imagens entrelaçadas.', _p.desentrelacar,
+                    _interruptor('Desentrelaçamento', _android
+                            ? 'Limpa as linhas dos canais entrelaçados (1080i/576i), por campo (50 imagens/s). Na descodificação Direta o canal entrelaçado reabre em Compatível.'
+                            : 'Limpa as linhas dos canais entrelaçados (1080i/576i), por campo (50 imagens/s).', _p.desentrelacar,
                         (v) => _p.desentrelacar = v),
                     _interruptor('Descodificação por hardware', 'Desligue se a imagem falhar.', _p.hardware,
                         (v) => _p.hardware = v),

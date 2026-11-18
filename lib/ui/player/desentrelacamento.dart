@@ -6,21 +6,25 @@ import 'configuracao_mpv.dart';
 
 /// O desentrelaçamento do player (canais 1080i/576i).
 ///
-/// O libmpv incluído (0.36, ffmpeg 6.0 com `--disable-filters`) não tem nenhum desentrelaçador de
-/// software: `deinterlace=yes` pede o `yadif`, que não existe (`filter 'yadif' not found`), e o
-/// vídeo segue entrelaçado. Só o `d3d11vpp` (Windows) existe, e só para imagens d3d11 na GPU — e com
-/// o ANGLE da app o mpv não carrega o `d3d11-egl`, por isso o `auto-safe` dá `d3d11va-copy` (imagens
-/// na memória). No Android direto (`mediacodec_embed`) as imagens nem passam pelo mpv, e o
-/// MediaCodec do aparelho pode não desentrelaçar (o do emulador não: riscas nas capturas).
+/// Com um libmpv **completo** (mpv 0.40+ com o ffmpeg com filtros: ver `third_party/libmpv_completo`)
+/// desentrelaça-se com o `bwdif` do ffmpeg em modo `send_field`: uma imagem por campo, 25i -> 50
+/// imagens/s (o que o "sfvip player" faz), só nas imagens marcadas como entrelaçadas
+/// (`deint=interlaced`). No Windows serve com descodificação por software e `d3d11va-copy`; no
+/// Android só fora do modo direto (`vo=mediacodec_embed`: as imagens nem passam pelo mpv), por isso
+/// um canal entrelaçado no direto reabre-se em Compatível (`mediacodec-copy` + `vo=gpu`; o MediaCodec
+/// não marca o entrelaçado, aí o filtro leva `deint=all`, e só se chega lá com a regra das linhas).
 ///
-/// Por isso o player desentrelaça com um shader dele (um campo + deteção de riscas, ver
-/// [shaderMpvDesentrelacar]): no Windows no renderizador do mpv (`glsl-shaders`, à resolução da
-/// imagem), no Android por cima da textura do vídeo no Flutter (`shaders/desentrelacar.frag`, que
-/// serve nos dois modos). Fica-se nas 25 imagens/s do vídeo (o d3d11vpp dá 50, por campo).
+/// O libmpv mínimo do media_kit (0.36, `--disable-filters`) não tem nenhum: `deinterlace=yes` pede o
+/// `yadif`, que não existe (`filter 'yadif' not found`). Aí fica o shader do player (um campo +
+/// deteção de riscas, ver [shaderMpvDesentrelacar]): no Windows no renderizador do mpv
+/// (`glsl-shaders`), no Android por cima da textura do vídeo no Flutter (`shaders/desentrelacar.frag`).
+/// O shader fica nas 25 imagens/s do vídeo. O `d3d11vpp` (imagens d3d11 na GPU, por campo) só entra
+/// se o hwdec for mesmo `d3d11va`: com o ANGLE da app o mpv dá `d3d11va-copy`.
 
 /// O que se lê do mpv para decidir (de uma vez, fora da UI). No Android sem o
 /// `video-frame-info`: o MediaCodec não passa a marca de entrelaçado ao mpv.
 List<String> propriedadesEntrelacamento(PlataformaVideo p) => [
+      'mpv-version',
       if (p != PlataformaVideo.android) 'video-frame-info/interlaced',
       'height',
       'container-fps',
@@ -48,9 +52,44 @@ bool? imagemEntrelacada(Map<String, String> m) {
   return linhas.contains(altura.round()) && fps <= 30.5;
 }
 
+/// O libmpv tem os filtros do ffmpeg (`bwdif`)? Os builds completos são mpv 0.40+; o mínimo do
+/// media_kit é 0.36 (`mpv-version` = "mpv v0.42.0-38-g…").
+bool filtrosDoMpv(String? versao) {
+  final m = RegExp(r'v?(\d+)\.(\d+)').firstMatch(versao ?? '');
+  if (m == null) return false;
+  final maior = int.parse(m[1]!), menor = int.parse(m[2]!);
+  return maior > 0 || menor >= 40;
+}
+
+/// O `vf` do desentrelaçamento: o bwdif por campo (`send_field`: 25i -> 50 imagens/s). Só nas imagens
+/// que o mpv marca como entrelaçadas; o MediaCodec não as marca, aí vão todas (só se chega cá com a
+/// regra das linhas de [imagemEntrelacada]).
+String filtroDesentrelacamento(String hwdec) =>
+    'bwdif=mode=send_field:deint=${hwdec.trim().startsWith('mediacodec') ? 'all' : 'interlaced'}';
+
+/// O Android no modo direto com imagem entrelaçada e filtros no libmpv: o filtro não se aplica no
+/// direto, o canal tem de reabrir em Compatível (uma vez por canal, ver `CompativelNaSessao`).
+bool precisaModoComFiltro(PlataformaVideo p,
+        {required bool ligado, required bool? entrelacada, required bool filtros, required bool direto}) =>
+    p == PlataformaVideo.android && ligado && entrelacada == true && filtros && direto;
+
+/// Com o filtro no `vf` a imagem que sai do mpv já é progressiva (`video-frame-info/interlaced` passa a
+/// `no`): não se reavalia a partir dela, senão o filtro ligava e desligava a cada verificação.
+bool? entrelacadaDepois(MeioDesentrelacamento atual, bool? anterior, bool? lida) =>
+    atual == MeioDesentrelacamento.filtroMpv ? (anterior ?? lida) : (lida ?? anterior);
+
+/// Com o filtro posto o mpv deixou de ter imagem (altura vazia): o filtro não funcionou aqui; volta-se
+/// ao shader.
+bool filtroFalhou(MeioDesentrelacamento atual, Map<String, String> m) =>
+    atual == MeioDesentrelacamento.filtroMpv && (_numero(m['height']) ?? 0) <= 0;
+
 enum MeioDesentrelacamento {
   /// Desligado, imagem progressiva ou sem meio neste aparelho.
   nenhum,
+
+  /// O `bwdif` do ffmpeg por campo (`vf`), 50 imagens/s: libmpv completo, Windows ou Android
+  /// fora do modo direto.
+  filtroMpv,
 
   /// Windows com imagens d3d11va na GPU: `deinterlace=yes` (o mpv põe o `d3d11vpp`, por campo).
   d3d11vpp,
@@ -64,15 +103,33 @@ enum MeioDesentrelacamento {
 
 /// Como desentrelaçar. `shaderFlutter`: o Flutter permite o shader (Impeller).
 MeioDesentrelacamento meioDesentrelacamento(PlataformaVideo p,
-    {required bool ligado, required bool? entrelacada, required String hwdec, required bool shaderFlutter}) {
+    {required bool ligado,
+    required bool? entrelacada,
+    required String hwdec,
+    required bool shaderFlutter,
+    bool filtros = false,
+    bool direto = false}) {
   if (!ligado || entrelacada != true) return MeioDesentrelacamento.nenhum;
-  if (p == PlataformaVideo.android) return shaderFlutter ? MeioDesentrelacamento.shaderFlutter : MeioDesentrelacamento.nenhum;
-  return hwdec.trim() == 'd3d11va' ? MeioDesentrelacamento.d3d11vpp : MeioDesentrelacamento.shaderMpv;
+  if (p == PlataformaVideo.android) {
+    if (filtros && !direto) return MeioDesentrelacamento.filtroMpv;
+    return shaderFlutter ? MeioDesentrelacamento.shaderFlutter : MeioDesentrelacamento.nenhum;
+  }
+  if (hwdec.trim() == 'd3d11va') return MeioDesentrelacamento.d3d11vpp;
+  return filtros ? MeioDesentrelacamento.filtroMpv : MeioDesentrelacamento.shaderMpv;
 }
 
-/// Põe o meio no mpv (só o Windows usa o mpv; no Android garante que fica sem nada). Nunca lança.
-Future<void> aplicarMeioMpv(MotorMpv mpv, MeioDesentrelacamento m, {required String? caminhoShader}) async {
+/// Põe o meio no mpv (o shader e os filtros só correm no mpv; o do Flutter deixa-o sem nada).
+/// Nunca lança. `hwdec`: o `hwdec-current` (decide o `deint` do filtro).
+Future<void> aplicarMeioMpv(MotorMpv mpv, MeioDesentrelacamento m,
+    {required String? caminhoShader, String hwdec = ''}) async {
   try {
+    if (m == MeioDesentrelacamento.filtroMpv) {
+      await mpv.setProperty('glsl-shaders', '');
+      await mpv.setProperty('deinterlace', 'no');
+      await mpv.setProperty('vf', filtroDesentrelacamento(hwdec));
+      return;
+    }
+    await mpv.setProperty('vf', '');
     if (m == MeioDesentrelacamento.d3d11vpp) {
       await mpv.setProperty('glsl-shaders', '');
       await mpv.setProperty('deinterlace', 'yes');
@@ -89,6 +146,7 @@ Future<void> aplicarMeioMpv(MotorMpv mpv, MeioDesentrelacamento m, {required Str
 /// O que as estatísticas mostram.
 String textoDesentrelacamento(MeioDesentrelacamento m, {required bool ligado, required bool? entrelacada}) =>
     switch (m) {
+      MeioDesentrelacamento.filtroMpv => 'ligado (bwdif, por campo)',
       MeioDesentrelacamento.d3d11vpp => 'ligado (d3d11vpp, por campo)',
       MeioDesentrelacamento.shaderMpv || MeioDesentrelacamento.shaderFlutter => 'ligado (shader do player)',
       MeioDesentrelacamento.nenhum when !ligado => 'desligado',

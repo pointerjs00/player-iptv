@@ -49,10 +49,10 @@ String? hwdecEmTempoReal(PlataformaVideo p, {required bool hardware}) =>
 /// propriedade a menos não impede o canal de abrir).
 ///
 /// O desentrelaçamento decide-se depois, com a imagem (`desentrelacamento.dart`). Aqui o Windows só
-/// fica com `deinterlace=no`: o `deinterlace=yes` pedia o `yadif`, que o ffmpeg incluído não tem
-/// (o d3d11vpp, quando serve, liga-se depois). O Android não usa o mpv para isto.
+/// fica com `deinterlace=no` (o filtro ou o d3d11vpp ligam-se depois) e, com `limparFiltro`, sem o
+/// `vf` do canal anterior. No Android direto não se toca no mpv para isto.
 Future<void> aplicarAoAbrir(MotorMpv mpv, Preferencias p, SessaoPlayer s,
-    {required PlataformaVideo plataforma, required ModoDescodificacao modo}) async {
+    {required PlataformaVideo plataforma, required ModoDescodificacao modo, bool limparFiltro = false}) async {
   try {
     await mpv.setRate(1.0);
     await mpv.setVolume(p.volume);
@@ -61,6 +61,8 @@ Future<void> aplicarAoAbrir(MotorMpv mpv, Preferencias p, SessaoPlayer s,
     final hwdec = hwdecEmTempoReal(plataforma, hardware: p.hardware);
     if (hwdec != null) await mpv.setProperty('hwdec', hwdec);
     if (plataforma != PlataformaVideo.android) await mpv.setProperty('deinterlace', 'no');
+    // o bwdif do canal anterior: o canal novo decide-se de novo com a imagem dele
+    if (limparFiltro) await mpv.setProperty('vf', '');
   } catch (e) {
     debugPrint('mpv: preferências não aplicadas ($e)');
   }

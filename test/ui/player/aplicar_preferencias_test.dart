@@ -97,6 +97,19 @@ void main() {
       }
     });
 
+    test('com o filtro do canal anterior no vf: tira-se ao abrir (senão o bwdif levava canais progressivos)', () async {
+      for (final p in [PlataformaVideo.windows, PlataformaVideo.android]) {
+        final mpv = MpvFalso();
+        await aplicarAoAbrir(mpv, Preferencias.omissao(), SessaoPlayer(),
+            plataforma: p, modo: ModoDescodificacao.compativel, limparFiltro: true);
+        expect(mpv.chamadas, contains('vf='), reason: '$p');
+      }
+      final mpv = MpvFalso();
+      await aplicarAoAbrir(mpv, Preferencias.omissao(), SessaoPlayer(),
+          plataforma: PlataformaVideo.windows, modo: ModoDescodificacao.direto);
+      expect(mpv.chamadas.where((c) => c.startsWith('vf')), isEmpty);
+    });
+
     test('um mpv que falha nunca impede o canal de abrir', () async {
       await aplicarAoAbrir(_MpvQueFalha(), Preferencias.omissao(), SessaoPlayer(),
           plataforma: PlataformaVideo.windows, modo: ModoDescodificacao.direto);

@@ -118,6 +118,12 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   bool? _entrelacada;
   String _hwdecAtual = '';
   MeioDesentrelacamento _meio = MeioDesentrelacamento.nenhum;
+
+  /// O libmpv tem os filtros do ffmpeg (bwdif)? Lê-se do `mpv-version`; [_filtroFalhou]: o filtro
+  /// tirou a imagem neste player (volta-se ao shader); [_filtroConfirmado]: já deu imagem com ele.
+  bool _filtros = false;
+  bool _filtroFalhou = false;
+  bool _filtroConfirmado = false;
   Timer? _vigiaEntrelacamento;
   Future<void> _filaDesentrelacamento = Future.value();
   static const _intervaloEntrelacamento = Duration(seconds: 10);
@@ -429,8 +435,11 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     _ligacao = LigacaoDireto();
     _vigiaEntrelacamento?.cancel();
     _entrelacada = null;
-    // o aplicarAoAbrir põe deinterlace=no (o d3d11vpp volta a ligar-se com a imagem)
-    if (_meio == MeioDesentrelacamento.d3d11vpp) _meio = MeioDesentrelacamento.nenhum;
+    // o aplicarAoAbrir põe deinterlace=no (o d3d11vpp volta a ligar-se com a imagem); o vf do filtro
+    // fica no mpv, mas volta a verificar-se com a imagem do canal novo
+    final limparFiltro = _meio == MeioDesentrelacamento.filtroMpv;
+    if (_meio == MeioDesentrelacamento.d3d11vpp || limparFiltro) _meio = MeioDesentrelacamento.nenhum;
+    _filtroConfirmado = false;
     setState(() {
       if (!continuar) _ultima.largar();
       _aAbrir = true;
@@ -471,7 +480,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       await _configurado;
       if (!mounted || pedido != _pedido) return;
       // as preferências em cada canal: 1×, volume, silêncio, atraso do áudio, desentrelaçamento…
-      await aplicarAoAbrir(_motor, _prefs, _sessao, plataforma: _plataforma, modo: _modo);
+      await aplicarAoAbrir(_motor, _prefs, _sessao, plataforma: _plataforma, modo: _modo, limparFiltro: limparFiltro);
       if (!mounted || pedido != _pedido) return;
       _vigia.abrindo();
       _larguraVista = 0;
@@ -774,7 +783,18 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   bool get _shaderFlutterPronto => _programaFlutter != null && FiltroDesentrelacamento.suportado;
 
   /// No Windows há sempre o shader do mpv; no Android, o do Flutter se o aparelho o permitir.
-  bool get _desentrelacamentoPossivel => !_android || _shaderFlutterPronto;
+  bool get _desentrelacamentoPossivel => !_android || _shaderFlutterPronto || (_filtros && !_filtroFalhou);
+
+  /// O que o painel diz do desentrelaçamento (conforme o que há mesmo neste aparelho).
+  String get _notaDesentrelacamento {
+    if (!_desentrelacamentoPossivel) return 'Este aparelho não permite o desentrelaçamento do player';
+    if (_filtros && !_filtroFalhou) {
+      return _android && _modo == ModoDescodificacao.direto && _hardware
+          ? 'Por campo (50 imagens/s); na descodificação Direta o canal entrelaçado reabre em Compatível'
+          : 'Por campo (50 imagens/s), só nas imagens entrelaçadas (1080i/576i)';
+    }
+    return 'Só nas imagens entrelaçadas (1080i/576i); limpa as linhas a 25 imagens/s';
+  }
 
   /// Lê do mpv se a imagem é entrelaçada (de uma vez, fora da UI) e põe o meio certo; repete a cada
   /// [_intervaloEntrelacamento] (um canal pode passar de progressivo a entrelaçado).
@@ -783,17 +803,37 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     try {
       final m = await _motor.getProperties(propriedadesEntrelacamento(_plataforma));
       if (!mounted || pedido != _pedido) return;
-      _entrelacada = imagemEntrelacada(m) ?? _entrelacada;
+      if (filtroFalhou(_meio, m)) {
+        debugPrint('desentrelaçamento: o filtro tirou a imagem; volta o shader');
+        _filtroFalhou = true;
+      } else if (_meio == MeioDesentrelacamento.filtroMpv) {
+        _filtroConfirmado = true;
+      }
+      _filtros = filtrosDoMpv(m['mpv-version']);
+      _entrelacada = entrelacadaDepois(_meio, _entrelacada, imagemEntrelacada(m));
       final hwdec = (m['hwdec-current'] ?? '').trim();
       if (hwdec.isNotEmpty) _hwdecAtual = hwdec;
+      // Android direto: o filtro não se aplica, o canal reabre em Compatível (uma vez por canal)
+      if (precisaModoComFiltro(_plataforma,
+              ligado: _prefs.desentrelacar,
+              entrelacada: _entrelacada,
+              filtros: _filtros && !_filtroFalhou,
+              direto: _modo == ModoDescodificacao.direto && _hardware) &&
+          CompativelNaSessao.instancia.marcar(_chave(_canais[_i]))) {
+        _mostrarAviso('Modo compatível ativado para desentrelaçar este canal');
+        _abrir();
+        return;
+      }
       await _aplicarDesentrelacamento();
     } catch (e) {
       // o player fechou entretanto, ou o mpv falhou: tenta-se na próxima verificação
       debugPrint('desentrelaçamento: verificação falhou ($e)');
     }
     if (!mounted || pedido != _pedido) return;
-    _vigiaEntrelacamento = Timer(_entrelacada == null ? const Duration(seconds: 1) : _intervaloEntrelacamento,
-        () => _verEntrelacamento(pedido));
+    // com o filtro recém-posto confirma-se logo que a imagem continua (se não, volta o shader)
+    final cedo = _entrelacada == null || (_meio == MeioDesentrelacamento.filtroMpv && !_filtroConfirmado);
+    _vigiaEntrelacamento = Timer(
+        cedo ? const Duration(seconds: 1) : _intervaloEntrelacamento, () => _verEntrelacamento(pedido));
   }
 
   /// Põe o meio que serve agora (preferência, imagem, aparelho). Em fila: uma mudança da
@@ -804,11 +844,14 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
           ligado: _prefs.desentrelacar,
           entrelacada: _entrelacada,
           hwdec: _hwdecAtual,
-          shaderFlutter: _shaderFlutterPronto);
+          shaderFlutter: _shaderFlutterPronto,
+          filtros: _filtros && !_filtroFalhou,
+          direto: _android && _modo == ModoDescodificacao.direto && _hardware);
       if (meio == _meio || !mounted) return;
-      // com limite: um setProperty preso não pode deixar a fila parada (as mudanças seguintes)
-      if (!_android) {
-        await aplicarMeioMpv(_motor, meio, caminhoShader: await (_shaderMpv ?? Future.value()))
+      // com limite: um setProperty preso não pode deixar a fila parada (as mudanças seguintes).
+      // No Android o mpv só leva o filtro (o shader é do Flutter); se o filtro sai, limpa-se o vf.
+      if (!_android || meio == MeioDesentrelacamento.filtroMpv || _meio == MeioDesentrelacamento.filtroMpv) {
+        await aplicarMeioMpv(_motor, meio, caminhoShader: await (_shaderMpv ?? Future.value()), hwdec: _hwdecAtual)
             .timeout(const Duration(seconds: 3));
       }
       if (mounted) setState(() => _meio = meio);
@@ -831,9 +874,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
         'Desentrelaçamento',
         valor: possivel && _prefs.desentrelacar,
         aoMudar: possivel ? (v) => _preferir((p) => p.desentrelacar = v, _aplicarDesentrelacamento) : null,
-        nota: possivel
-            ? 'Só nas imagens entrelaçadas (canais 1080i/576i)'
-            : 'Este aparelho não permite o desentrelaçamento do player',
+        nota: _notaDesentrelacamento,
       ),
       DefinicaoEscolha(
         'Formato de imagem',
@@ -898,7 +939,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
           }, () async => _abrir()),
           nota: _rotuloModoAtual != [ModoDescodificacao.direto.rotulo, ModoDescodificacao.compativel.rotulo,
                   'Software'][_descodificacaoAndroid]
-              ? 'Este canal está em $_rotuloModoAtual (não deu imagem na direta)'
+              ? 'Este canal está em $_rotuloModoAtual (sem imagem na direta, ou entrelaçado)'
               : 'Compatível: para imagem preta ou cores erradas',
         )
       else
