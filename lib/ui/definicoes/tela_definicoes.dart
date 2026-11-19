@@ -346,6 +346,11 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
     switch (c) {
       case _Categoria.imagemSom:
         return [
+          _opcao('Tamanho da interface',
+              'Compacto mostra mais em cada ecrã (80 % na TV e no Windows). No telemóvel fica igual.',
+              empilhar: true,
+              controlo: _escolhas(TamanhoInterface.values, (t) => t.rotulo, _p.tamanhoInterface,
+                  (t) => _mudou(() => _p.tamanhoInterface = t))),
           _opcao(
               'Desentrelaçamento',
               'Evita riscas nos canais entrelaçados. Automático só o liga quando é preciso.'

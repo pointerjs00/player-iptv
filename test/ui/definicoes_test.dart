@@ -150,12 +150,16 @@ void main() {
     expect(find.text('Guardado'), findsOneWidget);
   });
 
-  /// Só com o comando: TAB na primeira categoria e DIREITA para a primeira opção (o "Automático").
+  /// Só com o comando: TAB na primeira categoria, DIREITA para a primeira opção (o tamanho da
+  /// interface, "Compacto") e BAIXO para o desentrelaçamento ("Automático").
   Future<void> entrarNasOpcoes(WidgetTester t) async {
     await t.sendKeyEvent(LogicalKeyboardKey.tab);
     await t.pump();
     expect(_focado(), 'Imagem e som');
     await t.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await t.pump();
+    expect(_focoEm(t, find.widgetWithText(ChoiceChip, 'Compacto')), isTrue);
+    await t.sendKeyEvent(LogicalKeyboardKey.arrowDown);
     await t.pump();
     expect(_focoEm(t, find.widgetWithText(ChoiceChip, 'Automático')), isTrue);
   }

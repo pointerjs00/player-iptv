@@ -16,6 +16,7 @@ import 'tarefas/servico_tarefas.dart';
 import 'ui/definicoes/tela_definicoes.dart';
 import 'ui/design/componentes.dart';
 import 'ui/design/ecra.dart';
+import 'ui/design/escala_interface.dart';
 import 'ui/design/mensagens.dart';
 import 'ui/gestor/tela_gestor.dart';
 import 'ui/inicio/tela_inicio.dart';
@@ -127,8 +128,12 @@ class _AppPlayerIptvState extends State<AppPlayerIptv> {
         debugShowCheckedModeBanner: false,
         theme: temaApp(),
         // o fundo azul-noite por trás de todos os ecrãs (os Scaffold são transparentes); as mensagens
-        // por cima do Navigator, para todas as rotas (casca, lista aberta, player do Android)
-        builder: (_, w) => TemaConformeRealce(child: FundoCinema(child: AnfitriaoMensagens(child: w!))),
+        // por cima do Navigator, para todas as rotas (casca, lista aberta, player do Android). A escala
+        // (Compacto) leva o Navigator inteiro: rotas, diálogos, menus e mensagens ficam reduzidos.
+        builder: (_, w) => TemaConformeRealce(
+            child: FundoCinema(
+                child: EscalaConformePreferencias(
+                    preferencias: Preferencias.atual, child: AnfitriaoMensagens(child: w!)))),
         locale: _pt,
         supportedLocales: const [_pt],
         localizationsDelegates: GlobalMaterialLocalizations.delegates,

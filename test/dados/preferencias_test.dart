@@ -163,6 +163,24 @@ void main() {
       expect((await Preferencias.abrir(pasta)).listasEmSimultaneo, 12);
     });
 
+    test('tamanho da interface: Compacto por omissão, guardado e aplicado da cópia', () async {
+      final p = await Preferencias.abrir(pasta);
+      expect(p.tamanhoInterface, TamanhoInterface.compacto);
+      var avisos = 0;
+      p.addListener(() => avisos++);
+      p.tamanhoInterface = TamanhoInterface.normal;
+      p.tamanhoInterface = TamanhoInterface.normal;
+      expect(avisos, 1);
+      await p.guardar();
+      expect(jsonDecode(ficheiro().readAsStringSync())['tamanhoInterface'], 'normal');
+      expect((await Preferencias.abrir(pasta)).tamanhoInterface, TamanhoInterface.normal);
+      final q = Preferencias.omissao()..aplicar({'tamanhoInterface': 'normal'});
+      expect(q.tamanhoInterface, TamanhoInterface.normal);
+      expect((Preferencias.omissao()..aplicar({'tamanhoInterface': 'gigante'})).tamanhoInterface,
+          TamanhoInterface.compacto);
+      expect([for (final t in TamanhoInterface.values) t.rotulo], ['Compacto', 'Normal']);
+    });
+
     test('tempo limite por lista: 30 s por omissão, entre 10 e 300, guardado', () async {
       final p = await Preferencias.abrir(pasta);
       expect(p.tempoLimiteLista, 30);

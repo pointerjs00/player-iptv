@@ -59,6 +59,22 @@ enum ModoDesentrelacamento {
   static ModoDesentrelacamento? deNome(String? n) => values.where((m) => m.nome == n).firstOrNull;
 }
 
+/// O tamanho da interface na TV e no Windows (no telemóvel fica sempre a 100 %).
+enum TamanhoInterface {
+  /// Toda a interface a 80 % (cabe mais em cada ecrã).
+  compacto('Compacto'),
+
+  /// O tamanho de antes.
+  normal('Normal');
+
+  const TamanhoInterface(this.rotulo);
+
+  /// O texto mostrado (o nome guardado é o `name`).
+  final String rotulo;
+
+  static TamanhoInterface deNome(String? n) => values.firstWhere((t) => t.name == n, orElse: () => compacto);
+}
+
 /// As preferências da app (`preferencias.json`), partilhadas pelo player (aqui), pela
 /// verificação e pelo ecrã de Definições. Valem para todos os canais, no Android e no Windows.
 ///
@@ -104,6 +120,7 @@ class Preferencias extends ChangeNotifier {
   int _listasEmSimultaneo = padraoListasEmSimultaneo;
   int _tempoLimiteLista = padraoTempoLimiteLista;
   String _userAgent = '';
+  TamanhoInterface _tamanhoInterface = TamanhoInterface.compacto;
 
   /// As chaves mudadas aqui e ainda não gravadas: só essas se escrevem (as outras são da outra janela).
   final _sujas = <String>{};
@@ -179,6 +196,11 @@ class Preferencias extends ChangeNotifier {
     if (n.length > 200) n = n.substring(0, 200);
     _mudar('userAgent', _userAgent != n, () => _userAgent = n);
   }
+
+  /// O tamanho da interface (Compacto por omissão): ver `escalaPara`.
+  TamanhoInterface get tamanhoInterface => _tamanhoInterface;
+  set tamanhoInterface(TamanhoInterface v) =>
+      _mudar('tamanhoInterface', _tamanhoInterface != v, () => _tamanhoInterface = v);
 
   void _mudar(String chave, bool mudou, VoidCallback f) {
     if (!mudou) return;
@@ -259,6 +281,8 @@ class Preferencias extends ChangeNotifier {
     }
     final ua = campo<String>('userAgent');
     if (ua != null) _userAgent = (Preferencias.omissao()..userAgent = ua)._userAgent;
+    final tamanho = campo<String>('tamanhoInterface');
+    if (tamanho != null) _tamanhoInterface = TamanhoInterface.deNome(tamanho);
     return ok;
   }
 
@@ -274,6 +298,7 @@ class Preferencias extends ChangeNotifier {
         'listasEmSimultaneo': _listasEmSimultaneo,
         'tempoLimiteLista': _tempoLimiteLista,
         'userAgent': _userAgent,
+        'tamanhoInterface': _tamanhoInterface.name,
       };
 
   /// Todas as definições, para a cópia de segurança.
@@ -296,6 +321,7 @@ class Preferencias extends ChangeNotifier {
     if (lidas.contains('listasEmSimultaneo')) listasEmSimultaneo = outro._listasEmSimultaneo;
     if (lidas.contains('tempoLimiteLista')) tempoLimiteLista = outro._tempoLimiteLista;
     if (lidas.contains('userAgent')) userAgent = outro._userAgent;
+    if (lidas.contains('tamanhoInterface')) tamanhoInterface = outro._tamanhoInterface;
   }
 
   /// O mapa do ficheiro: vazio se não existe, null se existe mas está estragado (não é um mapa
