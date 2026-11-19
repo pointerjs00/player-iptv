@@ -3,8 +3,7 @@
 /// Remover lista. Abrir é o toque no cartão.
 library;
 
-import 'dart:io' show Platform;
-
+import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform;
 import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
@@ -76,19 +75,19 @@ bool _eOk(LogicalKeyboardKey k) => teclasOk.contains(k);
 
 /// O menu de ações de uma lista (centrado, para o comando): devolve a ação escolhida (null =
 /// Voltar). Sem `comGestor` não há "Enviar para o Gestor"; sem `comVerificar` não há "Verificar
-/// agora"; "Copiar link" só no Windows (`windows`, para testes).
+/// agora"; "Copiar link" só no Windows.
 Future<AcaoLista?> mostrarMenuLista(BuildContext context, Lista lista,
-        {bool comGestor = true, bool comVerificar = true, bool? windows}) =>
+        {bool comGestor = true, bool comVerificar = true}) =>
     showDialog<AcaoLista>(
       context: context,
       builder: (ctx) {
         final tv = ecraTv(ctx);
-        final noWindows = windows ?? Platform.isWindows;
+        final emWindows = defaultTargetPlatform == TargetPlatform.windows;
         final acoes = [
           for (final a in AcaoLista.values)
             if ((comGestor || a != AcaoLista.enviarGestor) &&
                 (comVerificar || a != AcaoLista.verificar) &&
-                (noWindows || a != AcaoLista.copiarLink))
+                (emWindows || a != AcaoLista.copiarLink))
               a,
         ];
         return Focus(

@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -57,6 +58,19 @@ class _Falso extends Verificador {
       const ResultadoVerificacao(EstadoV.funciona, 'ok', validade: '2030-01-01');
 }
 
+/// Como `testWidgets`, no Windows (o `Copiar link` só existe aí); o valor volta a null no fim
+/// (a verificação das variáveis de debug corre antes dos tearDown).
+void testWidgetsWin(String nome, Future<void> Function(WidgetTester) corpo,
+        {TargetPlatform plataforma = TargetPlatform.windows}) =>
+    testWidgets(nome, (t) async {
+      debugDefaultTargetPlatformOverride = plataforma;
+      try {
+        await corpo(t);
+      } finally {
+        debugDefaultTargetPlatformOverride = null;
+      }
+    });
+
 void main() {
   late Directory pasta;
   late Biblioteca bib;
@@ -104,7 +118,9 @@ void main() {
 
   void verMenu() {
     for (final a in _acoes) {
-      expect(find.widgetWithText(ListTile, a), findsOneWidget, reason: a);
+      // "Copiar link" só no Windows (a plataforma do teste, não a do computador)
+      final esperado = a != 'Copiar link' || defaultTargetPlatform == TargetPlatform.windows;
+      expect(find.widgetWithText(ListTile, a), esperado ? findsOneWidget : findsNothing, reason: a);
     }
     expect(find.text('Verificar de novo'), findsNothing);
   }
@@ -115,7 +131,7 @@ void main() {
     expect(find.text('Atualizar canais'), findsNothing);
   }
 
-  testWidgets('toque longo e clique direito abrem o mesmo menu (sem "Verificar de novo" nem "Mais opções")',
+  testWidgetsWin('toque longo e clique direito abrem o mesmo menu (sem "Verificar de novo" nem "Mais opções")',
       (t) async {
     await montar(t);
     await t.longPress(find.text('001SRV 161027'));
@@ -129,7 +145,7 @@ void main() {
     expect(find.byTooltip('Mais opções'), findsNothing);
   });
 
-  testWidgets('OK mantido no cartão abre o menu; setas escolhem; Voltar devolve o foco ao cartão', (t) async {
+  testWidgetsWin('OK mantido no cartão abre o menu; setas escolhem; Voltar devolve o foco ao cartão', (t) async {
     FocusManager.instance.highlightStrategy = FocusHighlightStrategy.alwaysTraditional;
     addTearDown(() => FocusManager.instance.highlightStrategy = FocusHighlightStrategy.automatic);
     await montar(t);
@@ -158,9 +174,9 @@ void main() {
     await t.pump();
     await t.pump(const Duration(milliseconds: 400));
     expect(find.byType(TelaConteudo), findsOneWidget);
-  });
+  }, plataforma: TargetPlatform.android);
 
-  testWidgets('o menu tem as 6 ações pela ordem, cada uma com a sua explicação', (t) async {
+  testWidgetsWin('o menu tem as 6 ações pela ordem, cada uma com a sua explicação', (t) async {
     await montar(t);
     await t.longPress(find.text('001SRV 161027'));
     await t.pumpAndSettle();
@@ -178,27 +194,28 @@ void main() {
     }
   });
 
-  testWidgets('em Android o menu não tem "Copiar link"; em Windows tem', (t) async {
+  testWidgetsWin('em Android o menu não tem "Copiar link"; em Windows tem', (t) async {
     final lista = Lista(
         id: 'x', ordem: 1, conta: Conta('', Tipo.m3u, 'http://b.com/l.m3u'));
-    Future<void> abrir(bool windows) async {
+    Future<void> abrir(TargetPlatform plataforma) async {
+      debugDefaultTargetPlatformOverride = plataforma;
       await t.pumpWidget(_app(Builder(
           builder: (c) => TextButton(
-              onPressed: () => mostrarMenuLista(c, lista, windows: windows), child: const Text('menu')))));
+              onPressed: () => mostrarMenuLista(c, lista), child: const Text('menu')))));
       await t.tap(find.text('menu'));
       await t.pumpAndSettle();
     }
 
-    await abrir(false);
+    await abrir(TargetPlatform.android);
     expect(find.text('Copiar link'), findsNothing);
     expect(find.text('Verificar agora'), findsOneWidget);
     await t.binding.handlePopRoute();
     await t.pumpAndSettle();
-    await abrir(true);
+    await abrir(TargetPlatform.windows);
     expect(find.text('Copiar link'), findsOneWidget);
   });
 
-  testWidgets('Atualizar canais: mensagem de progresso, depois de fim, sem sair do Início', (t) async {
+  testWidgetsWin('Atualizar canais: mensagem de progresso, depois de fim, sem sair do Início', (t) async {
     await montar(t);
     await t.longPress(find.text('001SRV 161027'));
     await t.pumpAndSettle();
@@ -214,7 +231,7 @@ void main() {
     await t.pumpAndSettle();
   });
 
-  testWidgets('Verificar agora: o estado da lista muda no Início e aparece a mensagem de fim', (t) async {
+  testWidgetsWin('Verificar agora: o estado da lista muda no Início e aparece a mensagem de fim', (t) async {
     await montar(t);
     await t.longPress(find.text('002B'));
     await t.pumpAndSettle();
@@ -229,7 +246,7 @@ void main() {
     await t.pumpAndSettle();
   });
 
-  testWidgets('Editar: nome próprio e password mudam e persistem; endereço inválido não guarda', (t) async {
+  testWidgetsWin('Editar: nome próprio e password mudam e persistem; endereço inválido não guarda', (t) async {
     await montar(t);
     await t.longPress(find.text('001SRV 161027'));
     await t.pumpAndSettle();
@@ -270,7 +287,7 @@ void main() {
     expect(relida.listas.first.conta.password, 'nova');
   });
 
-  testWidgets('Copiar link: vai para a área de transferência sem aparecer no ecrã', (t) async {
+  testWidgetsWin('Copiar link: vai para a área de transferência sem aparecer no ecrã', (t) async {
     String? copiado;
     t.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (c) async {
       if (c.method == 'Clipboard.setData') copiado = (c.arguments as Map)['text'] as String;
@@ -288,7 +305,7 @@ void main() {
     expect(find.textContaining('get.php'), findsNothing);
   });
 
-  testWidgets('Enviar para o Gestor: copia a conta e o último resultado, sem duplicar', (t) async {
+  testWidgetsWin('Enviar para o Gestor: copia a conta e o último resultado, sem duplicar', (t) async {
     await montar(t);
     for (var vez = 0; vez < 2; vez++) {
       await t.longPress(find.text('001SRV 161027'));
@@ -306,7 +323,7 @@ void main() {
     expect(area.listas.single.ultima!.estado, 'funciona');
   });
 
-  testWidgets('Remover lista pede confirmação; Cancelar não apaga; Remover apaga e o foco fica num cartão',
+  testWidgetsWin('Remover lista pede confirmação; Cancelar não apaga; Remover apaga e o foco fica num cartão',
       (t) async {
     FocusManager.instance.highlightStrategy = FocusHighlightStrategy.alwaysTraditional;
     addTearDown(() => FocusManager.instance.highlightStrategy = FocusHighlightStrategy.automatic);

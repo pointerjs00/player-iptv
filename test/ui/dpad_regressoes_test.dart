@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
@@ -66,32 +67,37 @@ void main() {
 
     testWidgets('os cartões não têm "..." (Mais opções): OK mantido abre o menu com todas as ações, '
         'incluindo "Remover lista"', (t) async {
-      ecraTvTeste(t);
-      await comListas(t, 2);
-      expect(find.byTooltip('Mais opções'), findsNothing);
-      expect(find.byIcon(Icons.more_vert), findsNothing);
-      // BAIXO no cartão não entra em nenhum botão de dentro: o foco fica num cartão
-      await teclaDpad(t, LogicalKeyboardKey.arrowDown);
-      expect(textosFocados(), contains('001H'), reason: 'foco em: ${textosFocados()}');
-      await t.sendKeyDownEvent(LogicalKeyboardKey.select);
-      for (var i = 0; i < 12; i++) {
-        await t.pump(const Duration(milliseconds: 50));
-        await t.sendKeyRepeatEvent(LogicalKeyboardKey.select);
-      }
-      await t.sendKeyUpEvent(LogicalKeyboardKey.select);
-      await t.pumpAndSettle();
-      for (final a in ['Atualizar canais', 'Editar lista', if (Platform.isWindows) 'Copiar link', 'Remover lista']) {
-        expect(find.widgetWithText(ListTile, a), findsOneWidget, reason: a);
-      }
-      // a última ação alcança-se com BAIXO
-      for (var i = 0; i < 6; i++) {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      try {
+        ecraTvTeste(t);
+        await comListas(t, 2);
+        expect(find.byTooltip('Mais opções'), findsNothing);
+        expect(find.byIcon(Icons.more_vert), findsNothing);
+        // BAIXO no cartão não entra em nenhum botão de dentro: o foco fica num cartão
         await teclaDpad(t, LogicalKeyboardKey.arrowDown);
+        expect(textosFocados(), contains('001H'), reason: 'foco em: ${textosFocados()}');
+        await t.sendKeyDownEvent(LogicalKeyboardKey.select);
+        for (var i = 0; i < 12; i++) {
+          await t.pump(const Duration(milliseconds: 50));
+          await t.sendKeyRepeatEvent(LogicalKeyboardKey.select);
+        }
+        await t.sendKeyUpEvent(LogicalKeyboardKey.select);
+        await t.pumpAndSettle();
+        for (final a in ['Atualizar canais', 'Editar lista', 'Remover lista']) {
+          expect(find.widgetWithText(ListTile, a), findsOneWidget, reason: a);
+        }
+        // a última ação alcança-se com BAIXO
+        for (var i = 0; i < 6; i++) {
+          await teclaDpad(t, LogicalKeyboardKey.arrowDown);
+        }
+        expect(textosFocados(), startsWith('Remover lista'));
+        await teclaDpad(t, LogicalKeyboardKey.select);
+        await t.pumpAndSettle();
+        expect(find.text('Remover lista?'), findsOneWidget);
+        expect(textosFocados(), 'Cancelar', reason: 'o foco começa no lado seguro');
+      } finally {
+        debugDefaultTargetPlatformOverride = null;
       }
-      expect(textosFocados(), startsWith('Remover lista'));
-      await teclaDpad(t, LogicalKeyboardKey.select);
-      await t.pumpAndSettle();
-      expect(find.text('Remover lista?'), findsOneWidget);
-      expect(textosFocados(), 'Cancelar', reason: 'o foco começa no lado seguro');
     });
   });
 
