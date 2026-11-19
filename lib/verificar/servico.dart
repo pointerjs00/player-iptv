@@ -256,28 +256,40 @@ class ServicoVerificacao extends ChangeNotifier {
           timeout: timeout, cancelamento: t.cancelamento, aviso: _aviso(t)),
       zoneValues: {ritmoZona: ritmo});
 
-  /// O resultado da 1.ª volta (já guardado), ou null se foi parada ou cancelada.
+  /// Grava o resultado da volta; enquanto grava, `cancelar` ignora-a. Devolve false se a
+  /// gravação falhou (a lista acaba na mesma, com o resultado que tinha).
+  Future<bool> _gravar(_Tarefa t, ResultadoVerificacao r) async {
+    t.aGravar = true;
+    try {
+      await colecao.registarVerificacao(t.id, paraUltima(r));
+      return true;
+    } catch (_) {
+      return false;
+    } finally {
+      t.aGravar = false;
+    }
+  }
+
+  /// O resultado da 1.ª volta (já guardado), ou null se foi parada, cancelada, falhou ou não
+  /// se conseguiu gravar. Nunca lança: a lista sai sempre de `_emCurso`.
   Future<ResultadoVerificacao?> _primeiraVolta(_Tarefa t) async {
     final can = t.cancelamento!;
     passos[t.id] = 'a começar';
     notifyListeners();
+    ResultadoVerificacao r;
+    var falhou = false;
     try {
-      final r = await _umaVolta(t, _timeout);
-      if (can.cancelado) return null; // parada ou cancelada: fica o resultado anterior
-      _nTerminadas++;
-      t.aGravar = true; // daqui em diante já não se cancela
-      await colecao.registarVerificacao(t.id, paraUltima(r));
-      return r;
+      r = await _umaVolta(t, _timeout);
     } on Cancelado {
       return null; // parada: fica o resultado anterior
     } catch (e) {
-      if (can.cancelado) return null;
-      _nTerminadas++;
-      t.aGravar = true;
-      await colecao.registarVerificacao(
-          t.id, paraUltima(ResultadoVerificacao(EstadoV.inconclusivo, 'falha: ${descreverErro(e)}')));
-      return null;
+      r = ResultadoVerificacao(EstadoV.inconclusivo, 'falha: ${descreverErro(e)}');
+      falhou = true;
     }
+    if (can.cancelado) return null; // parada ou cancelada: fica o resultado anterior
+    _nTerminadas++;
+    final gravou = await _gravar(t, r);
+    return gravou && !falhou ? r : null;
   }
 
   Future<void> _segundaVolta(_Tarefa t) async {
@@ -291,8 +303,7 @@ class ServicoVerificacao extends ChangeNotifier {
       if (can.cancelado) return; // parada ou cancelada: fica o resultado da 1.ª volta
       // o reteste pode não chegar à data
       final r = r2.validade.isEmpty && r1.validade.isNotEmpty ? r2.com(validade: r1.validade) : r2;
-      t.aGravar = true; // daqui em diante já não se cancela
-      await colecao.registarVerificacao(t.id, paraUltima(r));
+      await _gravar(t, r); // se falhar, fica o resultado da 1.ª volta
     } on Cancelado {
       // parada: fica o resultado da 1.ª volta
     } catch (_) {

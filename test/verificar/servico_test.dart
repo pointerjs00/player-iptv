@@ -257,6 +257,64 @@ void main() {
     expect(daBib(ls[0])!.ultima?.estado, 'funciona');
   });
 
+  test('gravar que falha na 1.ª volta: a lista acaba, o serviço fica livre e as outras correm', () async {
+    final ls = await juntar(2, mac: '00:1A:79:00:00:01'); // o mesmo MAC: a 2.ª só corre se o MAC sair
+    final g = _Gravacao(bib)..falharId = ls[0].id;
+    final s = ServicoVerificacao(bib,
+        colecao: g,
+        workers: 1,
+        verificador: _Funcao((c, v, can) async => const ResultadoVerificacao(EstadoV.funciona, 'ok')),
+        ritmo: RitmoHost(intervalo: Duration.zero));
+    await s.verificarVarias(ls).timeout(const Duration(seconds: 5));
+    expect(daBib(ls[0])!.ultima, isNull, reason: 'não se conseguiu gravar');
+    expect(daBib(ls[1])!.ultima?.estado, 'funciona');
+    expect((s.ocupado, s.feitas, s.total), (false, 0, 0));
+    // e o serviço continua a servir
+    await s.verificar(ls[0]).timeout(const Duration(seconds: 5));
+    expect(s.ocupado, isFalse);
+  });
+
+  test('gravar que falha na 2.ª volta: a lista acaba, o serviço fica livre e as outras correm', () async {
+    final ls = await juntar(2, mac: '00:1A:79:00:00:01');
+    final g = _Gravacao(bib)
+      ..falharId = ls[0].id
+      ..falharSoNa = 2; // a 1.ª volta grava, a 2.ª falha
+    final s = ServicoVerificacao(bib,
+        colecao: g,
+        workers: 1,
+        verificador: _Funcao((c, volta, can) async => volta == 1 && c.endereco == ls[0].conta.endereco
+            ? const ResultadoVerificacao(EstadoV.inconclusivo, 'tempo esgotado')
+            : const ResultadoVerificacao(EstadoV.funciona, 'ok')),
+        ritmo: RitmoHost(intervalo: Duration.zero));
+    await s.verificarVarias(ls).timeout(const Duration(seconds: 5));
+    expect(daBib(ls[0])!.ultima?.estado, 'inconclusivo', reason: 'fica o da 1.ª volta');
+    expect(daBib(ls[1])!.ultima?.estado, 'funciona');
+    expect((s.ocupado, s.feitas, s.total), (false, 0, 0));
+    await s.verificar(ls[1]).timeout(const Duration(seconds: 5));
+    expect(s.ocupado, isFalse);
+  });
+
+  test('parar com uma a gravar: acaba quando a gravação sai e o serviço fica livre', () async {
+    final ls = await juntar(2);
+    final g = _Gravacao(bib)..prenderA = 1;
+    final s = ServicoVerificacao(bib,
+        colecao: g,
+        workers: 1,
+        verificador: _Funcao((c, v, can) async => const ResultadoVerificacao(EstadoV.funciona, 'ok')),
+        ritmo: RitmoHost(intervalo: Duration.zero));
+    final todas = s.verificarVarias(ls);
+    await _dar();
+    expect(g.aGravar, 1);
+    s.parar();
+    g.soltar();
+    await todas.timeout(const Duration(seconds: 5));
+    await _dar();
+    expect(s.ocupado, isFalse);
+    expect(daBib(ls[1])!.ultima, isNull, reason: 'a da fila saiu com o parar');
+    await s.verificar(ls[1]).timeout(const Duration(seconds: 5));
+    expect(daBib(ls[1])!.ultima?.estado, 'funciona');
+  });
+
   test('estimativaRestante só conta as 1.as voltas como terminadas', () async {
     final ls = await juntar(2);
     var agora = DateTime(2026, 11, 19, 10);
@@ -316,6 +374,11 @@ class _Gravacao implements ColecaoListas {
   int aGravar = 0;
   final _porta = Completer<void>();
 
+  /// As gravações desta lista falham; com `falharSoNa`, só a n.ª dela.
+  String? falharId;
+  int? falharSoNa;
+  int _dela = 0;
+
   void soltar() {
     if (!_porta.isCompleted) _porta.complete();
   }
@@ -324,6 +387,9 @@ class _Gravacao implements ColecaoListas {
   Future<void> registarVerificacao(String id, UltimaVerificacao v) async {
     aGravar++;
     if (prender || prenderA == aGravar) await _porta.future;
+    if (id == falharId && (falharSoNa == null || ++_dela == falharSoNa)) {
+      throw const FileSystemException('disco cheio');
+    }
     await bib.registarVerificacao(id, v);
   }
 
