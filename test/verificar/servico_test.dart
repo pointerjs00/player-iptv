@@ -47,6 +47,15 @@ Future<void> _quandoCancelado(Cancelamento? can) async {
 
 Future<void> _dar([int ms = 30]) => Future<void>.delayed(Duration(milliseconds: ms));
 
+/// Espera até a condição se cumprir, com prazo (a gravação em disco pode demorar com a máquina
+/// carregada). Se o prazo acabar, volta na mesma e o `expect` a seguir diz o que falhou.
+Future<void> _ate(bool Function() condicao, {Duration prazo = const Duration(seconds: 5)}) async {
+  final fim = DateTime.now().add(prazo);
+  while (!condicao() && DateTime.now().isBefore(fim)) {
+    await Future<void>.delayed(const Duration(milliseconds: 2));
+  }
+}
+
 void main() {
   late Directory pasta;
   late Biblioteca bib;
@@ -80,7 +89,7 @@ void main() {
     final f = _Falso();
     final s = servico(f, workers: 3);
     final primeiras = s.verificarVarias(ls.take(3));
-    await _dar();
+    await _ate(() => f.comecadas.length == 3);
     expect(f.comecadas, hasLength(3));
     final outras = s.verificarVarias(ls.skip(3));
     expect((s.feitas, s.total), (0, 5));
@@ -97,7 +106,7 @@ void main() {
     final f = _Falso();
     final s = servico(f, workers: 3);
     final todas = s.verificarVarias(ls);
-    await _dar();
+    await _ate(() => f.comecadas.length == 3);
     expect(f.comecadas, hasLength(3));
     s.cancelar(ls[4].id);
     expect((s.feitas, s.total), (0, 4));
@@ -116,9 +125,9 @@ void main() {
     final f = _Falso();
     final s = servico(f, workers: 2);
     final todas = s.verificarVarias(ls);
-    await _dar();
+    await _ate(() => f.comecadas.length == 2);
     f.soltar(ls[0].conta.endereco);
-    await _dar();
+    await _ate(() => s.feitas == 1);
     expect((s.feitas, s.total), (1, 4));
     s.cancelar(ls[1].id); // a correr
     expect((s.feitas, s.total), (1, 3));
@@ -135,13 +144,13 @@ void main() {
     final f = _Falso(ignorarCancelamento: true);
     final s = servico(f, workers: 2);
     final todas = s.verificarVarias(ls);
-    await _dar();
+    await _ate(() => f.comecadas.length == 2);
     s.cancelar(ls[0].id);
     expect(s.aVerificar(ls[0].id), isFalse);
     f.soltar(ls[0].conta.endereco); // o verificador devolve na mesma um resultado
     f.soltar(ls[1].conta.endereco);
     await todas.timeout(const Duration(seconds: 5));
-    await _dar();
+    await _ate(() => daBib(ls[1])!.ultima != null);
     expect(daBib(ls[0])!.ultima, isNull);
     expect(daBib(ls[1])!.ultima?.estado, 'funciona');
   });
@@ -151,10 +160,10 @@ void main() {
     final f = _Falso(ignorarCancelamento: true); // a cancelada demora a sair
     final s = servico(f, workers: 4);
     final todas = s.verificarVarias(ls);
-    await _dar();
+    await _ate(() => f.comecadas.isNotEmpty);
     expect(f.comecadas, [ls[0].conta.endereco], reason: 'um MAC de cada vez');
     s.cancelar(ls[0].id);
-    await _dar();
+    await _ate(() => f.comecadas.length == 2);
     expect(f.comecadas, [ls[0].conta.endereco, ls[1].conta.endereco], reason: 'o MAC foi libertado');
     f.soltar(ls[0].conta.endereco); // a cancelada acaba agora: não pode libertar o MAC outra vez
     await _dar();
@@ -181,7 +190,7 @@ void main() {
     final s = servico(f, workers: 2);
     final todas = s.verificarVarias(ls);
     // a 1.ª volta da 1.ª acaba (INC) e a da 2.ª fica presa: a 1.ª espera a 2.ª volta
-    await _dar();
+    await _ate(() => s.passos[ls[0].id]?.startsWith('inconclusiva: à espera') ?? false);
     expect(s.passos[ls[0].id], startsWith('inconclusiva: à espera'));
     s.cancelar(ls[0].id);
     expect((s.feitas, s.total), (0, 1));
@@ -200,13 +209,13 @@ void main() {
     final s = servico(f, workers: 2, agora: () => agora);
     expect(s.estimativaRestante, isNull);
     final todas = s.verificarVarias(ls);
-    await _dar();
+    await _ate(() => f.comecadas.length == 2);
     expect(f.comecadas, hasLength(2));
     expect(s.estimativaRestante, isNull, reason: 'nenhuma terminou');
     agora = agora.add(const Duration(seconds: 10));
     f.soltar(ls[0].conta.endereco);
     f.soltar(ls[1].conta.endereco);
-    await _dar();
+    await _ate(() => s.feitas == 2 && f.comecadas.length == 4);
     expect((s.feitas, s.total), (2, 4));
     expect(f.comecadas, hasLength(4));
     // 10 s ÷ 2 terminadas × 2 por fazer
@@ -227,7 +236,7 @@ void main() {
         ritmo: RitmoHost(intervalo: Duration.zero));
     g.prender = true;
     final fim = s.verificar(ls[0]);
-    await _dar();
+    await _ate(() => g.aGravar == 1);
     expect(g.aGravar, 1);
     s.cancelar(ls[0].id);
     expect((s.aVerificar(ls[0].id), s.total), (true, 1), reason: 'já está a gravar');
@@ -248,7 +257,7 @@ void main() {
         ritmo: RitmoHost(intervalo: Duration.zero));
     g.prenderA = 2; // só a gravação da 2.ª volta fica presa
     final fim = s.verificar(ls[0]);
-    await _dar();
+    await _ate(() => g.aGravar == 2);
     expect(g.aGravar, 2);
     s.cancelar(ls[0].id);
     expect((s.aVerificar(ls[0].id), s.total), (true, 1), reason: 'já está a gravar');
@@ -303,12 +312,12 @@ void main() {
         verificador: _Funcao((c, v, can) async => const ResultadoVerificacao(EstadoV.funciona, 'ok')),
         ritmo: RitmoHost(intervalo: Duration.zero));
     final todas = s.verificarVarias(ls);
-    await _dar();
+    await _ate(() => g.aGravar == 1);
     expect(g.aGravar, 1);
     s.parar();
     g.soltar();
     await todas.timeout(const Duration(seconds: 5));
-    await _dar();
+    await _ate(() => !s.ocupado);
     expect(s.ocupado, isFalse);
     expect(daBib(ls[1])!.ultima, isNull, reason: 'a da fila saiu com o parar');
     await s.verificar(ls[1]).timeout(const Duration(seconds: 5));
@@ -347,7 +356,7 @@ void main() {
     final gestor = ServicoVerificacao(bib, verificador: f, ritmo: ritmo);
     final doPlayer = ServicoVerificacao(bib, verificador: f, ritmo: ritmo);
     final p = doPlayer.verificar(player);
-    await _dar();
+    await _ate(() => f.pedidos.isNotEmpty);
     expect(f.pedidos, [player.conta.endereco], reason: 'o Player tem a vez do servidor');
     final gx = gestor.verificar(x);
     final gy = gestor.verificar(y);
