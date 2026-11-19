@@ -143,7 +143,7 @@ void main() {
       _tamanho(t, 1200, 800);
       final l = await preparar(t);
       await mostrar(t, l);
-      expect(find.text('Portugal · 2 canais'), findsOneWidget);
+      expect(find.text('1 de 2'), findsOneWidget);
       expect(find.text('PT: RTP 1 HD'), findsOneWidget);
       expect(find.text('BBC One'), findsNothing);
 
@@ -195,7 +195,7 @@ void main() {
       await mostrar(t, l);
       await _escrever(t, find.byKey(const Key('pesquisa-canais')), 'rtp');
       await t.pump(const Duration(milliseconds: 50));
-      expect(find.text('Portugal · 2 canais'), findsOneWidget);
+      expect(find.text('1 de 2'), findsOneWidget);
       await t.pump(const Duration(milliseconds: 150));
       expect(find.text('2 canais encontrados'), findsOneWidget);
     });

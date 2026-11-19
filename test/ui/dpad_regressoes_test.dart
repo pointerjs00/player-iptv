@@ -10,6 +10,7 @@ import 'package:player_iptv/importar/importar.dart';
 import 'package:player_iptv/modelo/canal.dart';
 import 'package:player_iptv/modelo/conta.dart';
 import 'package:player_iptv/ui/conteudo/tela_conteudo.dart';
+import 'package:player_iptv/ui/design/barra_teclas.dart';
 import 'package:player_iptv/ui/definicoes/tela_definicoes.dart';
 import 'package:player_iptv/ui/design/design.dart';
 import 'package:player_iptv/ui/inicio/tela_inicio.dart';
@@ -293,7 +294,7 @@ void main() {
     expect(escolha, 2);
   });
 
-  group('Conteúdo: a dica "OK mantido: favorito"', () {
+  group('Conteúdo: a barra de teclas', () {
     Future<void> mostrarCanais(WidgetTester t) async {
       await t.runAsync(() async {
         await bib.adicionar([Importada(contaDeLinha('http://x.com/l.m3u')!)]);
@@ -306,23 +307,15 @@ void main() {
       await t.pump();
     }
 
-    testWidgets('na TV aparece por cima dos canais', (t) async {
+    testWidgets('na TV a barra de teclas em baixo diz o que cada tecla faz', (t) async {
       ecraTvTeste(t);
       await mostrarCanais(t);
-      expect(find.text('OK mantido: favorito'), findsOneWidget);
-    });
-
-    testWidgets('com o comando/teclado (modo de realce tradicional) aparece; no toque não', (t) async {
-      t.view.physicalSize = const Size(1200, 800);
-      t.view.devicePixelRatio = 1;
-      addTearDown(t.view.reset);
-      FocusManager.instance.highlightStrategy = FocusHighlightStrategy.alwaysTouch;
-      addTearDown(() => FocusManager.instance.highlightStrategy = FocusHighlightStrategy.automatic);
-      await mostrarCanais(t);
-      expect(find.text('OK mantido: favorito'), findsNothing, reason: 'no telemóvel há a estrela');
-      FocusManager.instance.highlightStrategy = FocusHighlightStrategy.alwaysTraditional;
-      await t.pump();
-      expect(find.text('OK mantido: favorito'), findsOneWidget);
+      final barra = find.byType(BarraTeclas);
+      expect(barra, findsOneWidget);
+      for (final texto in ['OK', 'ver', 'OK mantido', 'favorito', '←', 'grupos', '0–9', 'ir para o canal', 'Menu',
+        'opções dos canais']) {
+        expect(find.descendant(of: barra, matching: find.text(texto)), findsOneWidget, reason: texto);
+      }
     });
   });
 }

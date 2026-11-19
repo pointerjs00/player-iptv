@@ -13,6 +13,8 @@ import 'package:player_iptv/ui/design/design.dart';
 import 'package:player_iptv/ui/realce_foco.dart';
 import 'package:player_iptv/ui/tema.dart';
 
+import 'ajuda_dpad.dart' show textosFocados;
+
 Widget _app(Widget w) =>
     MaterialApp(theme: temaApp(), builder: (_, c) => TemaConformeRealce(child: c!), home: w);
 
@@ -102,9 +104,21 @@ void main() {
     await _tecla(t, LogicalKeyboardKey.select);
     expect(grupo('Portugal'), findsNothing);
     expect(l.gruposEscondidos, {'Portugal'});
+    expect(find.text('Grupo "Portugal" escondido'), findsOneWidget);
+    // Desfazer repõe o grupo
+    await t.tap(find.text('Desfazer'));
+    await t.pumpAndSettle();
+    expect(l.gruposEscondidos, isEmpty);
+    expect(grupo('Portugal'), findsOneWidget);
+    // (outra vez, para o resto do teste)
+    await t.longPress(grupo('Portugal'));
+    await t.pumpAndSettle();
+    await t.tap(find.text('Esconder o grupo'));
+    await t.pumpAndSettle();
+    expect(l.gruposEscondidos, {'Portugal'});
     // (a gravação no disco está nos testes da Biblioteca: aqui o IO real não acaba no relógio falso)
     // o grupo escolhido passou para o primeiro visível, com o foco
-    expect(find.text('Desporto · 2 canais'), findsOneWidget);
+    expect(find.text('1 de 2'), findsOneWidget);
     expect(_focado(), isNotNull);
 
     // as opções no topo (ao alcance das setas): mostrar os escondidos
@@ -127,10 +141,11 @@ void main() {
     final l = await preparar(t);
     await mostrar(t, l);
     expect(_nomesCanais(t), ['SIC', 'RTP 1']);
-    // do grupo, CIMA leva ao filtro e depois ao topo; DIREITA até às opções
-    for (var i = 0; i < 6 && FocusManager.instance.primaryFocus?.context?.widget is! IconButton; i++) {
+    // do grupo, CIMA leva ao topo ("‹ Início") e DIREITA percorre a barra até "Ordem"
+    for (var i = 0; i < 4 && textosFocados() != '‹ Início'; i++) {
       await _tecla(t, LogicalKeyboardKey.arrowUp);
     }
+    expect(textosFocados(), '‹ Início');
     for (var i = 0; i < 4; i++) {
       final ctx = FocusManager.instance.primaryFocus?.context;
       if (ctx?.findAncestorWidgetOfExactType<Tooltip>()?.message == 'Opções dos canais') break;
@@ -181,7 +196,7 @@ void main() {
     await t.tap(grupo(grupoVistos));
     await t.pumpAndSettle();
     expect(_nomesCanais(t), ['Eleven', 'SIC']);
-    expect(find.text('$grupoVistos · 2 canais'), findsOneWidget);
+    expect(find.text('1 de 2'), findsOneWidget);
   });
 
   testWidgets('sem vistos não há grupo "Vistos há pouco"', (t) async {
@@ -202,7 +217,7 @@ void main() {
     expect(aberto, isNotNull);
     expect(aberto!.$1.map((c) => c.nome), ['Eleven', 'Sport TV 1']);
     expect(aberto!.$2, 1);
-    expect(find.text('Desporto · 2 canais'), findsOneWidget);
+    expect(find.text('1 de 2'), findsOneWidget);
   });
 
   testWidgets('"Continuar a ver" com um canal que já não existe avisa', (t) async {
@@ -214,5 +229,96 @@ void main() {
     });
     expect(abriu, isFalse);
     expect(find.textContaining('já não está nesta lista'), findsOneWidget);
+  });
+
+  group('Lista aberta: um canal por linha', () {
+    Future<Lista> comCanais(WidgetTester t, int n) async {
+      t.view.physicalSize = const Size(1280, 800);
+      t.view.devicePixelRatio = 1;
+      addTearDown(t.view.reset);
+      FocusManager.instance.highlightStrategy = FocusHighlightStrategy.alwaysTraditional;
+      addTearDown(() => FocusManager.instance.highlightStrategy = FocusHighlightStrategy.automatic);
+      await t.runAsync(() async {
+        await bib.adicionar([Importada(contaDeLinha('http://x.com/l.m3u')!)]);
+        await bib.guardarCanais(bib.listas.single.id, ConteudoLista(['Geral'], [
+          for (var i = 1; i <= n; i++) Canal(id: '$i', nome: 'Canal $i', grupo: 'Geral'),
+        ]));
+      });
+      return bib.listas.single;
+    }
+
+    testWidgets('cada canal ocupa uma linha inteira (mesmo dx, dy diferente) e não há painel à direita', (t) async {
+      final l = await comCanais(t, 54);
+      await mostrar(t, l);
+      final a = t.getTopLeft(find.widgetWithText(ListTile, 'Canal 1'));
+      final b = t.getTopLeft(find.widgetWithText(ListTile, 'Canal 2'));
+      expect(b.dx, a.dx);
+      expect(b.dy, greaterThan(a.dy));
+      expect(b.dy - a.dy, 56);
+      // a linha vai de ponta a ponta da área dos canais
+      expect(t.getSize(find.widgetWithText(ListTile, 'Canal 1')).width, greaterThan(700));
+    });
+
+    testWidgets('o cabeçalho mostra o grupo e "2 de 54" com o foco no 2.º canal', (t) async {
+      final l = await comCanais(t, 54);
+      await mostrar(t, l);
+      expect(find.text('1 de 54'), findsOneWidget);
+      await _tecla(t, LogicalKeyboardKey.arrowRight);
+      await _tecla(t, LogicalKeyboardKey.arrowDown);
+      expect(_focado(), 'Canal 2');
+      expect(find.text('2 de 54'), findsOneWidget);
+      expect(find.text('Canal 1'), findsOneWidget);
+    });
+
+    testWidgets('o topo tem a ordem, os grupos escondidos e o contador de canais', (t) async {
+      final l = await comCanais(t, 54);
+      await mostrar(t, l);
+      expect(find.text('‹ Início'), findsOneWidget);
+      expect(find.text('54 canais'), findsOneWidget);
+      expect(find.text('Ordem: da lista'), findsOneWidget);
+      expect(find.text('Grupos escondidos: 0'), findsOneWidget);
+      expect(find.text('Filtrar grupos…'), findsOneWidget);
+      expect(find.text('Pesquisar canais ou escrever o número'), findsOneWidget);
+    });
+
+    testWidgets('OK mantido põe nos favoritos, avisa com "Desfazer", e Desfazer repõe', (t) async {
+      final l = await comCanais(t, 5);
+      await mostrar(t, l);
+      await _tecla(t, LogicalKeyboardKey.arrowRight);
+      await _tecla(t, LogicalKeyboardKey.arrowDown);
+      expect(_focado(), 'Canal 2');
+      await t.sendKeyDownEvent(LogicalKeyboardKey.select);
+      await t.pump(duracaoOkMantido + const Duration(milliseconds: 50));
+      await t.sendKeyUpEvent(LogicalKeyboardKey.select);
+      await t.pumpAndSettle();
+      expect(l.favoritos, {'2'});
+      expect(find.text('Canal 2 está nos favoritos'), findsOneWidget);
+      expect(find.text('Desfazer'), findsOneWidget);
+      await t.tap(find.text('Desfazer'));
+      await t.pumpAndSettle();
+      expect(l.favoritos, isEmpty);
+    });
+
+    testWidgets('0–9: escrever o número leva o foco ao canal', (t) async {
+      final l = await comCanais(t, 54);
+      await mostrar(t, l);
+      await _tecla(t, LogicalKeyboardKey.arrowRight);
+      await t.sendKeyEvent(LogicalKeyboardKey.digit3);
+      await t.pump();
+      await t.sendKeyEvent(LogicalKeyboardKey.digit7);
+      await t.pumpAndSettle();
+      expect(_focado(), 'Canal 37');
+      expect(find.text('37 de 54'), findsOneWidget);
+    });
+
+    testWidgets('escrever um número na pesquisa encontra o canal com esse número', (t) async {
+      final l = await comCanais(t, 54);
+      await mostrar(t, l);
+      await t.tap(find.byKey(const Key('pesquisa-canais')));
+      await t.pump();
+      await t.enterText(find.byKey(const Key('pesquisa-canais')), '37');
+      await t.pump(const Duration(milliseconds: 200));
+      expect(find.text('1 canal encontrado'), findsOneWidget);
+    });
   });
 }

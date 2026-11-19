@@ -78,6 +78,12 @@ class _CampoTvState extends State<CampoTv> {
       // vai à barra das secções)
       return moveu ? KeyEventResult.handled : KeyEventResult.ignored;
     }
+    // sem estar a escrever, ESQUERDA/DIREITA também saem do campo (numa barra com botões ao lado)
+    if (!_aEscrever && (k == LogicalKeyboardKey.arrowLeft || k == LogicalKeyboardKey.arrowRight)) {
+      final moveu = _foco.focusInDirection(
+          k == LogicalKeyboardKey.arrowLeft ? TraversalDirection.left : TraversalDirection.right);
+      return moveu ? KeyEventResult.handled : KeyEventResult.ignored;
+    }
     if (!_aEscrever &&
         (k == LogicalKeyboardKey.select || k == LogicalKeyboardKey.enter || k == LogicalKeyboardKey.gameButtonA)) {
       _escrever();

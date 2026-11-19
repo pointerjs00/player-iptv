@@ -17,6 +17,7 @@ import 'opcoes_conteudo.dart';
 import '../tema.dart';
 import '../../verificar/estado.dart';
 import '../../verificar/verificador.dart';
+import '../design/barra_teclas.dart';
 import '../design/mensagens.dart';
 
 const grupoFavoritos = '★ Favoritos';
@@ -109,8 +110,15 @@ class _TelaConteudoState extends State<TelaConteudo> {
   final _focosGrupos = <String, FocusNode>{};
   FocusNode _focoGrupo(String g) => _focosGrupos.putIfAbsent(g, () => FocusNode(debugLabel: 'Grupo $g'));
 
-  /// A altura de cada canal (maior na TV: vê-se de longe).
-  double _alturaCanal(bool tv) => tv ? 76 : 56;
+  /// O canal com o foco na lista visível (0 = o primeiro): o "i" do "i de n".
+  int _indice = 0;
+
+  /// Os dígitos carregados para ir a um canal pelo número (apagam-se ao fim de 1,5 s).
+  String _digitos = '';
+  Timer? _atrasoDigitos;
+
+  /// A altura de cada canal: uma linha de 56 (maior na TV: vê-se de longe).
+  double _alturaCanal(bool tv) => tv ? 68 : 56;
   static const _margemLista = 8.0;
 
   @override
@@ -123,6 +131,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
   void dispose() {
     _cancelamento?.cancelar();
     _atrasoPesquisa?.cancel();
+    _atrasoDigitos?.cancel();
     _scrollCanais.dispose();
     _focoRegresso.dispose();
     _focoCancelar.dispose();
@@ -210,8 +219,18 @@ class _TelaConteudoState extends State<TelaConteudo> {
         });
     switch (o) {
       case OpcaoCanais.esconderGrupo:
-        unawaited(gravar(widget.biblioteca.esconderGrupo(l.id, grupo!, true)));
-        if (!_verEscondidos && _grupo == grupo) _grupo = _primeiroGrupo(_conteudo!);
+        final escondido = grupo!;
+        final eraAtual = _grupo == escondido;
+        unawaited(gravar(widget.biblioteca.esconderGrupo(l.id, escondido, true)));
+        if (!_verEscondidos && eraAtual) _grupo = _primeiroGrupo(_conteudo!);
+        mostrarMensagem(context, 'Grupo "$escondido" escondido', acao: 'Desfazer', aoAcao: () {
+          if (!mounted) return;
+          unawaited(gravar(widget.biblioteca.esconderGrupo(l.id, escondido, false)));
+          setState(() {
+            if (eraAtual) _grupo = escondido;
+            _chaveVisiveis = null;
+          });
+        });
       case OpcaoCanais.mostrarGrupo:
         unawaited(gravar(widget.biblioteca.esconderGrupo(l.id, grupo!, false)));
       case OpcaoCanais.ordemLista || OpcaoCanais.ordemAz:
@@ -374,14 +393,19 @@ class _TelaConteudoState extends State<TelaConteudo> {
         '${q.isNotEmpty ? 'q:$q' : (_grupo == grupoFavoritos ? 'f:$_versaoFavoritos' : _grupo == grupoVistos ? 'v:${widget.lista.vistos.join(',')}' : 'g:$_grupo')}';
     if (chave == _chaveVisiveis) return _visiveis;
     _chaveVisiveis = chave;
+    _indice = 0;
     final List<Canal> r;
     if (q.isNotEmpty) {
       final nomes = _nomes ??= [for (final x in c.canais) semAcentos(x.nome)];
       // os grupos escondidos também ficam fora da pesquisa
       final semEscondidos = _verEscondidos || escondidos.isEmpty;
+      // um número escrito também encontra o canal com esse número
+      final numero = int.tryParse(q);
       r = [
         for (var i = 0; i < c.canais.length; i++)
-          if (nomes[i].contains(q) && (semEscondidos || !escondidos.contains(c.canais[i].grupo))) c.canais[i],
+          if ((nomes[i].contains(q) || (numero != null && c.canais[i].numero == numero)) &&
+              (semEscondidos || !escondidos.contains(c.canais[i].grupo)))
+            c.canais[i],
       ];
     } else if (_grupo == grupoVistos) {
       // pela ordem em que se viram, não pela ordem dos canais
@@ -410,11 +434,16 @@ class _TelaConteudoState extends State<TelaConteudo> {
     if (!mounted) return;
     // a lista visível ainda é a mesma que foi para o player? Então foca o canal que tocava.
     if (!identical(canais, _canaisVisiveis())) return;
-    setState(() => _canalAFocar = canais[volta]);
+    _focarNoCanal(canais, volta);
+  }
+
+  /// Rola até ao canal `i` (deixa-o a meio) e dá-lhe o foco.
+  void _focarNoCanal(List<Canal> canais, int i) {
+    setState(() => _canalAFocar = canais[i]);
     if (_scrollCanais.hasClients) {
       final p = _scrollCanais.position;
       final h = _alturaCanal(ecraTv(context));
-      _scrollCanais.jumpTo((_margemLista + volta * h - p.viewportDimension / 2 + h / 2)
+      _scrollCanais.jumpTo((_margemLista + i * h - p.viewportDimension / 2 + h / 2)
           .clamp(0.0, p.maxScrollExtent));
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -440,68 +469,159 @@ class _TelaConteudoState extends State<TelaConteudo> {
   @override
   Widget build(BuildContext context) {
     final largo = MediaQuery.sizeOf(context).width >= 720;
-    final pesquisa = Padding(
-      padding: EdgeInsets.only(top: largo ? 0 : Tokens.e8),
-      child: CampoTv(
-        key: const Key('pesquisa-canais'),
-        decoration: InputDecoration(
-          prefixIcon: const Icon(Icons.search),
-          hintText: _conteudo == null
-              ? 'Pesquisar canais'
-              : 'Pesquisar em ${_conteudo!.canais.length} canais de ${_conteudo!.grupos.length} grupos',
-        ),
-        onChanged: _pesquisar,
+    return Scaffold(
+      body: SafeArea(
+        child: Stack(children: [
+          // com o loader por cima, nada de baixo recebe o foco
+          ExcludeFocus(
+            excluding: _aCarregar,
+            // Menu (do comando) abre as opções dos canais
+            child: Focus(
+              canRequestFocus: false,
+              skipTraversal: true,
+              includeSemantics: false,
+              onKeyEvent: (_, e) {
+                if (e is KeyDownEvent && e.logicalKey == LogicalKeyboardKey.contextMenu && _conteudo != null) {
+                  _opcoes();
+                  return KeyEventResult.handled;
+                }
+                return KeyEventResult.ignored;
+              },
+              child: Column(children: [
+                _barraTopo(largo),
+                Expanded(child: _corpo()),
+                const BarraTeclas([
+                  ('OK', 'ver'),
+                  ('OK mantido', 'favorito'),
+                  ('←', 'grupos'),
+                  ('0–9', 'ir para o canal'),
+                  ('Menu', 'opções dos canais'),
+                ]),
+              ]),
+            ),
+          ),
+          // sem cache (ou ao atualizar): o loader em ecrã cheio
+          if (_aCarregar)
+            Positioned.fill(
+              child: Builder(builder: (_) {
+                final (passo, progresso) = passoCarregamento(_aviso);
+                return CarregadorCanais(
+                  passo: passo,
+                  progresso: progresso,
+                  focoCancelar: _focoCancelar,
+                  aoCancelar: _cancelarCarregamento,
+                  titulo: _conteudo == null ? 'A carregar os canais' : 'A atualizar os canais',
+                );
+              }),
+            ),
+        ]),
       ),
     );
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.lista.nomeMostrado, maxLines: 1, overflow: TextOverflow.ellipsis),
-        actions: [
-          IconButton(
-            tooltip: 'Opções dos canais',
-            onPressed: _conteudo == null ? null : _opcoes,
-            icon: const Icon(Icons.tune_rounded),
-          ),
-          IconButton(
-            tooltip: 'Atualizar a lista de canais',
-            onPressed: _atualizar,
-            icon: const Icon(Icons.refresh),
-          ),
-        ],
+  }
+
+  /// Mostra/esconde os grupos escondidos (o botão "Grupos escondidos: n" do topo).
+  void _alternarEscondidos() {
+    final l = widget.lista;
+    setState(() {
+      _verEscondidos = !_verEscondidos;
+      if (!_verEscondidos && l.gruposEscondidos.contains(_grupo)) _grupo = _primeiroGrupo(_conteudo!);
+      _chaveVisiveis = null;
+    });
+    if (!_verEscondidos) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final g = _grupo;
+        if (mounted && g != null) _focosGrupos[g]?.requestFocus();
+      });
+    }
+  }
+
+  /// O topo: "‹ Início", o nome da lista, o n.º de canais, a pesquisa, a ordem e os grupos escondidos.
+  Widget _barraTopo(bool largo) {
+    final tv = ecraTv(context);
+    final l = widget.lista;
+    final total = _conteudo?.canais.length;
+    final carregado = _conteudo != null;
+    final tamanho = tv ? 16.0 : 14.0;
+    final estilo = TextStyle(fontSize: tamanho);
+    final inicio = TextButton(
+      onPressed: () => Navigator.of(context).maybePop(),
+      child: Text('‹ Início', style: estilo),
+    );
+    final nome = Text(l.nomeMostrado,
+        maxLines: 1, overflow: TextOverflow.ellipsis,
+        style: TextStyle(fontSize: tv ? 22 : 18, fontWeight: FontWeight.w700));
+    final contagem = total == null
+        ? null
+        : Text(total == 1 ? '1 canal' : '$total canais', style: TextStyle(color: Tokens.texto2, fontSize: tamanho));
+    final pesquisa = CampoTv(
+      key: const Key('pesquisa-canais'),
+      decoration: const InputDecoration(
+        prefixIcon: Icon(Icons.search),
+        hintText: 'Pesquisar canais ou escrever o número',
       ),
-      body: Stack(children: [
-        // com o loader por cima, nada de baixo recebe o foco
-        ExcludeFocus(
-          excluding: _aCarregar,
-          child: Column(children: [
-            // cabeçalho: estado da última verificação e validade (sugestão 9) + pesquisa
-            Padding(
-              padding: const EdgeInsets.fromLTRB(Tokens.e16, 0, Tokens.e16, Tokens.e12),
-              child: largo
-                  ? Row(children: [
-                      Expanded(child: _cabecalhoLista()),
-                      const SizedBox(width: Tokens.e16),
-                      SizedBox(width: 400, child: pesquisa),
-                    ])
-                  : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [_cabecalhoLista(), pesquisa]),
-            ),
-            Expanded(child: _corpo()),
+      onChanged: _pesquisar,
+    );
+    final ordem = Tooltip(
+      message: 'Opções dos canais',
+      child: OutlinedButton(
+        onPressed: carregado ? _opcoes : null,
+        child: Text('Ordem: ${l.ordemCanais == OrdemCanais.az ? 'A–Z' : 'da lista'}', style: estilo),
+      ),
+    );
+    final escondidos = OutlinedButton(
+      onPressed: carregado && (l.gruposEscondidos.isNotEmpty || _verEscondidos) ? _alternarEscondidos : null,
+      child: Text('Grupos escondidos: ${l.gruposEscondidos.length}', style: estilo),
+    );
+    final atualizar = IconButton(
+      tooltip: 'Atualizar a lista de canais',
+      onPressed: _atualizar,
+      icon: const Icon(Icons.refresh),
+    );
+    // o estado da última verificação e a validade (sugestão 9), discretos
+    final info = Align(alignment: Alignment.centerLeft, child: _cabecalhoLista());
+    if (largo) {
+      // ecrã médio (a TV a 960 px, um portátil): a pesquisa fica na 1.ª linha e a ordem e os grupos escondidos
+      // passam para a linha do estado
+      final medio = MediaQuery.sizeOf(context).width < 1280;
+      final caixaPesquisa = Expanded(
+          child: Align(alignment: Alignment.centerRight,
+              child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 420), child: pesquisa)));
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(Tokens.e16, Tokens.e8, Tokens.e16, Tokens.e8),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(children: [
+            inicio,
+            const SizedBox(width: Tokens.e8),
+            ConstrainedBox(constraints: const BoxConstraints(maxWidth: 220), child: nome),
+            if (contagem != null) ...[const SizedBox(width: Tokens.e12), contagem],
+            const SizedBox(width: Tokens.e16),
+            caixaPesquisa,
+            if (!medio) ...[const SizedBox(width: Tokens.e12), ordem, const SizedBox(width: Tokens.e8), escondidos],
+            atualizar,
           ]),
+          const SizedBox(height: Tokens.e4),
+          if (medio)
+            Row(children: [Expanded(child: info), ordem, const SizedBox(width: Tokens.e8), escondidos])
+          else
+            info,
+        ]),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(Tokens.e8, Tokens.e4, Tokens.e8, Tokens.e4),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          inicio,
+          Expanded(child: nome),
+          if (contagem != null) ...[const SizedBox(width: Tokens.e8), contagem],
+          atualizar,
+        ]),
+        Padding(padding: const EdgeInsets.symmetric(horizontal: Tokens.e8), child: pesquisa),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(Tokens.e8, Tokens.e8, Tokens.e8, 0),
+          child: Wrap(spacing: Tokens.e8, runSpacing: Tokens.e4, children: [ordem, escondidos]),
         ),
-        // sem cache (ou ao atualizar): o loader em ecrã cheio
-        if (_aCarregar)
-          Positioned.fill(
-            child: Builder(builder: (_) {
-              final (passo, progresso) = passoCarregamento(_aviso);
-              return CarregadorCanais(
-                passo: passo,
-                progresso: progresso,
-                focoCancelar: _focoCancelar,
-                aoCancelar: _cancelarCarregamento,
-                titulo: _conteudo == null ? 'A carregar os canais' : 'A atualizar os canais',
-              );
-            }),
-          ),
+        Padding(padding: const EdgeInsets.fromLTRB(Tokens.e8, Tokens.e8, Tokens.e8, 0), child: info),
       ]),
     );
   }
@@ -537,7 +657,8 @@ class _TelaConteudoState extends State<TelaConteudo> {
         Row(mainAxisSize: MainAxisSize.min, children: [
           Icon(Icons.history_rounded, size: tv ? 16 : 14, color: Tokens.texto2),
           const SizedBox(width: 4),
-          Text('da cache · ${dataRelativa(_daCache!)}', style: secundario),
+          Flexible(child: Text('da cache · ${dataRelativa(_daCache!)}', maxLines: 1,
+              overflow: TextOverflow.ellipsis, style: secundario)),
         ]),
     ]);
   }
@@ -577,7 +698,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
       return Padding(
         padding: const EdgeInsets.fromLTRB(Tokens.e16, 0, Tokens.e16, Tokens.e16),
         child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          SizedBox(width: tv ? 340 : 300, child: SuperficieVidro(child: _colunaGrupos())),
+          SizedBox(width: 280, child: SuperficieVidro(child: _colunaGrupos())),
           const SizedBox(width: Tokens.e16),
           Expanded(
             child: SuperficieVidro(
@@ -657,7 +778,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
               padding: const EdgeInsets.all(Tokens.e16),
               child: largo
                   ? Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      SizedBox(width: tv ? 308 : 268, child: grupos),
+                      SizedBox(width: 248, child: grupos),
                       const SizedBox(width: Tokens.e32 + Tokens.e16),
                       Expanded(child: canais),
                     ])
@@ -669,31 +790,25 @@ class _TelaConteudoState extends State<TelaConteudo> {
     );
   }
 
-  /// O grupo e o número de canais; com o comando (TV ou modo de realce do teclado), à direita, a
-  /// dica discreta "OK mantido: favorito" (a estrela não recebe o foco).
+  /// Por cima dos canais: o grupo à esquerda e `i de n` à direita (i = o canal com o foco).
   Widget _cabecalhoCanais(int n, bool pesquisa) {
-    Theme.of(context); // reconstrói quando o modo de realce muda (TemaConformeRealce troca o tema)
     final tv = ecraTv(context);
-    final comando = tv || FocusManager.instance.highlightMode == FocusHighlightMode.traditional;
-    final tamanho = tv ? 15.0 : 13.0;
+    final tamanho = tv ? 16.0 : 14.0;
+    final estilo = TextStyle(color: Tokens.texto2, fontWeight: FontWeight.w700, fontSize: tamanho);
     return Padding(
       padding: const EdgeInsets.fromLTRB(Tokens.e16, Tokens.e12, Tokens.e16, Tokens.e4),
       child: Row(children: [
         Expanded(
           child: Text(
-            pesquisa
-                ? (n == 1 ? '1 canal encontrado' : '$n canais encontrados')
-                : '${_grupo ?? 'Todos'} · ${n == 1 ? '1 canal' : '$n canais'}',
+            pesquisa ? (n == 1 ? '1 canal encontrado' : '$n canais encontrados') : (_grupo ?? 'Todos'),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(color: Tokens.texto2, fontWeight: FontWeight.w700, fontSize: tamanho),
+            style: estilo,
           ),
         ),
-        if (comando && n > 0) ...[
+        if (n > 0) ...[
           const SizedBox(width: Tokens.e12),
-          Icon(Icons.star_outline_rounded, size: tamanho + 3, color: Tokens.texto2),
-          const SizedBox(width: 4),
-          Text('OK mantido: favorito', style: TextStyle(color: Tokens.texto2, fontSize: tamanho - 1)),
+          Text('${_indice.clamp(0, n - 1) + 1} de $n', key: const Key('contador-canais'), style: estilo),
         ],
       ]),
     );
@@ -703,14 +818,6 @@ class _TelaConteudoState extends State<TelaConteudo> {
     final grupos = _gruposVisiveis();
     final tv = ecraTv(context);
     return Column(children: [
-      Padding(
-        padding: const EdgeInsets.fromLTRB(Tokens.e12, Tokens.e12, Tokens.e12, Tokens.e4),
-        child: CampoTv(
-          key: const Key('filtro-grupos'),
-          decoration: const InputDecoration(prefixIcon: Icon(Icons.filter_list), hintText: 'Filtrar grupos'),
-          onChanged: (v) => setState(() => _qGrupos = v),
-        ),
-      ),
       Expanded(
         child: FocusTraversalGroup(
           child: ListView.builder(
@@ -756,6 +863,14 @@ class _TelaConteudoState extends State<TelaConteudo> {
           ),
         ),
       ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(Tokens.e12, Tokens.e4, Tokens.e12, Tokens.e12),
+        child: CampoTv(
+          key: const Key('filtro-grupos'),
+          decoration: const InputDecoration(prefixIcon: Icon(Icons.filter_list), hintText: 'Filtrar grupos…'),
+          onChanged: (v) => setState(() => _qGrupos = v),
+        ),
+      ),
     ]);
   }
 
@@ -787,35 +902,59 @@ class _TelaConteudoState extends State<TelaConteudo> {
             void favorito() => _alternarFavorito(canais, i);
             // a linha é a única paragem do foco: a estrela só mostra o estado e responde ao
             // toque/rato; no comando, OK mantido (ou toque longo, ou clique direito) põe/tira
+            final numero = '${c.numero ?? i + 1}';
+            final larguraNumero = tv ? 64.0 : 52.0;
+            // uma linha inteira: número, logótipo, nome e estrela. O número fica por cima da
+            // margem esquerda da linha (fora do ListTile: não faz parte do que recebe o foco)
             return OkMantido(
               aoCarregar: abrir,
               aoManter: favorito,
               child: GestureDetector(
                 onSecondaryTap: favorito,
-                child: RealceFoco(
-                  construir: (_, aoMudarFoco) => ListTile(
-                    onFocusChange: aoMudarFoco,
-                    focusNode: identical(c, _canalAFocar) ? _focoRegresso : null,
-                    autofocus: focarPrimeiro && i == 0,
-                    leading: _Logo(c.logo, tamanho: tv ? 56 : 40),
-                    minLeadingWidth: tv ? 56 : 40,
-                    title: Text(c.nome, maxLines: 1, overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: tv ? 19 : 15, fontWeight: FontWeight.w500)),
-                    subtitle: pesquisa
-                        ? Text(c.grupo, maxLines: 1, style: TextStyle(fontSize: tv ? 14 : 12, color: Tokens.texto2))
-                        : null,
-                    trailing: ExcludeFocus(
-                      child: IconButton(
-                        tooltip: fav ? 'Tirar dos favoritos' : 'Pôr nos favoritos',
-                        icon: Icon(fav ? Icons.star_rounded : Icons.star_outline_rounded,
-                            color: fav ? Tokens.aviso : Tokens.texto2, size: tv ? 28 : 24),
-                        onPressed: favorito,
+                child: Stack(children: [
+                  RealceFoco(
+                    construir: (_, aoMudarFoco) => ListTile(
+                      onFocusChange: (f) {
+                        aoMudarFoco(f);
+                        if (f && _indice != i) setState(() => _indice = i);
+                      },
+                      focusNode: identical(c, _canalAFocar) ? _focoRegresso : null,
+                      autofocus: focarPrimeiro && i == 0,
+                      contentPadding: EdgeInsets.only(left: Tokens.e16 + larguraNumero, right: Tokens.e8),
+                      leading: _Logo(c.logo, c.nome, tamanho: tv ? 52 : 40),
+                      minLeadingWidth: tv ? 52 : 40,
+                      title: Text(c.nome, maxLines: 1, overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontSize: tv ? 19 : 15, fontWeight: FontWeight.w500)),
+                      subtitle: pesquisa
+                          ? Text(c.grupo, maxLines: 1, style: TextStyle(fontSize: tv ? 14 : 12, color: Tokens.texto2))
+                          : null,
+                      trailing: ExcludeFocus(
+                        child: IconButton(
+                          tooltip: fav ? 'Tirar dos favoritos' : 'Pôr nos favoritos',
+                          icon: Icon(fav ? Icons.star_rounded : Icons.star_outline_rounded,
+                              color: fav ? Tokens.aviso : Tokens.texto2, size: tv ? 28 : 24),
+                          onPressed: favorito,
+                        ),
+                      ),
+                      onTap: abrir,
+                      onLongPress: favorito,
+                    ),
+                  ),
+                  Positioned(
+                    left: Tokens.e16,
+                    top: 0,
+                    bottom: 0,
+                    width: larguraNumero - Tokens.e8,
+                    child: IgnorePointer(
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(numero, maxLines: 1, overflow: TextOverflow.ellipsis,
+                            style: TextStyle(color: Tokens.texto2, fontSize: tv ? 17 : 14,
+                                fontFeatures: const [FontFeature.tabularFigures()])),
                       ),
                     ),
-                    onTap: abrir,
-                    onLongPress: favorito,
                   ),
-                ),
+                ]),
               ),
             );
           },
@@ -824,11 +963,59 @@ class _TelaConteudoState extends State<TelaConteudo> {
     );
   }
 
+  static const _teclasDigitos = [
+    LogicalKeyboardKey.digit0, LogicalKeyboardKey.digit1, LogicalKeyboardKey.digit2, LogicalKeyboardKey.digit3,
+    LogicalKeyboardKey.digit4, LogicalKeyboardKey.digit5, LogicalKeyboardKey.digit6, LogicalKeyboardKey.digit7,
+    LogicalKeyboardKey.digit8, LogicalKeyboardKey.digit9,
+  ];
+  static const _teclasNumpad = [
+    LogicalKeyboardKey.numpad0, LogicalKeyboardKey.numpad1, LogicalKeyboardKey.numpad2,
+    LogicalKeyboardKey.numpad3, LogicalKeyboardKey.numpad4, LogicalKeyboardKey.numpad5,
+    LogicalKeyboardKey.numpad6, LogicalKeyboardKey.numpad7, LogicalKeyboardKey.numpad8,
+    LogicalKeyboardKey.numpad9,
+  ];
+
+  int? _digito(LogicalKeyboardKey k) {
+    final i = _teclasDigitos.indexOf(k);
+    final j = _teclasNumpad.indexOf(k);
+    return i >= 0 ? i : (j >= 0 ? j : null);
+  }
+
+  /// "0–9, ir para o canal": os dígitos carregados seguidos formam o número do canal (o do
+  /// portal ou, sem número, a posição na lista) e o foco vai para ele.
+  void _irParaNumero(int d) {
+    _atrasoDigitos?.cancel();
+    _atrasoDigitos = Timer(const Duration(milliseconds: 1500), () => _digitos = '');
+    final canais = _canaisVisiveis();
+    int? procurar(String t) {
+      final n = int.tryParse(t);
+      if (n == null) return null;
+      final porNumero = canais.indexWhere((c) => c.numero == n);
+      if (porNumero >= 0) return porNumero;
+      return !canais.any((c) => c.numero != null) && n >= 1 && n <= canais.length ? n - 1 : null;
+    }
+
+    var i = procurar('$_digitos$d');
+    if (i != null) {
+      _digitos += '$d';
+    } else {
+      // sem esse número: recomeça só com este dígito
+      _digitos = '$d';
+      i = procurar(_digitos);
+    }
+    if (i != null) _focarNoCanal(canais, i);
+  }
+
   /// Nos canais: DIREITA fica no canal (à direita não há nada; a procura direcional saltava
   /// para o "Atualizar" lá em cima) e ESQUERDA volta ao grupo escolhido (não ao filtro dos
   /// grupos, que pode estar mais perto do canal de cima).
   KeyEventResult _teclaCanais(FocusNode _, KeyEvent e) {
     if (e is KeyUpEvent) return KeyEventResult.ignored;
+    final d = _digito(e.logicalKey);
+    if (d != null) {
+      if (e is KeyDownEvent) _irParaNumero(d);
+      return KeyEventResult.handled;
+    }
     if (e.logicalKey == LogicalKeyboardKey.arrowRight) return KeyEventResult.handled;
     if (e.logicalKey == LogicalKeyboardKey.arrowLeft) {
       final g = _focosGrupos[_grupo];
@@ -840,6 +1027,13 @@ class _TelaConteudoState extends State<TelaConteudo> {
     return KeyEventResult.ignored;
   }
 
+  /// "Desfazer": repõe o canal como estava antes (só se ainda não foi mudado entretanto).
+  void _desfazerFavorito(String id, bool tinhaPassadoAFavorito) {
+    if (!mounted || widget.lista.favoritos.contains(id) != tinhaPassadoAFavorito) return;
+    widget.biblioteca.alternarFavorito(widget.lista.id, id);
+    setState(() => _versaoFavoritos++);
+  }
+
   /// Põe/tira o canal `i` dos favoritos (o conjunto muda logo; a gravação em disco segue em
   /// segundo plano). No grupo dos favoritos o canal sai da lista: o foco passa ao que fica no
   /// lugar dele (ou, sem favoritos, ao primeiro grupo).
@@ -849,7 +1043,8 @@ class _TelaConteudoState extends State<TelaConteudo> {
     widget.biblioteca.alternarFavorito(widget.lista.id, c.id);
     final noGrupoFav = _grupo == grupoFavoritos && _qCanais.trim().isEmpty;
     setState(() => _versaoFavoritos++);
-    mostrarMensagem(context, agora ? '${c.nome} está nos favoritos' : '${c.nome} saiu dos favoritos');
+    mostrarMensagem(context, agora ? '${c.nome} está nos favoritos' : '${c.nome} saiu dos favoritos',
+        acao: 'Desfazer', aoAcao: () => _desfazerFavorito(c.id, agora));
     if (!noGrupoFav || agora) return;
     final restantes = _canaisVisiveis();
     if (restantes.isEmpty) {
@@ -867,15 +1062,35 @@ class _TelaConteudoState extends State<TelaConteudo> {
   }
 }
 
-/// O logótipo do canal num quadrado de vidro (ou o ícone de TV sem logótipo).
+/// O logótipo do canal num quadrado de vidro (ou as iniciais do nome, sem logótipo).
 class _Logo extends StatelessWidget {
-  const _Logo(this.url, {required this.tamanho});
+  const _Logo(this.url, this.nome, {required this.tamanho});
   final String url;
+  final String nome;
   final double tamanho;
+
+  /// "PT: RTP 1 HD" → "PR": a 1.ª letra de até duas palavras (uma só palavra: as duas primeiras).
+  static String iniciais(String nome) {
+    final alfanum = RegExp(r'[^\p{L}\p{N}]', unicode: true);
+    final palavras = [
+      for (final p in nome.split(RegExp(r'\s+')))
+        if (p.replaceAll(alfanum, '').isNotEmpty) p.replaceAll(alfanum, ''),
+    ];
+    if (palavras.isEmpty) return '';
+    final r = palavras.length == 1
+        ? palavras.first.characters.take(2).toString()
+        : '${palavras[0].characters.first}${palavras[1].characters.first}';
+    return r.toUpperCase();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final vazio = Icon(Icons.tv_rounded, color: Tokens.texto2, size: tamanho * .5);
+    final ini = iniciais(nome);
+    final vazio = ini.isEmpty
+        ? Icon(Icons.tv_rounded, color: Tokens.texto2, size: tamanho * .5)
+        // RichText (não Text): as iniciais são só decoração, o nome já está ao lado
+        : Center(child: ExcludeSemantics(child: RichText(maxLines: 1, text: TextSpan(text: ini,
+            style: TextStyle(color: Tokens.texto2, fontSize: tamanho * .36, fontWeight: FontWeight.w700)))));
     return Container(
       key: const Key('logo-canal'),
       width: tamanho,
