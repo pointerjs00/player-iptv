@@ -58,9 +58,13 @@ class ServicoVerificacao extends ChangeNotifier {
   Cancelamento _cancelamento = Cancelamento();
   int feitas = 0, total = 0;
 
-  /// Os ids das listas que acabaram nesta ronda, pela ordem em que acabaram (o ecrã da
-  /// verificação mostra o resultado de cada uma). Esvazia-se quando a ronda acaba.
+  /// Os ids das listas que acabaram na última ronda, pela ordem em que acabaram (o ecrã da
+  /// verificação mostra o resultado de cada uma). Fica depois de a ronda acabar e só se esvazia
+  /// quando começa outra.
   final concluidas = <String>[];
+
+  /// Quando a última ronda acabou (null enquanto decorre ou antes da primeira).
+  DateTime? fimRonda;
 
   /// Quando começou esta ronda e quantas 1.as voltas já terminaram nela (para a estimativa).
   DateTime? _inicioRonda;
@@ -82,7 +86,15 @@ class ServicoVerificacao extends ChangeNotifier {
   Future<void> verificar(Lista l) {
     if (passos.containsKey(l.id)) return Future.value();
     final t = _Tarefa(l);
-    if (passos.isEmpty) _inicioRonda = _agora();
+    if (passos.isEmpty) {
+      _inicioRonda = _agora();
+      concluidas.clear();
+      fimRonda = null;
+    } else if (concluidas.remove(l.id)) {
+      // já acabou nesta ronda: volta a ser testada, mas conta uma só vez
+      feitas--;
+      total--;
+    }
     passos[l.id] = 'na fila';
     total++;
     _fila.add(t);
@@ -145,7 +157,7 @@ class ServicoVerificacao extends ChangeNotifier {
 
   void _recomecarContas() {
     feitas = total = 0;
-    concluidas.clear();
+    fimRonda = _agora();
     _inicioRonda = null;
     _nTerminadas = 0;
   }

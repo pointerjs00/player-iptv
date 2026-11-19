@@ -262,6 +262,15 @@ class _TelaGestorState extends State<TelaGestor> {
     });
   }
 
+  /// "Verificar todas" (no sub-ecrã): as que ainda não estão na fila juntam-se a ela; a seleção fica.
+  void _verificarTodas() {
+    final listas = _g.listas;
+    if (listas.isEmpty) return _aviso('Importe listas primeiro.');
+    final novas = [for (final l in listas) if (!_s.aVerificar(l.id)) l];
+    if (novas.isEmpty) return _aviso('Todas as listas já estão na fila.');
+    _s.verificarVarias(novas);
+  }
+
   void _parar() {
     final tinhaFoco = FocusManager.instance.primaryFocus?.context?.widget is! EditableText;
     _s.parar();
@@ -387,6 +396,7 @@ class _TelaGestorState extends State<TelaGestor> {
               focoVerificarMais: _focoVerificarMais,
               bloco: _blocoVerificacao,
               aoVerificarMais: _verificarMais,
+              aoVerificarTodas: _verificarTodas,
               aoParar: _parar,
             ),
           ],

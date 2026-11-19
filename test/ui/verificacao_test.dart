@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:player_iptv/dados/area_gestor.dart';
@@ -177,5 +178,75 @@ void main() {
     expect(t.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Por verificar · 1')).selected, isTrue);
     expect(find.textContaining('NOVA'), findsWidgets);
     expect(find.text('Verificar (entra na fila)'), findsOneWidget);
+  });
+
+  group('ronda 1 da revisão', () {
+    testWidgets('acabada a ronda, o ecrã guarda as linhas, a barra e as contagens (Última verificação)', (t) async {
+      await t.runAsync(() => area.adicionar([Importada(_conta('ok1', 1)), Importada(_conta('ok2', 2))]));
+      final s = servico({'ok': const ResultadoVerificacao(EstadoV.funciona, 'abriu RTP 1')});
+      await abrirVerificacao(t, s);
+      s.verificarVarias(area.listas);
+      await esperar(t, () => s.feitas == 2 || !s.ocupado);
+      await esperar(t, () => !s.ocupado);
+      expect(find.text('Última verificação: 2 listas'), findsOneWidget);
+      expect(find.text('2 funcionam'), findsOneWidget);
+      expect(find.text('Funciona · abriu RTP 1'), findsNWidgets(2));
+      expect(find.text('Parar'), findsNothing);
+    });
+
+    testWidgets('re-juntar à fila uma lista já acabada na ronda conta-a e mostra-a uma só vez', (t) async {
+      await t.runAsync(() => area.adicionar([Importada(_conta('ok1', 1)), Importada(_conta('presa', 2))]));
+      final s = servico({'ok': const ResultadoVerificacao(EstadoV.funciona, 'abriu RTP 1')});
+      await abrirVerificacao(t, s);
+      s.verificarVarias(area.listas);
+      await esperar(t, () => s.feitas == 1);
+      final ok = area.listas.first;
+      s.verificar(ok);
+      expect(s.total, 2, reason: 'a mesma lista não conta duas vezes');
+      expect(s.feitas, 0);
+      expect(s.concluidas, isNot(contains(ok.id)));
+      await esperar(t, () => s.feitas == 1);
+      expect(s.total, 2);
+      expect(s.concluidas.where((id) => id == ok.id), hasLength(1));
+      expect(find.text('Funciona · abriu RTP 1'), findsOneWidget);
+      expect(find.text('11 funcionam'), findsNothing);
+      expect(find.text('1 funciona'), findsOneWidget);
+    });
+
+    testWidgets('cada linha a correr ou na fila tem "Cancelar", ao alcance do D-pad', (t) async {
+      await t.runAsync(() => area.adicionar([Importada(_conta('presa1', 1)), Importada(_conta('presa2', 2))]));
+      final s = servico({});
+      await abrirVerificacao(t, s);
+      s.verificarVarias(area.listas);
+      await t.pump();
+      expect(find.widgetWithText(TextButton, 'Cancelar'), findsNWidgets(2));
+      var chegou = false;
+      for (var i = 0; i < 30 && !chegou; i++) {
+        await t.sendKeyEvent(LogicalKeyboardKey.tab);
+        await t.pump();
+        final c = FocusManager.instance.primaryFocus?.context;
+        chegou = c != null && find.descendant(of: find.byWidget(c.widget), matching: find.text('Cancelar')).evaluate().isNotEmpty ||
+            (c?.widget is TextButton && find.descendant(of: find.byWidget(c!.widget), matching: find.text('Cancelar')).evaluate().isNotEmpty);
+      }
+      expect(chegou, isTrue, reason: 'Tab chega a um Cancelar');
+      final id = area.listas.first.id;
+      await t.tap(find.widgetWithText(TextButton, 'Cancelar').first);
+      await t.pump();
+      expect(s.aVerificar(id), isFalse);
+      expect(s.total, 1);
+      expect(find.widgetWithText(TextButton, 'Cancelar'), findsOneWidget);
+    });
+
+    testWidgets('"Verificar todas" junta todas à fila sem mexer na seleção', (t) async {
+      await t.runAsync(() => area.adicionar([Importada(_conta('presa1', 1)), Importada(_conta('presa2', 2))]));
+      final s = servico({});
+      await abrirVerificacao(t, s);
+      await t.tap(find.text('Verificar todas (2)'));
+      await t.pump();
+      expect(area.listas.every((l) => s.aVerificar(l.id)), isTrue);
+      await t.tap(find.widgetWithText(TextButton, 'Voltar'));
+      await t.pumpAndSettle();
+      expect(find.text('Nenhuma selecionada'), findsOneWidget);
+    });
   });
 }

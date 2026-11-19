@@ -23,6 +23,7 @@ class TelaVerificacao extends StatelessWidget {
     required this.focoVerificarMais,
     required this.bloco,
     required this.aoVerificarMais,
+    required this.aoVerificarTodas,
     required this.aoParar,
   });
 
@@ -38,6 +39,9 @@ class TelaVerificacao extends StatelessWidget {
 
   /// "Verificar mais (fila)": vai ao ecrã principal, filtrado pelas "Por verificar".
   final VoidCallback aoVerificarMais;
+
+  /// "Verificar todas": todas as listas do Gestor entram na fila (não mexe na seleção).
+  final VoidCallback aoVerificarTodas;
   final VoidCallback aoParar;
 
   static String _n(int n, String um, String varios) => '$n ${n == 1 ? um : varios}';
@@ -85,7 +89,12 @@ class TelaVerificacao extends StatelessWidget {
             (e.value == 'na fila' || e.value.startsWith('inconclusiva: à espera') ? espera : aCorrer).add(e.key);
           }
           final acabadas = [for (final id in s.concluidas.reversed) if (area.porId(id) != null) id];
-          final ids = [for (final id in [...aCorrer, ...espera, ...acabadas]) if (area.porId(id) != null) id];
+          final ids = <String>{
+            for (final id in [...aCorrer, ...espera, ...acabadas])
+              if (area.porId(id) != null) id
+          }.toList();
+          // com a ronda a decorrer ou já acabada (fica até começar outra)
+          final temRonda = ocupado || acabadas.isNotEmpty;
           int deEstado(EstadoLista e) => acabadas.where((id) => estadoDe(area.porId(id)!) == e).length;
           final ok = deEstado(EstadoLista.funciona);
           final inc = deEstado(EstadoLista.inconclusiva);
@@ -95,12 +104,19 @@ class TelaVerificacao extends StatelessWidget {
 
           final cabeca = <Widget>[
             CabecalhoSeccao(
-              titulo: ocupado ? 'A verificar ${_n(s.total, 'lista', 'listas')}' : 'Verificação',
+              titulo: ocupado
+                  ? 'A verificar ${_n(s.total, 'lista', 'listas')}'
+                  : acabadas.isNotEmpty
+                      ? 'Última verificação: ${_n(acabadas.length, 'lista', 'listas')}'
+                      : 'Verificação',
               subtitulo: ocupado
                   ? 'Pode sair, continua sozinha'
                   : area.listas.isEmpty
                       ? 'Importe listas primeiro'
-                      : _resumoGeral(),
+                      : [
+                          if (acabadas.isNotEmpty && s.fimRonda != null) 'terminou às ${_hora(s.fimRonda!)}',
+                          _resumoGeral(),
+                        ].where((x) => x.isNotEmpty).join(' · '),
               icone: Icons.playlist_add_check,
             ),
             Wrap(spacing: Tokens.e8, runSpacing: Tokens.e8, crossAxisAlignment: WrapCrossAlignment.center, children: [
@@ -110,18 +126,29 @@ class TelaVerificacao extends StatelessWidget {
                 icon: const Icon(Icons.playlist_add),
                 label: const Text('Verificar mais (fila)'),
               ),
+              OutlinedButton.icon(
+                onPressed: aoVerificarTodas,
+                icon: const Icon(Icons.playlist_add_check),
+                label: Text('Verificar todas (${area.listas.length})'),
+              ),
               if (ocupado)
                 OutlinedButton.icon(onPressed: aoParar, icon: const Icon(Icons.stop), label: const Text('Parar')),
             ]),
-            if (ocupado) ...[
+            if (temRonda) ...[
               const SizedBox(height: Tokens.e12),
-              _Barra(ok: ok, inconclusivas: inc, mau: mau, feitas: s.feitas, total: s.total),
+              _Barra(
+                  ok: ok,
+                  inconclusivas: inc,
+                  mau: mau,
+                  feitas: ocupado ? s.feitas : acabadas.length,
+                  total: ocupado ? s.total : acabadas.length),
               const SizedBox(height: Tokens.e8),
-              Wrap(spacing: Tokens.e12, runSpacing: Tokens.e4, children: [
-                Text('${s.feitas} de ${s.total} verificadas', style: const TextStyle(fontWeight: FontWeight.w600)),
-                if (estimativa != null)
-                  Text(textoEstimativa(estimativa), style: const TextStyle(color: Tokens.texto2)),
-              ]),
+              if (ocupado)
+                Wrap(spacing: Tokens.e12, runSpacing: Tokens.e4, children: [
+                  Text('${s.feitas} de ${s.total} verificadas', style: const TextStyle(fontWeight: FontWeight.w600)),
+                  if (estimativa != null)
+                    Text(textoEstimativa(estimativa), style: const TextStyle(color: Tokens.texto2)),
+                ]),
               const SizedBox(height: Tokens.e4),
               Wrap(spacing: Tokens.e12, runSpacing: Tokens.e4, children: [
                 _Contagem(EstadoLista.funciona, _n(ok, 'funciona', 'funcionam')),
@@ -169,7 +196,15 @@ class TelaVerificacao extends StatelessWidget {
                     itemCount: ids.length,
                     itemBuilder: (_, i) {
                       final l = area.porId(ids[i])!;
-                      return _LinhaVerificacao(key: ValueKey(l.id), lista: l, passo: s.passos[l.id]);
+                      return _LinhaVerificacao(
+                          key: ValueKey(l.id),
+                          lista: l,
+                          passo: s.passos[l.id],
+                          aoCancelar: () {
+                            s.cancelar(l.id);
+                            // a linha some com o botão: o foco volta ao primeiro controlo
+                            focoVerificarMais.requestFocus();
+                          });
                     },
                   ),
                 ),
@@ -179,7 +214,10 @@ class TelaVerificacao extends StatelessWidget {
         },
       );
 
-  /// Sem verificação a decorrer: "8 funcionam · 2 inconclusivas · 1 não funciona · 3 por verificar".
+  static String _hora(DateTime d) =>
+      '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+
+  /// O estado de todas as listas do Gestor: "8 funcionam · 2 inconclusivas · 1 não funciona · 3 por verificar".
   String _resumoGeral() {
     final c = <EstadoLista, int>{};
     for (final l in area.listas) {
@@ -244,12 +282,15 @@ class _Contagem extends StatelessWidget {
 /// Uma lista da ronda: a correr ("A testar canal 2 de 3"), à espera ou com o resultado e o motivo.
 /// Tem foco para o comando poder andar pela lista (o ecrã desliza até ela).
 class _LinhaVerificacao extends StatefulWidget {
-  const _LinhaVerificacao({super.key, required this.lista, required this.passo});
+  const _LinhaVerificacao({super.key, required this.lista, required this.passo, required this.aoCancelar});
 
   final Lista lista;
 
   /// O passo do serviço; null = já acabou.
   final String? passo;
+
+  /// "Cancelar" (só nas que estão a correr ou na fila).
+  final VoidCallback aoCancelar;
 
   @override
   State<_LinhaVerificacao> createState() => _LinhaVerificacaoState();
@@ -277,12 +318,15 @@ class _LinhaVerificacaoState extends State<_LinhaVerificacao> {
       if (d.isNotEmpty) subtitulo = d;
     }
     return Focus(
+      // as acabadas focam-se a si próprias; as outras focam o "Cancelar"
+      canRequestFocus: passo == null,
       onFocusChange: (f) => setState(() => _focado = f),
       child: MolduraFoco(
         focado: _focado,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: Tokens.e12, vertical: Tokens.e8),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          child: Row(children: [
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(l.nomeMostrado,
                 maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
             const SizedBox(height: Tokens.e4),
@@ -290,6 +334,9 @@ class _LinhaVerificacaoState extends State<_LinhaVerificacao> {
             if (subtitulo != null)
               Text(subtitulo,
                   maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Tokens.texto2, fontSize: 12.5)),
+            ])),
+            if (passo != null)
+              TextButton(onPressed: widget.aoCancelar, child: const Text('Cancelar')),
           ]),
         ),
       ),
