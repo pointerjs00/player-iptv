@@ -188,8 +188,8 @@ void main() {
         definicoes: const SizedBox(),
       );
 
-  /// Ver TV vazio: "Ir para o Gestor" (OK), o passo 1 do Gestor (OK) e "Adicionar listas" (OK)
-  /// abrem o diálogo "Adicionar listas" (só com o comando).
+  /// Ver TV vazio: "Ir para o Gestor" (OK), o passo 1 do Gestor (OK) e a origem "Colar texto"
+  /// (DIREITA e OK) abrem o painel de colar (só com o comando).
   Future<void> abrirAdicionar(WidgetTester t) async {
     await t.pumpWidget(_app(casca()));
     await t.pump();
@@ -199,9 +199,11 @@ void main() {
     expect(_focado(), startsWith('1 | Importar'));
     await _tecla(t, LogicalKeyboardKey.select);
     await t.pumpAndSettle();
-    expect(_focado(), 'Adicionar listas');
+    expect(_focado(), startsWith('Ficheiros'));
+    await _tecla(t, LogicalKeyboardKey.arrowRight);
     await _tecla(t, LogicalKeyboardKey.select);
     await t.pumpAndSettle();
+    expect(_focado(), startsWith('Colar texto'));
   }
   tearDown(() async {
     try {
@@ -395,23 +397,34 @@ void main() {
       expect(_focado(), contains('Verificar todas'));
     });
 
-    testWidgets('I6: "Iniciar pesquisa" (stbstalker) mantém o foco', (t) async {
+    testWidgets('I6: "Procurar e juntar" (stbstalker) mantém o foco e inicia a pesquisa em segundo plano', (t) async {
       HttpOverrides.global = null;
       late ServerSocket calado;
+      final ligacoes = <Socket>[];
       await t.runAsync(() async {
         calado = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
-        calado.listen((_) {});
+        calado.listen(ligacoes.add);
       });
-      addTearDown(() => t.runAsync(calado.close));
+      addTearDown(() => t.runAsync(() async {
+            for (final c in ligacoes) {
+              c.destroy();
+            }
+            await calado.close();
+          }));
       _tamanho(t, 1200, 1600);
       await t.pumpWidget(_app(Scaffold(body: telaGestor(baseStb: 'http://127.0.0.1:${calado.port}/'))));
       await t.pump();
       await abrirPasso(t, 'Importar');
-      await _irPara(t, 'Iniciar pesquisa');
-      await _tecla(t, LogicalKeyboardKey.select);
+      await t.tap(find.text('Listas do stbstalker'));
       await t.pump();
-      expect(find.byType(CircularProgressIndicator), findsOneWidget);
-      expect(_focado(), contains('Iniciar pesquisa'));
+      await _irPara(t, 'Procurar e juntar');
+      await t.runAsync(() async {
+        await _tecla(t, LogicalKeyboardKey.select);
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      });
+      await t.pump();
+      expect(find.byType(LinearProgressIndicator), findsOneWidget);
+      expect(_focado(), contains('Procurar e juntar'));
       await _fechar(t);
     });
   });
@@ -464,29 +477,29 @@ void main() {
       expect(_focado(), contains('001A'), reason: 'DIREITA volta ao cartão onde se estava');
     });
 
-    testWidgets('T3: as secções cabem no telemóvel (em baixo) e "Adicionar listas" no Gestor', (t) async {
+    testWidgets('T3: as secções cabem no telemóvel (em baixo) e as origens da importação no Gestor', (t) async {
       await inicioComGestor(t, gestor: gestorVerdadeiro());
       _tamanho(t, 360, 740);
       await t.pump();
       expect(t.takeException(), isNull);
       final nav = find.byType(NavigationBar);
       expect(find.descendant(of: nav, matching: find.text('Gestor')).hitTestable(), findsOneWidget);
-      expect(find.text('Adicionar listas'), findsNothing, reason: 'Ver TV não adiciona');
+      expect(find.text('Colar texto'), findsNothing, reason: 'Ver TV não adiciona');
       await t.tap(find.descendant(of: nav, matching: find.text('Gestor')));
       await t.pumpAndSettle();
       expect(t.takeException(), isNull);
       await abrirPasso(t, 'Importar');
       expect(t.takeException(), isNull);
-      expect(find.text('Adicionar listas').hitTestable(), findsOneWidget);
+      expect(find.text('Colar texto').hitTestable(), findsOneWidget);
     });
 
-    testWidgets('T3: "Adicionar listas" continua alcançável no Gestor: o passo 1 é o 1.º controlo, à direita da '
-        'barra, e OK nele leva a "Adicionar listas"',
+    testWidgets('T3: a importação continua alcançável no Gestor: o passo 1 é o 1.º controlo, à direita da '
+        'barra, e OK nele leva às origens',
         (t) async {
       await inicioComGestor(t, gestor: gestorVerdadeiro());
       await _tecla(t, LogicalKeyboardKey.arrowLeft);
       expect(_focado(), 'Ver TV');
-      // em Ver TV não há "Adicionar listas": DIREITA volta ao cartão
+      // em Ver TV não há origens de importação: DIREITA volta ao cartão
       await _tecla(t, LogicalKeyboardKey.arrowRight);
       expect(_focado(), contains('001A'));
       await _tecla(t, LogicalKeyboardKey.arrowLeft);
@@ -497,23 +510,22 @@ void main() {
       expect(_focado(), startsWith('1 | Importar'));
       await _tecla(t, LogicalKeyboardKey.select);
       await t.pumpAndSettle();
-      expect(_focado(), 'Adicionar listas');
+      expect(_focado(), startsWith('Ficheiros'));
       await _tecla(t, LogicalKeyboardKey.select);
       await t.pumpAndSettle();
-      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(find.text('Escolher ficheiros'), findsOneWidget);
     });
 
-    testWidgets('T2: "Adicionar listas": o campo não abre o teclado com o foco, Voltar sai da '
-        'edição e chega-se a "Adicionar" só com setas e OK', (t) async {
+    testWidgets('T2: "Colar texto": o campo não abre o teclado com o foco, Voltar sai da '
+        'edição e chega-se a "Juntar ao Gestor" só com setas e OK', (t) async {
       _tamanho(t, 960, 540);
       await abrirAdicionar(t);
-      expect(_focado(), contains('Escolher ficheiros'));
       await _tecla(t, LogicalKeyboardKey.arrowDown);
       expect(_focado(), contains('[campo'));
       expect(t.testTextInput.isVisible, isFalse, reason: 'o foco sozinho não abre o teclado no ecrã');
       // sem escrever, as setas saem do campo (e voltam)
       await _tecla(t, LogicalKeyboardKey.arrowDown);
-      expect(_focado(), anyOf('Cancelar', 'Adicionar'));
+      expect(_focado(), 'Juntar ao Gestor');
       await _tecla(t, LogicalKeyboardKey.arrowUp);
       expect(_focado(), contains('[campo'));
       // OK escreve
@@ -526,13 +538,10 @@ void main() {
       await t.sendKeyEvent(LogicalKeyboardKey.goBack, physicalKey: PhysicalKeyboardKey.escape);
       await t.pump();
       expect(t.testTextInput.isVisible, isFalse);
-      expect(find.text('Adicionar listas'), findsWidgets);
+      expect(find.text('Juntar ao Gestor'), findsOneWidget, reason: 'o painel continua aberto');
       expect(_focado(), contains('[campo http://x.com/l.m3u'));
       await _tecla(t, LogicalKeyboardKey.arrowDown);
-      for (var i = 0; i < 2 && _focado() != 'Adicionar'; i++) {
-        await _tecla(t, LogicalKeyboardKey.arrowRight);
-      }
-      expect(_focado(), 'Adicionar');
+      expect(_focado(), 'Juntar ao Gestor');
       await t.runAsync(() async {
         await _tecla(t, LogicalKeyboardKey.select);
         await Future<void>.delayed(const Duration(milliseconds: 300));
@@ -540,11 +549,12 @@ void main() {
       await t.pumpAndSettle();
       expect(area.listas, hasLength(1));
       expect(bib.listas, isEmpty, reason: 'entra no Gestor, não no Player');
-      expect(find.text('1 lista nova.'), findsOneWidget);
+      expect(find.text('Novas no Gestor'), findsOneWidget);
+      expect(find.text('Verificar a 1 nova'), findsOneWidget);
     });
 
-    testWidgets('T2 (emulador): o Voltar do sistema a escrever acaba a edição sem fechar o diálogo; '
-        'depois as setas chegam a "Adicionar" e OK adiciona', (t) async {
+    testWidgets('T2 (emulador): o Voltar do sistema a escrever acaba a edição sem sair do ecrã; '
+        'depois as setas chegam a "Juntar ao Gestor" e OK importa', (t) async {
       _tamanho(t, 960, 540);
       await abrirAdicionar(t);
       await _tecla(t, LogicalKeyboardKey.arrowDown);
@@ -556,14 +566,11 @@ void main() {
       // no Android TV o IME come a tecla BACK e o Flutter só recebe o "voltar" do sistema (popRoute)
       await t.binding.handlePopRoute();
       await t.pumpAndSettle();
-      expect(find.byType(AlertDialog), findsOneWidget, reason: 'o diálogo continua aberto');
+      expect(find.text('Juntar ao Gestor'), findsOneWidget, reason: 'o ecrã de importar continua aberto');
       expect(t.testTextInput.isVisible, isFalse);
       expect(_focado(), contains('[campo http://x.com/l.m3u'), reason: 'o texto fica');
       await _tecla(t, LogicalKeyboardKey.arrowDown);
-      for (var i = 0; i < 2 && _focado() != 'Adicionar'; i++) {
-        await _tecla(t, LogicalKeyboardKey.arrowRight);
-      }
-      expect(_focado(), 'Adicionar');
+      expect(_focado(), 'Juntar ao Gestor');
       await t.runAsync(() async {
         await _tecla(t, LogicalKeyboardKey.select);
         await Future<void>.delayed(const Duration(milliseconds: 300));
@@ -572,14 +579,14 @@ void main() {
       expect(area.listas, hasLength(1));
     });
 
-    testWidgets('T2: sem estar a escrever, o Voltar do sistema fecha o diálogo', (t) async {
+    testWidgets('T2: sem estar a escrever, o Voltar do sistema volta ao ecrã principal do Gestor', (t) async {
       _tamanho(t, 960, 540);
       await abrirAdicionar(t);
       await _tecla(t, LogicalKeyboardKey.arrowDown);
       expect(_focado(), contains('[campo'));
       await t.binding.handlePopRoute();
       await t.pumpAndSettle();
-      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.text('Juntar ao Gestor'), findsNothing);
     });
 
     testWidgets('T1 (I1): no telemóvel/rato (modo toque) o foco automático não desenha a borda; '
@@ -664,8 +671,8 @@ void main() {
       await t.pumpAndSettle();
       await abrirPasso(t, 'Verificar');
       expect(await _semRealceAoPercorrer(t, 4, vistos: noGestor), isEmpty);
-      expect(noGestor.join(' / '), allOf(contains('Adicionar listas'), contains('Importar do Player'),
-          contains('Verificar todas')));
+      expect(noGestor.join(' / '), allOf(contains('Ficheiros'), contains('Escolher ficheiros'),
+          contains('Limpar o Gestor'), contains('Verificar todas')));
     });
 
     testWidgets('T1: Conteúdo — grupos, canais, pesquisa e Atualizar com realce (a estrela não é paragem)',
@@ -719,12 +726,12 @@ void main() {
       await t.tap(find.widgetWithText(OutlinedButton, 'Exportar'));
       await t.pumpAndSettle();
       expect(await _semRealceAoPercorrer(t, 3, vistos: vistos), isEmpty);
-      expect(vistos.join(' / '), allOf(contains('Iniciar pesquisa'), contains('Verificar todas'),
+      expect(vistos.join(' / '), allOf(contains('Escolher ficheiros'), contains('Verificar todas'),
           contains('Accounts.json'), contains('Ficheiros .ini')));
-      expect(vistos.join(' / '), allOf(contains('Importar do Player'), contains('Limpar o Gestor')));
+      expect(vistos.join(' / '), allOf(contains('Colar texto'), contains('Limpar o Gestor')));
     });
 
-    testWidgets('T1: diálogo "Adicionar listas" — botões e campo com realce', (t) async {
+    testWidgets('T1: ecrã de importar — origens, painel e campo com realce', (t) async {
       _realceTv();
       _tamanho(t, 960, 540);
       await t.pumpWidget(_app(casca()));
@@ -737,14 +744,15 @@ void main() {
       expect(_semRealce(), isNull, reason: 'o passo 1 com realce');
       await _tecla(t, LogicalKeyboardKey.select);
       await t.pumpAndSettle();
-      expect(_focado(), 'Adicionar listas');
-      expect(_semRealce(), isNull, reason: '"Adicionar listas" com realce');
+      expect(_focado(), startsWith('Ficheiros'));
+      expect(_semRealce(), isNull, reason: 'a origem "Ficheiros" com realce');
+      await _tecla(t, LogicalKeyboardKey.arrowRight);
       await _tecla(t, LogicalKeyboardKey.select);
       await t.pumpAndSettle();
       final vistos = <String>{};
       final falhas = await _semRealceAoPercorrer(t, 5, vistos: vistos);
       expect(falhas, isEmpty);
-      expect(vistos.join(' / '), allOf(contains('Escolher ficheiros'), contains('Cancelar'), contains('Adicionar')));
+      expect(vistos.join(' / '), allOf(contains('Colar texto'), contains('[campo'), contains('Juntar ao Gestor')));
     });
 
     testWidgets('D1: DIREITA do 1.º cartão foca o 2.º cartão e só há um realce; o cartão é uma só '

@@ -159,10 +159,9 @@ void main() {
     expect(subir.last, 'Gestor', reason: 'CIMA: $subir');
   });
 
-  testWidgets('na TV: DIREITA alcança os passos e os botões ao lado (Importar do Player, Iniciar pesquisa, '
+  testWidgets('na TV: DIREITA alcança os passos e os botões ao lado (as origens da importação, '
       'Exportar...)', (t) async {
-    // o Gestor com a largura de antes da barra lateral (960): as datas e "Iniciar pesquisa" na
-    // mesma linha (a 960 com a barra, o botão passa à linha de baixo e chega-se lá com BAIXO)
+    // o Gestor com a largura de antes da barra lateral (960): as quatro origens na mesma linha
     ecraTvTeste(t, largura: 960 + BarraSeccoes.largura);
     await comListas(t);
     await t.pumpWidget(appTeste(casca()));
@@ -182,27 +181,27 @@ void main() {
     expect(textosFocados(), 'Gestor');
     await teclaDpad(t, LogicalKeyboardKey.arrowRight);
     expect(textosFocados(), startsWith('1 | Importar'));
-    // OK no passo 1: o sub-ecrã de importar, com o foco em "Adicionar listas"
+    // OK no passo 1: o sub-ecrã de importar, com o foco na 1.ª origem
     await teclaDpad(t, LogicalKeyboardKey.select);
     await t.pumpAndSettle();
-    expect(textosFocados(), startsWith('Adicionar listas'));
+    expect(textosFocados(), startsWith('Ficheiros'));
     await teclaDpad(t, LogicalKeyboardKey.arrowRight);
-    expect(textosFocados(), startsWith('Importar do Player'));
-    await teclaDpad(t, LogicalKeyboardKey.arrowLeft);
-    expect(textosFocados(), startsWith('Adicionar listas'));
+    expect(textosFocados(), startsWith('Colar texto'));
+    await teclaDpad(t, LogicalKeyboardKey.arrowRight);
+    expect(textosFocados(), startsWith('Listas do stbstalker'));
+    await teclaDpad(t, LogicalKeyboardKey.arrowRight);
+    expect(textosFocados(), startsWith('Do Player'));
+    for (var i = 0; i < 3; i++) {
+      await teclaDpad(t, LogicalKeyboardKey.arrowLeft);
+    }
+    expect(textosFocados(), startsWith('Ficheiros'));
     await teclaDpad(t, LogicalKeyboardKey.arrowLeft);
     expect(textosFocados(), 'Gestor');
     await teclaDpad(t, LogicalKeyboardKey.arrowRight);
-    expect(textosFocados(), startsWith('Adicionar listas'));
-    for (var i = 0; i < 6 && !textosFocados().contains('/20'); i++) {
-      await teclaDpad(t, LogicalKeyboardKey.arrowDown);
-    }
-    final direita = <String>[];
-    for (var i = 0; i < 3; i++) {
-      await teclaDpad(t, LogicalKeyboardKey.arrowRight);
-      direita.add(textosFocados());
-    }
-    expect(direita.join(' / '), contains('Iniciar pesquisa'), reason: '$direita');
+    expect(textosFocados(), startsWith('Ficheiros'));
+    // BAIXO vai ao painel da origem escolhida
+    await teclaDpad(t, LogicalKeyboardKey.arrowDown);
+    expect(textosFocados(), startsWith('Escolher ficheiros'));
     // CIMA chega ao "Voltar" e OK regressa ao passo 1
     for (var i = 0; i < 6 && textosFocados() != 'Voltar'; i++) {
       await teclaDpad(t, LogicalKeyboardKey.arrowUp);

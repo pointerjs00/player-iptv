@@ -5,13 +5,11 @@ import '../../dados/biblioteca.dart';
 import '../../dados/guardar_ficheiro.dart';
 import '../../importar/importar.dart';
 import '../../importar/stbstalker.dart';
-import '../../modelo/conta.dart';
 import '../../rede/http.dart';
 import '../../tarefas/servico_tarefas.dart';
 import '../../verificar/canais_teste.dart';
 import '../../verificar/exportar.dart';
 import '../../verificar/servico.dart';
-import '../adicionar.dart';
 import '../design/barra_teclas.dart';
 import '../design/design.dart';
 import '../design/mensagens.dart';
@@ -21,6 +19,7 @@ import '../realce_foco.dart';
 import '../tema.dart';
 import '../verificar/dialogos_gestor.dart';
 import 'indicador_atividade.dart';
+import 'tela_importar.dart';
 
 /// Os ecrãs do Gestor: o principal e os sub-ecrãs que se abrem dos passos 1 e 2.
 enum EcraGestor { principal, importar, verificacao }
@@ -70,8 +69,11 @@ class _TelaGestorState extends State<TelaGestor> {
   /// O passo 3 traz o foco para a barra das selecionadas.
   final _focoEnviar = FocusNode(debugLabel: 'Enviar para o Player');
 
+  /// As importações em curso e o seu resumo (sobrevivem a sair do ecrã de importar).
+  final _registo = RegistoImportacoes();
+
   /// O primeiro controlo de cada sub-ecrã (recebe o foco ao abrir).
-  final _focoAdicionar = FocusNode(debugLabel: 'Adicionar listas');
+  final _focoOrigens = FocusNode(debugLabel: 'Origens da importação');
   final _focoVerificarTodas = FocusNode(debugLabel: 'Verificar todas');
 
   final _focosFiltros = [for (final (_, t) in _filtros) FocusNode(debugLabel: 'Filtro $t')];
@@ -122,11 +124,12 @@ class _TelaGestorState extends State<TelaGestor> {
   @override
   void dispose() {
     _tirarVoltar?.call();
+    _registo.dispose();
     _g.removeListener(_aoMudarArea);
     for (final f in [
       ..._focosPassos,
       _focoEnviar,
-      _focoAdicionar,
+      _focoOrigens,
       _focoVerificarTodas,
       ..._focosFiltros,
       ..._blocos,
@@ -168,7 +171,7 @@ class _TelaGestorState extends State<TelaGestor> {
         case EcraGestor.principal:
           _focosPassos[antes.index - 1].requestFocus();
         case EcraGestor.importar:
-          _focoAdicionar.requestFocus();
+          _focoOrigens.requestFocus();
         case EcraGestor.verificacao:
           _focoVerificarTodas.requestFocus();
       }
@@ -178,6 +181,12 @@ class _TelaGestorState extends State<TelaGestor> {
   /// Voltar (do comando ou o botão): num sub-ecrã regressa ao principal. false = não tratou.
   bool _voltarAoPrincipal() {
     if (_ecra == EcraGestor.principal) return false;
+    // a escrever num campo (colar texto): o Voltar só fecha o teclado (é o CampoTv que o trata)
+    final contexto = FocusManager.instance.primaryFocus?.context;
+    final campo = contexto?.widget is EditableText
+        ? contexto!.widget as EditableText
+        : contexto?.findAncestorWidgetOfExactType<EditableText>();
+    if (campo != null && !campo.readOnly) return true;
     _abrir(EcraGestor.principal);
     return true;
   }
@@ -353,12 +362,18 @@ class _TelaGestorState extends State<TelaGestor> {
           sizing: StackFit.expand,
           children: [
             _principal(),
-            _EcraImportar(
-              biblioteca: _b,
-              area: _g,
-              servico: _s,
-              baseStb: widget.baseStb,
-              focoAdicionar: _focoAdicionar,
+            // escondido, o progresso sem fim da importação não pede frames
+            TickerMode(
+              enabled: _ecra == EcraGestor.importar,
+              child: TelaImportar(
+                biblioteca: _b,
+                area: _g,
+                servico: _s,
+                tarefas: widget.tarefas,
+                registo: _registo,
+                baseStb: widget.baseStb,
+                focoOrigens: _focoOrigens,
+              ),
             ),
             _verificacao(),
           ],
@@ -771,252 +786,6 @@ class _TelaGestorState extends State<TelaGestor> {
                   ]),
                 ),
               ),
-            ),
-          );
-        },
-      );
-}
-
-/// O sub-ecrã de importar: "Adicionar listas" (ficheiros/colar), "Importar do Player", "Limpar o
-/// Gestor" e a pesquisa do stbstalker entre duas datas. Fica vivo ao trocar de ecrã: a pesquisa a
-/// decorrer e o resultado não se perdem.
-class _EcraImportar extends StatefulWidget {
-  const _EcraImportar({required this.biblioteca, required this.area, required this.servico, required this.baseStb,
-      required this.focoAdicionar});
-
-  final Biblioteca biblioteca;
-  final AreaGestor area;
-  final ServicoVerificacao servico;
-  final String baseStb;
-  final FocusNode focoAdicionar;
-
-  @override
-  State<_EcraImportar> createState() => _EcraImportarState();
-}
-
-class _EcraImportarState extends State<_EcraImportar> {
-  late DateTime _inicio = _hoje(), _fim = _hoje();
-  bool _pesquisando = false;
-  String? _resultadoStb;
-
-  /// Os blocos para CIMA/BAIXO: os botões e a pesquisa do stbstalker.
-  final _blocos = [
-    for (final b in ['Adicionar', 'stbstalker'])
-      FocusNode(debugLabel: 'Bloco $b', canRequestFocus: false, skipTraversal: true),
-  ];
-
-  Biblioteca get _b => widget.biblioteca;
-  AreaGestor get _g => widget.area;
-
-  @override
-  void dispose() {
-    for (final b in _blocos) {
-      b.dispose();
-    }
-    super.dispose();
-  }
-
-  static DateTime _hoje() {
-    final n = DateTime.now();
-    return DateTime(n.year, n.month, n.day);
-  }
-
-  static String _dd(DateTime d) =>
-      '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
-
-  void _aviso(String t) {
-    if (mounted) mostrarMensagem(context, t);
-  }
-
-  Future<void> _escolherData(bool inicio) async {
-    final hoje = _hoje();
-    final atual = inicio ? _inicio : _fim;
-    final d = await showDatePicker(
-      context: context,
-      initialDate: atual,
-      firstDate: inicio ? DateTime(2015) : _inicio,
-      lastDate: inicio ? _fim : hoje,
-      helpText: inicio ? 'Data de início' : 'Data de fim',
-    );
-    if (d == null || !mounted) return;
-    setState(() {
-      if (inicio) {
-        _inicio = d;
-      } else {
-        _fim = d;
-      }
-    });
-  }
-
-  Future<void> _pesquisarStb() async {
-    // o botão fica ligado (não perde o foco do comando): diz que já está a pesquisar
-    if (_pesquisando) return _aviso('A pesquisa no stbstalker ainda está a decorrer.');
-    // as datas podem mudar durante a pesquisa: o resumo fala das que foram pesquisadas
-    final inicio = _inicio, fim = _fim;
-    setState(() {
-      _pesquisando = true;
-      _resultadoStb = null;
-    });
-    String msg;
-    try {
-      final r = await importarEntre(inicio, fim, base: widget.baseStb);
-      if (r.erro != null) {
-        msg = r.erro!;
-      } else {
-        final novas = await _g.adicionar([
-          for (final l in r.linhas)
-            if (contaDeLinha(l) case final c?) Importada(c),
-        ]);
-        final periodo = inicio == fim ? 'Em ${_dd(inicio)}' : 'De ${_dd(inicio)} a ${_dd(fim)}';
-        final np = r.posts.length;
-        msg = '$periodo: ${r.total} ${r.total == 1 ? 'linha' : 'linhas'} em $np '
-            '${np == 1 ? 'post' : 'posts'}, $novas ${novas == 1 ? 'lista nova' : 'listas novas'}.';
-      }
-    } catch (e) {
-      msg = 'Não foi possível pesquisar: ${descreverErro(e)}';
-    }
-    if (!mounted) return;
-    setState(() {
-      _pesquisando = false;
-      _resultadoStb = msg;
-    });
-  }
-
-  Future<void> _importarDoPlayer() async {
-    if (_b.listas.isEmpty) return _aviso('Ainda não há listas no Player.');
-    try {
-      final n = await _g.importarDoPlayer(_b);
-      _aviso(switch (n) {
-        0 => 'As listas do Player já estão no Gestor.',
-        1 => '1 lista importada do Player.',
-        _ => '$n listas importadas do Player.',
-      });
-    } catch (e) {
-      _aviso('Não foi possível importar: ${descreverErro(e)}');
-    }
-  }
-
-  Future<void> _limpar() async {
-    final n = _g.listas.length;
-    if (n == 0) return _aviso('O Gestor já está vazio.');
-    final ok = await confirmar(context,
-        icone: Icons.delete_sweep_outlined,
-        titulo: 'Limpar o Gestor?',
-        texto: '${n == 1 ? 'A lista do Gestor sai' : 'As $n listas do Gestor saem'}. As listas do Player não mudam.',
-        acao: 'Limpar');
-    if (!ok) return;
-    if (widget.servico.ocupado) widget.servico.parar();
-    await _g.limpar();
-  }
-
-  Widget _bloco(int i, Widget filho) => Padding(
-        padding: const EdgeInsets.only(bottom: Tokens.e16),
-        child: Focus(
-          focusNode: _blocos[i],
-          canRequestFocus: false,
-          skipTraversal: true,
-          includeSemantics: false,
-          child: SuperficieVidro(padding: const EdgeInsets.all(Tokens.e16 + 4), child: filho),
-        ),
-      );
-
-  Widget _campoData(String rotulo, DateTime d, VoidCallback aoTocar) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(rotulo, style: const TextStyle(color: Tokens.texto2, fontSize: 12)),
-          const SizedBox(height: 4),
-          // ligado durante a pesquisa (o resumo usa as datas com que ela começou)
-          OutlinedButton.icon(
-            onPressed: aoTocar,
-            icon: const Icon(Icons.calendar_today, size: 16),
-            label: Text(_dd(d)),
-          ),
-        ],
-      );
-
-  @override
-  Widget build(BuildContext context) => ListenableBuilder(
-        listenable: _g,
-        builder: (context, _) {
-          final n = _g.listas.length;
-          final vazio = n == 0;
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(Tokens.e16),
-            child: Focus(
-              canRequestFocus: false,
-              skipTraversal: true,
-              includeSemantics: false,
-              onKeyEvent: (_, e) => moverEntreBlocos(_blocos, e),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                _bloco(
-                    0,
-                    Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      CabecalhoSeccao(
-                        titulo: '1 · Importar',
-                        subtitulo: vazio ? 'O Gestor está vazio' : '$n ${n == 1 ? 'lista' : 'listas'} no Gestor',
-                        icone: Icons.inventory_2_outlined,
-                      ),
-                      Wrap(spacing: Tokens.e8, runSpacing: Tokens.e8, children: [
-                        FilledButton.icon(
-                          focusNode: widget.focoAdicionar,
-                          onPressed: () => mostrarAdicionar(context, _g),
-                          icon: const Icon(Icons.playlist_add_rounded),
-                          label: const Text('Adicionar listas'),
-                        ),
-                        OutlinedButton.icon(
-                          onPressed: _importarDoPlayer,
-                          icon: const Icon(Icons.download_for_offline_outlined),
-                          label: const Text('Importar do Player'),
-                        ),
-                        // fica ligado com o Gestor vazio (um botão desligado perde o foco do comando)
-                        OutlinedButton.icon(
-                          onPressed: _limpar,
-                          icon: const Icon(Icons.delete_sweep_outlined),
-                          label: const Text('Limpar o Gestor'),
-                        ),
-                      ]),
-                      if (vazio) ...[
-                        const SizedBox(height: Tokens.e8),
-                        const Text(
-                            'Adicione ficheiros ou linhas coladas, pesquise no stbstalker ou importe as do Player.',
-                            style: TextStyle(color: Tokens.texto2)),
-                      ],
-                    ])),
-                _bloco(
-                    1,
-                    Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      const Padding(
-                        padding: EdgeInsets.only(bottom: Tokens.e8),
-                        child: Text('Listas do stbstalker', style: TextStyle(fontWeight: FontWeight.w600)),
-                      ),
-                      const Padding(
-                        padding: EdgeInsets.only(bottom: Tokens.e8),
-                        child: Text('Junta as listas publicadas no blog entre duas datas.',
-                            style: TextStyle(color: Tokens.texto2)),
-                      ),
-                      Wrap(
-                          spacing: Tokens.e8,
-                          runSpacing: Tokens.e8,
-                          crossAxisAlignment: WrapCrossAlignment.end,
-                          children: [
-                            _campoData('Data de início', _inicio, () => _escolherData(true)),
-                            _campoData('Data de fim', _fim, () => _escolherData(false)),
-                            FilledButton.icon(
-                              onPressed: _pesquisarStb,
-                              icon: _pesquisando
-                                  ? const SizedBox(
-                                      width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                                  : const Icon(Icons.search),
-                              label: const Text('Iniciar pesquisa'),
-                            ),
-                          ]),
-                      if (_resultadoStb != null) ...[
-                        const SizedBox(height: Tokens.e12),
-                        Text(_resultadoStb!),
-                      ],
-                    ])),
-              ]),
             ),
           );
         },

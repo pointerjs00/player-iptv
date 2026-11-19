@@ -122,8 +122,12 @@ Future<List<PostStb>> postsEntre(DateTime inicio, DateTime fim,
 }
 
 /// Junta os pares de todos os posts publicados entre as duas datas (inclusive).
+///
+/// `aoProgresso(posts lidos, posts, listas encontradas até agora)` diz como vai a leitura dos posts.
 Future<ResultadoStb> importarEntre(DateTime inicio, DateTime fim,
-    {String base = stbBase, Duration timeout = const Duration(seconds: 15)}) async {
+    {String base = stbBase,
+    Duration timeout = const Duration(seconds: 15),
+    void Function(int lidos, int posts, int encontradas)? aoProgresso}) async {
   inicio = _dia(inicio);
   fim = _dia(fim);
   if (fim.isBefore(inicio)) throw ArgumentError('a data de fim é anterior à data de início');
@@ -134,16 +138,19 @@ Future<ResultadoStb> importarEntre(DateTime inicio, DateTime fim,
   }
   final linhas = <String>[];
   final vistos = <String>{};
-  for (final p in posts) {
-    final String texto;
+  for (final (i, p) in posts.indexed) {
+    String? texto;
     try {
       texto = _htmlParaTexto(await _ler(p.url, timeout));
     } on Exception {
-      continue;
+      texto = null; // um post que não abre não impede os outros
     }
-    for (final par in extrairPares(texto)) {
-      if (vistos.add(_chavePar(par))) linhas.add(par);
+    if (texto != null) {
+      for (final par in extrairPares(texto)) {
+        if (vistos.add(_chavePar(par))) linhas.add(par);
+      }
     }
+    aoProgresso?.call(i + 1, posts.length, linhas.length);
   }
   return ResultadoStb(linhas: linhas, total: linhas.length, posts: posts);
 }

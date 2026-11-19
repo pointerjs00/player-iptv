@@ -222,14 +222,14 @@ void main() {
       expect(find.text('Listas'), findsNothing);
       // o Player não verifica: sem botão "Verificar"
       expect(find.widgetWithText(ButtonStyleButton, 'Verificar'), findsNothing);
-      expect(find.text('Adicionar listas'), findsNothing);
+      expect(find.text('Colar texto'), findsNothing);
       await t.tap(find.descendant(of: barra, matching: find.text('Gestor')));
       await t.pumpAndSettle();
       await abrirPasso(t, 'Importar');
-      expect(find.text('Adicionar listas').hitTestable(), findsOneWidget);
+      expect(find.text('Colar texto').hitTestable(), findsOneWidget);
       await t.tap(find.descendant(of: barra, matching: find.text('Ver TV')));
       await t.pumpAndSettle();
-      expect(find.text('Adicionar listas'), findsNothing);
+      expect(find.text('Colar texto'), findsNothing);
     });
 
     testWidgets('não gere nada (sem verificar), mas os cartões mostram o estado', (t) async {
@@ -248,7 +248,7 @@ void main() {
       expect(find.textContaining('Verificar'), findsNothing);
       expect(find.text('Verificar de novo'), findsNothing);
       expect(find.byTooltip('Adicionar listas'), findsNothing);
-      expect(find.text('Adicionar listas'), findsNothing);
+      expect(find.text('Colar texto'), findsNothing);
       // pesquisa e filtros ficam
       expect(find.widgetWithText(ChoiceChip, 'Funcionam'), findsOneWidget);
     });
@@ -266,17 +266,18 @@ void main() {
       await _tecla(t, LogicalKeyboardKey.select);
       await t.pumpAndSettle();
       expect(find.text('Listas do stbstalker').hitTestable(), findsOneWidget);
-      expect(_focado(), 'Adicionar listas');
-      // e o "+" abre o diálogo de adicionar
+      expect(_focado(), startsWith('Ficheiros'));
+      // OK numa origem escolhe-a e mostra o painel dela
+      await _tecla(t, LogicalKeyboardKey.arrowRight);
       await _tecla(t, LogicalKeyboardKey.select);
       await t.pumpAndSettle();
-      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(find.text('Juntar ao Gestor'), findsOneWidget);
     });
   });
 
   group('Gestor', () {
     test('ficheiros/colar entram no Gestor e não no Player', () async {
-      expect(await importarTexto(area, 'http://x.com/l.m3u\nhttp://y.com/l.m3u'), '2 listas novas.');
+      expect((await importarTexto(area, 'http://x.com/l.m3u\nhttp://y.com/l.m3u')).texto, '2 listas novas.');
       expect(area.listas, hasLength(2));
       expect(bib.listas, isEmpty);
     });
@@ -290,13 +291,17 @@ void main() {
       await t.pumpWidget(_app(gestor()));
       await t.pump();
       await abrirPasso(t, 'Importar');
+      await t.tap(find.text('Do Player'));
+      await t.pump();
       await t.runAsync(() async {
         await t.tap(find.text('Importar do Player'));
         await Future<void>.delayed(const Duration(milliseconds: 200));
       });
       await t.pump();
+      await t.pump();
       expect(area.listas.map((l) => l.nomeMostrado), ['001A 161027', '002B']);
-      expect(find.text('2 listas importadas do Player.'), findsOneWidget);
+      expect(find.text('Novas no Gestor'), findsOneWidget);
+      expect(find.text('Verificar as 2 novas'), findsOneWidget);
     });
 
     Future<void> preparar(WidgetTester t) async {
@@ -503,7 +508,7 @@ void main() {
       expect(s.ocupado, isTrue);
       expect(_desligados(), isEmpty);
       await abrirPasso(t, 'Importar');
-      expect(find.text('Adicionar listas').hitTestable(), findsOneWidget);
+      expect(find.text('Colar texto').hitTestable(), findsOneWidget);
       expect(_desligados(), isEmpty);
       await voltar(t);
       await abrirPasso(t, 'Verificar');
@@ -597,15 +602,15 @@ void main() {
       await marcar(t, '002OUTRA');
       expect(find.textContaining('003MORTA'), findsNothing);
       await abrirPasso(t, 'Importar');
-      expect(find.text('Adicionar listas').hitTestable(), findsOneWidget);
+      expect(find.text('Colar texto').hitTestable(), findsOneWidget);
       // a Ver TV e de volta ao Gestor: continua no sub-ecrã de importar
       final barra = find.byType(BarraSeccoes);
       await t.tap(find.descendant(of: barra, matching: find.text('Ver TV')));
       await t.pumpAndSettle();
-      expect(find.text('Adicionar listas'), findsNothing);
+      expect(find.text('Colar texto'), findsNothing);
       await t.tap(find.descendant(of: barra, matching: find.text('Gestor')));
       await t.pumpAndSettle();
-      expect(find.text('Adicionar listas').hitTestable(), findsOneWidget);
+      expect(find.text('Colar texto').hitTestable(), findsOneWidget);
       await voltar(t);
       final filtro = t.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Funcionam · 2'));
       expect(filtro.selected, isTrue, reason: 'o filtro fica');

@@ -4,6 +4,9 @@ import '../../tarefas/servico_tarefas.dart';
 import '../../verificar/servico.dart';
 import '../design/design.dart';
 
+/// O título das tarefas de pesquisa no stbstalker (o indicador reconhece-as por ele).
+const tituloTarefaStb = 'Pesquisa no stbstalker';
+
 /// O que está a decorrer no Gestor, numa linha: "A verificar 11/17 · 1 tarefa a decorrer".
 /// Sem nada a decorrer diz "Nada a decorrer". Com [aoAbrir] é um botão (abre o painel de
 /// atividade); sem ele só mostra o texto e o comando não pára nele.
@@ -17,8 +20,11 @@ class IndicadorAtividade extends StatelessWidget {
   /// O texto do indicador ('' sem nada a decorrer).
   static String texto(ServicoVerificacao s, ServicoTarefas tarefas) {
     final n = tarefas.emCurso.length;
+    final stb = [for (final t in tarefas.emCurso) if (t.titulo.startsWith(tituloTarefaStb)) t];
     return [
       if (s.ocupado) 'A verificar ${s.feitas}/${s.total}',
+      // a pesquisa mais recente: "stbstalker: 24 encontradas"
+      if (stb.isNotEmpty) 'stbstalker: ${stb.last.detalhe.isEmpty ? 'a procurar' : stb.last.detalhe}',
       if (n > 0) '$n ${n == 1 ? 'tarefa' : 'tarefas'} a decorrer',
     ].join(' · ');
   }

@@ -1,23 +1,76 @@
 import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
-import 'package:material_ui/material_ui.dart';
 
 import '../dados/area_gestor.dart';
-import 'campo_tv.dart';
-import 'design/tokens.dart';
 import '../importar/importar.dart';
-import '../rede/http.dart';
 import '../modelo/conta.dart';
-import 'design/mensagens.dart';
+import '../rede/http.dart';
+import '../tarefas/servico_tarefas.dart';
 
-/// Importa ficheiros (Accounts.json, .ini, .m3u, .txt, historico.json) para o Gestor.
-Future<String> importarFicheiros(AreaGestor b) async {
+/// O que uma importação trouxe para o Gestor: os números do painel "Resultado".
+class ResumoImportacao {
+  ResumoImportacao({
+    this.encontradas = 0,
+    this.novas = 0,
+    this.repetidas = 0,
+    this.erros = const [],
+    this.idsNovas = const [],
+  });
+
+  /// As listas que a origem tinha (antes de ver o que o Gestor já tinha).
+  final int encontradas;
+
+  /// As que entraram no Gestor, e quais (para "Verificar as n novas").
+  final int novas;
+  List<String> idsNovas;
+
+  /// As que o Gestor já tinha.
+  final int repetidas;
+
+  /// O que correu mal (um ficheiro ilegível, um blog sem posts...), sem links nem credenciais.
+  final List<String> erros;
+
+  /// Uma frase com o resumo ("2 listas novas, 1 já existia.").
+  String get texto {
+    if (encontradas == 0 && novas == 0) return erros.isEmpty ? 'Não foi encontrada nenhuma lista.' : erros.join('; ');
+    final p = <String>[
+      novas == 1 ? '1 lista nova' : '$novas listas novas',
+      if (repetidas > 0) repetidas == 1 ? '1 já existia' : '$repetidas já existiam',
+    ];
+    var t = '${p.join(', ')}.';
+    if (erros.isNotEmpty) t += ' Com problemas: ${erros.join('; ')}';
+    return t;
+  }
+}
+
+/// Junta ao Gestor o que `juntar` traz e diz quais as listas novas. As novas veem-se logo a
+/// seguir ao arranque de `juntar` (a parte síncrona do `adicionar` já as pôs no Gestor), por isso
+/// duas importações em simultâneo não trocam os ids.
+Future<ResumoImportacao> juntarAoGestor(AreaGestor g, Future<int> Function() juntar,
+    {required int encontradas, List<String> erros = const []}) async {
+  final antes = {for (final l in g.listas) l.id};
+  final gravacao = juntar();
+  final ids = [for (final l in g.listas) if (!antes.contains(l.id)) l.id];
+  await gravacao;
+  return ResumoImportacao(
+      encontradas: encontradas, novas: ids.length, repetidas: encontradas - ids.length, erros: erros, idsNovas: ids);
+}
+
+/// Pergunta os ficheiros (Accounts.json, .ini, .m3u, .txt, historico.json) e importa-os para o
+/// Gestor. null = não escolheu nenhum.
+Future<ResumoImportacao?> importarFicheiros(AreaGestor b, {Progresso? p}) async {
   final ficheiros = await FilePicker.pickFiles(dialogTitle: 'Escolher listas');
-  if (ficheiros.isEmpty) return '';
+  if (ficheiros.isEmpty) return null;
+  return importarEscolhidos(b, ficheiros, p: p);
+}
+
+/// Importa os ficheiros já escolhidos (corre numa tarefa: `p` mostra o ficheiro a ler).
+Future<ResumoImportacao> importarEscolhidos(AreaGestor b, List<PlatformFile> ficheiros, {Progresso? p}) async {
   final importadas = <Importada>[];
   final erros = <String>[];
-  for (final f in ficheiros) {
+  for (final (i, f) in ficheiros.indexed) {
+    p?.call(i / ficheiros.length, f.name);
     try {
       final texto = utf8.decode(await f.readAsBytes(), allowMalformed: true);
       importadas.addAll(importarFicheiro(f.name, texto, caminho: f.path));
@@ -27,82 +80,14 @@ Future<String> importarFicheiros(AreaGestor b) async {
       erros.add('${f.name}: ${descreverErro(e)}');
     }
   }
-  final novas = await b.adicionar(importadas);
-  return _resumo(novas, importadas.length - novas, erros);
+  return juntarAoGestor(b, () => b.adicionar(importadas), encontradas: importadas.length, erros: erros);
 }
 
 /// Junta ao Gestor listas coladas (uma por linha) ou um URL de lista M3U.
-Future<String> importarTexto(AreaGestor b, String texto) async {
+Future<ResumoImportacao> importarTexto(AreaGestor b, String texto) async {
   final contas = lerLinhas(texto);
-  if (contas.isEmpty) return 'Não foi encontrada nenhuma lista no texto.';
-  final novas = await b.adicionar([for (final c in contas) Importada(c)]);
-  return _resumo(novas, contas.length - novas, const []);
-}
-
-String _resumo(int novas, int repetidas, List<String> erros) {
-  final p = <String>[];
-  p.add(novas == 1 ? '1 lista nova' : '$novas listas novas');
-  if (repetidas > 0) p.add(repetidas == 1 ? '1 já existia' : '$repetidas já existiam');
-  var t = '${p.join(', ')}.';
-  if (erros.isNotEmpty) t += ' Com problemas: ${erros.join('; ')}';
-  return t;
-}
-
-/// Diálogo "Adicionar listas" (ao Gestor): ficheiros ou colar.
-Future<void> mostrarAdicionar(BuildContext context, AreaGestor b) async {
-  final ctrl = TextEditingController();
-  final mensagem = await showDialog<String>(
-    context: context,
-    builder: (ctx) => AlertDialog(
-      icon: const Icon(Icons.playlist_add_rounded, color: Tokens.acento2, size: 32),
-      title: const Text('Adicionar listas'),
-      content: SizedBox(
-        width: 520,
-        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          FilledButton.icon(
-            autofocus: true,
-            onPressed: () async {
-              final m = await importarFicheiros(b);
-              if (ctx.mounted) Navigator.pop(ctx, m);
-            },
-            icon: const Icon(Icons.file_open_outlined),
-            label: const Text('Escolher ficheiros (Accounts.json, .ini, .m3u, .txt)'),
-          ),
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: Tokens.e16),
-            child: Row(children: [
-              Expanded(child: Divider()),
-              Padding(
-                padding: EdgeInsets.symmetric(horizontal: Tokens.e12),
-                child: Text('ou cole aqui, uma por linha:', style: TextStyle(color: Tokens.texto2)),
-              ),
-              Expanded(child: Divider()),
-            ]),
-          ),
-          // o comando da TV não fica preso no campo: o teclado só abre com OK (ver CampoTv)
-          CampoTv(
-            controller: ctrl,
-            minLines: 4,
-            maxLines: 8,
-            decoration: const InputDecoration(
-              hintText: 'http://portal.com/c/ 00:1A:79:00:00:01\nhttp://servidor:8080/get.php?username=…\nhttp://…/lista.m3u',
-            ),
-          ),
-        ]),
-      ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
-        FilledButton(onPressed: () async {
-          final m = await importarTexto(b, ctrl.text);
-          if (ctx.mounted) Navigator.pop(ctx, m);
-        },
-            child: const Text('Adicionar')),
-      ],
-    ),
-  );
-  if (mensagem != null && mensagem.isNotEmpty && context.mounted) {
-    mostrarMensagem(context, mensagem);
-  }
+  if (contas.isEmpty) return ResumoImportacao(erros: const ['Não foi encontrada nenhuma lista no texto.']);
+  return juntarAoGestor(b, () => b.adicionar([for (final c in contas) Importada(c)]), encontradas: contas.length);
 }
 
 /// Para testes: as contas de um texto colado.

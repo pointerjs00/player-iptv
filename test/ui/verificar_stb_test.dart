@@ -58,14 +58,17 @@ void main() {
                 baseStb: '${srv.url}/'))));
     await abrirImportar(t);
     expect(find.text('Listas do stbstalker'), findsOneWidget);
+    await t.tap(find.text('Listas do stbstalker'));
+    await t.pump();
     expect(find.text(_dd(hoje)), findsNWidgets(2));
     await t.runAsync(() async {
-      await t.tap(find.text('Iniciar pesquisa'));
+      await t.tap(find.text('Procurar e juntar'));
       await Future<void>.delayed(const Duration(milliseconds: 800));
     });
     await t.pump();
     await t.pump();
-    expect(find.text('Em ${_dd(hoje)}: 2 linhas em 1 post, 2 listas novas.'), findsOneWidget);
+    expect(find.text('Novas no Gestor'), findsOneWidget);
+    expect(find.text('Verificar as 2 novas'), findsOneWidget);
     expect(area.listas.length, 2);
     expect(bib.listas, isEmpty);
   });
@@ -101,13 +104,15 @@ void main() {
                 tarefas: ServicoTarefas(),
                 baseStb: 'http://127.0.0.1:${corta.port}/'))));
     await abrirImportar(t);
+    await t.tap(find.text('Listas do stbstalker'));
+    await t.pump();
     await t.runAsync(() async {
-      await t.tap(find.text('Iniciar pesquisa'));
+      await t.tap(find.text('Procurar e juntar'));
       await Future<void>.delayed(const Duration(milliseconds: 800));
     });
     await t.pump();
     await t.pump();
-    expect(find.text('Não foi possível pesquisar: a ligação foi cortada pelo servidor'), findsOneWidget);
+    expect(find.text('Com erro (Não foi possível pesquisar: a ligação foi cortada pelo servidor)'), findsOneWidget);
     expect(find.textContaining('http'), findsNothing);
   });
 
@@ -136,6 +141,8 @@ void main() {
             body: TelaGestor(
                 biblioteca: bib, area: area, servico: ServicoVerificacao(bib, colecao: area), tarefas: ServicoTarefas()))));
     await abrirImportar(t);
+    await t.tap(find.text('Listas do stbstalker'));
+    await t.pump();
     await t.tap(find.widgetWithIcon(OutlinedButton, Icons.calendar_today).first);
     await t.pumpAndSettle();
     expect(find.text('Cancelar'), findsOneWidget);
