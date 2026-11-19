@@ -151,6 +151,30 @@ void main() {
       expect((await Preferencias.abrir(pasta)).timeoutVerificacao, 20);
     });
 
+    test('listas em simultâneo: 8 por omissão, entre 1 e 20, guardado', () async {
+      final p = await Preferencias.abrir(pasta);
+      expect(p.listasEmSimultaneo, 8);
+      p.listasEmSimultaneo = 25;
+      expect(p.listasEmSimultaneo, 20);
+      p.listasEmSimultaneo = 0;
+      expect(p.listasEmSimultaneo, 1);
+      p.listasEmSimultaneo = 12;
+      await p.guardar();
+      expect((await Preferencias.abrir(pasta)).listasEmSimultaneo, 12);
+    });
+
+    test('tempo limite por lista: 30 s por omissão, entre 10 e 300, guardado', () async {
+      final p = await Preferencias.abrir(pasta);
+      expect(p.tempoLimiteLista, 30);
+      p.tempoLimiteLista = 5;
+      expect(p.tempoLimiteLista, 10);
+      p.tempoLimiteLista = 999;
+      expect(p.tempoLimiteLista, 300);
+      p.tempoLimiteLista = 45;
+      await p.guardar();
+      expect((await Preferencias.abrir(pasta)).tempoLimiteLista, 45);
+    });
+
     test('user-agent personalizado: vazio por omissão, aparado, sem quebras de linha, guardado', () async {
       final p = await Preferencias.abrir(pasta);
       expect(p.userAgent, '');

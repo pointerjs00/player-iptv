@@ -27,7 +27,7 @@ Widget _app(Widget w) =>
 class _Preso extends Verificador {
   @override
   Future<ResultadoVerificacao> verificarComLimite(Conta conta, List<String> canaisTeste,
-      {Duration timeout = const Duration(seconds: 8), Cancelamento? cancelamento, Aviso? aviso}) async {
+      {Duration timeout = const Duration(seconds: 8), Cancelamento? cancelamento, Aviso? aviso, Duration? limite}) async {
     await Completer<void>().future;
     return const ResultadoVerificacao(EstadoV.funciona, 'ok');
   }
@@ -37,7 +37,7 @@ class _Preso extends Verificador {
 class _Rapido extends Verificador {
   @override
   Future<ResultadoVerificacao> verificarComLimite(Conta conta, List<String> canaisTeste,
-      {Duration timeout = const Duration(seconds: 8), Cancelamento? cancelamento, Aviso? aviso}) async =>
+      {Duration timeout = const Duration(seconds: 8), Cancelamento? cancelamento, Aviso? aviso, Duration? limite}) async =>
       const ResultadoVerificacao(EstadoV.funciona, 'ok');
 }
 

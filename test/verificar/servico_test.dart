@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:player_iptv/dados/biblioteca.dart';
+import 'package:player_iptv/dados/preferencias.dart';
 import 'package:player_iptv/importar/importar.dart';
 import 'package:player_iptv/modelo/conta.dart';
 import 'package:player_iptv/protocolos/protocolo.dart';
@@ -99,6 +100,57 @@ void main() {
     await Future.wait([primeiras, outras]).timeout(const Duration(seconds: 5));
     expect(ls.every((l) => daBib(l)!.ultima?.estado == 'funciona'), isTrue);
     expect(s.ocupado, isFalse);
+  });
+
+  test('workers vem das definições', () async {
+    final ls = await juntar(5);
+    final f = _Falso();
+    final s = ServicoVerificacao(bib,
+        verificador: f,
+        ritmo: RitmoHost(intervalo: Duration.zero),
+        preferencias: Preferencias.omissao()..listasEmSimultaneo = 2);
+    final todas = s.verificarVarias(ls);
+    await _ate(() => f.comecadas.length == 2);
+    await _dar();
+    expect(f.comecadas, hasLength(2));
+    for (final l in ls) {
+      f.soltar(l.conta.endereco);
+    }
+    await todas.timeout(const Duration(seconds: 5));
+  });
+
+  test('baixar as listas em simultâneo não cancela as que correm', () async {
+    final ls = await juntar(6);
+    final f = _Falso();
+    final prefs = Preferencias.omissao()..listasEmSimultaneo = 4;
+    final s = ServicoVerificacao(bib,
+        verificador: f, ritmo: RitmoHost(intervalo: Duration.zero), preferencias: prefs);
+    final todas = s.verificarVarias(ls);
+    await _ate(() => f.comecadas.length == 4);
+    expect(f.comecadas, hasLength(4));
+    prefs.listasEmSimultaneo = 1;
+    // acaba uma: ficam 3 a correr, acima do novo limite, e nenhuma nova arranca
+    f.soltar(ls[0].conta.endereco);
+    await _ate(() => !s.aVerificar(ls[0].id));
+    await _dar(60);
+    expect(f.comecadas, hasLength(4));
+    // acabam mais duas: resta 1 a correr (ainda nao abaixo do limite)
+    f.soltar(ls[1].conta.endereco);
+    f.soltar(ls[2].conta.endereco);
+    await _ate(() => !s.aVerificar(ls[1].id) && !s.aVerificar(ls[2].id));
+    await _dar(60);
+    expect(f.comecadas, hasLength(4));
+    // acaba a última: passa a arrancar uma de cada vez
+    f.soltar(ls[3].conta.endereco);
+    await _ate(() => f.comecadas.length == 5);
+    await _dar(60);
+    expect(f.comecadas, hasLength(5));
+    f.soltar(ls[4].conta.endereco);
+    await _ate(() => f.comecadas.length == 6);
+    for (final l in ls) {
+      f.soltar(l.conta.endereco);
+    }
+    await todas.timeout(const Duration(seconds: 5));
   });
 
   test('cancelar a 2.ª na fila: não é verificada, total 4 e as outras acabam', () async {

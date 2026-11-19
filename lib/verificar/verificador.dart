@@ -119,18 +119,23 @@ class Verificador {
     return r2.validade.isEmpty && r1.validade.isNotEmpty ? r2.com(validade: r1.validade) : r2;
   }
 
-  /// Uma volta com o limite de tempo da conta (`limiteConta` × nº de canais de teste). O relógio
+  /// Uma volta com o limite de tempo da conta ([limite] se dado, senão `limiteConta` × nº de
+  /// canais de teste). O relógio
   /// pára enquanto a conta espera a vez de um servidor; ao esgotar, os pedidos da conta são
   /// cancelados e o resultado é INC.
   Future<ResultadoVerificacao> verificarComLimite(Conta conta, List<String> canaisTeste,
-      {Duration timeout = const Duration(seconds: 8), Cancelamento? cancelamento, Aviso? aviso}) async {
-    final limite = limiteConta * perfisDe(canaisTeste).length;
+      {Duration timeout = const Duration(seconds: 8),
+      Cancelamento? cancelamento,
+      Aviso? aviso,
+      Duration? limite}) async {
+    final porLista = limite != null;
+    final espera = limite ?? limiteConta * perfisDe(canaisTeste).length;
     final filho = cancelamento?.filho() ?? Cancelamento();
     final esgotou = Completer<ResultadoVerificacao>();
-    final relogio = RelogioConta(limite, () {
+    final relogio = RelogioConta(espera, () {
       if (!esgotou.isCompleted) {
         esgotou.complete(ResultadoVerificacao(
-            EstadoV.inconclusivo, 'tempo esgotado (limite de ${_segundos(limite)}s por conta)'));
+            EstadoV.inconclusivo, 'tempo esgotado (limite de ${_segundos(espera)}s por ${porLista ? 'lista' : 'conta'})'));
       }
       filho.cancelar();
     });

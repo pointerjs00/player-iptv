@@ -22,6 +22,12 @@ class _Falso extends Verificador {
   final aCorrer = <Conta>[];
   int picoMesmoMac = 0, picoVolta2 = 0;
 
+  /// O serviço dá o limite por lista das Definições; aqui vale o `limiteConta` do teste.
+  @override
+  Future<ResultadoVerificacao> verificarComLimite(Conta conta, List<String> canaisTeste,
+          {Duration timeout = const Duration(seconds: 8), Cancelamento? cancelamento, Aviso? aviso, Duration? limite}) =>
+      super.verificarComLimite(conta, canaisTeste, timeout: timeout, cancelamento: cancelamento, aviso: aviso);
+
   @override
   Future<ResultadoVerificacao> verificarUmaVez(Conta conta, List<String> canaisTeste,
       {Duration timeout = const Duration(seconds: 8), Cancelamento? cancelamento, Aviso? aviso}) async {

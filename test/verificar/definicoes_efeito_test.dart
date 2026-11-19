@@ -29,6 +29,32 @@ class _Mede extends Verificador {
   Duration get pausaReteste => Duration.zero;
 }
 
+/// Regista o limite por lista que o serviço pede em cada volta.
+class _MedeLimite extends Verificador {
+  _MedeLimite() : super(pausaReteste: Duration.zero);
+  final limites = <Duration?>[];
+  final tempos = <Duration>[];
+  @override
+  Future<ResultadoVerificacao> verificarComLimite(Conta conta, List<String> canaisTeste,
+      {Duration timeout = const Duration(seconds: 8), Cancelamento? cancelamento, void Function(String)? aviso, Duration? limite}) async {
+    limites.add(limite);
+    tempos.add(timeout);
+    return const ResultadoVerificacao(EstadoV.inconclusivo, 'falso');
+  }
+}
+
+/// Uma volta que nunca acaba sozinha (só ao ser cancelada).
+class _NuncaAcaba extends Verificador {
+  @override
+  Future<ResultadoVerificacao> verificarUmaVez(Conta conta, List<String> canaisTeste,
+      {Duration timeout = const Duration(seconds: 8), Cancelamento? cancelamento, void Function(String)? aviso}) async {
+    while (true) {
+      cancelamento?.verificar();
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+  }
+}
+
 void main() {
   late Directory pasta;
   setUp(() => pasta = Directory.systemTemp.createTempSync('efeito'));
@@ -60,6 +86,27 @@ void main() {
     final f = _Mede();
     await ServicoVerificacao(bib, verificador: f).verificar(bib.listas.first);
     expect(f.tempos.first, const Duration(seconds: 8));
+  });
+
+  test('o tempo limite por lista chega ao verificador nas duas voltas (o dos canais mantém o dobro)', () async {
+    final bib = await Biblioteca.abrir(pasta);
+    await bib.adicionar([Importada(contaDeLinha('http://nxtbox.uk/c/ 00:1A:79:00:00:01')!)]);
+    final prefs = Preferencias.omissao()
+      ..tempoLimiteLista = 10
+      ..timeoutVerificacao = 6;
+    final f = _MedeLimite();
+    await ServicoVerificacao(bib, verificador: f, preferencias: prefs).verificar(bib.listas.first);
+    expect(f.limites, [const Duration(seconds: 10), const Duration(seconds: 10)]);
+    expect(f.tempos, [const Duration(seconds: 6), const Duration(seconds: 12)]);
+  });
+
+  test('o tempo limite por lista esgotado dá inconclusivo "por lista" (limite do verificador)', () async {
+    final r = await _NuncaAcaba().verificarComLimite(
+        Conta('x', Tipo.m3u, 'http://s/lista.m3u'), const ['rtp1'],
+        limite: const Duration(milliseconds: 200));
+    expect(r.estado, EstadoV.inconclusivo);
+    expect(r.motivo, contains('por lista'));
+    expect(r.motivo, contains('0.2s'));
   });
 
   group('user-agent personalizado', () {

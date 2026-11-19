@@ -19,9 +19,10 @@ import 'verificador.dart';
 /// - pode-se juntar listas à fila a meio e cancelar uma só sem parar as outras.
 class ServicoVerificacao extends ChangeNotifier {
   ServicoVerificacao(this.biblioteca,
-      {ColecaoListas? colecao, Verificador? verificador, this.workers = 4, RitmoHost? ritmo,
+      {ColecaoListas? colecao, Verificador? verificador, int? workers, RitmoHost? ritmo,
       this.preferencias, DateTime Function()? agora})
-      : colecao = colecao ?? biblioteca,
+      : _workers = workers, // ignore: prefer_initializing_formals
+        colecao = colecao ?? biblioteca,
         verificador = verificador ?? Verificador(),
         ritmo = ritmo ?? RitmoHost(),
         _agora = agora ?? DateTime.now;
@@ -32,7 +33,11 @@ class ServicoVerificacao extends ChangeNotifier {
   /// Onde se gravam os resultados (o Gestor na app; a biblioteca por omissão).
   final ColecaoListas colecao;
   final Verificador verificador;
-  final int workers;
+  final int? _workers;
+
+  /// Quantas listas correm ao mesmo tempo: o valor dado ou o das Definições (lido a cada
+  /// `_servir`: baixá-lo não cancela as que correm, só atrasa as novas).
+  int get workers => _workers ?? (preferencias ?? Preferencias.atual).listasEmSimultaneo;
 
   /// Um pedido de cada vez por servidor, partilhado por todas as verificações.
   final RitmoHost ritmo;
@@ -45,6 +50,9 @@ class ServicoVerificacao extends ChangeNotifier {
 
   /// O tempo limite de cada canal, das Definições (lido a cada volta: mudar vale logo).
   Duration get _timeout => Duration(seconds: (preferencias ?? Preferencias.atual).timeoutVerificacao);
+
+  /// O tempo limite de cada lista (todos os canais de teste), das Definições.
+  Duration get _limiteLista => Duration(seconds: (preferencias ?? Preferencias.atual).tempoLimiteLista);
 
   /// id da lista -> o passo em curso ("a pedir os canais", "na fila"...).
   final passos = <String, String>{};
@@ -276,7 +284,7 @@ class ServicoVerificacao extends ChangeNotifier {
 
   Future<ResultadoVerificacao> _umaVolta(_Tarefa t, Duration timeout) => runZoned(
       () => verificador.verificarComLimite(t.lista.conta, biblioteca.canaisTeste,
-          timeout: timeout, cancelamento: t.cancelamento, aviso: _aviso(t)),
+          timeout: timeout, limite: _limiteLista, cancelamento: t.cancelamento, aviso: _aviso(t)),
       zoneValues: {ritmoZona: ritmo});
 
   /// Grava o resultado da volta; enquanto grava, `cancelar` ignora-a. Devolve false se a

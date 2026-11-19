@@ -34,7 +34,7 @@ class _Roteiro extends Verificador {
 
   @override
   Future<ResultadoVerificacao> verificarComLimite(Conta conta, List<String> canaisTeste,
-      {Duration timeout = const Duration(seconds: 8), Cancelamento? cancelamento, Aviso? aviso}) async {
+      {Duration timeout = const Duration(seconds: 8), Cancelamento? cancelamento, Aviso? aviso, Duration? limite}) async {
     for (final e in resultados.entries) {
       if (conta.endereco.contains(e.key)) return e.value;
     }
@@ -68,7 +68,7 @@ void main() {
   ServicoVerificacao servico(Map<String, ResultadoVerificacao> r, {DateTime Function()? agora}) {
     roteiro = _Roteiro(r);
     return ServicoVerificacao(bib,
-        colecao: area, verificador: roteiro, ritmo: RitmoHost(intervalo: Duration.zero), agora: agora);
+        colecao: area, verificador: roteiro, workers: 4, ritmo: RitmoHost(intervalo: Duration.zero), agora: agora);
   }
 
   Future<void> abrirVerificacao(WidgetTester t, ServicoVerificacao s) async {

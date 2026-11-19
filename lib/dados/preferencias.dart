@@ -83,6 +83,12 @@ class Preferencias extends ChangeNotifier {
   /// O tempo limite da verificação por omissão e os seus limites, em segundos.
   static const padraoTimeoutVerificacao = 8, minTimeoutVerificacao = 5, maxTimeoutVerificacao = 30;
 
+  /// Quantas listas se verificam ao mesmo tempo (omissão e limites).
+  static const padraoListasEmSimultaneo = 8, minListasEmSimultaneo = 1, maxListasEmSimultaneo = 20;
+
+  /// O tempo limite de cada lista (todos os canais de teste), em segundos (omissão e limites).
+  static const padraoTempoLimiteLista = 30, minTempoLimiteLista = 10, maxTempoLimiteLista = 300;
+
   /// O ficheiro da v1 (só tinha a descodificação e a taxa do ecrã): lido se não houver o novo.
   static const _antigo = 'preferencias_player.json';
 
@@ -95,6 +101,8 @@ class Preferencias extends ChangeNotifier {
   ModoDescodificacao _modoAndroid = ModoDescodificacao.direto;
   bool _ajustarTaxaEcra;
   int _timeoutVerificacao = padraoTimeoutVerificacao;
+  int _listasEmSimultaneo = padraoListasEmSimultaneo;
+  int _tempoLimiteLista = padraoTempoLimiteLista;
   String _userAgent = '';
 
   /// As chaves mudadas aqui e ainda não gravadas: só essas se escrevem (as outras são da outra janela).
@@ -147,6 +155,20 @@ class Preferencias extends ChangeNotifier {
   set timeoutVerificacao(int v) {
     final n = v.clamp(minTimeoutVerificacao, maxTimeoutVerificacao);
     _mudar('timeoutVerificacao', _timeoutVerificacao != n, () => _timeoutVerificacao = n);
+  }
+
+  /// Quantas listas se verificam ao mesmo tempo (1–20; 8 por omissão).
+  int get listasEmSimultaneo => _listasEmSimultaneo;
+  set listasEmSimultaneo(int v) {
+    final n = v.clamp(minListasEmSimultaneo, maxListasEmSimultaneo);
+    _mudar('listasEmSimultaneo', _listasEmSimultaneo != n, () => _listasEmSimultaneo = n);
+  }
+
+  /// O tempo limite de cada lista na verificação, em segundos (10–300; 30 por omissão).
+  int get tempoLimiteLista => _tempoLimiteLista;
+  set tempoLimiteLista(int v) {
+    final n = v.clamp(minTempoLimiteLista, maxTempoLimiteLista);
+    _mudar('tempoLimiteLista', _tempoLimiteLista != n, () => _tempoLimiteLista = n);
   }
 
   /// O user-agent personalizado ('' = o por omissão): só nos pedidos M3U e Xtream (o Stalker
@@ -227,6 +249,14 @@ class Preferencias extends ChangeNotifier {
     if (tempo != null) {
       _timeoutVerificacao = tempo.toInt().clamp(minTimeoutVerificacao, maxTimeoutVerificacao);
     }
+    final simultaneo = campo<num>('listasEmSimultaneo');
+    if (simultaneo != null) {
+      _listasEmSimultaneo = simultaneo.toInt().clamp(minListasEmSimultaneo, maxListasEmSimultaneo);
+    }
+    final limiteLista = campo<num>('tempoLimiteLista');
+    if (limiteLista != null) {
+      _tempoLimiteLista = limiteLista.toInt().clamp(minTempoLimiteLista, maxTempoLimiteLista);
+    }
     final ua = campo<String>('userAgent');
     if (ua != null) _userAgent = (Preferencias.omissao()..userAgent = ua)._userAgent;
     return ok;
@@ -241,6 +271,8 @@ class Preferencias extends ChangeNotifier {
         'modoAndroid': _modoAndroid.nome,
         'ajustarTaxaEcra': _ajustarTaxaEcra,
         'timeoutVerificacao': _timeoutVerificacao,
+        'listasEmSimultaneo': _listasEmSimultaneo,
+        'tempoLimiteLista': _tempoLimiteLista,
         'userAgent': _userAgent,
       };
 
@@ -261,6 +293,8 @@ class Preferencias extends ChangeNotifier {
     if (lidas.contains('modoAndroid')) modoAndroid = outro._modoAndroid;
     if (lidas.contains('ajustarTaxaEcra')) ajustarTaxaEcra = outro._ajustarTaxaEcra;
     if (lidas.contains('timeoutVerificacao')) timeoutVerificacao = outro._timeoutVerificacao;
+    if (lidas.contains('listasEmSimultaneo')) listasEmSimultaneo = outro._listasEmSimultaneo;
+    if (lidas.contains('tempoLimiteLista')) tempoLimiteLista = outro._tempoLimiteLista;
     if (lidas.contains('userAgent')) userAgent = outro._userAgent;
   }
 
