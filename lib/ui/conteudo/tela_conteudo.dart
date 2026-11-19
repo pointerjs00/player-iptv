@@ -118,6 +118,9 @@ class _TelaConteudoState extends State<TelaConteudo> {
   final _focoRegresso = FocusNode();
   Canal? _canalAFocar;
 
+  /// A coluna dos canais (não recebe o foco: diz se o foco está num canal).
+  final _focoColunaCanais = FocusNode(debugLabel: 'Coluna dos canais', canRequestFocus: false, skipTraversal: true);
+
   /// Os grupos escondidos também à vista (com um ícone), para os voltar a mostrar.
   bool _verEscondidos = false;
   bool _continuou = false;
@@ -150,6 +153,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
     _atrasoDigitos?.cancel();
     _scrollCanais.dispose();
     _focoRegresso.dispose();
+    _focoColunaCanais.dispose();
     _focoCancelar.dispose();
     _textoPesquisa.dispose();
     _focoPesquisa.dispose();
@@ -290,13 +294,27 @@ class _TelaConteudoState extends State<TelaConteudo> {
     });
   }
 
-  /// Apaga a pesquisa (o campo e os resultados).
+  /// Apaga a pesquisa (o campo e os resultados). Com o foco num canal encontrado, o foco vai
+  /// ao 1.º canal do que fica à vista: a linha focada passaria a ser outro canal (ou deixaria
+  /// de existir) e o "i de n" e o ↑ ficariam desencontrados dela.
   void _limparPesquisa() {
     _atrasoPesquisa?.cancel();
     _textoPesquisa.clear();
+    final nosCanais = _focoColunaCanais.hasFocus;
     setState(() {
       _q = '';
       _comTexto = false;
+    });
+    if (!nosCanais) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final canais = _canaisVisiveis();
+      if (canais.isNotEmpty) {
+        _focarNoCanal(canais, 0);
+      } else {
+        final g = _focosGrupos[_grupo];
+        if (g != null && g.context != null && g.canRequestFocus) g.requestFocus();
+      }
     });
   }
 
@@ -1045,8 +1063,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
     // no ecrã estreito (sem coluna de grupos) o foco começa no 1.º canal
     final focarPrimeiro = MediaQuery.sizeOf(context).width < 720;
     return Focus(
-      canRequestFocus: false,
-      skipTraversal: true,
+      focusNode: _focoColunaCanais,
       includeSemantics: false,
       onKeyEvent: _teclaCanais,
       child: FocusTraversalGroup(

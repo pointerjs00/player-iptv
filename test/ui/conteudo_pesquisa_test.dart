@@ -190,6 +190,38 @@ void main() {
     expect(find.text('base'), findsOneWidget);
   });
 
+  testWidgets('Voltar com o foco num canal encontrado leva o foco ao 1.º canal do grupo', (t) async {
+    await abrir(t);
+    await escrever(t, 'desp');
+    await voltar(t); // acaba de escrever
+    await focar(t, 'Desporto 3');
+    await voltar(t); // limpa a pesquisa
+    expect(find.text('Canais · 31'), findsNothing);
+    // o foco não fica numa linha qualquer (outro canal na mesma posição): vai ao 1.º do grupo
+    expect(_focado(), 'Desporto 1', reason: textosFocados());
+    expect(t.widget<Text>(find.byKey(const Key('contador-canais'))).data, '1 de 20');
+    await teclaDpad(t, LogicalKeyboardKey.arrowDown);
+    expect(_focado(), 'Desporto 2');
+    expect(t.widget<Text>(find.byKey(const Key('contador-canais'))).data, '2 de 20');
+    await teclaDpad(t, LogicalKeyboardKey.arrowUp);
+    expect(_focado(), 'Desporto 1');
+    await teclaDpad(t, LogicalKeyboardKey.arrowUp);
+    expect(_naPesquisa(t), isTrue);
+  });
+
+  testWidgets('Voltar com o foco num canal que fica sem par no grupo não perde o foco', (t) async {
+    await abrir(t);
+    await escrever(t, 'desp');
+    await voltar(t);
+    // a 25.ª linha dos resultados: o grupo «Desporto» só tem 20
+    await t.scrollUntilVisible(find.text('Desp. Mundo 5'), 300,
+        scrollable: find.descendant(of: _canais, matching: find.byType(Scrollable)));
+    await focar(t, 'Desp. Mundo 5');
+    await voltar(t);
+    expect(_focado(), 'Desporto 1', reason: textosFocados());
+    expect(t.widget<Text>(find.byKey(const Key('contador-canais'))).data, '1 de 20');
+  });
+
   testWidgets('↑ no primeiro grupo ou no primeiro canal vai à pesquisa', (t) async {
     await abrir(t);
     // o foco começa no grupo escolhido (o primeiro)
