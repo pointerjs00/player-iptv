@@ -36,6 +36,9 @@ UltimaVerificacao _u(String estado) => UltimaVerificacao(estado: estado, data: D
 class _Roteiro extends Verificador {
   final _nunca = Completer<void>();
 
+  /// Deixa as presas acabar.
+  void soltar() => _nunca.complete();
+
   @override
   Future<ResultadoVerificacao> verificarComLimite(Conta conta, List<String> canaisTeste,
       {Duration timeout = const Duration(seconds: 8), Cancelamento? cancelamento, Aviso? aviso, Duration? limite}) async {
@@ -229,6 +232,30 @@ void main() {
     expect(find.byType(TelaVerificacao).hitTestable(), findsOneWidget);
     expect(textosFocados(), contains('Verificar mais (fila)'));
     s.parar();
+  });
+
+  testWidgets('a verificação acaba com o foco na barra do resumo: o foco passa ao cartão 2', (t) async {
+    ecraTvTeste(t, altura: 900);
+    await t.runAsync(() => area.adicionar([Importada(contaDeLinha('http://presa.com/l.m3u')!)]));
+    final roteiro = _Roteiro();
+    final s = ServicoVerificacao(bib, colecao: area, verificador: roteiro, ritmo: RitmoHost(intervalo: Duration.zero));
+    await t.pumpWidget(gestor(s));
+    await t.pump();
+    s.verificar(area.listas.first);
+    await t.pump();
+    await irPara(t, '1 | Importar');
+    await teclaDpad(t, LogicalKeyboardKey.arrowDown);
+    expect(textosFocados(), startsWith('A verificar 0/1'));
+    // a verificação acaba
+    roteiro.soltar();
+    for (var i = 0; i < 50 && s.ocupado; i++) {
+      await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+      await t.pump();
+    }
+    await t.pump();
+    expect(s.ocupado, isFalse);
+    expect(find.byKey(const ValueKey('barraAtividade')), findsNothing);
+    expect(textosFocados(), startsWith('2 | Verificar'), reason: 'o foco não se perde');
   });
 
   testWidgets('OK no cartão 2 abre o passo 2 com a faixa (passo 2 realçado); → na faixa muda para o passo 3',

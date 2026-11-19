@@ -122,6 +122,19 @@ class _TelaGestorState extends State<TelaGestor> {
     super.initState();
     _g.addListener(_aoMudarArea);
     widget.pedido?.addListener(_aoPedido);
+    _s.addListener(_aoMudarServico);
+  }
+
+  /// A barra do progresso desaparece quando a verificação acaba (ou é parada): se tinha o foco,
+  /// depois do frame ele passa ao cartão 2 (senão perdia-se, ou o Flutter devolvia-o a um
+  /// controlo qualquer do resumo).
+  void _aoMudarServico() {
+    if (_s.ocupado || !_focoBarraAtividade.hasPrimaryFocus) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // (a barra só existe com o serviço ocupado: se recomeçou, ela voltou e fica com o foco)
+      if (!mounted || _ecra != EcraGestor.resumo || _s.ocupado) return;
+      _focosCartoes[1].requestFocus();
+    });
   }
 
   /// A casca pediu um ecrã.
@@ -149,6 +162,10 @@ class _TelaGestorState extends State<TelaGestor> {
       antigo.pedido?.removeListener(_aoPedido);
       widget.pedido?.addListener(_aoPedido);
     }
+    if (antigo.servico != widget.servico) {
+      antigo.servico.removeListener(_aoMudarServico);
+      widget.servico.addListener(_aoMudarServico);
+    }
     if (antigo.area != widget.area) {
       antigo.area.removeListener(_aoMudarArea);
       widget.area.addListener(_aoMudarArea);
@@ -162,6 +179,7 @@ class _TelaGestorState extends State<TelaGestor> {
     _focoIndicador.dispose();
     _registo.dispose();
     _g.removeListener(_aoMudarArea);
+    _s.removeListener(_aoMudarServico);
     for (final f in [
       ..._focosCartoes,
       _focoBarraAtividade,
