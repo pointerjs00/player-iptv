@@ -267,4 +267,64 @@ void main() {
       expect(File('${ficheiro().path}.bak').readAsStringSync(), '{lixo');
     });
   });
+
+  group('modo de desentrelaçamento (Automático / Ligado / Desligado)', () {
+    test('por omissão: Automático (o "desentrelacar" antigo continua a dar true)', () async {
+      final p = await Preferencias.abrir(pasta);
+      expect(p.modoDesentrelacamento, ModoDesentrelacamento.automatico);
+      expect(p.desentrelacar, isTrue);
+    });
+
+    test('ficheiro antigo: desentrelacar true -> Automático, false -> Desligado', () async {
+      ficheiro().writeAsStringSync('{"desentrelacar": true}');
+      expect((await Preferencias.abrir(pasta)).modoDesentrelacamento, ModoDesentrelacamento.automatico);
+      ficheiro().writeAsStringSync('{"desentrelacar": false}');
+      final p = await Preferencias.abrir(pasta);
+      expect(p.modoDesentrelacamento, ModoDesentrelacamento.desligado);
+      expect(p.desentrelacar, isFalse);
+    });
+
+    test('grava "modo_desentrelacamento" (e o "desentrelacar" para as versões anteriores) e volta a ler', () async {
+      final p = await Preferencias.abrir(pasta)..modoDesentrelacamento = ModoDesentrelacamento.ligado;
+      await p.guardar();
+      final m = jsonDecode(ficheiro().readAsStringSync()) as Map;
+      expect(m['modo_desentrelacamento'], 'ligado');
+      expect(m['desentrelacar'], isTrue);
+      expect((await Preferencias.abrir(pasta)).modoDesentrelacamento, ModoDesentrelacamento.ligado);
+    });
+
+    test('o modo novo ganha ao "desentrelacar"; um modo desconhecido cai no antigo', () async {
+      ficheiro().writeAsStringSync('{"modo_desentrelacamento": "ligado", "desentrelacar": false}');
+      expect((await Preferencias.abrir(pasta)).modoDesentrelacamento, ModoDesentrelacamento.ligado);
+      ficheiro().writeAsStringSync('{"modo_desentrelacamento": "talvez", "desentrelacar": false}');
+      expect((await Preferencias.abrir(pasta)).modoDesentrelacamento, ModoDesentrelacamento.desligado);
+    });
+
+    test('o interruptor das Definições (bool): ligar dá Automático, desligar Desligado; Ligado fica Ligado', () {
+      final p = Preferencias.omissao()..desentrelacar = false;
+      expect(p.modoDesentrelacamento, ModoDesentrelacamento.desligado);
+      p.desentrelacar = true;
+      expect(p.modoDesentrelacamento, ModoDesentrelacamento.automatico);
+      p
+        ..modoDesentrelacamento = ModoDesentrelacamento.ligado
+        ..desentrelacar = true;
+      expect(p.modoDesentrelacamento, ModoDesentrelacamento.ligado);
+    });
+
+    test('aplicar (cópia de segurança antiga, só com "desentrelacar")', () {
+      final p = Preferencias.omissao()..aplicar({'desentrelacar': false});
+      expect(p.modoDesentrelacamento, ModoDesentrelacamento.desligado);
+      p.aplicar({'modo_desentrelacamento': 'ligado'});
+      expect(p.modoDesentrelacamento, ModoDesentrelacamento.ligado);
+      p.aplicar({'volume': 10});
+      expect(p.modoDesentrelacamento, ModoDesentrelacamento.ligado, reason: 'sem as chaves não muda');
+    });
+
+    test('nomes e rótulos', () {
+      expect(ModoDesentrelacamento.values.map((m) => m.rotulo), ['Automático', 'Ligado', 'Desligado']);
+      for (final m in ModoDesentrelacamento.values) {
+        expect(ModoDesentrelacamento.deNome(m.nome), m);
+      }
+    });
+  });
 }

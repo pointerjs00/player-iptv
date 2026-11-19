@@ -102,4 +102,10 @@ void main() {
     final moldura = t.widget<MolduraFoco>(find.ancestor(of: find.text('Silêncio'), matching: find.byType(MolduraFoco)));
     expect(moldura.focado, isTrue);
   });
+
+  testWidgets('o título é "Ajustes rápidos", com a nota do que vale para quê', (t) async {
+    await _montar(t, () => [DefinicaoInterruptor('Silêncio', valor: false, aoMudar: (_) {})]);
+    expect(find.text('Ajustes rápidos'), findsOneWidget);
+    expect(find.text('Áudio e legendas: só este canal · o resto vale para todos'), findsOneWidget);
+  });
 }

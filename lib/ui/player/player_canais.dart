@@ -454,6 +454,8 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       final modo =
           _android ? CompativelNaSessao.instancia.modoPara(_chave(canal), _prefs.modoAndroid) : _prefs.modoAndroid;
       final hardware = _prefs.hardware;
+      // Windows: "Abrir em modo compatível" (cartão de erro) põe este canal por software
+      final hardwareCanal = hardware && (_android || !CompativelNaSessao.instancia.software(_chave(canal)));
       // um mpv que deixou de responder não se volta a usar: player novo
       await prepararPlayer(
         novo: (_android && (modo != _modo || hardware != _hardware)) || _motor.semResposta,
@@ -476,6 +478,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       await aplicarAoAbrir(_motor, _prefs, _sessao,
           plataforma: _plataforma,
           modo: _modo,
+          hardware: hardwareCanal,
           limparFiltro: desentrelacamento.limpar,
           manterDesentrelacamento: desentrelacamento.manter);
       if (!mounted || pedido != _pedido) return;
@@ -778,6 +781,16 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
         ligado: _prefs.desentrelacar, entrelacada: _deint.entrelacada, confirmado: _deint.confirmado);
   }
 
+  /// O modo Ligado: também nas imagens que o mpv vê como progressivas.
+  bool get _forcarDesentrelacamento => _prefs.modoDesentrelacamento == ModoDesentrelacamento.ligado;
+
+  /// "Abrir em modo compatível" (cartão de erro): só este canal, nesta sessão (Compatível no
+  /// Android, software no Windows).
+  void _abrirCompativel() {
+    CompativelNaSessao.instancia.pedir(_chave(_canais[_i]));
+    _abrir();
+  }
+
   bool get _shaderFlutterPronto => _programaFlutter != null && FiltroDesentrelacamento.suportado;
 
   /// No Windows há sempre o shader do mpv; no Android, o do Flutter se o aparelho o permitir.
@@ -788,15 +801,21 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
 
   /// O que o painel diz do desentrelaçamento (conforme o que há mesmo neste aparelho). As 50 imagens/s
   /// só quando o filtro existe; antes da primeira leitura do mpv não se promete nem se nega.
+  /// Ligado: em todas as imagens (as que o mpv vê como progressivas também).
   String get _notaDesentrelacamento {
     if (!_desentrelacamentoPossivel) return 'Este aparelho não permite o desentrelaçamento do player';
-    if (_deint.filtrosPorSaber) return 'Só nas imagens entrelaçadas (1080i/576i/480i)';
+    final forcar = _forcarDesentrelacamento;
+    if (_deint.filtrosPorSaber) {
+      return forcar ? 'Em todas as imagens, também nas que parecem progressivas' : 'Só nas imagens entrelaçadas (1080i/576i/480i)';
+    }
     if (_deint.filtros) {
       return _diretoAndroid
           ? 'Por campo (50 imagens/s; 60 nos 480i); na descodificação Direta um direto entrelaçado reabre em Compatível'
-          : 'Por campo (50 imagens/s; 60 nos 480i), só nas imagens entrelaçadas';
+          : 'Por campo (50 imagens/s; 60 nos 480i), ${forcar ? 'em todas as imagens' : 'só nas imagens entrelaçadas'}';
     }
-    return 'Só nas imagens entrelaçadas (1080i/576i/480i); limpa as linhas sem dobrar as imagens/s';
+    return forcar
+        ? 'Em todas as imagens; limpa as linhas sem dobrar as imagens/s'
+        : 'Só nas imagens entrelaçadas (1080i/576i/480i); limpa as linhas sem dobrar as imagens/s';
   }
 
   /// Lê do mpv se a imagem é entrelaçada e se o filtro posto funciona (de uma vez, fora da UI) e põe
@@ -830,6 +849,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     final p = pedido ?? _pedido;
     final mudou = await _deint.aplicar(_motor,
         ligado: _prefs.desentrelacar,
+        forcar: _forcarDesentrelacamento,
         shaderFlutter: _shaderFlutterPronto,
         direto: _diretoAndroid,
         caminhoShader: _shaderMpv ?? Future.value(),
@@ -849,10 +869,13 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     final legendas = escolhaLegendas(_faixas.subtitle, _faixa.subtitle);
     final possivel = _desentrelacamentoPossivel;
     return [
-      DefinicaoInterruptor(
+      DefinicaoEscolha(
         'Desentrelaçamento',
-        valor: possivel && _prefs.desentrelacar,
-        aoMudar: possivel ? (v) => _preferir((p) => p.desentrelacar = v, _aplicarDesentrelacamento) : null,
+        opcoes: [for (final m in ModoDesentrelacamento.values) m.rotulo],
+        atual: (possivel ? _prefs.modoDesentrelacamento : ModoDesentrelacamento.desligado).index,
+        aoMudar: possivel
+            ? (i) => _preferir((p) => p.modoDesentrelacamento = ModoDesentrelacamento.values[i], _aplicarDesentrelacamento)
+            : null,
         nota: _notaDesentrelacamento,
       ),
       DefinicaoEscolha(
@@ -1027,8 +1050,9 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       child: ControlosPlayer(
         key: _controlos,
         estado: EstadoControlos(
+          numero: numeroMostrado(_canais, _i),
           canal: canal.nome,
-          subtitulo: '${canal.grupo} · ${_i + 1}/${_canais.length} · ${widget.nomeLista}',
+          subtitulo: subtituloCanal(lista: widget.nomeLista, grupo: canal.grupo),
           aTocar: _aTocar,
           velocidade: _velocidade,
           erro: _erro != null,
@@ -1086,7 +1110,13 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
               ),
             ),
           if (_erro != null)
-            CartaoErroCanal(texto: '${canal.nome}: $_erro', aoTentar: _abrir, aoVoltar: widget.aoSair),
+            CartaoErroCanal(
+              texto: '${canal.nome}: $_erro',
+              aoTentar: _abrir,
+              aoCompativel: _abrirCompativel,
+              aoAnterior: _historico.anterior != null ? () => _agir(AcaoPlayer.alternarCanal) : null,
+              aoVoltar: widget.aoSair,
+            ),
         ]),
       ),
     );

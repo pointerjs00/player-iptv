@@ -272,4 +272,48 @@ void main() {
     expect(textoDefinicaoDesentrelacamento, contains('60 nos 480i'));
     expect(textoDefinicaoDesentrelacamento, isNot(contains('por campo (50 imagens/s)')));
   });
+
+  group('Ligado (forçar): desentrelaça também o que o mpv vê como progressivo', () {
+    MeioDesentrelacamento meio(PlataformaVideo p,
+            {bool? entrelacada = false, String hwdec = 'd3d11va-copy', bool filtros = true, bool direto = false,
+            bool shaderFlutter = true, bool forcar = true, bool ligado = true}) =>
+        meioDesentrelacamento(p,
+            ligado: ligado,
+            forcar: forcar,
+            entrelacada: entrelacada,
+            hwdec: hwdec,
+            shaderFlutter: shaderFlutter,
+            filtros: filtros,
+            direto: direto);
+
+    test('uma imagem progressiva leva o mesmo meio que uma entrelaçada (as regras do aparelho ficam)', () {
+      expect(meio(PlataformaVideo.windows), MeioDesentrelacamento.filtroMpv);
+      expect(meio(PlataformaVideo.windows, filtros: false), MeioDesentrelacamento.shaderMpv);
+      expect(meio(PlataformaVideo.windows, hwdec: 'd3d11va'), MeioDesentrelacamento.d3d11vpp);
+      expect(meio(PlataformaVideo.android, hwdec: 'mediacodec-copy'), MeioDesentrelacamento.filtroMpv);
+      expect(meio(PlataformaVideo.android, hwdec: 'mediacodec', direto: true), MeioDesentrelacamento.shaderFlutter);
+      expect(meio(PlataformaVideo.android, hwdec: 'mediacodec-copy', filtros: false),
+          MeioDesentrelacamento.shaderFlutter, reason: 'armv7 ou sem filtros: o shader');
+    });
+
+    test('sem imagem ainda, ou Desligado: nada; Automático com progressivo: nada', () {
+      expect(meio(PlataformaVideo.windows, entrelacada: null), MeioDesentrelacamento.nenhum);
+      expect(meio(PlataformaVideo.windows, ligado: false), MeioDesentrelacamento.nenhum);
+      expect(meio(PlataformaVideo.windows, forcar: false), MeioDesentrelacamento.nenhum);
+    });
+
+    test('o filtro forçado: deint=all (todas as imagens), sem o idet (não há o que marcar)', () {
+      expect(filtroDesentrelacamento('d3d11va-copy', todas: true), 'bwdif=mode=send_field:deint=all');
+      expect(filtroDesentrelacamento('mediacodec-copy', todas: true), 'bwdif=mode=send_field:deint=all');
+    });
+
+    test('no mpv: o vf forçado; o d3d11vpp continua deinterlace=yes', () async {
+      final mpv = _Mpv();
+      await aplicarMeioMpv(mpv, MeioDesentrelacamento.filtroMpv, caminhoShader: 'x', hwdec: 'no', todas: true);
+      expect(mpv.chamadas, ['glsl-shaders=', 'deinterlace=no', 'vf=bwdif=mode=send_field:deint=all']);
+      final mpv2 = _Mpv();
+      await aplicarMeioMpv(mpv2, MeioDesentrelacamento.d3d11vpp, caminhoShader: 'x', todas: true);
+      expect(mpv2.chamadas, ['vf=', 'glsl-shaders=', 'deinterlace=yes']);
+    });
+  });
 }

@@ -36,6 +36,11 @@ int? indicePorNumero(List<Canal> canais, int n) {
   return n <= canais.length ? n - 1 : null;
 }
 
+/// O número a mostrar do canal `i` (o que se escreve para lá ir: ver [indicePorNumero]): o do
+/// portal quando a lista os tem (null num canal sem); senão a posição na lista.
+int? numeroMostrado(List<Canal> canais, int i) =>
+    canais.any((c) => c.numero != null) ? canais[i].numero : i + 1;
+
 /// O canal a tocar e o anterior (para alternar entre os dois últimos).
 class HistoricoCanais {
   HistoricoCanais(this.atual);

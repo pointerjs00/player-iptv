@@ -266,4 +266,29 @@ void main() {
     expect(forma((await Biblioteca.abrir(pasta2)).listas), antes);
     expect(forma((await AreaGestor.abrir(pasta2)).listas), isEmpty);
   });
+
+  test('desentrelaçamento: uma cópia antiga só com "desentrelacar" restaura o modo certo', () async {
+    String copiaCom(Map<String, Object> prefs) => jsonEncode({
+          'formato': 'player-iptv-copia',
+          'versao': 1,
+          'biblioteca': {'listas': []},
+          'preferencias': prefs,
+        });
+    final p = Preferencias.omissao();
+    await restaurarCopia(lerCopia(copiaCom({'desentrelacar': false})), ModoRestauro.juntar,
+        biblioteca: bib, area: area, preferencias: p);
+    expect(p.modoDesentrelacamento, ModoDesentrelacamento.desligado);
+    await restaurarCopia(lerCopia(copiaCom({'desentrelacar': true})), ModoRestauro.juntar,
+        biblioteca: bib, area: area, preferencias: p);
+    expect(p.modoDesentrelacamento, ModoDesentrelacamento.automatico);
+  });
+
+  test('desentrelaçamento: exportar -> importar mantém o "Ligado"', () async {
+    prefs.modoDesentrelacamento = ModoDesentrelacamento.ligado;
+    final copia = lerCopia(utf8.decode(codificarCopia(bib, area, prefs)));
+    expect(copia.preferencias!['modo_desentrelacamento'], 'ligado');
+    final p = Preferencias.omissao();
+    await restaurarCopia(copia, ModoRestauro.juntar, biblioteca: bib, area: area, preferencias: p);
+    expect(p.modoDesentrelacamento, ModoDesentrelacamento.ligado);
+  });
 }

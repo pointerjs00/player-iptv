@@ -7,6 +7,14 @@ import 'package:player_iptv/ui/player/numero_canal.dart';
 typedef K = LogicalKeyboardKey;
 
 void main() {
+  test('numeroMostrado: o do portal quando a lista os tem; senão a posição', () {
+    const semNumeros = [Canal(id: 'a', nome: 'A', grupo: 'G'), Canal(id: 'b', nome: 'B', grupo: 'G')];
+    const comNumeros = [Canal(id: 'a', nome: 'A', grupo: 'G', numero: 101), Canal(id: 'b', nome: 'B', grupo: 'G')];
+    expect(numeroMostrado(semNumeros, 1), 2);
+    expect(numeroMostrado(comNumeros, 0), 101);
+    expect(numeroMostrado(comNumeros, 1), isNull, reason: 'sem número do portal: não se inventa a posição');
+  });
+
   group('indicePorNumero', () {
     const semNumeros = [
       Canal(id: 'a', nome: 'A', grupo: 'G'),

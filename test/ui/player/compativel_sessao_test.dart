@@ -37,4 +37,15 @@ void main() {
     s.progressivo('c');
     expect(s.modoPara('c', ModoDescodificacao.direto), ModoDescodificacao.compativel);
   });
+
+  test('"Abrir em modo compatível" (cartão de erro): Compatível no Android, software no Windows; só esse canal', () {
+    final s = CompativelNaSessao();
+    expect(s.software('c'), isFalse);
+    s.pedir('c');
+    expect(s.modoPara('c', ModoDescodificacao.direto), ModoDescodificacao.compativel);
+    expect(s.software('c'), isTrue);
+    expect(s.software('d'), isFalse);
+    expect(s.modoPara('d', ModoDescodificacao.direto), ModoDescodificacao.direto);
+    expect(s.marcarParaFiltro('c'), isFalse, reason: 'já está em Compatível: não há reabertura para o filtro');
+  });
 }

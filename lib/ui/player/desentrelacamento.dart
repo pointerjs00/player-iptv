@@ -108,9 +108,14 @@ bool filtrosDoMpv(String? versao) {
 /// marcadas como entrelaçadas. O MediaCodec não as marca: aí o `idet` (deteção de riscas do ffmpeg)
 /// marca-as antes; um progressivo passa sem mexer. Medido com o libmpv 0.42 (imagens sem marca):
 /// entrelaçado 25 -> 50, progressivo 25 -> 25 (com `deint=all` o progressivo ia a 50, a perder detalhe).
-String filtroDesentrelacamento(String hwdec) => hwdec.trim().startsWith('mediacodec')
-    ? '@$rotuloIdet:idet,bwdif=mode=send_field:deint=interlaced'
-    : 'bwdif=mode=send_field:deint=interlaced';
+/// `todas` (o modo Ligado): `deint=all`, todas as imagens, marcadas ou não (sem o idet: não há o que
+/// marcar) — para os canais entrelaçados que chegam marcados como progressivos.
+String filtroDesentrelacamento(String hwdec, {bool todas = false}) {
+  if (todas) return 'bwdif=mode=send_field:deint=all';
+  return hwdec.trim().startsWith('mediacodec')
+      ? '@$rotuloIdet:idet,bwdif=mode=send_field:deint=interlaced'
+      : 'bwdif=mode=send_field:deint=interlaced';
+}
 
 /// O que se mediu do filtro (ou do d3d11vpp) posto no mpv.
 enum EfeitoFiltro {
@@ -178,16 +183,19 @@ enum MeioDesentrelacamento {
   shaderFlutter,
 }
 
-/// Como desentrelaçar. `shaderFlutter`: o Flutter permite o shader (Impeller).
+/// Como desentrelaçar. `shaderFlutter`: o Flutter permite o shader (Impeller). `forcar` (o modo
+/// Ligado): uma imagem progressiva leva o mesmo meio que uma entrelaçada (com as mesmas regras do
+/// aparelho), logo que haja imagem.
 MeioDesentrelacamento meioDesentrelacamento(PlataformaVideo p,
     {required bool ligado,
     required bool? entrelacada,
     required String hwdec,
     required bool shaderFlutter,
+    bool forcar = false,
     bool filtros = false,
     bool direto = false,
     bool d3d11vpp = true}) {
-  if (!ligado || entrelacada != true) return MeioDesentrelacamento.nenhum;
+  if (!ligado || entrelacada == null || (entrelacada == false && !forcar)) return MeioDesentrelacamento.nenhum;
   if (p == PlataformaVideo.android) {
     if (filtros && !direto) return MeioDesentrelacamento.filtroMpv;
     return shaderFlutter ? MeioDesentrelacamento.shaderFlutter : MeioDesentrelacamento.nenhum;
@@ -201,13 +209,15 @@ MeioDesentrelacamento meioDesentrelacamento(PlataformaVideo p,
 /// Põe o meio no mpv (o shader e os filtros só correm no mpv; o do Flutter deixa-o sem nada).
 /// Nunca lança. `hwdec`: o `hwdec-current` (decide o `vf`). Devolve o código do mpv para o que
 /// decide o meio (o `vf` do filtro, o `deinterlace` do d3d11vpp; 0 nos outros), null sem resposta.
+/// `todas`: o filtro em todas as imagens (o modo Ligado, ver [filtroDesentrelacamento]); o
+/// d3d11vpp do `deinterlace=yes` já as leva todas.
 Future<int?> aplicarMeioMpv(MotorMpv mpv, MeioDesentrelacamento m,
-    {required String? caminhoShader, String hwdec = ''}) async {
+    {required String? caminhoShader, String hwdec = '', bool todas = false}) async {
   try {
     if (m == MeioDesentrelacamento.filtroMpv) {
       await mpv.setProperty('glsl-shaders', '');
       await mpv.setProperty('deinterlace', 'no');
-      return await mpv.setProperty('vf', filtroDesentrelacamento(hwdec));
+      return await mpv.setProperty('vf', filtroDesentrelacamento(hwdec, todas: todas));
     }
     await mpv.setProperty('vf', '');
     if (m == MeioDesentrelacamento.d3d11vpp) {

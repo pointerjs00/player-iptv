@@ -10,11 +10,13 @@ class _Ensaio {
   final acoes = <AcaoPlayer>[];
   var tentativas = 0;
   var voltas = 0;
+  var compativeis = 0;
+  var anteriores = 0;
   var erro = true;
   StateSetter? reconstruir;
 }
 
-Future<_Ensaio> _montar(WidgetTester t) async {
+Future<_Ensaio> _montar(WidgetTester t, {bool comAnterior = true}) async {
   FocusManager.instance.highlightStrategy = FocusHighlightStrategy.alwaysTraditional;
   addTearDown(() => FocusManager.instance.highlightStrategy = FocusHighlightStrategy.automatic);
   t.view.physicalSize = const Size(1920, 1080);
@@ -38,6 +40,8 @@ Future<_Ensaio> _montar(WidgetTester t) async {
               CartaoErroCanal(
                 texto: 'RTP 1: o canal não começou a tempo (sem imagem em 20 s)',
                 aoTentar: () => e.tentativas++,
+                aoCompativel: () => e.compativeis++,
+                aoAnterior: comAnterior ? () => e.anteriores++ : null,
                 aoVoltar: () => e.voltas++,
               ),
           ]),
@@ -71,14 +75,21 @@ void main() {
     expect(e.acoes, isEmpty, reason: 'o OK é do botão, não do player');
   });
 
-  testWidgets('cartão de erro: direita leva o foco a "Voltar" e OK volta (sem recuar/avançar no canal)', (t) async {
+  testWidgets('cartão de erro: direita anda pelas 4 saídas e OK em "Voltar à lista" volta (sem recuar/avançar)',
+      (t) async {
     final e = await _montar(t);
     await _tecla(t, LogicalKeyboardKey.arrowRight);
-    expect(_focado(), 'Voltar');
+    expect(_focado(), 'Abrir em modo compatível');
+    await _tecla(t, LogicalKeyboardKey.arrowRight);
+    expect(_focado(), 'Canal visto antes');
+    await _tecla(t, LogicalKeyboardKey.arrowRight);
+    expect(_focado(), 'Voltar à lista');
     await _tecla(t, LogicalKeyboardKey.select);
     expect(e.voltas, 1);
     expect(e.tentativas, 0);
-    await _tecla(t, LogicalKeyboardKey.arrowLeft);
+    for (var i = 0; i < 3; i++) {
+      await _tecla(t, LogicalKeyboardKey.arrowLeft);
+    }
     expect(_focado(), 'Tentar de novo');
     expect(e.acoes, isEmpty, reason: 'esquerda/direita não recuam nem avançam com o cartão à vista');
   });
@@ -92,7 +103,7 @@ void main() {
 
   testWidgets('depois de o cartão sair, as teclas voltam ao player (direita avança)', (t) async {
     final e = await _montar(t);
-    await _tecla(t, LogicalKeyboardKey.arrowRight); // foco em "Voltar"
+    await _tecla(t, LogicalKeyboardKey.arrowRight); // foco em "Abrir em modo compatível"
     e.reconstruir!(() => e.erro = false);
     await t.pumpAndSettle();
     await _tecla(t, LogicalKeyboardKey.arrowRight);
@@ -100,7 +111,7 @@ void main() {
     expect(e.acoes, [AcaoPlayer.avancar, AcaoPlayer.canalSeguinte]);
   });
 
-  testWidgets('a barra aparece e esconde-se (5 s) com o cartão à vista: direita leva a "Voltar"', (t) async {
+  testWidgets('a barra aparece e esconde-se (5 s) com o cartão à vista: direita leva às outras saídas', (t) async {
     final e = await _montar(t);
     await t.tapAt(const Offset(40, 1000)); // toque no vídeo: mostra a barra
     await t.pumpAndSettle();
@@ -110,9 +121,9 @@ void main() {
     expect(find.byTooltip('Definições').hitTestable(), findsNothing);
     expect(_focado(), 'Tentar de novo', reason: 'o foco volta ao cartão, não à raiz do player');
     await _tecla(t, LogicalKeyboardKey.arrowRight);
-    expect(_focado(), 'Voltar');
+    expect(_focado(), 'Abrir em modo compatível');
     await _tecla(t, LogicalKeyboardKey.select);
-    expect(e.voltas, 1);
+    expect(e.compativeis, 1);
     expect(e.tentativas, 0);
   });
 
@@ -124,7 +135,26 @@ void main() {
     await t.pumpAndSettle();
     expect(find.byTooltip('Definições').hitTestable(), findsNothing);
     await _tecla(t, LogicalKeyboardKey.arrowRight);
+    await _tecla(t, LogicalKeyboardKey.arrowRight);
     await _tecla(t, LogicalKeyboardKey.select);
-    expect(e.voltas, 1);
+    expect(e.anteriores, 1);
+  });
+
+  testWidgets('as 4 saídas; sem canal visto antes só 3 (e direita salta para "Voltar à lista")', (t) async {
+    final e = await _montar(t);
+    for (final texto in ['Tentar de novo', 'Abrir em modo compatível', 'Canal visto antes', 'Voltar à lista']) {
+      expect(find.text(texto), findsOneWidget, reason: texto);
+    }
+    await t.tap(find.text('Canal visto antes'));
+    expect(e.anteriores, 1);
+    await t.pumpWidget(const SizedBox());
+    final s = await _montar(t, comAnterior: false);
+    expect(find.text('Canal visto antes'), findsNothing);
+    expect(find.text('Voltar à lista'), findsOneWidget);
+    await _tecla(t, LogicalKeyboardKey.arrowRight);
+    await _tecla(t, LogicalKeyboardKey.arrowRight);
+    expect(_focado(), 'Voltar à lista');
+    await _tecla(t, LogicalKeyboardKey.select);
+    expect(s.voltas, 1);
   });
 }

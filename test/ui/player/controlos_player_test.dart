@@ -826,4 +826,47 @@ void main() {
       expect(animado.duration, Duration.zero);
     });
   });
+
+  group('o topo: número grande, nome e "<lista> › <grupo> · em direto"', () {
+    test('o subtítulo', () {
+      expect(subtituloCanal(lista: 'Casa', grupo: 'Desporto'), 'Casa › Desporto · em direto');
+      expect(subtituloCanal(lista: 'Casa', grupo: ' '), 'Casa · em direto', reason: 'sem grupo');
+    });
+
+    testWidgets('com a barra à vista e ao fazer zapping', (t) async {
+      FocusManager.instance.highlightStrategy = FocusHighlightStrategy.alwaysTraditional;
+      addTearDown(() => FocusManager.instance.highlightStrategy = FocusHighlightStrategy.automatic);
+      t.view.physicalSize = const Size(1920, 1080);
+      t.view.devicePixelRatio = 1;
+      addTearDown(t.view.reset);
+      final chave = GlobalKey<ControlosPlayerState>();
+      await t.pumpWidget(MaterialApp(
+        theme: temaApp(),
+        home: Scaffold(
+          body: ControlosPlayer(
+            key: chave,
+            estado: EstadoControlos(
+                numero: 7, canal: 'Sport TV 1', subtitulo: subtituloCanal(lista: 'Casa', grupo: 'Desporto')),
+            atraso: () => Duration.zero,
+            aoAgir: (_) {},
+            aoMudarVelocidade: (_) {},
+            definicoes: () => const [],
+            child: const SizedBox.expand(),
+          ),
+        ),
+      ));
+      chave.currentState!.mostrarInfoCanal();
+      await t.pump();
+      // (no nome do zapping e na barra, ainda escondida)
+      expect(find.text('7'), findsNWidgets(2));
+      expect(find.text('Sport TV 1'), findsNWidgets(2));
+      expect(find.text('Casa › Desporto · em direto'), findsNWidgets(2));
+      await t.sendKeyEvent(LogicalKeyboardKey.select); // a barra
+      await t.pumpAndSettle();
+      expect(find.text('Casa › Desporto · em direto').hitTestable(), findsOneWidget);
+      expect(find.text('7').hitTestable(), findsOneWidget);
+      await t.pump(const Duration(seconds: 10));
+      await t.pumpAndSettle();
+    });
+  });
 }

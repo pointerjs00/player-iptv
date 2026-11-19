@@ -488,4 +488,50 @@ void main() {
       expect(await passo(c, mpv, {..._leitura(vf: _bwdif, vfFps: '50.000000'), 'frame-drop-count': '500'}), isFalse);
     });
   });
+
+  group('Ligado (forçar) e Automático', () {
+    Future<bool> aplicarModo(ControloDesentrelacamento c, MotorMpv mpv, {required bool forcar}) => c.aplicar(mpv,
+        ligado: true,
+        forcar: forcar,
+        shaderFlutter: true,
+        direto: false,
+        caminhoShader: Future.value('shader.glsl'),
+        valido: () => true);
+
+    test('Windows, imagem progressiva: Automático não mexe; Ligado põe o bwdif com deint=all', () async {
+      final mpv = _Mpv();
+      final c = windows();
+      c.ler(_leitura(interlaced: 'no'), ligado: true, direto: false, chave: 'k');
+      await aplicarModo(c, mpv, forcar: false);
+      expect(c.meio, MeioDesentrelacamento.nenhum);
+      expect(mpv.chamadas, isEmpty);
+      await aplicarModo(c, mpv, forcar: true);
+      expect(c.meio, MeioDesentrelacamento.filtroMpv);
+      expect(mpv.chamadas.last, 'vf=bwdif=mode=send_field:deint=all');
+    });
+
+    test('com o filtro já posto, passar de Automático a Ligado (e voltar) refaz o vf', () async {
+      final mpv = _Mpv();
+      final c = windows();
+      c.ler(_leitura(), ligado: true, direto: false, chave: 'k');
+      await aplicarModo(c, mpv, forcar: false);
+      expect(mpv.chamadas.last, 'vf=$_bwdif');
+      expect(await aplicarModo(c, mpv, forcar: true), isFalse, reason: 'o meio é o mesmo');
+      expect(mpv.chamadas.last, 'vf=bwdif=mode=send_field:deint=all');
+      await aplicarModo(c, mpv, forcar: false);
+      expect(mpv.chamadas.last, 'vf=$_bwdif');
+    });
+
+    test('Ligado num progressivo: o filtro forçado a não dobrar as imagens desiste (volta o shader)', () async {
+      final mpv = _Mpv();
+      final c = windows();
+      c.ler(_leitura(interlaced: 'no'), ligado: true, direto: false, chave: 'k');
+      await aplicarModo(c, mpv, forcar: true);
+      for (var i = 0; i < ControloDesentrelacamento.leiturasSemEfeito; i++) {
+        c.ler(_leitura(interlaced: 'no', vf: 'bwdif=mode=send_field:deint=all'), ligado: true, direto: false, chave: 'k');
+      }
+      await aplicarModo(c, mpv, forcar: true);
+      expect(c.meio, MeioDesentrelacamento.shaderMpv);
+    });
+  });
 }

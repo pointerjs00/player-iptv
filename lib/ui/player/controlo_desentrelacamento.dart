@@ -69,6 +69,9 @@ class ControloDesentrelacamento {
   bool? _entrelacada;
   String _hwdec = '';
   MeioDesentrelacamento _meio = MeioDesentrelacamento.nenhum;
+
+  /// O filtro posto é o de todas as imagens (`deint=all`, o modo Ligado).
+  bool _todas = false;
   bool _falhouNoCanal = false;
   bool _confirmado = false;
   int _semEfeito = 0;
@@ -106,6 +109,7 @@ class ControloDesentrelacamento {
   ({bool manter, bool limpar}) abrir({required bool continuar, required bool playerNovo}) {
     if (playerNovo) {
       _meio = MeioDesentrelacamento.nenhum;
+      _todas = false;
       _confirmado = false;
       _semEfeito = 0;
       // o mesmo canal num mpv novo: a imagem e uma falha do filtro continuam a valer
@@ -115,6 +119,7 @@ class ControloDesentrelacamento {
     if (continuar) return (manter: true, limpar: false);
     final limpar = _meio == MeioDesentrelacamento.filtroMpv;
     if (limpar || _meio == MeioDesentrelacamento.d3d11vpp) _meio = MeioDesentrelacamento.nenhum;
+    _todas = false;
     _confirmado = false;
     _semEfeito = 0;
     _esquecerCanal();
@@ -187,7 +192,8 @@ class ControloDesentrelacamento {
     return (perdidas - base.perdidas) / (passou.inMilliseconds / 1000) > perdidasPorSegundo;
   }
 
-  bool get _comIdet => plataforma == PlataformaVideo.android && _hwdec.startsWith('mediacodec');
+  /// O filtro posto leva o idet (MediaCodec, só as imagens marcadas); o de todas as imagens não.
+  bool get _comIdet => plataforma == PlataformaVideo.android && _hwdec.startsWith('mediacodec') && !_todas;
 
   /// O filtro está no mpv: funciona? (a saída da imagem já não diz se a entrada é entrelaçada: com o
   /// bwdif sai progressiva, por isso mede-se pelas imagens/s).
@@ -226,9 +232,11 @@ class ControloDesentrelacamento {
     _semEfeito = 0;
   }
 
-  MeioDesentrelacamento _meioPara({required bool ligado, required bool shaderFlutter, required bool direto}) =>
+  MeioDesentrelacamento _meioPara(
+          {required bool ligado, required bool forcar, required bool shaderFlutter, required bool direto}) =>
       meioDesentrelacamento(plataforma,
           ligado: ligado,
+          forcar: forcar,
           entrelacada: _entrelacada,
           hwdec: _hwdec,
           shaderFlutter: shaderFlutter,
@@ -239,15 +247,22 @@ class ControloDesentrelacamento {
   /// Põe o meio que serve agora (preferência, imagem, aparelho). Em fila: uma mudança da preferência
   /// a meio de uma verificação não fica trocada. `valido`: o pedido ainda é do canal atual (vê-se já
   /// na vez do pedido; um pedido de um canal anterior não toca no mpv do novo). Devolve true se o
-  /// meio mudou. Nunca lança.
+  /// meio mudou. Nunca lança. `forcar` (o modo Ligado): também nas imagens progressivas, e o filtro
+  /// em todas as imagens (passar de Automático a Ligado com o filtro posto refaz o `vf`).
   Future<bool> aplicar(MotorMpv mpv,
       {required bool ligado,
+      bool forcar = false,
       required bool shaderFlutter,
       required bool direto,
       required Future<String?> caminhoShader,
       required bool Function() valido}) {
     final r = _fila.then((_) => _aplicar(mpv,
-        ligado: ligado, shaderFlutter: shaderFlutter, direto: direto, caminhoShader: caminhoShader, valido: valido));
+        ligado: ligado,
+        forcar: forcar,
+        shaderFlutter: shaderFlutter,
+        direto: direto,
+        caminhoShader: caminhoShader,
+        valido: valido));
     _fila = r.then<void>((_) {}, onError: (_) {});
     return r.catchError((Object e) {
       debugPrint('desentrelaçamento: $e');
@@ -257,13 +272,16 @@ class ControloDesentrelacamento {
 
   Future<bool> _aplicar(MotorMpv mpv,
       {required bool ligado,
+      required bool forcar,
       required bool shaderFlutter,
       required bool direto,
       required Future<String?> caminhoShader,
       required bool Function() valido}) async {
     if (!valido()) return false;
-    var meio = _meioPara(ligado: ligado, shaderFlutter: shaderFlutter, direto: direto);
-    if (meio == _meio) return false;
+    var meio = _meioPara(ligado: ligado, forcar: forcar, shaderFlutter: shaderFlutter, direto: direto);
+    // o mesmo meio: só o filtro muda, se passou de Automático a Ligado ou ao contrário
+    final soOFiltro = meio == _meio && meio == MeioDesentrelacamento.filtroMpv && forcar != _todas;
+    if (meio == _meio && !soOFiltro) return false;
     final antes = _meio;
     final shader = await caminhoShader;
     if (!valido()) return false;
@@ -273,9 +291,10 @@ class ControloDesentrelacamento {
         _meio == MeioDesentrelacamento.filtroMpv;
     if (noMpv) {
       // com limite: um setProperty preso não pode deixar a fila parada (as mudanças seguintes)
-      final codigo = await aplicarMeioMpv(mpv, meio, caminhoShader: shader, hwdec: _hwdec)
+      final codigo = await aplicarMeioMpv(mpv, meio, caminhoShader: shader, hwdec: _hwdec, todas: forcar)
           .timeout(const Duration(seconds: 3), onTimeout: () => null);
       if (codigo == null) return false; // sem resposta: tenta-se na próxima verificação
+      if (codigo >= 0) _todas = forcar && meio == MeioDesentrelacamento.filtroMpv;
       if (codigo < 0) {
         if (meio == MeioDesentrelacamento.filtroMpv) {
           debugPrint('desentrelaçamento: o mpv recusou o filtro ($codigo); volta o shader');
@@ -283,10 +302,11 @@ class ControloDesentrelacamento {
         } else {
           _falhar('o mpv recusou o d3d11vpp ($codigo)');
         }
-        meio = _meioPara(ligado: ligado, shaderFlutter: shaderFlutter, direto: direto);
+        _todas = false;
+        meio = _meioPara(ligado: ligado, forcar: forcar, shaderFlutter: shaderFlutter, direto: direto);
         if (!valido()) return false;
         if (plataforma != PlataformaVideo.android || meio != MeioDesentrelacamento.shaderFlutter) {
-          await aplicarMeioMpv(mpv, meio, caminhoShader: shader, hwdec: _hwdec)
+          await aplicarMeioMpv(mpv, meio, caminhoShader: shader, hwdec: _hwdec, todas: forcar)
               .timeout(const Duration(seconds: 3), onTimeout: () => null);
         } else {
           await mpv.setProperty('vf', '').timeout(const Duration(seconds: 3), onTimeout: () => null);
@@ -294,7 +314,8 @@ class ControloDesentrelacamento {
       }
     }
     _meio = meio;
-    if (meio != antes) {
+    if (meio != MeioDesentrelacamento.filtroMpv) _todas = false;
+    if (meio != antes || soOFiltro) {
       _confirmado = false;
       _semEfeito = 0;
     }

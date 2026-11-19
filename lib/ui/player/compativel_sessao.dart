@@ -17,6 +17,19 @@ class CompativelNaSessao {
           ? ModoDescodificacao.compativel
           : preferido;
 
+  final _pedidos = <String>{};
+
+  /// O utilizador pediu "Abrir em modo compatível" (cartão de erro): no Android o canal fica em
+  /// Compatível nesta sessão (como um canal sem imagem no direto: nunca volta ao direto sozinho);
+  /// no Windows, onde não há esse modo, fica com a descodificação por software ([software]).
+  void pedir(String chave) {
+    _semImagem.add(chave);
+    _pedidos.add(chave);
+  }
+
+  /// Windows: o canal abre com a descodificação por software (pedido no cartão de erro).
+  bool software(String chave) => _pedidos.contains(chave);
+
   /// Marca o canal (sem imagem no direto); true se é a primeira vez (reabrir em Compatível).
   bool marcar(String chave) => _semImagem.add(chave) && !_filtro.contains(chave);
 

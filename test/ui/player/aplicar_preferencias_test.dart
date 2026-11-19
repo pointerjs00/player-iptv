@@ -63,6 +63,13 @@ void main() {
       expect((await _abrir(Preferencias.omissao())).chamadas, contains('hwdec=d3d11va-copy'));
     });
 
+    test('Windows, canal aberto "em modo compatível": software só nesse canal (hwdec=no)', () async {
+      final mpv = MpvFalso();
+      await aplicarAoAbrir(mpv, Preferencias.omissao(), SessaoPlayer(),
+          plataforma: PlataformaVideo.windows, modo: ModoDescodificacao.direto, hardware: false);
+      expect(mpv.chamadas, contains('hwdec=no'));
+    });
+
     test('Android: o hwdec vem da configuração do player (não se mexe ao abrir)', () async {
       final mpv = await _abrir(Preferencias.omissao(), plataforma: PlataformaVideo.android);
       expect(mpv.chamadas.where((c) => c.startsWith('hwdec')), isEmpty);
@@ -89,6 +96,17 @@ void main() {
       expect(mpv.props['deinterlace'], 'no');
       expect(mpv.chamadas.where((c) => c.startsWith('deinterlace=yes') || c.startsWith('deinterlace=auto')), isEmpty);
       expect(mpv.chamadas.where((c) => c.startsWith('vf=lavfi')), isEmpty);
+    });
+
+    test('os três modos ao abrir: deinterlace=no no Windows (Ligado força depois, com a imagem); nada no Android',
+        () async {
+      for (final m in ModoDesentrelacamento.values) {
+        final p = Preferencias.omissao()..modoDesentrelacamento = m;
+        final w = await _abrir(p);
+        expect(w.chamadas.where((c) => c.startsWith('deinterlace')), ['deinterlace=no'], reason: '$m');
+        final a = await _abrir(p, plataforma: PlataformaVideo.android);
+        expect(a.chamadas.where((c) => c.startsWith('deinterlace')), isEmpty, reason: '$m');
+      }
     });
 
     test('Android (direto ou Compatível): não se toca no deinterlace nem no vf do mpv', () async {

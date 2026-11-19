@@ -37,6 +37,28 @@ enum FormatoImagem {
   static FormatoImagem deNome(String? n) => values.firstWhere((f) => f.nome == n, orElse: () => ajustar);
 }
 
+/// O desentrelaçamento do player (canais 1080i/576i/480i).
+enum ModoDesentrelacamento {
+  /// Só as imagens que o mpv vê entrelaçadas (o "ligado" de antes).
+  automatico('automatico', 'Automático'),
+
+  /// Todas as imagens, mesmo as que o mpv vê como progressivas (canais mal marcados).
+  ligado('ligado', 'Ligado'),
+
+  desligado('desligado', 'Desligado');
+
+  const ModoDesentrelacamento(this.nome, this.rotulo);
+
+  /// O nome guardado nas preferências.
+  final String nome;
+
+  /// O texto mostrado.
+  final String rotulo;
+
+  /// null: nome desconhecido.
+  static ModoDesentrelacamento? deNome(String? n) => values.where((m) => m.nome == n).firstOrNull;
+}
+
 /// As preferências da app (`preferencias.json`), partilhadas pelo player (aqui), pela
 /// verificação e pelo ecrã de Definições. Valem para todos os canais, no Android e no Windows.
 ///
@@ -66,7 +88,7 @@ class Preferencias extends ChangeNotifier {
 
   final Directory? _pasta;
 
-  bool _desentrelacar = true;
+  ModoDesentrelacamento _modoDesentrelacamento = ModoDesentrelacamento.automatico;
   FormatoImagem _formato = FormatoImagem.ajustar;
   bool _hardware = true;
   double _volume = 100;
@@ -78,10 +100,24 @@ class Preferencias extends ChangeNotifier {
   /// As chaves mudadas aqui e ainda não gravadas: só essas se escrevem (as outras são da outra janela).
   final _sujas = <String>{};
 
-  /// Desentrelaçamento (ligado por omissão): mpv `deinterlace=auto`, só nas imagens
-  /// entrelaçadas. Sem efeito na descodificação direta do Android (o aparelho trata disso).
-  bool get desentrelacar => _desentrelacar;
-  set desentrelacar(bool v) => _mudar('desentrelacar', _desentrelacar != v, () => _desentrelacar = v);
+  /// Desentrelaçamento (Automático por omissão: só nas imagens entrelaçadas). Grava-se em
+  /// `modo_desentrelacamento`; os ficheiros e as cópias antigas só têm `desentrelacar` (true =
+  /// Automático, false = Desligado), que se continua a gravar para as versões anteriores da app.
+  ModoDesentrelacamento get modoDesentrelacamento => _modoDesentrelacamento;
+  set modoDesentrelacamento(ModoDesentrelacamento v) {
+    if (_modoDesentrelacamento == v) return;
+    _sujas.add('desentrelacar');
+    _mudar(_chaveModoDesentrelacamento, true, () => _modoDesentrelacamento = v);
+  }
+
+  static const _chaveModoDesentrelacamento = 'modo_desentrelacamento';
+
+  /// Há desentrelaçamento (Automático ou Ligado). Ligar (o interruptor das Definições) dá
+  /// Automático, a não ser que já esteja Ligado.
+  bool get desentrelacar => _modoDesentrelacamento != ModoDesentrelacamento.desligado;
+  set desentrelacar(bool v) => modoDesentrelacamento = !v
+      ? ModoDesentrelacamento.desligado
+      : (desentrelacar ? _modoDesentrelacamento : ModoDesentrelacamento.automatico);
 
   FormatoImagem get formato => _formato;
   set formato(FormatoImagem v) => _mudar('formato', _formato != v, () => _formato = v);
@@ -172,7 +208,13 @@ class Preferencias extends ChangeNotifier {
       return null;
     }
 
-    _desentrelacar = campo<bool>('desentrelacar') ?? _desentrelacar;
+    final modoDeint = ModoDesentrelacamento.deNome(campo<String>(_chaveModoDesentrelacamento));
+    final antigoDeint = campo<bool>('desentrelacar');
+    if (modoDeint != null) {
+      _modoDesentrelacamento = modoDeint;
+    } else if (antigoDeint != null) {
+      _modoDesentrelacamento = antigoDeint ? ModoDesentrelacamento.automatico : ModoDesentrelacamento.desligado;
+    }
     final formato = campo<String>('formato');
     if (formato != null) _formato = FormatoImagem.deNome(formato);
     _hardware = campo<bool>('hardware') ?? _hardware;
@@ -191,7 +233,8 @@ class Preferencias extends ChangeNotifier {
   }
 
   Map<String, Object> _mapa() => {
-        'desentrelacar': _desentrelacar,
+        _chaveModoDesentrelacamento: _modoDesentrelacamento.nome,
+        'desentrelacar': desentrelacar,
         'formato': _formato.nome,
         'hardware': _hardware,
         'volume': _volume,
@@ -209,7 +252,9 @@ class Preferencias extends ChangeNotifier {
   void aplicar(Map m) {
     final lidas = <String>{};
     final outro = Preferencias.omissao(tv: _ajustarTaxaEcra).._ler(m, lidas);
-    if (lidas.contains('desentrelacar')) desentrelacar = outro._desentrelacar;
+    if (lidas.contains(_chaveModoDesentrelacamento) || lidas.contains('desentrelacar')) {
+      modoDesentrelacamento = outro._modoDesentrelacamento;
+    }
     if (lidas.contains('formato')) formato = outro._formato;
     if (lidas.contains('hardware')) hardware = outro._hardware;
     if (lidas.contains('volume')) volume = outro._volume;

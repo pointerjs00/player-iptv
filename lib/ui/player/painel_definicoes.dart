@@ -64,9 +64,15 @@ class DefinicaoAcao extends ItemDefinicao {
 /// um BackdropFilter por cima do vídeo pesa num aparelho fraco). O primeiro item ativo fica
 /// com o foco; cima/baixo andam pelos itens.
 class PainelDefinicoes extends StatelessWidget {
-  const PainelDefinicoes({super.key, required this.itens, this.titulo = 'Definições'});
+  const PainelDefinicoes({super.key, required this.itens, this.titulo = 'Ajustes rápidos', this.nota = notaAjustes});
   final List<ItemDefinicao> itens;
   final String titulo;
+
+  /// Uma linha por baixo do título (null = sem nota).
+  final String? nota;
+
+  /// O que vale para quê: as faixas são do canal, o resto (preferências) de todos.
+  static const notaAjustes = 'Áudio e legendas: só este canal · o resto vale para todos';
 
   @override
   Widget build(BuildContext context) {
@@ -86,8 +92,15 @@ class PainelDefinicoes extends StatelessWidget {
               child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                 Padding(
                   padding: const EdgeInsets.fromLTRB(Tokens.e12, 0, Tokens.e12, Tokens.e8),
-                  child: Text(titulo,
-                      style: TextStyle(fontSize: tv ? 22 : 18, fontWeight: FontWeight.w700, color: Tokens.texto)),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(titulo,
+                        style: TextStyle(fontSize: tv ? 22 : 18, fontWeight: FontWeight.w700, color: Tokens.texto)),
+                    if (nota != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(nota!, style: TextStyle(fontSize: tv ? 14 : 12, color: Tokens.texto2)),
+                      ),
+                  ]),
                 ),
                 Flexible(
                   child: ListView(

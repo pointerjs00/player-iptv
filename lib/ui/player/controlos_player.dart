@@ -15,14 +15,20 @@ import 'painel_definicoes.dart';
 import 'progresso.dart';
 import 'relogio_direto.dart';
 
+/// "Casa › Desporto · em direto": o subtítulo do canal no topo ([EstadoControlos.subtitulo]).
+String subtituloCanal({required String lista, required String grupo}) =>
+    grupo.trim().isEmpty ? '$lista · em direto' : '$lista › ${grupo.trim()} · em direto';
+
 /// O que a barra mostra do canal a tocar.
 class EstadoControlos {
-  const EstadoControlos({required this.canal, required this.subtitulo, this.aTocar = true,
+  const EstadoControlos({this.numero, required this.canal, required this.subtitulo, this.aTocar = true,
       this.velocidade = 1.0, this.erro = false, this.podeAlternar = false});
 
+  /// O número do canal (em grande, antes do nome); null = sem número.
+  final int? numero;
   final String canal;
 
-  /// "grupo · 3/120 · lista".
+  /// "lista › grupo · em direto" ([subtituloCanal]).
   final String subtitulo;
   final bool aTocar;
   final double velocidade;
@@ -122,7 +128,7 @@ class ControlosPlayerState extends State<ControlosPlayer> {
   /// Muda a cada canal: uma leitura de um canal anterior que chegue depois é deitada fora.
   int _geracao = 0;
 
-  static String _chaveCanal(EstadoControlos e) => '${e.canal}\u0000${e.subtitulo}';
+  static String _chaveCanal(EstadoControlos e) => '${e.numero}\u0000${e.canal}\u0000${e.subtitulo}';
 
   VistaPlayer get vista => _m.vista;
 
@@ -600,7 +606,8 @@ class _Titulo extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tv = ecraTv(context);
-    return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+    final numero = estado.numero;
+    final nomeESubtitulo = Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text(estado.canal,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
@@ -609,6 +616,18 @@ class _Titulo extends StatelessWidget {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(fontSize: tv ? 16 : 13, color: Tokens.texto2)),
+    ]);
+    if (numero == null) return nomeESubtitulo;
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      Text('$numero',
+          style: TextStyle(
+              fontSize: tv ? 44 : 34,
+              height: 1,
+              fontWeight: FontWeight.w800,
+              color: Tokens.texto,
+              fontFeatures: const [FontFeature.tabularFigures()])),
+      const SizedBox(width: Tokens.e16),
+      Flexible(child: nomeESubtitulo),
     ]);
   }
 }
