@@ -173,6 +173,23 @@ void main() {
     expect(bib.ultimoVisto!.lista, l.id);
   });
 
+  testWidgets('o grupo "Vistos há pouco" mostra os vistos que ainda existem, o mais recente primeiro', (t) async {
+    final l = await preparar(t);
+    l.vistos.addAll(['5', 'fantasma', '1']);
+    await mostrar(t, l);
+    expect(grupo(grupoVistos), findsOneWidget);
+    await t.tap(grupo(grupoVistos));
+    await t.pumpAndSettle();
+    expect(_nomesCanais(t), ['Eleven', 'SIC']);
+    expect(find.text('$grupoVistos · 2 canais'), findsOneWidget);
+  });
+
+  testWidgets('sem vistos não há grupo "Vistos há pouco"', (t) async {
+    final l = await preparar(t);
+    await mostrar(t, l);
+    expect(grupo(grupoVistos), findsNothing);
+  });
+
   testWidgets('"Continuar a ver": abre logo o player nesse canal, com a lista do grupo (na ordem escolhida)',
       (t) async {
     final l = await preparar(t);

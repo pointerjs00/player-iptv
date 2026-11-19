@@ -57,11 +57,15 @@ class UltimoVisto {
   }
 }
 
+/// Quantos canais ficam no histórico "Vistos há pouco" de cada lista.
+const maxVistos = 20;
+
 class Lista {
   Lista({required this.id, required this.ordem, required this.conta, this.ultima,
       Set<String>? favoritos, this.nomeProprio = '', Set<String>? gruposEscondidos,
-      this.ordemCanais = OrdemCanais.lista})
-      : favoritos = favoritos ?? <String>{},
+      this.ordemCanais = OrdemCanais.lista, List<String>? vistos})
+      : vistos = vistos ?? <String>[],
+        favoritos = favoritos ?? <String>{},
         gruposEscondidos = gruposEscondidos ?? <String>{};
 
   final String id;
@@ -82,6 +86,9 @@ class Lista {
   /// Os grupos escondidos no ecrã de canais (e na pesquisa).
   final Set<String> gruposEscondidos;
 
+  /// Ids dos últimos canais vistos: o mais recente primeiro, sem repetidos, até [maxVistos].
+  final List<String> vistos;
+
   /// Como se ordenam os canais desta lista.
   OrdemCanais ordemCanais;
 
@@ -97,6 +104,7 @@ class Lista {
         if (nomeProprio.trim().isNotEmpty) 'nome_proprio': nomeProprio.trim(),
         if (gruposEscondidos.isNotEmpty) 'grupos_escondidos': gruposEscondidos.toList(),
         if (ordemCanais != OrdemCanais.lista) 'ordem_canais': ordemCanais.name,
+        if (vistos.isNotEmpty) 'vistos': vistos,
       };
 
   static Lista? deJson(Object? j) {
@@ -110,6 +118,7 @@ class Lista {
         nomeProprio: j['nome_proprio'] is String ? j['nome_proprio'] as String : '',
         gruposEscondidos: {for (final g in (j['grupos_escondidos'] as List? ?? const [])) '$g'},
         ordemCanais: OrdemCanais.values.asNameMap()[j['ordem_canais']] ?? OrdemCanais.lista,
+        vistos: {for (final v in (j['vistos'] as List? ?? const [])) '$v'}.take(maxVistos).toList(),
       );
     } catch (_) {
       return null; // entrada estragada: ignora-se, as outras ficam
@@ -145,7 +154,7 @@ class ResultadoRestauro {
 Lista _copiaLista(Lista l, {String? id, int? ordem}) => Lista(
     id: id ?? l.id, ordem: ordem ?? l.ordem, conta: l.conta, ultima: l.ultima,
     favoritos: Set.of(l.favoritos), nomeProprio: l.nomeProprio, gruposEscondidos: Set.of(l.gruposEscondidos),
-    ordemCanais: l.ordemCanais);
+    ordemCanais: l.ordemCanais, vistos: List.of(l.vistos));
 
 /// Calcula as listas depois de restaurar `doFicheiro` sobre `atuais`, sem mexer em nenhuma.
 /// - juntar: as da mesma conta (pela chave) ficam, com os favoritos e os grupos escondidos unidos,
@@ -192,6 +201,10 @@ PlanoRestauro planearRestauro(List<Lista> atuais, List<Lista> doFicheiro, {requi
     final escondidosAntes = dest.gruposEscondidos.length;
     dest.gruposEscondidos.addAll(f.gruposEscondidos);
     if (dest.gruposEscondidos.length != escondidosAntes) mudou = true;
+    if (dest.vistos.isEmpty && f.vistos.isNotEmpty) {
+      dest.vistos.addAll(f.vistos);
+      mudou = true;
+    }
     if (dest.ordemCanais == OrdemCanais.lista && f.ordemCanais != OrdemCanais.lista) {
       dest.ordemCanais = f.ordemCanais;
       mudou = true;
@@ -546,9 +559,18 @@ class Biblioteca extends ChangeNotifier implements ColecaoListas {
 
   /// Regista o canal que abriu no player (para o "Continuar a ver"). Sem gravar se for o mesmo.
   Future<void> registarVisto(String listaId, Canal canal) async {
-    if (porId(listaId) == null) return;
+    final l = porId(listaId);
+    if (l == null) return;
+    var mudou = false;
+    if (l.vistos.isEmpty || l.vistos.first != canal.id) {
+      l.vistos
+        ..remove(canal.id)
+        ..insert(0, canal.id);
+      if (l.vistos.length > maxVistos) l.vistos.removeRange(maxVistos, l.vistos.length);
+      mudou = true;
+    }
     final u = _ultimoVisto;
-    if (u != null && u.lista == listaId && u.canal == canal.id) return;
+    if (!mudou && u != null && u.lista == listaId && u.canal == canal.id) return;
     _ultimoVisto = UltimoVisto(lista: listaId, canal: canal.id, nome: canal.nome, grupo: canal.grupo,
         logo: canal.logo, data: DateTime.now());
     await guardar();

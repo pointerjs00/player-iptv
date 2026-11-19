@@ -21,6 +21,9 @@ import '../design/mensagens.dart';
 
 const grupoFavoritos = '★ Favoritos';
 
+/// O grupo virtual dos últimos canais vistos (ver [Lista.vistos]).
+const grupoVistos = 'Vistos há pouco';
+
 /// Pede os canais de uma lista ao servidor (o protocolo da conta; substituível nos testes).
 typedef AbrirLista = Future<ConteudoLista> Function(Conta conta, {Cancelamento? cancelamento, Aviso? aviso});
 
@@ -191,7 +194,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
   /// O que se escolheu nas opções (do grupo `g` ou do topo).
   Future<void> _opcoes([String? g]) async {
     final l = widget.lista;
-    final grupo = g ?? (_grupo == grupoFavoritos ? null : _grupo);
+    final grupo = g ?? (_grupo == grupoFavoritos || _grupo == grupoVistos ? null : _grupo);
     final o = await mostrarOpcoesCanais(context,
         grupo: grupo,
         grupoEscondido: grupo != null && l.gruposEscondidos.contains(grupo),
@@ -347,9 +350,18 @@ class _TelaConteudoState extends State<TelaConteudo> {
     final escondidos = widget.lista.gruposEscondidos;
     return [
       if (widget.lista.favoritos.isNotEmpty) grupoFavoritos,
+      if (_vistosExistentes(c).isNotEmpty) grupoVistos,
       for (final g in c.grupos)
         if ((q.isEmpty || semAcentos(g).contains(q)) && (_verEscondidos || !escondidos.contains(g))) g,
     ];
+  }
+
+  /// Os vistos há pouco que ainda estão na lista, do mais recente para o mais antigo.
+  List<Canal> _vistosExistentes(ConteudoLista c) {
+    final vistos = widget.lista.vistos;
+    if (vistos.isEmpty) return const [];
+    final porId = {for (final x in c.canais) x.id: x};
+    return [for (final id in vistos) if (porId[id] != null) porId[id]!];
   }
 
   List<Canal> _canaisVisiveis() {
@@ -359,7 +371,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
     final ordem = widget.lista.ordemCanais;
     final escondidos = widget.lista.gruposEscondidos;
     final chave = '${ordem.name}|${_verEscondidos ? '' : escondidos.join('\u0000')}|'
-        '${q.isNotEmpty ? 'q:$q' : (_grupo == grupoFavoritos ? 'f:$_versaoFavoritos' : 'g:$_grupo')}';
+        '${q.isNotEmpty ? 'q:$q' : (_grupo == grupoFavoritos ? 'f:$_versaoFavoritos' : _grupo == grupoVistos ? 'v:${widget.lista.vistos.join(',')}' : 'g:$_grupo')}';
     if (chave == _chaveVisiveis) return _visiveis;
     _chaveVisiveis = chave;
     final List<Canal> r;
@@ -371,6 +383,10 @@ class _TelaConteudoState extends State<TelaConteudo> {
         for (var i = 0; i < c.canais.length; i++)
           if (nomes[i].contains(q) && (semEscondidos || !escondidos.contains(c.canais[i].grupo))) c.canais[i],
       ];
+    } else if (_grupo == grupoVistos) {
+      // pela ordem em que se viram, não pela ordem dos canais
+      _visiveis = _vistosExistentes(c);
+      return _visiveis;
     } else if (_grupo == grupoFavoritos) {
       r = [for (final x in c.canais) if (widget.lista.favoritos.contains(x.id)) x];
     } else {
@@ -704,8 +720,10 @@ class _TelaConteudoState extends State<TelaConteudo> {
             itemCount: grupos.length,
             itemBuilder: (_, i) {
               final g = grupos[i];
-              final n = g == grupoFavoritos ? widget.lista.favoritos.length : (_contagens[g] ?? 0);
-              final fav = g == grupoFavoritos;
+              final n = g == grupoFavoritos
+                  ? widget.lista.favoritos.length
+                  : g == grupoVistos ? _vistosExistentes(_conteudo!).length : (_contagens[g] ?? 0);
+              final fav = g == grupoFavoritos || g == grupoVistos;
               final escondido = !fav && widget.lista.gruposEscondidos.contains(g);
               void escolher() => setState(() => _grupo = g);
               final tile = RealceFoco(
