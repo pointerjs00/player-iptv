@@ -93,19 +93,136 @@ void main() {
     await t.pump(const Duration(milliseconds: 400));
   }
 
-  testWidgets('mostra as secções e muda os canais de teste', (t) async {
+  Future<void> categoria(WidgetTester t, String nome) async {
+    await t.tap(find.text(nome));
+    await t.pump();
+  }
+
+  testWidgets('as 5 categorias existem e cada opção está numa delas', (t) async {
     await abrir(t);
-    for (final s in ['Canais de teste', 'Verificação', 'Preferências do player', 'User-agent', 'Cópia de segurança']) {
+    for (final s in ['Imagem e som', 'Verificação', 'Ligação', 'Cópia de segurança', 'Sobre e licenças']) {
       expect(find.text(s), findsOneWidget);
     }
+    final opcoes = {
+      'Imagem e som': ['Desentrelaçamento', 'Descodificação por hardware', 'Formato da imagem', 'Volume ao abrir'],
+      'Verificação': ['Canais de teste', 'Tempo limite'],
+      'Ligação': ['User-agent'],
+      'Cópia de segurança': ['Exportar cópia', 'Importar cópia'],
+      'Sobre e licenças': ['Ver licenças'],
+    };
+    for (final e in opcoes.entries) {
+      await categoria(t, e.key);
+      for (final o in e.value) {
+        expect(find.text(o), findsOneWidget, reason: '${e.key}: $o');
+      }
+    }
+  });
+
+  testWidgets('Imagem e som: explica cada opção e a taxa do ecrã só aparece no Android', (t) async {
+    await abrir(t);
+    expect(find.text('Evita riscas nos canais entrelaçados. Automático só o liga quando é preciso.'), findsOneWidget);
+    expect(find.text('Mais leve. Desliga se a imagem falhar.'), findsOneWidget);
+    expect(find.text('Vale para todos os canais'), findsOneWidget);
+    expect(find.text('Ajustar a taxa do ecrã ao canal'), findsNothing);
+    for (final m in ['Automático', 'Ligado', 'Desligado']) {
+      expect(find.text(m), findsOneWidget);
+    }
+    await t.pumpWidget(_app(TelaDefinicoes(biblioteca: bib, area: area, preferencias: prefs, android: true)));
+    await t.pump();
+    expect(find.text('Ajustar a taxa do ecrã ao canal'), findsOneWidget);
+    expect(find.text('Evita soluços nas imagens (Android TV)'), findsOneWidget);
+  });
+
+  testWidgets('mudar uma opção confirma: "Guardado" (e, no player, que vale a partir do próximo canal)', (t) async {
+    await abrir(t);
+    await t.tap(find.text('Desligado'));
+    await t.pump();
+    expect(prefs.modoDesentrelacamento, ModoDesentrelacamento.desligado);
+    expect(find.text('Guardado · vale a partir do próximo canal'), findsOneWidget);
+    await categoria(t, 'Verificação');
     await t.tap(find.text('DAZN 1'));
     await t.pump();
+    expect(find.text('Guardado'), findsOneWidget, reason: 'fora do player: só "Guardado"');
     expect(bib.canaisTeste, containsAll(['rtp1', 'dazn1']));
+    await categoria(t, 'Ligação');
+    await t.enterText(find.byType(TextField), 'X/1');
+    await t.pump();
+    expect(find.text('Guardado'), findsOneWidget);
+  });
+
+  /// Só com o comando: TAB na primeira categoria e DIREITA para a primeira opção (o "Automático").
+  Future<void> entrarNasOpcoes(WidgetTester t) async {
+    await t.sendKeyEvent(LogicalKeyboardKey.tab);
+    await t.pump();
+    expect(_focado(), 'Imagem e som');
+    await t.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await t.pump();
+    expect(_focoEm(t, find.widgetWithText(ChoiceChip, 'Automático')), isTrue);
+  }
+
+  testWidgets('mudar uma opção não tira o foco do sítio', (t) async {
+    await abrir(t);
+    await entrarNasOpcoes(t);
+    for (var i = 0; i < 2; i++) {
+      await t.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await t.pump();
+    }
+    await t.sendKeyEvent(LogicalKeyboardKey.select); // Desligado
+    await t.pump();
+    expect(prefs.modoDesentrelacamento, ModoDesentrelacamento.desligado);
+    expect(find.text('Guardado · vale a partir do próximo canal'), findsOneWidget);
+    expect(_focoEm(t, find.widgetWithText(ChoiceChip, 'Desligado')), isTrue);
+  });
+
+  testWidgets('no telemóvel: uma lista de categorias e cada uma abre a sua página', (t) async {
+    t.view.physicalSize = const Size(400, 800);
+    t.view.devicePixelRatio = 1;
+    addTearDown(t.view.reset);
+    await t.pumpWidget(_app(TelaDefinicoes(biblioteca: bib, area: area, preferencias: prefs)));
+    await t.pump();
+    for (final s in ['Imagem e som', 'Verificação', 'Ligação', 'Cópia de segurança', 'Sobre e licenças']) {
+      expect(find.text(s), findsOneWidget);
+    }
+    expect(find.text('Desentrelaçamento'), findsNothing);
+    await t.tap(find.text('Verificação'));
+    await t.pump();
+    expect(find.text('Canais de teste'), findsOneWidget);
+    expect(find.text('Verificação'), findsOneWidget, reason: 'o título da página');
+    expect(find.text('Imagem e som'), findsNothing);
+    await t.tap(find.byTooltip('Voltar'));
+    await t.pump();
+    expect(find.text('Canais de teste'), findsNothing);
+    expect(find.text('Imagem e som'), findsOneWidget);
+  });
+
+  testWidgets('D-pad: ESQUERDA da opção vai à categoria e DIREITA volta à opção', (t) async {
+    await abrir(t);
+    await entrarNasOpcoes(t);
+    await t.sendKeyEvent(LogicalKeyboardKey.arrowRight); // "Ligado"
+    await t.pump();
+    expect(_focoEm(t, find.widgetWithText(ChoiceChip, 'Ligado')), isTrue);
+    await t.sendKeyEvent(LogicalKeyboardKey.arrowLeft); // volta ao "Automático"
+    await t.sendKeyEvent(LogicalKeyboardKey.arrowLeft); // o primeiro: sai para a categoria
+    await t.pump();
+    expect(_focado(), 'Imagem e som');
+    await t.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await t.pump();
+    expect(_focoEm(t, find.widgetWithText(ChoiceChip, 'Automático')), isTrue, reason: 'volta à opção de onde saiu');
+    // um interruptor (o cartão todo): ESQUERDA também vai à categoria
+    for (var i = 0; i < 3 && !_focado().contains('Descodificação por hardware'); i++) {
+      await t.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await t.pump();
+    }
+    expect(_focado(), contains('Descodificação por hardware'));
+    await t.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await t.pump();
+    expect(_focado(), 'Imagem e som');
   });
 
   testWidgets('o tempo limite muda com as setas e fica gravado', (t) async {
     await abrir(t);
-    expect(find.text('Tempo limite: 8 s'), findsOneWidget);
+    await categoria(t, 'Verificação');
+    expect(find.text('8 s'), findsOneWidget);
     await t.tap(find.byType(Slider).first);
     await t.pump();
     final v = prefs.timeoutVerificacao;
@@ -129,6 +246,8 @@ void main() {
     await t.pumpWidget(
         _app(TelaDefinicoes(biblioteca: bib, area: area, preferencias: prefs, servico: s)));
     await t.pump(const Duration(milliseconds: 400));
+    await t.tap(find.text('Verificação'));
+    await t.pump();
     expect(find.text('Vale para as próximas listas.'), findsNothing);
     // com a verificação a decorrer (o verificador fica preso: o serviço está ocupado)
     s.verificar(area.listas.first);
@@ -146,6 +265,7 @@ void main() {
 
   testWidgets('o user-agent escrito fica nas preferências', (t) async {
     await abrir(t);
+    await categoria(t, 'Ligação');
     await t.ensureVisible(find.byType(TextField));
     await t.tap(find.byType(TextField));
     await t.pump();
@@ -162,6 +282,7 @@ void main() {
       texto = utf8.decode(b);
       return const ResultadoGuardar('Transferências/x.json');
     });
+    await categoria(t, 'Cópia de segurança');
     await t.ensureVisible(find.text('Exportar cópia'));
     await t.tap(find.text('Exportar cópia'));
     await t.pump();
@@ -173,6 +294,7 @@ void main() {
   testWidgets('importar um ficheiro inválido mostra o erro e não muda nada', (t) async {
     await t.runAsync(() => bib.adicionar([Importada(contaDeLinha('http://nxtbox.uk/c/ 00:1A:79:00:00:01')!)]));
     await abrir(t, escolher: () async => 'isto não é uma cópia');
+    await categoria(t, 'Cópia de segurança');
     await t.ensureVisible(find.text('Importar cópia'));
     await t.tap(find.text('Importar cópia'));
     await t.pump();
@@ -189,6 +311,7 @@ void main() {
     }))!;
     final texto = utf8.decode(codificarCopia(outra, area, prefs));
     await abrir(t, escolher: () async => texto);
+    await categoria(t, 'Cópia de segurança');
     await t.ensureVisible(find.text('Importar cópia'));
     await t.tap(find.text('Importar cópia'));
     await t.pumpAndSettle();
@@ -222,7 +345,7 @@ void main() {
           biblioteca: bib, area: area, preferencias: prefs, escolherCopia: () async => textoCopia),
     ))));
     await t.pump(const Duration(milliseconds: 400));
-    expect(find.text('Canais de teste'), findsNothing, reason: 'começa em Ver TV');
+    expect(find.text('Desentrelaçamento'), findsNothing, reason: 'começa em Ver TV');
     // só com setas: ESQUERDA até à barra, BAIXO até "Definições" e OK
     expect(_focado(), 'Ir para o Gestor');
     await t.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
@@ -234,18 +357,21 @@ void main() {
     expect(_focado(), 'Definições');
     await t.sendKeyEvent(LogicalKeyboardKey.enter);
     await t.pumpAndSettle();
-    expect(find.text('Canais de teste'), findsOneWidget);
+    expect(find.text('Desentrelaçamento'), findsOneWidget);
     // DIREITA entra na secção
     await t.sendKeyEvent(LogicalKeyboardKey.arrowRight);
     await t.pump();
-    // o foco entra no ecrã, no primeiro controlo (DAZN 1 / RTP 1 são chips)
-    expect(_focado(), anyOf(startsWith('RTP 1'), startsWith('SportTV 1'), startsWith('DAZN 1')));
-    // só com setas: até "Importar cópia" e OK
-    final botaoImportar = find.widgetWithText(OutlinedButton, 'Importar cópia');
-    for (var i = 0; i < 40 && !_focoEm(t, find.widgetWithText(FilledButton, 'Exportar cópia')); i++) {
+    // o foco entra no ecrã, na primeira categoria
+    expect(_focado(), 'Imagem e som');
+    // só com setas: BAIXO até "Cópia de segurança", DIREITA para as opções, até "Importar cópia" e OK
+    for (var i = 0; i < 4 && _focado() != 'Cópia de segurança'; i++) {
       await t.sendKeyEvent(LogicalKeyboardKey.arrowDown);
       await t.pump();
     }
+    expect(_focado(), 'Cópia de segurança');
+    await t.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await t.pump();
+    final botaoImportar = find.widgetWithText(OutlinedButton, 'Importar cópia');
     // "Exportar cópia" e "Importar cópia" estão lado a lado: DIREITA
     expect(_focoEm(t, find.widgetWithText(FilledButton, 'Exportar cópia')), isTrue);
     await t.sendKeyEvent(LogicalKeyboardKey.arrowRight);
@@ -270,7 +396,7 @@ void main() {
     // Voltar: de volta a Ver TV
     await t.binding.handlePopRoute();
     await t.pumpAndSettle();
-    expect(find.text('Canais de teste'), findsNothing);
+    expect(find.text('Desentrelaçamento'), findsNothing);
     expect(find.textContaining('OUTRO'), findsOneWidget, reason: 'Ver TV com a lista importada');
   });
 }

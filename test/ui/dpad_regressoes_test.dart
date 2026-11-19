@@ -212,45 +212,68 @@ void main() {
       return f.isNotEmpty ? f : '${ctx.widget.runtimeType}@${ctx.hashCode}';
     }
 
-    testWidgets('no Android TV (navegação "tradicional") nenhum controlo prende CIMA/BAIXO', (t) async {
+    Future<(Preferencias, Biblioteca)> abrirTv(WidgetTester t) async {
       ecraTvTeste(t);
       final (area, prefs) = (await t.runAsync(() async => (await AreaGestor.abrir(pasta), await Preferencias.abrir(pasta))))!;
       await t.pumpWidget(appTeste(TelaDefinicoes(biblioteca: bib, area: area, preferencias: prefs, android: true)));
       await t.pump(const Duration(milliseconds: 400));
-      final inicio = id();
+      // só com o comando: a primeira categoria
+      await teclaDpad(t, LogicalKeyboardKey.tab);
+      expect(id(), 'Imagem e som');
+      return (prefs, bib);
+    }
+
+    /// Da categoria atual para a primeira opção e daí até ao deslizador (BAIXO) e de volta ao topo (CIMA).
+    Future<List<String>> descerEsubir(WidgetTester t, Preferencias prefs) async {
+      await teclaDpad(t, LogicalKeyboardKey.arrowRight);
+      final topo = id();
       final timeout = prefs.timeoutVerificacao, volume = prefs.volume;
-      final descer = <String>[inicio];
-      for (var i = 0; i < 40 && !descer.last.contains('Exportar cópia'); i++) {
+      final descer = <String>[topo];
+      for (var i = 0; i < 40 && !descer.last.startsWith('Slider'); i++) {
         await teclaDpad(t, LogicalKeyboardKey.arrowDown);
         descer.add(id());
         // a mesma paragem duas vezes seguidas = BAIXO preso
         expect(descer[descer.length - 1], isNot(descer[descer.length - 2]), reason: 'BAIXO preso: $descer');
       }
-      expect(descer.last, contains('Exportar cópia'), reason: 'BAIXO: $descer');
-      expect(descer.where((d) => d.startsWith('Slider')), hasLength(2), reason: 'os dois deslizadores: $descer');
+      expect(descer.last, startsWith('Slider'), reason: 'BAIXO chega ao deslizador: $descer');
       expect(prefs.timeoutVerificacao, timeout, reason: 'CIMA/BAIXO não mudam o tempo limite');
       expect(prefs.volume, volume, reason: 'CIMA/BAIXO não mudam o volume');
-      // CIMA até ao topo (pára na primeira linha de chips, a dos canais de teste)
+      // CIMA até ao topo
       final subir = <String>[descer.last];
-      for (var i = 0; i < 40; i++) {
+      for (var i = 0; i < 40 && subir.last != topo; i++) {
         await teclaDpad(t, LogicalKeyboardKey.arrowUp);
-        if (id() == subir.last) break;
+        expect(id(), isNot(subir.last), reason: 'CIMA preso: $subir');
         subir.add(id());
       }
-      expect(subir.where((d) => d.startsWith('Slider')), hasLength(2), reason: 'CIMA: $subir');
-      expect(find.ancestor(of: find.text(subir.last), matching: find.byType(FilterChip)), findsOneWidget,
-          reason: 'CIMA chega aos canais de teste: $subir');
-      for (var i = 0; i < 6 && id() != inicio; i++) {
-        await teclaDpad(t, LogicalKeyboardKey.arrowLeft);
-      }
-      expect(id(), inicio);
-      expect(prefs.timeoutVerificacao, timeout);
+      expect(subir.last, topo, reason: 'CIMA volta ao topo: $subir');
       // ESQUERDA/DIREITA no deslizador continuam a mudar o valor
-      final iSlider = descer.indexWhere((d) => d.startsWith('Slider'));
-      for (var i = 0; i < iSlider; i++) {
+      for (var i = 0; i < 40 && !id().startsWith('Slider'); i++) {
         await teclaDpad(t, LogicalKeyboardKey.arrowDown);
       }
       expect(id(), startsWith('Slider'));
+      return descer;
+    }
+
+    testWidgets('no Android TV (navegação "tradicional") nenhum controlo prende CIMA/BAIXO (Imagem e som)', (t) async {
+      final (prefs, _) = await abrirTv(t);
+      final descer = await descerEsubir(t, prefs);
+      expect(descer.where((d) => d.startsWith('Slider')), hasLength(1), reason: 'o do volume: $descer');
+      final volume = prefs.volume;
+      await teclaDpad(t, LogicalKeyboardKey.arrowLeft);
+      expect(prefs.volume, volume - 5);
+      await teclaDpad(t, LogicalKeyboardKey.arrowRight);
+      expect(prefs.volume, volume);
+    });
+
+    testWidgets('no Android TV nenhum controlo prende CIMA/BAIXO (Verificação)', (t) async {
+      final (prefs, _) = await abrirTv(t);
+      await teclaDpad(t, LogicalKeyboardKey.arrowDown); // a categoria Verificação
+      expect(id(), 'Verificação');
+      final timeout = prefs.timeoutVerificacao;
+      final descer = await descerEsubir(t, prefs);
+      // CIMA chega aos canais de teste (os chips)
+      expect(find.ancestor(of: find.text(descer.first.split(' | ').first), matching: find.byType(FilterChip)),
+          findsOneWidget, reason: 'o topo são os canais de teste: $descer');
       await teclaDpad(t, LogicalKeyboardKey.arrowRight);
       expect(prefs.timeoutVerificacao, timeout + 1);
       await teclaDpad(t, LogicalKeyboardKey.arrowLeft);

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../dados/area_gestor.dart';
@@ -14,9 +15,10 @@ import '../../verificar/canais_teste.dart';
 import '../../verificar/servico.dart';
 import '../campo_tv.dart';
 import '../design/design.dart';
-import '../player/configuracao_mpv.dart';
-import '../player/desentrelacamento.dart' show textoDefinicaoDesentrelacamento;
 import '../design/mensagens.dart';
+import '../player/configuracao_mpv.dart';
+import '../principal/tela_principal.dart';
+import '../realce_foco.dart';
 
 /// Escolhe um ficheiro e devolve o seu texto (null = cancelado).
 typedef EscolherCopia = Future<String?> Function();
@@ -33,8 +35,25 @@ Future<String?> _escolherCopiaNativo() async {
   return utf8.decode(bytes, allowMalformed: true);
 }
 
-/// Definições: canais de teste, verificação, preferências do player, user-agent e cópia de
-/// segurança. Tudo se grava logo ao mudar.
+/// As categorias das Definições: cada opção está numa delas.
+enum _Categoria {
+  imagemSom('Imagem e som', Icons.tune_rounded),
+  verificacao('Verificação', Icons.timer_outlined),
+  ligacao('Ligação', Icons.wifi_rounded),
+  copia('Cópia de segurança', Icons.cloud_download_outlined),
+  sobre('Sobre e licenças', Icons.info_outline_rounded);
+
+  const _Categoria(this.titulo, this.icone);
+  final String titulo;
+  final IconData icone;
+}
+
+/// O que se diz ao mudar uma opção: as do player só valem a partir do próximo canal.
+const _guardado = 'Guardado';
+const _guardadoPlayer = 'Guardado · vale a partir do próximo canal';
+
+/// Definições por categorias (a lista à esquerda, as opções da categoria à direita; no telemóvel,
+/// uma lista que abre cada categoria). Cada opção explica-se e grava logo ao mudar.
 class TelaDefinicoes extends StatefulWidget {
   const TelaDefinicoes({
     super.key,
@@ -66,16 +85,67 @@ class TelaDefinicoes extends StatefulWidget {
 }
 
 class _TelaDefinicoesState extends State<TelaDefinicoes> {
+  /// A partir desta largura a lista de categorias fica ao lado das opções.
+  static const _larguraDuasColunas = 640.0;
+
   late final _ua = TextEditingController(text: widget.preferencias.userAgent);
   bool _ocupado = false;
+  _Categoria _cat = _Categoria.imagemSom;
+
+  /// Estreito: a categoria está aberta (senão vê-se a lista de categorias).
+  bool _aberta = false;
+  bool _estreito = false;
+
+  final _focosCat = [for (final c in _Categoria.values) FocusNode(debugLabel: 'Categoria ${c.name}')];
+
+  /// A área das opções (não recebe foco: serve para saber onde ele está).
+  final _focoPainel = FocusNode(debugLabel: 'Opções', canRequestFocus: false, skipTraversal: true);
+
+  /// A opção onde se estava ao ir para a categoria (DIREITA volta a ela).
+  FocusNode? _ultimaOpcao;
+  VoidCallback? _tirarVoltar;
 
   Preferencias get _p => widget.preferencias;
   bool get _android => widget.android ?? Platform.isAndroid;
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _tirarVoltar ??= TelaPrincipal.aoVoltar(context, _voltar);
+  }
+
+  @override
   void dispose() {
+    _tirarVoltar?.call();
     _ua.dispose();
+    for (final f in [..._focosCat, _focoPainel]) {
+      f.dispose();
+    }
     super.dispose();
+  }
+
+  /// Voltar, com uma categoria aberta no telemóvel, volta à lista de categorias.
+  bool _voltar() {
+    if (!_aberta || !_estreito) return false;
+    _fechar();
+    return true;
+  }
+
+  void _fechar() {
+    setState(() => _aberta = false);
+    final f = _focosCat[_cat.index];
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) f.requestFocus();
+    });
+  }
+
+  void _escolher(_Categoria c, {bool abrir = false}) {
+    if (c == _cat && (!abrir || _aberta)) return;
+    setState(() {
+      if (c != _cat) _ultimaOpcao = null;
+      _cat = c;
+      if (abrir) _aberta = true;
+    });
   }
 
   void _aviso(String texto) {
@@ -83,9 +153,11 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
     mostrarMensagem(context, texto);
   }
 
-  void _mudou(VoidCallback f) {
+  /// Muda uma opção, grava e confirma ("Guardado"). Não mexe no foco.
+  void _mudou(VoidCallback f, {bool player = false}) {
     f();
     _p.guardar().catchError((Object _) {}); // as chaves ficam por gravar e voltam a tentar-se
+    if (mounted) mostrarMensagem(context, player ? _guardadoPlayer : _guardado, tipo: MensagemTipo.sucesso);
   }
 
   Future<void> _exportar() async {
@@ -146,165 +218,365 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
         ),
       );
 
-  Widget _seccao(String titulo, String sub, IconData icone, List<Widget> filhos) => Padding(
-        padding: const EdgeInsets.only(bottom: Tokens.e16),
+  // ---- teclado / comando ----
+
+  bool _haMais(FocusNode atual, bool Function(Rect o, Rect r) conta) => _focoPainel.traversalDescendants.any((n) {
+        if (n == atual || !n.canRequestFocus || n.skipTraversal || n.context == null) return false;
+        return conta(n.rect, atual.rect);
+      });
+
+  /// ESQUERDA numa opção sem mais nada à esquerda: vai à categoria.
+  KeyEventResult _teclaPainel(FocusNode _, KeyEvent e) {
+    if (e is KeyUpEvent || _estreito || e.logicalKey != LogicalKeyboardKey.arrowLeft) return KeyEventResult.ignored;
+    final atual = FocusManager.instance.primaryFocus;
+    if (atual == null || !atual.ancestors.contains(_focoPainel)) return KeyEventResult.ignored;
+    if (_haMais(atual, (o, r) => o.center.dx <= r.left && o.top < r.bottom && o.bottom > r.top)) {
+      return KeyEventResult.ignored;
+    }
+    _ultimaOpcao = atual;
+    _focosCat[_cat.index].requestFocus();
+    return KeyEventResult.handled;
+  }
+
+  /// DIREITA numa categoria: volta à opção onde se estava (ou à primeira).
+  KeyEventResult _teclaCategorias(FocusNode _, KeyEvent e) {
+    if (e is KeyUpEvent || _estreito || e.logicalKey != LogicalKeyboardKey.arrowRight) return KeyEventResult.ignored;
+    final antes = _ultimaOpcao;
+    FocusNode? alvo = antes != null &&
+            antes.context?.mounted == true &&
+            antes.canRequestFocus &&
+            antes.ancestors.contains(_focoPainel)
+        ? antes
+        : null;
+    if (alvo == null) {
+      for (final n in _focoPainel.traversalDescendants) {
+        if (!n.canRequestFocus || n.skipTraversal || n.context == null) continue;
+        final m = alvo?.rect;
+        if (m == null || n.rect.top < m.top - 4 || ((n.rect.top - m.top).abs() <= 4 && n.rect.left < m.left)) alvo = n;
+      }
+    }
+    if (alvo == null) return KeyEventResult.ignored;
+    alvo.requestFocus();
+    return KeyEventResult.handled;
+  }
+
+  // ---- peças ----
+
+  /// Uma opção: título, explicação de uma linha e o controlo à direita (ou por baixo, se não cabe
+  /// ou se `empilhar`).
+  Widget _opcao(String titulo, String explicacao, {Widget? controlo, bool empilhar = false}) => Padding(
+        padding: const EdgeInsets.only(bottom: Tokens.e12),
         child: SuperficieVidro(
           padding: const EdgeInsets.all(Tokens.e16),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            CabecalhoSeccao(titulo: titulo, subtitulo: sub, icone: icone),
-            ...filhos,
-          ]),
+          child: LayoutBuilder(builder: (context, c) {
+            final texto = Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+              Text(titulo, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Tokens.texto)),
+              const SizedBox(height: Tokens.e4),
+              Text(explicacao, style: const TextStyle(fontSize: 13.5, color: Tokens.texto2)),
+            ]);
+            if (controlo == null) return SizedBox(width: double.infinity, child: texto);
+            if (empilhar || c.maxWidth < 520) {
+              return SizedBox(
+                  width: double.infinity,
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    texto,
+                    const SizedBox(height: Tokens.e12),
+                    controlo,
+                  ]));
+            }
+            return Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+              Expanded(child: texto),
+              const SizedBox(width: Tokens.e16),
+              Flexible(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 340), child: controlo)),
+            ]);
+          }),
         ),
       );
 
-  Widget _interruptor(String titulo, String sub, bool valor, ValueChanged<bool> aoMudar) => SwitchListTile(
-        contentPadding: EdgeInsets.zero,
-        title: Text(titulo),
-        subtitle: Text(sub, style: const TextStyle(color: Tokens.texto2)),
-        value: valor,
-        onChanged: (v) => _mudou(() => aoMudar(v)),
+  /// Uma opção ligada/desligada: o cartão todo é o interruptor.
+  Widget _interruptor(String titulo, String explicacao, bool valor, ValueChanged<bool> aoMudar) => Padding(
+        padding: const EdgeInsets.only(bottom: Tokens.e12),
+        child: RealceFoco(
+          raio: Tokens.raioCartao,
+          construir: (context, aoMudarFoco) => SuperficieVidro(
+            padding: EdgeInsets.zero,
+            child: SwitchListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: Tokens.e16, vertical: Tokens.e4),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Tokens.raioCartao)),
+              title: Text(titulo, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+              subtitle: Text(explicacao, style: const TextStyle(fontSize: 13.5, color: Tokens.texto2)),
+              value: valor,
+              onFocusChange: aoMudarFoco,
+              onChanged: (v) => _mudou(() => aoMudar(v), player: true),
+            ),
+          ),
+        ),
+      );
+
+  Widget _escolhas<T>(List<T> valores, String Function(T) rotulo, T atual, ValueChanged<T> aoEscolher) =>
+      Wrap(spacing: Tokens.e8, runSpacing: Tokens.e8, children: [
+        for (final v in valores)
+          ChoiceChip(label: Text(rotulo(v)), selected: atual == v, onSelected: (_) => aoEscolher(v)),
+      ]);
+
+  Widget _deslizador(
+          {required double min,
+          required double max,
+          required int divisions,
+          required double value,
+          required String texto,
+          required ValueChanged<double> aoMudar}) =>
+      ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 320),
+        child: Row(children: [
+          Expanded(
+              child: DeslizadorTv(
+                  min: min, max: max, divisions: divisions, value: value, label: texto, onChanged: aoMudar)),
+          const SizedBox(width: Tokens.e8),
+          Text(texto, style: const TextStyle(color: Tokens.texto2)),
+        ]),
+      );
+
+  /// As opções de cada categoria.
+  List<Widget> _opcoes(_Categoria c, bool ocupado) {
+    final b = widget.biblioteca;
+    switch (c) {
+      case _Categoria.imagemSom:
+        return [
+          _opcao(
+              'Desentrelaçamento',
+              'Evita riscas nos canais entrelaçados. Automático só o liga quando é preciso.'
+              '${_android ? ' Na descodificação Direta, um direto entrelaçado reabre em Compatível.' : ''}',
+              empilhar: true,
+              controlo: _escolhas(ModoDesentrelacamento.values, (m) => m.rotulo, _p.modoDesentrelacamento,
+                  (m) => _mudou(() => _p.modoDesentrelacamento = m, player: true))),
+          _interruptor('Descodificação por hardware', 'Mais leve. Desliga se a imagem falhar.', _p.hardware,
+              (v) => _p.hardware = v),
+          if (_android) ...[
+            _interruptor('Ajustar a taxa do ecrã ao canal', 'Evita soluços nas imagens (Android TV)',
+                _p.ajustarTaxaEcra, (v) => _p.ajustarTaxaEcra = v),
+            _opcao('Descodificação no Android',
+                'Direta é a mais leve. Compatível serve se o direto mostrar ecrã preto ou cores erradas.',
+                empilhar: true,
+              controlo: _escolhas(ModoDescodificacao.values, (m) => m.rotulo, _p.modoAndroid,
+                    (m) => _mudou(() => _p.modoAndroid = m, player: true))),
+          ],
+          _opcao('Formato da imagem', 'Vale para todos os canais',
+              empilhar: true,
+              controlo: _escolhas(FormatoImagem.values, (f) => f.rotulo, _p.formato,
+                  (f) => _mudou(() => _p.formato = f, player: true))),
+          _opcao('Volume ao abrir', 'O volume com que cada canal começa.',
+              controlo: _deslizador(
+                  min: 0,
+                  max: 100,
+                  divisions: 20,
+                  value: _p.volume,
+                  texto: '${_p.volume.round()} %',
+                  aoMudar: (v) => _mudou(() => _p.volume = v, player: true))),
+        ];
+      case _Categoria.verificacao:
+        return [
+          _opcao('Canais de teste', 'A lista funciona se um deles abrir.',
+              empilhar: true,
+              controlo: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Wrap(spacing: Tokens.e8, runSpacing: Tokens.e8, children: [
+                  for (final p in perfisCanais.values)
+                    FilterChip(
+                      label: Text(p.nome),
+                      selected: b.canaisTeste.contains(p.id),
+                      onSelected: (on) {
+                        final novo = [
+                          for (final id in perfisCanais.keys)
+                            if (id == p.id ? on : b.canaisTeste.contains(id)) id
+                        ];
+                        if (novo.isEmpty) return _aviso('Escolha pelo menos um canal.');
+                        _mudou(() => b.definirCanaisTeste(novo));
+                      },
+                    ),
+                ]),
+                if (ocupado) const _ValeParaAsProximas(),
+              ])),
+          _opcao('Tempo limite', 'Entre 5 e 30 segundos por canal. As inconclusivas voltam a ser testadas com o dobro.',
+              controlo: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                _deslizador(
+                    min: Preferencias.minTimeoutVerificacao.toDouble(),
+                    max: Preferencias.maxTimeoutVerificacao.toDouble(),
+                    divisions: Preferencias.maxTimeoutVerificacao - Preferencias.minTimeoutVerificacao,
+                    value: _p.timeoutVerificacao.toDouble(),
+                    texto: '${_p.timeoutVerificacao} s',
+                    aoMudar: (v) => _mudou(() => _p.timeoutVerificacao = v.round())),
+                if (ocupado) const _ValeParaAsProximas(),
+              ])),
+        ];
+      case _Categoria.ligacao:
+        return [
+          _opcao('User-agent', 'Opcional: nos pedidos das listas M3U e Xtream (o Stalker mantém o da box MAG).',
+              empilhar: true,
+              controlo: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                CampoTv(
+                  controller: _ua,
+                  decoration:
+                      const InputDecoration(labelText: 'User-agent personalizado', hintText: 'Em branco: o do VLC'),
+                  onChanged: (v) => _mudou(() => _p.userAgent = v),
+                ),
+                const SizedBox(height: Tokens.e8),
+                OutlinedButton.icon(
+                  onPressed: () {
+                    _ua.clear();
+                    _mudou(() => _p.userAgent = '');
+                  },
+                  icon: const Icon(Icons.restart_alt_rounded),
+                  label: const Text('Repor o por omissão'),
+                ),
+              ])),
+        ];
+      case _Categoria.copia:
+        return [
+          _opcao('Exportar e importar',
+              'Guarda as listas, favoritos, resultados, o Gestor e as definições num ficheiro .json. '
+              'O ficheiro inclui as credenciais das listas: guarde-o em local seguro.',
+              empilhar: true,
+              controlo: Wrap(spacing: Tokens.e8, runSpacing: Tokens.e8, children: [
+                FilledButton.icon(
+                  onPressed: () {
+                    if (!_ocupado) _exportar();
+                  },
+                  icon: const Icon(Icons.upload_file_rounded),
+                  label: const Text('Exportar cópia'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () {
+                    if (!_ocupado) _importar();
+                  },
+                  icon: const Icon(Icons.download_rounded),
+                  label: const Text('Importar cópia'),
+                ),
+              ])),
+        ];
+      case _Categoria.sobre:
+        return [
+          _opcao('Licenças', 'O player usa o mpv e o ffmpeg (GPLv3).',
+              controlo: Align(
+                alignment: Alignment.centerLeft,
+                child: OutlinedButton.icon(
+                  onPressed: () => showLicensePage(context: context, applicationName: 'Player IPTV'),
+                  icon: const Icon(Icons.description_outlined),
+                  label: const Text('Ver licenças'),
+                ),
+              )),
+        ];
+    }
+  }
+
+  Widget _painel(_Categoria c, bool ocupado) => Focus(
+        focusNode: _focoPainel,
+        canRequestFocus: false,
+        skipTraversal: true,
+        includeSemantics: false,
+        onKeyEvent: _teclaPainel,
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 760),
+            child: ListView(
+              key: ValueKey(c),
+              padding: const EdgeInsets.all(Tokens.e16),
+              children: _opcoes(c, ocupado),
+            ),
+          ),
+        ),
+      );
+
+  /// Uma categoria na lista: com a barra azul à esquerda quando é a ativa.
+  Widget _linhaCategoria(_Categoria c, {required bool largo}) {
+    final ativa = largo && c == _cat;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Tokens.e8),
+      child: Stack(children: [
+        RealceFoco(
+          raio: Tokens.raioBotao,
+          construir: (context, aoMudarFoco) => ListTile(
+            focusNode: _focosCat[c.index],
+            selected: ativa,
+            selectedColor: Tokens.texto,
+            selectedTileColor: Tokens.superficie3,
+            iconColor: Tokens.texto2,
+            textColor: Tokens.texto2,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Tokens.raioBotao)),
+            leading: Icon(c.icone),
+            title: Text(c.titulo, style: const TextStyle(fontWeight: FontWeight.w600)),
+            trailing: largo ? null : const Icon(Icons.chevron_right_rounded),
+            onFocusChange: (f) {
+              aoMudarFoco(f);
+              if (f && largo) _escolher(c);
+            },
+            onTap: () => _escolher(c, abrir: !largo),
+          ),
+        ),
+        if (ativa)
+          Positioned(
+            left: 0,
+            top: Tokens.e8,
+            bottom: Tokens.e8,
+            child: Container(
+                width: 4,
+                decoration: BoxDecoration(color: Tokens.anelFoco, borderRadius: BorderRadius.circular(2))),
+          ),
+      ]),
+    );
+  }
+
+  Widget _listaCategorias({required bool largo}) => Focus(
+        canRequestFocus: false,
+        skipTraversal: true,
+        includeSemantics: false,
+        onKeyEvent: _teclaCategorias,
+        child: ListView(
+          padding: const EdgeInsets.all(Tokens.e16),
+          children: [for (final c in _Categoria.values) _linhaCategoria(c, largo: largo)],
+        ),
       );
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('Definições')),
+        backgroundColor: Colors.transparent,
         body: ListenableBuilder(
           listenable: Listenable.merge([_p, widget.biblioteca, if (widget.servico != null) widget.servico!]),
           builder: (context, _) {
-            final b = widget.biblioteca;
             final ocupado = widget.servico?.ocupado ?? false;
-            return Align(
-              alignment: Alignment.topCenter,
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 760),
-                child: ListView(padding: const EdgeInsets.all(Tokens.e16), children: [
-                  _seccao('Canais de teste', 'A lista funciona se um deles abrir.', Icons.live_tv_outlined, [
-                    Wrap(spacing: Tokens.e8, runSpacing: Tokens.e8, children: [
-                      for (final p in perfisCanais.values)
-                        FilterChip(
-                          autofocus: p.id == perfisCanais.keys.first,
-                          label: Text(p.nome),
-                          selected: b.canaisTeste.contains(p.id),
-                          onSelected: (on) {
-                            final novo = [
-                              for (final id in perfisCanais.keys)
-                                if (id == p.id ? on : b.canaisTeste.contains(id)) id
-                            ];
-                            if (novo.isEmpty) return _aviso('Escolha pelo menos um canal.');
-                            b.definirCanaisTeste(novo);
-                          },
-                        ),
-                    ]),
-                    if (ocupado) const _ValeParaAsProximas(),
-                  ]),
-                  _seccao('Verificação', 'Quanto tempo se espera por cada canal.', Icons.timer_outlined, [
-                    Text('Tempo limite: ${_p.timeoutVerificacao} s'),
-                    DeslizadorTv(
-                      min: Preferencias.minTimeoutVerificacao.toDouble(),
-                      max: Preferencias.maxTimeoutVerificacao.toDouble(),
-                      divisions: Preferencias.maxTimeoutVerificacao - Preferencias.minTimeoutVerificacao,
-                      value: _p.timeoutVerificacao.toDouble(),
-                      label: '${_p.timeoutVerificacao} s',
-                      onChanged: (v) => _mudou(() => _p.timeoutVerificacao = v.round()),
-                    ),
-                    const Text('Entre 5 e 30 segundos. As inconclusivas voltam a ser testadas com o dobro.',
-                        style: TextStyle(color: Tokens.texto2, fontSize: 12.5)),
-                    if (ocupado) const _ValeParaAsProximas(),
-                  ]),
-                  _seccao('Preferências do player', 'Valem para todos os canais.', Icons.tune_rounded, [
-                    _interruptor('Desentrelaçamento', _android
-                            ? '$textoDefinicaoDesentrelacamento Na descodificação Direta, um direto entrelaçado reabre em Compatível.'
-                            : textoDefinicaoDesentrelacamento, _p.desentrelacar,
-                        (v) => _p.desentrelacar = v),
-                    _interruptor('Descodificação por hardware', 'Desligue se a imagem falhar.', _p.hardware,
-                        (v) => _p.hardware = v),
-                    if (_android) ...[
-                      _interruptor('Ajustar a taxa do ecrã ao canal', 'Evita soluços nas imagens.',
-                          _p.ajustarTaxaEcra, (v) => _p.ajustarTaxaEcra = v),
-                      const SizedBox(height: Tokens.e8),
-                      const Text('Descodificação no Android'),
-                      const SizedBox(height: Tokens.e8),
-                      Wrap(spacing: Tokens.e8, children: [
-                        for (final m in ModoDescodificacao.values)
-                          ChoiceChip(
-                            label: Text(m.rotulo),
-                            selected: _p.modoAndroid == m,
-                            onSelected: (_) => _mudou(() => _p.modoAndroid = m),
-                          ),
-                      ]),
-                    ],
-                    const SizedBox(height: Tokens.e12),
-                    const Text('Formato da imagem'),
-                    const SizedBox(height: Tokens.e8),
-                    Wrap(spacing: Tokens.e8, runSpacing: Tokens.e8, children: [
-                      for (final f in FormatoImagem.values)
-                        ChoiceChip(
-                          label: Text(f.rotulo),
-                          selected: _p.formato == f,
-                          onSelected: (_) => _mudou(() => _p.formato = f),
-                        ),
-                    ]),
-                    const SizedBox(height: Tokens.e12),
-                    Text('Volume: ${_p.volume.round()} %'),
-                    DeslizadorTv(
-                      min: 0,
-                      max: 100,
-                      divisions: 20,
-                      value: _p.volume,
-                      label: '${_p.volume.round()} %',
-                      onChanged: (v) => _mudou(() => _p.volume = v),
+            return LayoutBuilder(builder: (context, c) {
+              _estreito = c.maxWidth < _larguraDuasColunas;
+              if (!_estreito) {
+                return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  SizedBox(width: 260, child: _listaCategorias(largo: true)),
+                  Expanded(child: _painel(_cat, ocupado)),
+                ]);
+              }
+              if (!_aberta) {
+                return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(Tokens.e16, Tokens.e16, Tokens.e16, 0),
+                    child: Text('Definições', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700)),
+                  ),
+                  Expanded(child: _listaCategorias(largo: false)),
+                ]);
+              }
+              return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(Tokens.e8, Tokens.e8, Tokens.e16, 0),
+                  child: Row(children: [
+                    IconButton(onPressed: _fechar, tooltip: 'Voltar', icon: const Icon(Icons.arrow_back)),
+                    Expanded(
+                      child: Text(_cat.titulo,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
                     ),
                   ]),
-                  _seccao('User-agent', 'Opcional: nos pedidos das listas M3U e Xtream (o Stalker mantém o da box MAG).',
-                      Icons.badge_outlined, [
-                    CampoTv(
-                      controller: _ua,
-                      decoration: const InputDecoration(labelText: 'User-agent personalizado', hintText: 'Em branco: o do VLC'),
-                      onChanged: (v) => _mudou(() => _p.userAgent = v),
-                    ),
-                    const SizedBox(height: Tokens.e8),
-                    OutlinedButton.icon(
-                      onPressed: () {
-                        _ua.clear();
-                        _mudou(() => _p.userAgent = '');
-                      },
-                      icon: const Icon(Icons.restart_alt_rounded),
-                      label: const Text('Repor o por omissão'),
-                    ),
-                  ]),
-                  _seccao('Cópia de segurança',
-                      'Guarda as listas, favoritos, resultados, o Gestor e as definições num ficheiro .json.',
-                      Icons.cloud_download_outlined, [
-                    const Text('O ficheiro inclui as credenciais das listas: guarde-o em local seguro.',
-                        style: TextStyle(color: Tokens.texto2, fontSize: 12.5)),
-                    const SizedBox(height: Tokens.e12),
-                    Wrap(spacing: Tokens.e8, runSpacing: Tokens.e8, children: [
-                      FilledButton.icon(
-                        onPressed: () {
-                          if (!_ocupado) _exportar();
-                        },
-                        icon: const Icon(Icons.upload_file_rounded),
-                        label: const Text('Exportar cópia'),
-                      ),
-                      OutlinedButton.icon(
-                        onPressed: () {
-                          if (!_ocupado) _importar();
-                        },
-                        icon: const Icon(Icons.download_rounded),
-                        label: const Text('Importar cópia'),
-                      ),
-                    ]),
-                  ]),
-                  _seccao('Licenças', 'O player usa o mpv e o ffmpeg (GPLv3).', Icons.gavel_rounded, [
-                    OutlinedButton.icon(
-                      onPressed: () => showLicensePage(context: context, applicationName: 'Player IPTV'),
-                      icon: const Icon(Icons.description_outlined),
-                      label: const Text('Ver licenças'),
-                    ),
-                  ]),
-                ]),
-              ),
-            );
+                ),
+                Expanded(child: _painel(_cat, ocupado)),
+              ]);
+            });
           },
         ),
       );
