@@ -106,6 +106,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
 
   // feitos uma vez por lista (com 100 mil canais, refazê-los a cada build congela a TV)
   Map<String, List<Canal>> _porGrupo = const {};
+  Map<String, String> _gruposSemAcentos = const {}; // para a pesquisa nos grupos
   List<String>? _nomes; // os nomes sem acentos, pela ordem de `canais`
   Timer? _atrasoPesquisa;
   int _versaoFavoritos = 0;
@@ -180,6 +181,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
       _conteudo = c;
       _contagens = {for (final e in porGrupo.entries) e.key: e.value.length};
       _porGrupo = porGrupo;
+      _gruposSemAcentos = {for (final g in c.grupos) g: semAcentos(g)};
       _nomes = null;
       _chaveVisiveis = null;
       _erro = null;
@@ -425,7 +427,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
       final q = semAcentos(_q.trim());
       return [
         for (final g in c.grupos)
-          if (semAcentos(g).contains(q) && (_verEscondidos || !escondidos.contains(g))) g,
+          if ((_gruposSemAcentos[g] ?? semAcentos(g)).contains(q) && (_verEscondidos || !escondidos.contains(g))) g,
       ];
     }
     return [
@@ -619,7 +621,9 @@ class _TelaConteudoState extends State<TelaConteudo> {
     final tamanho = tv ? 16.0 : 14.0;
     final estilo = TextStyle(fontSize: tamanho);
     final inicio = TextButton(
-      onPressed: () => Navigator.of(context).maybePop(),
+      // sai sempre, mesmo com texto na pesquisa (só o Voltar a limpa primeiro): pop() não passa
+      // pelo PopScope
+      onPressed: () => Navigator.of(context).pop(),
       child: Text('‹ Início', style: estilo),
     );
     final nome = Text(l.nomeMostrado,
@@ -920,7 +924,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
         child: Text(texto, maxLines: 1, overflow: TextOverflow.ellipsis, style: _estiloCabecalho()),
       );
 
-  /// O texto com a parte encontrada (`q`, já sem acentos) em [Tokens.acento]; sem ela, só o texto.
+  /// O texto com a parte encontrada (`q`, já sem acentos) em [Tokens.anelFoco]; sem ela, só o texto.
   Widget _comRealce(String texto, String q, TextStyle estilo) {
     final normal = q.isEmpty ? '' : semAcentos(texto);
     // só quando as posições batem certo (tirar os acentos quase nunca muda o comprimento)
@@ -929,7 +933,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
     return Text.rich(
       TextSpan(children: [
         TextSpan(text: texto.substring(0, i)),
-        TextSpan(text: texto.substring(i, i + q.length), style: const TextStyle(color: Tokens.acento)),
+        TextSpan(text: texto.substring(i, i + q.length), style: const TextStyle(color: Tokens.anelFoco)),
         TextSpan(text: texto.substring(i + q.length)),
       ]),
       maxLines: 1,

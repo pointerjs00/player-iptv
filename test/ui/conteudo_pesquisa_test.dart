@@ -111,7 +111,7 @@ void main() {
     // a parte encontrada vem destacada
     final destaque = t.widget<Text>(find.descendant(of: _grupos, matching: find.text('Desporto Internacional')));
     final partes = (destaque.textSpan! as TextSpan).children!.cast<TextSpan>();
-    expect(partes.firstWhere((p) => p.text == 'Desp').style?.color, Tokens.acento);
+    expect(partes.firstWhere((p) => p.text == 'Desp').style?.color, Tokens.anelFoco);
     // o resultado todo, com scroll: o último canal encontrado alcança-se (sem "+ N canais")
     expect(find.textContaining(RegExp(r'\+ ?\d+ canais')), findsNothing);
     await t.scrollUntilVisible(find.text('Desp. Mundo 11'), 300, scrollable: find.descendant(
@@ -245,10 +245,12 @@ void main() {
     expect(find.text('Filtrar grupos…'), findsNothing);
   });
 
-  testWidgets('pesquisa numa lista de 100 mil canais', (t) async {
-    final grande = ConteudoLista(['Desporto', 'Filmes'], [
+  testWidgets('pesquisa numa lista de 100 mil canais (e 5000 grupos)', (t) async {
+    // 1 em cada 10 no Desporto; os outros por 4999 grupos "Filmes N"
+    final grande = ConteudoLista(['Desporto', for (var g = 0; g < 4999; g++) 'Filmes $g'], [
       for (var i = 0; i < 100000; i++)
-        Canal(id: '$i', nome: i % 10 == 0 ? 'Desporto $i' : 'Filme $i', grupo: i % 10 == 0 ? 'Desporto' : 'Filmes'),
+        Canal(id: '$i', nome: i % 10 == 0 ? 'Desporto $i' : 'Filme $i',
+            grupo: i % 10 == 0 ? 'Desporto' : 'Filmes ${i % 4999}'),
     ]);
     await abrir(t, conteudo: grande);
     await t.runAsync(() => Future<void>.delayed(const Duration(seconds: 2))); // os nomes indexados
@@ -263,5 +265,26 @@ void main() {
     expect(lista.itemExtent, isNotNull);
     expect(find.descendant(of: _canais, matching: find.byType(ListTile)).evaluate().length, lessThan(40));
     expect(sw.elapsedMilliseconds, lessThan(2000), reason: 'escrever bloqueou ${sw.elapsedMilliseconds} ms');
+    // cada rebuild com pesquisa (aqui, pôr/tirar favoritos) não volta a normalizar os 5000 grupos
+    // (com «Grupos»: os canais à vista são os do grupo escolhido, com a estrela)
+    await t.tap(find.widgetWithText(ChoiceChip, 'Grupos'));
+    await escrever(t, 'filmes 12');
+    expect(find.text('Grupos · 111'), findsOneWidget);
+    final reb = Stopwatch()..start();
+    for (var k = 0; k < 5; k++) {
+      await t.tap(find.byTooltip(k.isEven ? 'Pôr nos favoritos' : 'Tirar dos favoritos').first);
+      await t.pump();
+    }
+    reb.stop();
+    expect(reb.elapsedMilliseconds / 5, lessThan(60), reason: 'rebuild médio ${reb.elapsedMilliseconds / 5} ms');
+  });
+
+  testWidgets('‹ Início sai logo, mesmo com texto na pesquisa', (t) async {
+    await abrir(t);
+    await escrever(t, 'desp');
+    await t.tap(find.text('‹ Início'));
+    await t.pumpAndSettle();
+    expect(find.byType(TelaConteudo), findsNothing);
+    expect(find.text('base'), findsOneWidget);
   });
 }
