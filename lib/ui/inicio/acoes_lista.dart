@@ -1,6 +1,9 @@
 /// As ações de um cartão do Player (pressão longa, clique direito ou OK mantido):
-/// Abrir, Atualizar canais, Editar, Copiar link, Enviar para o Gestor e Remover lista.
+/// Atualizar canais, Verificar agora, Editar lista, Copiar link (só Windows), Enviar para o Gestor e
+/// Remover lista. Abrir é o toque no cartão.
 library;
+
+import 'dart:io' show Platform;
 
 import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
@@ -12,16 +15,19 @@ import '../design/design.dart';
 import '../realce_foco.dart';
 
 enum AcaoLista {
-  abrir('Abrir', Icons.play_arrow_rounded),
-  atualizar('Atualizar canais', Icons.refresh_rounded),
-  editar('Editar', Icons.edit_outlined),
-  copiarLink('Copiar link', Icons.link_rounded),
-  enviarGestor('Enviar para o Gestor', Icons.send_outlined),
-  eliminar('Remover lista', Icons.delete_outline_rounded);
+  atualizar('Atualizar canais', Icons.refresh_rounded, 'Pede a lista de canais outra vez ao servidor'),
+  verificar('Verificar agora', Icons.fact_check_outlined, 'Testa 3 canais · cerca de 20 s'),
+  editar('Editar lista', Icons.edit_outlined, 'Nome, endereço, MAC ou utilizador'),
+  copiarLink('Copiar link', Icons.link_rounded, 'Só no Windows · leva os dados de acesso'),
+  enviarGestor('Enviar para o Gestor', Icons.send_outlined, 'Para verificar ou exportar com as outras'),
+  eliminar('Remover lista', Icons.delete_outline_rounded, 'Pede confirmação · os favoritos desta lista saem');
 
-  const AcaoLista(this.rotulo, this.icone);
+  const AcaoLista(this.rotulo, this.icone, this.explicacao);
   final String rotulo;
   final IconData icone;
+
+  /// A linha pequena por baixo do rótulo (ecrã 3).
+  final String explicacao;
 }
 
 final _reMac = RegExp(r'^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}$');
@@ -69,13 +75,22 @@ String linkParaCopiar(Conta c) => c.tipo == Tipo.stalker ? '${c.endereco} ${c.ma
 bool _eOk(LogicalKeyboardKey k) => teclasOk.contains(k);
 
 /// O menu de ações de uma lista (centrado, para o comando): devolve a ação escolhida (null =
-/// Voltar). Sem `comGestor` não há "Enviar para o Gestor".
-Future<AcaoLista?> mostrarMenuLista(BuildContext context, Lista lista, {bool comGestor = true}) =>
+/// Voltar). Sem `comGestor` não há "Enviar para o Gestor"; sem `comVerificar` não há "Verificar
+/// agora"; "Copiar link" só no Windows (`windows`, para testes).
+Future<AcaoLista?> mostrarMenuLista(BuildContext context, Lista lista,
+        {bool comGestor = true, bool comVerificar = true, bool? windows}) =>
     showDialog<AcaoLista>(
       context: context,
       builder: (ctx) {
         final tv = ecraTv(ctx);
-        final acoes = [for (final a in AcaoLista.values) if (comGestor || a != AcaoLista.enviarGestor) a];
+        final noWindows = windows ?? Platform.isWindows;
+        final acoes = [
+          for (final a in AcaoLista.values)
+            if ((comGestor || a != AcaoLista.enviarGestor) &&
+                (comVerificar || a != AcaoLista.verificar) &&
+                (noWindows || a != AcaoLista.copiarLink))
+              a,
+        ];
         return Focus(
           canRequestFocus: false,
           skipTraversal: true,
@@ -93,6 +108,10 @@ Future<AcaoLista?> mostrarMenuLista(BuildContext context, Lista lista, {bool com
                     child: Text(lista.nomeMostrado, maxLines: 1, overflow: TextOverflow.ellipsis,
                         style: TextStyle(fontSize: tv ? 20 : 18, fontWeight: FontWeight.w700)),
                   ),
+                  // rola em ecrãs baixos (telemóvel na horizontal)
+                  Flexible(
+                    child: SingleChildScrollView(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                   for (final (i, a) in acoes.indexed)
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 2),
@@ -103,10 +122,15 @@ Future<AcaoLista?> mostrarMenuLista(BuildContext context, Lista lista, {bool com
                           leading: Icon(a.icone, color: a == AcaoLista.eliminar ? Tokens.mau : Tokens.texto2),
                           title: Text(a.rotulo, style: TextStyle(fontSize: tv ? 17 : 15, fontWeight: FontWeight.w500,
                               color: a == AcaoLista.eliminar ? Tokens.mau : null)),
+                          subtitle: Text(a.explicacao,
+                              style: TextStyle(fontSize: tv ? 14 : 12.5, color: Tokens.texto2)),
                           onTap: () => Navigator.pop(ctx, a),
                         ),
                       ),
                     ),
+                      ]),
+                    ),
+                  ),
                 ]),
               ),
             ),

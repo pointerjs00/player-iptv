@@ -80,14 +80,14 @@ void main() {
       }
       await t.sendKeyUpEvent(LogicalKeyboardKey.select);
       await t.pumpAndSettle();
-      for (final a in ['Abrir', 'Atualizar canais', 'Editar', 'Copiar link', 'Remover lista']) {
+      for (final a in ['Atualizar canais', 'Editar lista', if (Platform.isWindows) 'Copiar link', 'Remover lista']) {
         expect(find.widgetWithText(ListTile, a), findsOneWidget, reason: a);
       }
       // a última ação alcança-se com BAIXO
       for (var i = 0; i < 6; i++) {
         await teclaDpad(t, LogicalKeyboardKey.arrowDown);
       }
-      expect(textosFocados(), 'Remover lista');
+      expect(textosFocados(), startsWith('Remover lista'));
       await teclaDpad(t, LogicalKeyboardKey.select);
       await t.pumpAndSettle();
       expect(find.text('Remover lista?'), findsOneWidget);

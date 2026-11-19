@@ -102,11 +102,15 @@ class AppPlayerIptv extends StatefulWidget {
 }
 
 class _AppPlayerIptvState extends State<AppPlayerIptv> {
-  late final _servico = ServicoVerificacao(widget.biblioteca, colecao: widget.area);
+  // um só ritmo por servidor para o Gestor e para o Player: nunca batem ao mesmo servidor ao mesmo tempo
+  final _ritmo = RitmoHost();
+  late final _servico = ServicoVerificacao(widget.biblioteca, colecao: widget.area, ritmo: _ritmo);
+  late final _servicoPlayer = ServicoVerificacao(widget.biblioteca, ritmo: _ritmo);
 
   @override
   void dispose() {
     _servico.parar();
+    _servicoPlayer.parar();
     super.dispose();
   }
 
@@ -122,7 +126,7 @@ class _AppPlayerIptvState extends State<AppPlayerIptv> {
         localizationsDelegates: GlobalMaterialLocalizations.delegates,
         // três secções fixas que guardam o estado; o "Alterar nas Definições" do Gestor muda de secção
         home: TelaPrincipal(
-          verTv: TelaInicio(biblioteca: widget.biblioteca, area: widget.area),
+          verTv: TelaInicio(biblioteca: widget.biblioteca, area: widget.area, servico: _servicoPlayer),
           gestor: Builder(
             builder: (context) => TelaVerificar(
               biblioteca: widget.biblioteca,

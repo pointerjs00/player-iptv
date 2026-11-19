@@ -6,6 +6,10 @@ import 'package:material_ui/material_ui.dart';
 import '../../dados/area_gestor.dart';
 import '../../dados/biblioteca.dart';
 import '../../importar/importar.dart';
+import '../../verificar/servico.dart';
+import '../../protocolos/protocolo.dart';
+import '../../rede/http.dart';
+import '../../modelo/conta.dart';
 import '../../modelo/canal.dart';
 import '../campo_tv.dart';
 import '../conteudo/tela_conteudo.dart';
@@ -24,13 +28,16 @@ import '../design/mensagens.dart';
 /// enviar listas para o Player faz-se no Gestor. As secções, o Voltar e a confirmação da saída
 /// são da casca ([TelaPrincipal]).
 class TelaInicio extends StatefulWidget {
-  const TelaInicio({super.key, required this.biblioteca, this.area, this.abrirLista, this.abrirCanal});
+  const TelaInicio({super.key, required this.biblioteca, this.area, this.servico, this.abrirLista, this.abrirCanal});
 
   /// As listas do Player.
   final Biblioteca biblioteca;
 
   /// As listas do Gestor: o menu do cartão envia para aqui.
   final AreaGestor? area;
+
+  /// A verificação do Player (grava nas listas do Player): sem ela não há "Verificar agora".
+  final ServicoVerificacao? servico;
 
   /// Para testes: pede os canais de uma lista (em vez do protocolo da conta).
   final AbrirLista? abrirLista;
@@ -144,13 +151,13 @@ class _TelaInicioState extends State<TelaInicio> {
   /// O menu de ações do cartão (pressão longa, clique direito ou OK mantido).
   Future<void> _menu(Lista l) async {
     final area = widget.area;
-    final acao = await mostrarMenuLista(context, l, comGestor: area != null);
+    final acao = await mostrarMenuLista(context, l, comGestor: area != null, comVerificar: widget.servico != null);
     if (acao == null || !mounted) return;
     switch (acao) {
-      case AcaoLista.abrir:
-        _abrir(l);
       case AcaoLista.atualizar:
-        _abrir(l, atualizar: true);
+        unawaited(_atualizarCanais(l));
+      case AcaoLista.verificar:
+        unawaited(_verificar(l));
       case AcaoLista.editar:
         final m = await mostrarEditarLista(context, widget.biblioteca, l);
         if (m != null) _avisar(m);
@@ -165,6 +172,43 @@ class _TelaInicioState extends State<TelaInicio> {
         await _eliminar(l);
     }
   }
+
+  /// "Atualizar canais": pede os canais ao servidor sem sair do Início; o progresso e o fim vão
+  /// em mensagens e a navegação continua livre.
+  Future<void> _atualizarCanais(Lista l) async {
+    final avisar = mensageiroDe(context);
+    final nome = l.nomeMostrado;
+    avisar('A atualizar os canais de $nome…', tipo: MensagemTipo.progresso, duracao: const Duration(minutes: 2));
+    try {
+      final c = await (widget.abrirLista ?? _abrirPeloProtocolo)(l.conta);
+      await widget.biblioteca.guardarCanais(l.id, c);
+      avisar('Canais de $nome atualizados · ${c.canais.length}', tipo: MensagemTipo.sucesso);
+    } catch (e) {
+      avisar('Não foi possível atualizar $nome: ${e is ErroLista ? e.mensagem : descreverErro(e)}',
+          tipo: MensagemTipo.erro);
+    }
+  }
+
+  /// "Verificar agora": testa a lista pelo serviço do Player; o estado novo aparece no cartão.
+  Future<void> _verificar(Lista l) async {
+    final servico = widget.servico;
+    if (servico == null) return;
+    final avisar = mensageiroDe(context);
+    final nome = l.nomeMostrado;
+    avisar('A verificar $nome…', tipo: MensagemTipo.progresso, duracao: const Duration(minutes: 2));
+    await servico.verificar(l);
+    final atual = widget.biblioteca.porId(l.id);
+    if (atual == null) return;
+    final e = estadoDe(atual);
+    avisar('$nome: ${e.rotulo}',
+        tipo: switch (e) {
+          EstadoLista.funciona => MensagemTipo.sucesso,
+          EstadoLista.naoFunciona => MensagemTipo.erro,
+          _ => MensagemTipo.info,
+        });
+  }
+
+  static Future<ConteudoLista> _abrirPeloProtocolo(Conta conta) => Protocolo.para(conta).abrir(conta);
 
   void _abrir(Lista l, {bool atualizar = false, String? continuar}) => Navigator.of(context).push(rotaSuave<void>(
         TelaConteudo(biblioteca: widget.biblioteca, lista: l, atualizar: atualizar, abrirLista: widget.abrirLista,

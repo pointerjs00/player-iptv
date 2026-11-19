@@ -13,7 +13,11 @@ import 'package:player_iptv/protocolos/protocolo.dart';
 import 'package:player_iptv/rede/http.dart';
 import 'package:player_iptv/ui/conteudo/tela_conteudo.dart';
 import 'package:player_iptv/ui/inicio/tela_inicio.dart';
+import 'package:player_iptv/ui/inicio/acoes_lista.dart';
 import 'package:player_iptv/ui/realce_foco.dart';
+import 'package:player_iptv/verificar/estado.dart';
+import 'package:player_iptv/verificar/servico.dart';
+import 'package:player_iptv/verificar/verificador.dart';
 import 'package:player_iptv/ui/tema.dart';
 
 /// Task 8: o menu de ações dos cartões do Player.
@@ -41,13 +45,24 @@ String _focado() {
   return textos.join(' | ');
 }
 
-const _acoes = ['Abrir', 'Atualizar canais', 'Editar', 'Copiar link', 'Enviar para o Gestor', 'Remover lista'];
+const _acoes = ['Atualizar canais', 'Verificar agora', 'Editar lista', 'Copiar link', 'Enviar para o Gestor', 'Remover lista'];
+
+/// Verificador que responde logo (sem rede).
+class _Falso extends Verificador {
+  _Falso() : super(pausaReteste: Duration.zero);
+
+  @override
+  Future<ResultadoVerificacao> verificarUmaVez(Conta conta, List<String> canaisTeste,
+          {Duration timeout = const Duration(seconds: 8), Cancelamento? cancelamento, Aviso? aviso}) async =>
+      const ResultadoVerificacao(EstadoV.funciona, 'ok', validade: '2030-01-01');
+}
 
 void main() {
   late Directory pasta;
   late Biblioteca bib;
   late AreaGestor area;
   final pedidos = <Conta>[];
+  late ServicoVerificacao servico;
 
   Future<ConteudoLista> abrirFalso(Conta c, {Cancelamento? cancelamento, Aviso? aviso}) async {
     pedidos.add(c);
@@ -59,6 +74,7 @@ void main() {
     bib = await Biblioteca.abrir(pasta);
     area = await AreaGestor.abrir(Directory('${pasta.path}${Platform.pathSeparator}g'));
     pedidos.clear();
+    servico = ServicoVerificacao(bib, verificador: _Falso());
   });
   tearDown(() async {
     try {
@@ -74,7 +90,7 @@ void main() {
           Importada(contaDeLinha('http://b.com/l.m3u')!),
         ]));
     await t.pumpWidget(_app(TelaInicio(
-        biblioteca: bib, area: area, abrirLista: abrirFalso)));
+        biblioteca: bib, area: area, servico: servico, abrirLista: abrirFalso)));
     await t.pump();
   }
 
@@ -96,7 +112,7 @@ void main() {
   Future<void> fecharMenu(WidgetTester t) async {
     await t.binding.handlePopRoute();
     await t.pumpAndSettle();
-    expect(find.widgetWithText(ListTile, 'Abrir'), findsNothing);
+    expect(find.text('Atualizar canais'), findsNothing);
   }
 
   testWidgets('toque longo e clique direito abrem o mesmo menu (sem "Verificar de novo" nem "Mais opções")',
@@ -125,7 +141,7 @@ void main() {
     }
     await t.pumpAndSettle();
     verMenu();
-    expect(_focado(), 'Abrir', reason: 'o foco começa na 1.ª ação');
+    expect(_focado(), startsWith('Atualizar canais'), reason: 'o foco começa na 1.ª ação');
     // as repetições e o soltar do OK que abriu o menu não escolhem nada
     await t.sendKeyRepeatEvent(LogicalKeyboardKey.select);
     await t.sendKeyUpEvent(LogicalKeyboardKey.select);
@@ -133,7 +149,7 @@ void main() {
     verMenu();
     await t.sendKeyEvent(LogicalKeyboardKey.arrowDown);
     await t.pump();
-    expect(_focado(), 'Atualizar canais');
+    expect(_focado(), startsWith('Verificar agora'));
     await t.binding.handlePopRoute();
     await t.pumpAndSettle();
     expect(_focado(), contains('001SRV'));
@@ -144,35 +160,80 @@ void main() {
     expect(find.byType(TelaConteudo), findsOneWidget);
   });
 
-  testWidgets('Abrir e Atualizar canais abrem a lista (Atualizar pede os canais ao servidor)', (t) async {
+  testWidgets('o menu tem as 6 ações pela ordem, cada uma com a sua explicação', (t) async {
     await montar(t);
-    await t.runAsync(() => bib.guardarCanais(bib.listas.first.id,
-        ConteudoLista(['G'], const [Canal(id: '1', nome: 'Canal da cache', grupo: 'G', url: 'u')])));
     await t.longPress(find.text('001SRV 161027'));
     await t.pumpAndSettle();
-    await t.tap(find.widgetWithText(ListTile, 'Abrir'));
-    await t.pump();
-    await esperar(t, () => find.text('Canal da cache').evaluate().isNotEmpty);
-    expect(find.text('Canal da cache'), findsOneWidget);
-    expect(pedidos, isEmpty, reason: 'com cache, abrir não pede ao servidor');
-    await t.binding.handlePopRoute();
-    await t.pump();
-    await t.pump(const Duration(seconds: 1));
+    final tops = [for (final a in _acoes) t.getTopLeft(find.text(a)).dy];
+    expect(tops, orderedEquals([...tops]..sort()));
+    for (final e in [
+      'Pede a lista de canais outra vez ao servidor',
+      'Testa 3 canais · cerca de 20 s',
+      'Nome, endereço, MAC ou utilizador',
+      'Só no Windows · leva os dados de acesso',
+      'Para verificar ou exportar com as outras',
+      'Pede confirmação · os favoritos desta lista saem',
+    ]) {
+      expect(find.text(e), findsOneWidget, reason: e);
+    }
+  });
 
+  testWidgets('em Android o menu não tem "Copiar link"; em Windows tem', (t) async {
+    final lista = Lista(
+        id: 'x', ordem: 1, conta: Conta('', Tipo.m3u, 'http://b.com/l.m3u'));
+    Future<void> abrir(bool windows) async {
+      await t.pumpWidget(_app(Builder(
+          builder: (c) => TextButton(
+              onPressed: () => mostrarMenuLista(c, lista, windows: windows), child: const Text('menu')))));
+      await t.tap(find.text('menu'));
+      await t.pumpAndSettle();
+    }
+
+    await abrir(false);
+    expect(find.text('Copiar link'), findsNothing);
+    expect(find.text('Verificar agora'), findsOneWidget);
+    await t.binding.handlePopRoute();
+    await t.pumpAndSettle();
+    await abrir(true);
+    expect(find.text('Copiar link'), findsOneWidget);
+  });
+
+  testWidgets('Atualizar canais: mensagem de progresso, depois de fim, sem sair do Início', (t) async {
+    await montar(t);
     await t.longPress(find.text('001SRV 161027'));
     await t.pumpAndSettle();
     await t.tap(find.widgetWithText(ListTile, 'Atualizar canais'));
     await t.pump();
-    await esperar(t, () => find.text('Canal novo').evaluate().isNotEmpty);
+    expect(find.byType(TelaConteudo), findsNothing, reason: 'a navegação não é bloqueada');
+    final fim = find.textContaining('atualizados');
+    await esperar(t, () => fim.evaluate().isNotEmpty);
+    expect(fim, findsOneWidget);
     expect(pedidos, hasLength(1));
-    expect(find.text('Canal novo'), findsOneWidget);
+    expect(find.byType(TelaConteudo), findsNothing);
+    await t.pump(const Duration(seconds: 10));
+    await t.pumpAndSettle();
+  });
+
+  testWidgets('Verificar agora: o estado da lista muda no Início e aparece a mensagem de fim', (t) async {
+    await montar(t);
+    await t.longPress(find.text('002B'));
+    await t.pumpAndSettle();
+    await t.tap(find.widgetWithText(ListTile, 'Verificar agora'));
+    await t.pump();
+    final fim = find.textContaining(': Funciona');
+    await esperar(t, () => fim.evaluate().isNotEmpty);
+    expect(fim, findsOneWidget);
+    expect(bib.listas.last.ultima?.estado, 'funciona');
+    expect(find.byType(TelaConteudo), findsNothing);
+    await t.pump(const Duration(seconds: 10));
+    await t.pumpAndSettle();
   });
 
   testWidgets('Editar: nome próprio e password mudam e persistem; endereço inválido não guarda', (t) async {
     await montar(t);
     await t.longPress(find.text('001SRV 161027'));
     await t.pumpAndSettle();
-    await t.tap(find.widgetWithText(ListTile, 'Editar'));
+    await t.tap(find.widgetWithText(ListTile, 'Editar lista'));
     await t.pumpAndSettle();
     expect(find.text('Editar lista'), findsOneWidget);
     // a password não se vê
