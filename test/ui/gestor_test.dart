@@ -372,8 +372,9 @@ void main() {
       await t.pump();
       await abrirEnvio(t);
       for (final texto in [
-        'Enviar 2 listas para o Player',
+        'Enviar 3 listas para o Player',
         '1 funciona e 1 é inconclusiva',
+        '1 está por verificar ou não funciona',
         'Adicionar às listas do Player',
         'As que já lá estão ficam. Repetidas não se duplicam.',
         'Substituir as listas do Player',
@@ -381,6 +382,7 @@ void main() {
         'Que listas enviar?',
         'Só as que funcionam (1)',
         'Funcionam + inconclusivas (2)',
+        'Todas as selecionadas (3)',
         'Cancelar',
         'Enviar 1 lista',
       ]) {
@@ -532,7 +534,7 @@ void main() {
       await t.pumpAndSettle();
       final ecra = Offset.zero & const Size(960, 540);
       for (final o in ['Adicionar às listas do Player', 'Substituir as listas do Player',
-        'Funcionam + inconclusivas (1)', 'Cancelar', 'Enviar 1 lista']) {
+        'Funcionam + inconclusivas (1)', 'Todas as selecionadas (2)', 'Cancelar', 'Enviar 1 lista']) {
         final r = t.getRect(find.text(o));
         expect(ecra.contains(r.topLeft) && ecra.contains(r.bottomRight), isTrue, reason: '$o em $r');
         expect(find.text(o).hitTestable(), findsOneWidget, reason: o);
@@ -563,6 +565,33 @@ void main() {
       expect(tarefa.resultado, '2 listas enviadas para o Player · 2 novas · 1 ainda a verificar');
       expect(player(), ['a.com', 'b.com']);
       s.parar();
+    });
+
+    testWidgets('Enviar "Todas as selecionadas" leva também as por verificar e as que não funcionam', (t) async {
+      await t.runAsync(() => area.adicionar([
+            Importada(contaDeLinha('http://porver.com/l.m3u')!),
+            Importada(contaDeLinha('http://morta.com/c/ 00:1A:79:00:00:01')!, _u('nao_funciona')),
+          ]));
+      _tamanho(t, 1200, 1800);
+      await t.pumpWidget(_app(gestor()));
+      await t.pump();
+      await t.tap(find.widgetWithText(ActionChip, 'Todas'));
+      await t.pump();
+      await abrirEnvio(t);
+      expect(find.byType(AlertDialog), findsOneWidget, reason: 'não fica pelo "Verifique-as primeiro"');
+      expect(find.text('Todas as selecionadas (2)'), findsOneWidget);
+      // sem nenhuma que funcione, a escolha começa em "Todas as selecionadas"
+      expect(find.text('Enviar 2 listas'), findsOneWidget);
+      await t.tap(find.text('Só as que funcionam (0)'));
+      await t.pump();
+      expect(find.text('Enviar 0 listas'), findsOneWidget);
+      await t.tap(find.text('Todas as selecionadas (2)'));
+      await t.pump();
+      await t.tap(find.text('Enviar 2 listas'));
+      final tarefa = await acabada(t);
+      expect(tarefa.estado, EstadoTarefa.terminada);
+      expect(player(), ['porver.com', 'morta.com']);
+      expect(tarefa.resultado, '2 listas enviadas para o Player · 2 novas');
     });
 
     testWidgets('Exportar mostra as duas opções e o aviso; sem seleção avisa', (t) async {

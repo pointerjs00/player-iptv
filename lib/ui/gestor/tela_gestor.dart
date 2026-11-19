@@ -321,9 +321,9 @@ class _TelaGestorState extends State<TelaGestor> {
     if (tinhaFoco) _focoVerificarMais.requestFocus();
   }
 
-  /// "Enviar para o Player": só vão as selecionadas que já têm resultado (as que ainda estão a ser
-  /// verificadas ficam de fora e a mensagem final diz quantas são). A escolha faz-se antes; depois o
-  /// envio corre como tarefa, sem esperar por ninguém.
+  /// "Enviar para o Player": vão as selecionadas que não estão a ser verificadas (as que estão ficam
+  /// de fora e a mensagem final diz quantas são): as que funcionam, também as inconclusivas, ou todas,
+  /// seja qual for o estado. A escolha faz-se antes; depois o envio corre como tarefa, sem esperar.
   Future<void> _enviar() async {
     if (_selecionadas.isEmpty) return _aviso('Selecione as listas a enviar.');
     ({List<Lista> prontas, int aDecorrer}) ponto() {
@@ -334,19 +334,21 @@ class _TelaGestorState extends State<TelaGestor> {
     int conta(List<Lista> ls, EstadoLista e) => ls.where((l) => estadoDe(l) == e).length;
     final antes = ponto();
     final f = conta(antes.prontas, EstadoLista.funciona), i = conta(antes.prontas, EstadoLista.inconclusiva);
-    if (f + i == 0) {
-      return _aviso(antes.aDecorrer > 0
-          ? 'As listas selecionadas ainda estão a ser verificadas.'
-          : 'Nenhuma das listas selecionadas funciona nem é inconclusiva. Verifique-as primeiro.');
-    }
-    final escolha = await perguntarEnvio(context, funcionam: f, inconclusivas: i);
+    if (antes.prontas.isEmpty) return _aviso('As listas selecionadas ainda estão a ser verificadas.');
+    final escolha = await perguntarEnvio(context, funcionam: f, inconclusivas: i, todas: antes.prontas.length);
     if (escolha == null || !mounted) return;
-    final (modo, incluirInc) = escolha;
+    final (modo, que) = escolha;
     // o estado pode ter mudado com o diálogo aberto: conta-se de novo
     final agora = ponto();
     final enviar = [
       for (final l in agora.prontas)
-        if (estadoDe(l) == EstadoLista.funciona || (incluirInc && estadoDe(l) == EstadoLista.inconclusiva)) l,
+        if (switch (que) {
+          QueEnviar.funcionam => estadoDe(l) == EstadoLista.funciona,
+          QueEnviar.funcionamEInconclusivas =>
+            estadoDe(l) == EstadoLista.funciona || estadoDe(l) == EstadoLista.inconclusiva,
+          QueEnviar.todas => true,
+        })
+          l,
     ];
     if (enviar.isEmpty) return _aviso('Já não há listas com resultado para enviar.');
     // o que a tarefa precisa, antes de qualquer await
