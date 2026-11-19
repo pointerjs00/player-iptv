@@ -2,8 +2,6 @@ import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:material_ui/material_ui.dart';
-import 'package:media_kit/media_kit.dart';
-import 'package:media_kit_video/media_kit_video.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../dados/preferencias.dart';
@@ -26,6 +24,8 @@ import 'faixas.dart';
 import 'filtro_desentrelacamento.dart';
 import 'leitor_partilhado.dart';
 import 'maquina_controlos.dart';
+import 'motor_mpv.dart';
+import 'motor_reproducao.dart';
 import 'mpv_fora_da_ui.dart';
 import 'numero_canal.dart';
 import 'painel_definicoes.dart';
@@ -56,11 +56,20 @@ bool erroFatalPlayer(String e) =>
 /// cortou a ligação (não é um canal "visto" de novo).
 typedef ResolverFonte = Future<FonteVideo> Function(Canal canal, {bool continuar});
 
+/// Cria o motor de um player (no Android o player é recriado para mudar a descodificação do mpv:
+/// o vo fixa-se ao criar). Os testes dão um motor falso.
+typedef CriarMotor = MotorReproducao Function(ModoDescodificacao modo, bool hardware);
+
+/// O motor por omissão: o mpv do media_kit com a configuração do direto desta plataforma.
+MotorReproducao criarMotorMpv(ModoDescodificacao modo, bool hardware) =>
+    MotorMediaKit(ConfiguracaoMpv.para(PlataformaVideo.atual, modo: modo, hardware: hardware));
+
 /// O player: toca o canal `indice` de `canais`, com a barra de controlos e o painel de
 /// definições ([ControlosPlayer]). As preferências ([Preferencias.atual]) aplicam-se a cada canal.
 class PlayerCanais extends StatefulWidget {
   const PlayerCanais({super.key, required this.canais, required this.indice, required this.resolver,
-      required this.nomeLista, required this.aoSair, this.alternarEcraInteiro, this.aoMudarCanal});
+      required this.nomeLista, required this.aoSair, this.alternarEcraInteiro, this.aoMudarCanal,
+      this.criarMotor = criarMotorMpv});
 
   final List<Canal> canais;
   final int indice;
@@ -73,6 +82,9 @@ class PlayerCanais extends StatefulWidget {
 
   /// O canal que está a tocar mudou (cima/baixo): ao sair, a lista foca este.
   final ValueChanged<int>? aoMudarCanal;
+
+  /// O motor que reproduz o vídeo (por omissão o mpv).
+  final CriarMotor criarMotor;
 
   @override
   State<PlayerCanais> createState() => PlayerCanaisState();
@@ -91,18 +103,27 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   // Android o player é recriado para mudar a descodificação (o vo fixa-se ao criar)
   late ModoDescodificacao _modo = Preferencias.atual.modoAndroid;
   late bool _hardware = Preferencias.atual.hardware;
-  late ConfiguracaoMpv _config;
-  late Player _player;
-  late MotorForaDaUi _motor;
-  late SaltosDireto _saltos;
+  late MotorReproducao _motor;
+  SaltosDireto? _saltos;
+
+  /// O motor do mpv (media_kit), quando é ele que está por trás: as propriedades do mpv para o
+  /// desentrelaçamento, o modo Compatível, as estatísticas, a taxa do ecrã e os saltos no cache.
+  /// null noutro motor (essas funções ficam desligadas).
+  MotorMediaKit? get _mk => switch (_motor) { final MotorMediaKit m => m, _ => null };
+  MotorForaDaUi? get _mpv => _mk?.mpv;
 
   /// As leituras do mpv da barra, da barra de progresso e das estatísticas: de uma vez (um
-  /// isolate por leitura, nunca na thread da UI) e partilhadas entre elas.
-  late final _leitor = LeitorPartilhado((ps) => _motor.getProperties(ps));
-  late VideoController _video;
-  late Future<void> _configurado;
+  /// isolate por leitura, nunca na thread da UI) e partilhadas entre elas. Sem mpv: nada ("").
+  late final _leitor = LeitorPartilhado((ps) => _mpv?.getProperties(ps) ?? Future.value(const <String, String>{}));
   final _subsPlayer = <StreamSubscription>[];
   int _larguraVista = 0;
+
+  /// O tamanho da imagem e a posição, segundo os eventos do motor.
+  Size? _tamanho;
+  Duration _posicao = Duration.zero;
+
+  /// O tamanho da imagem agora (no mpv lê-se na hora: chega depois de o vídeo ser construído).
+  Size? get _tamanhoAgora => _mk?.tamanhoAtual ?? _tamanho;
   final _taxa = TaxaEcra();
   double? _hzPedidos;
   double? _hzEcra;
@@ -118,7 +139,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   /// [_intervaloEntrelacamento] (ver `controlo_desentrelacamento.dart`). [_playerDoDesentrelacamento]:
   /// o player para que o meio foi posto (um player recriado não tem o vf do antigo).
   final _deint = ControloDesentrelacamento(_plataforma);
-  Player? _playerDoDesentrelacamento;
+  MotorReproducao? _playerDoDesentrelacamento;
   Timer? _vigiaEntrelacamento;
   static const _intervaloEntrelacamento = Duration(seconds: 10);
 
@@ -129,8 +150,8 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   /// A imagem que estava no ecrã quando o servidor cortou: fica por baixo do "A carregar…" até à
   /// primeira imagem do canal reaberto (em vez do preto).
   final _ultima = UltimaImagem();
-  Tracks _faixas = const Tracks();
-  Track _faixa = const Track();
+  FaixasMotor _faixas = const FaixasMotor();
+  FaixaAtual _faixa = const FaixaAtual();
   late List<Canal> _canais = widget.canais;
   late int _i = widget.indice;
   late final _historico = HistoricoCanais(widget.indice);
@@ -169,7 +190,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   final _linhasNoEcra = ValueNotifier<double?>(null);
 
   /// A faixa de áudio escolhida pelo utilizador neste canal (volta a pôr-se depois de reabrir).
-  AudioTrack? _audioEscolhido;
+  FaixaMotor? _audioEscolhido;
 
   // nunca ecrã preto mudo: o "a abrir" só sai com imagem; sem ela em 20 s, erro
   /// Um stop que não acaba neste tempo é de um mpv que deixou de responder.
@@ -181,7 +202,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       final retomou = _aRetomar;
       _abriuEm = DateTime.now();
       _continuar.abriu();
-      _ligacao.abriu(_player.state.position.inMicroseconds / 1e6);
+      _ligacao.abriu((_mk?.player.state.position ?? _posicao).inMicroseconds / 1e6);
       _porMudo(_mudo.primeiraImagem(silencio: _sessao.silencio));
       setState(() {
         _aAbrir = false;
@@ -198,7 +219,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     },
     aoFalhar: (motivo) {
       if (!mounted) return;
-      _player.stop();
+      _motor.parar();
       _taxa.repor();
       setState(() { _erro = motivo; _aAbrir = false; _aRetomar = false; _ultima.largar(); });
     },
@@ -224,12 +245,12 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   }
 
   void _criarPlayer() {
-    _config = ConfiguracaoMpv.para(_plataforma, modo: _modo, hardware: _hardware);
-    _player = Player(configuration: _config.configuracaoPlayer);
-    _motor = MotorForaDaUi.doPlayer(_player);
-    _saltos = SaltosDireto(_motor, _relogio);
+    _motor = widget.criarMotor(_modo, _hardware);
+    final mpv = _mpv;
+    _saltos = mpv == null ? null : SaltosDireto(mpv, _relogio);
+    _tamanho = null;
     _leitor.esquecer();
-    _subsPlayer.add(_player.stream.error.listen((e) {
+    _subsPlayer.add(_motor.erros.listen((e) {
       if (mounted && e.isNotEmpty && erroFatalPlayer(e)) {
         // a reabrir depois de um corte: uma falha passageira (rede, 401) tenta-se outra vez
         if (_aRetomar && _tentarContinuarDepois(_pedido)) return;
@@ -238,8 +259,8 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
         setState(() { _erro = mensagemErroPlayer(e); _aAbrir = false; _aRetomar = false; _ultima.largar(); });
       }
     }));
-    _subsPlayer.add(_player.stream.completed.listen(_fimDoBuffer));
-    _subsPlayer.add(_player.stream.buffering.listen((b) {
+    _subsPlayer.add(_motor.fim.listen((_) => _fimDoBuffer()));
+    _subsPlayer.add(_motor.aCarregar.listen((b) {
       _vigia.buffering(b);
       if (!mounted) return;
       if (b != _buffering || (!b && _percentagemBuffer != null)) {
@@ -247,25 +268,27 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
         setState(() { _buffering = b; if (!b) _percentagemBuffer = null; });
       }
     }));
-    _subsPlayer.add(_player.stream.bufferingPercentage.listen((p) {
+    _subsPlayer.add(_motor.percentagemCarga.listen((p) {
       // guarda-se sempre: o mpv pode mandar o % antes do "buffering"
       _percentagemBuffer = p;
       if (mounted && _buffering) setState(() {});
     }));
-    _subsPlayer.add(_player.stream.width.listen((w) {
+    _subsPlayer.add(_motor.tamanhoVideo.listen((t) {
+      _tamanho = t;
+      final w = t?.width.round();
       if ((w ?? 0) > 0) _larguraVista = w!;
       _vigia.largura(w);
     }));
-    _subsPlayer.add(_player.stream.position.listen(_vigia.tempo));
-    _subsPlayer.add(_player.stream.tracks.listen((t) {
+    _subsPlayer.add(_motor.posicao.listen((p) {
+      _posicao = p;
+      _vigia.tempo(p);
+    }));
+    _subsPlayer.add(_motor.faixas.listen((t) {
       if (mounted) setState(() => _faixas = t);
     }));
-    _subsPlayer.add(_player.stream.track.listen((t) {
+    _subsPlayer.add(_motor.faixaAtual.listen((t) {
       if (mounted) setState(() => _faixa = t);
     }));
-    // o controlador de vídeo antes de configurar o mpv (as propriedades esperam por ele)
-    _video = VideoController(_player, configuration: _config.configuracaoVideo);
-    _configurado = aplicarConfiguracao(_motor, _config);
   }
 
   /// Recria o player noutra descodificação (o vo do Android fixa-se ao criar) ou no lugar de um
@@ -276,35 +299,13 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       s.cancel();
     }
     _subsPlayer.clear();
-    final antigo = _player;
-    final motorAntigo = _motor;
+    final antigo = _motor;
     _modo = modo;
     _hardware = hardware;
     _criarPlayer();
     if (mounted) setState(() {});
     // pára o antigo (nunca toca por trás); nenhum pedido ao mpv antigo depois de destruído
-    return _aposentar(motorAntigo, antigo);
-  }
-
-  /// Larga um player: pausa e volume 0 pelo media_kit já (se o mpv estiver preso e o player
-  /// ficar por destruir, nunca toca por trás), depois destrói-o quando for seguro.
-  static Future<void> _aposentar(MotorForaDaUi motor, Player player) {
-    // o próximo player só abre um canal depois de este fechar o áudio (ver VezDoAudio)
-    final audioFechado = Completer<void>();
-    VezDoAudio.instancia.largar(audioFechado.future);
-    return motor.aposentar(
-        // pelas funções assíncronas do libmpv (pause, mute): o pause()/setVolume() do
-        // media_kit esperam pelo controlador de vídeo e pelo lock dele e, ao sair a meio de uma
-        // abertura, nunca chegavam a parar nada (visto no emulador)
-        pausar: () async {
-          var h = motor.handleConhecido;
-          final mpv = player.platform;
-          if (h == null && mpv is NativePlayer) h = await mpv.handle.timeout(const Duration(seconds: 2));
-          if (h != null) pararSemEsperar(h);
-        },
-        silenciar: () async {}, // o mute=yes vai com o pause
-        destruir: () => player.dispose().whenComplete(audioFechado.complete),
-      );
+    return antigo.descartar();
   }
 
   /// A chave do canal para lembrar, nesta sessão, que precisa do modo "Compatível".
@@ -340,17 +341,20 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
 
   /// O buffer chegou ao fim a meio do canal (o servidor fechou a ligação e o mpv não reconecta):
   /// pede o canal de novo, com "A carregar…", nunca em ciclo.
-  Future<void> _fimDoBuffer(bool fim) async {
-    if (!fim || !mounted) return;
+  Future<void> _fimDoBuffer() async {
+    const fim = true;
+    final mk = _mk;
+    // sem mpv não se sabe se é um direto nem onde parou (o motor trata do fim)
+    if (!mounted || mk == null) return;
     final pedido = _pedido;
     // um ficheiro com fim (filme de uma lista M3U) acaba: só os diretos se pedem de novo
-    final p = await _motor.getProperties(const ['seekable', 'partially-seekable', 'demuxer-start-time', 'time-pos']);
+    final p = await mk.mpv.getProperties(const ['seekable', 'partially-seekable', 'demuxer-start-time', 'time-pos']);
     final eDireto = ContinuarDireto.eDireto(p['seekable']!, partiallySeekable: p['partially-seekable']!);
     if (!mounted || pedido != _pedido) return;
     // ou um ficheiro que o servidor cortou muito antes do fim (fica-se parado na última imagem):
     // reabre-se no ponto onde parou
-    final posicao = _player.state.position;
-    final cortado = !eDireto && ContinuarDireto.cortadoAntesDoFim(posicao: posicao, duracao: _player.state.duration);
+    final posicao = mk.player.state.position;
+    final cortado = !eDireto && ContinuarDireto.cortadoAntesDoFim(posicao: posicao, duracao: mk.duracao);
     final direto = eDireto || cortado;
     if (!ContinuarDireto.deve(
         fimDoBuffer: fim, aAbrir: _aAbrir, erro: _erro != null, aTocar: _aTocar, direto: direto)) {
@@ -406,7 +410,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     for (var i = 0; i < 10 && mounted && pedido == _pedido; i++) {
       final igual = _faixas.audio.where((a) => a.id == escolhido.id).firstOrNull;
       if (igual != null) {
-        if (_faixa.audio.id != igual.id) await _player.setAudioTrack(igual);
+        if (_faixa.audio.id != igual.id) await _motor.escolherAudio(igual);
         return;
       }
       await Future<void>.delayed(const Duration(milliseconds: 300));
@@ -458,35 +462,42 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       final hardwareCanal = hardware && (_android || !CompativelNaSessao.instancia.software(_chave(canal)));
       // um mpv que deixou de responder não se volta a usar: player novo
       await prepararPlayer(
-        novo: (_android && (modo != _modo || hardware != _hardware)) || _motor.semResposta,
+        novo: (_android && (modo != _modo || hardware != _hardware)) || (_mpv?.semResposta ?? false),
         zap: pedido > 1,
-        parar: () => _player.stop(),
+        parar: () => _motor.parar(),
         trocar: () => _recriar(modo, hardware),
         limiteStop: _limiteStop,
       );
       // o desentrelaçamento: no mesmo canal (corte do servidor) e no mesmo mpv fica tudo como estava;
       // noutro canal tira-se o filtro do anterior e decide-se de novo com a imagem
-      final playerNovo = !identical(_playerDoDesentrelacamento, _player);
-      _playerDoDesentrelacamento = _player;
+      final playerNovo = !identical(_playerDoDesentrelacamento, _motor);
+      _playerDoDesentrelacamento = _motor;
       final desentrelacamento = _deint.abrir(continuar: continuar, playerNovo: playerNovo);
       if (!mounted || pedido != _pedido) return;
       final f = await widget.resolver(canal, continuar: continuar);
       if (!mounted || pedido != _pedido) return;
-      await _configurado;
-      if (!mounted || pedido != _pedido) return;
-      // as preferências em cada canal: 1×, volume, silêncio, atraso do áudio, desentrelaçamento…
-      await aplicarAoAbrir(_motor, _prefs, _sessao,
-          plataforma: _plataforma,
-          modo: _modo,
-          hardware: hardwareCanal,
-          limparFiltro: desentrelacamento.limpar,
-          manterDesentrelacamento: desentrelacamento.manter);
+      final mk = _mk;
+      if (mk != null) {
+        await mk.configurado;
+        if (!mounted || pedido != _pedido) return;
+        // as preferências em cada canal: 1×, volume, silêncio, atraso do áudio, desentrelaçamento…
+        await aplicarAoAbrir(mk.mpv, _prefs, _sessao,
+            plataforma: _plataforma,
+            modo: _modo,
+            hardware: hardwareCanal,
+            limparFiltro: desentrelacamento.limpar,
+            manterDesentrelacamento: desentrelacamento.manter);
+      } else {
+        // outro motor: só o que a interface tem (1× e o volume)
+        await _motor.velocidade(1);
+        await _motor.volume(_prefs.volume);
+      }
       if (!mounted || pedido != _pedido) return;
       _vigia.abrindo();
       _larguraVista = 0;
       await VezDoAudio.instancia.esperar();
       if (!mounted || pedido != _pedido) return;
-      await _player.open(Media(f.url, httpHeaders: f.headers, start: continuar ? _retomarEm : null));
+      await _motor.abrir(f.url, f.headers, inicio: continuar ? _retomarEm : null);
       // o modo de ecrã pede-se já (o fps sabe-se logo que o canal abre): a TV pisca a mudar de
       // modo enquanto o indicador de abertura ainda está à vista, não por cima da imagem
       if (mounted && pedido == _pedido) unawaited(_ajustarTaxa(pedido));
@@ -518,11 +529,13 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   /// relativo, nunca reabre o canal, o relógio do direto fica certo); num filme, seek absoluto.
   Future<void> _procurar(JanelaProgresso janela, double alvo) async {
     final pedido = _pedido;
+    final mpv = _mpv, saltos = _saltos;
+    if (mpv == null || saltos == null) return;
     String? aviso;
     if (janela.direto) {
-      aviso = await _saltos.irPara(alvo);
+      aviso = await saltos.irPara(alvo);
     } else if (pedido == _pedido) {
-      await _motor.command(['seek', alvo.toStringAsFixed(3), 'absolute']);
+      await mpv.command(['seek', alvo.toStringAsFixed(3), 'absolute']);
     }
     _leitor.esquecer(); // a posição mudou
     if (!mounted || pedido != _pedido) return;
@@ -536,7 +549,9 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     if (!_android) return;
     await _lerHzEcra();
     if (!_prefs.ajustarTaxaEcra) return;
-    final mpv = _motor;
+    // o fps do canal lê-se do mpv: sem ele não se pede modo
+    final mpv = _mpv;
+    if (mpv == null) return;
     // o container-fps costuma vir logo; senão o medido, que demora uns segundos
     try {
       for (var tentativa = 0; tentativa < 5; tentativa++) {
@@ -572,8 +587,10 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     for (var i = 0; i < _tentativasRetoma; i++) {
       await Future<void>.delayed(const Duration(milliseconds: 300));
       if (!mounted || pedido != _pedido) return;
+      final mpv = _mpv;
+      if (mpv == null) return;
       try {
-        final m = await _motor.getProperties(const ['demuxer-start-time', 'time-pos', 'demuxer-cache-state']);
+        final m = await mpv.getProperties(const ['demuxer-start-time', 'time-pos', 'demuxer-cache-state']);
         if (!mounted || pedido != _pedido) return;
         final pos = double.tryParse(m['time-pos'] ?? '');
         final inicioNovo = double.tryParse(m['demuxer-start-time'] ?? '');
@@ -593,7 +610,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
         final texto = salto == null ? 'sem salto' : 'salta ${salto.toStringAsFixed(1)} s';
         debugPrint('player: reaberto; o que se viu por último fica a ${(alvo - pos).toStringAsFixed(1)} s; $texto');
         if (salto != null) {
-          await _motor.command(['seek', salto.toStringAsFixed(3), 'relative']);
+          await mpv.command(['seek', salto.toStringAsFixed(3), 'relative']);
           _relogio.avancou(Duration(microseconds: (salto * 1e6).round()));
           // o salto não é imagem nova desta ligação (o proveito conta a partir daqui)
           _ligacao.saltou(pos + salto);
@@ -624,7 +641,8 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   }
 
   void _porMudo(String? valor) {
-    if (valor != null) unawaited(_motor.setProperty('mute', valor).catchError((Object _) => null));
+    final mpv = _mpv;
+    if (valor != null && mpv != null) unawaited(mpv.setProperty('mute', valor).catchError((Object _) => null));
   }
 
   /// Os Hz do ecrã segundo o Android (o mpv não os sabe com `mediacodec_embed`).
@@ -637,14 +655,14 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   /// stream e o mpv passou para software, que o mediacodec_embed não mostra), reabre este canal
   /// em "Compatível" nesta sessão. Só uma vez por canal (nunca em ciclo).
   Future<void> _vigiarImagem(int pedido) async {
-    if (!_android || _modo != ModoDescodificacao.direto || !_hardware) return;
-    final player = _player;
-    final mpv = _motor;
+    final mpv = _mpv;
+    if (!_android || _modo != ModoDescodificacao.direto || !_hardware || mpv == null) return;
+    final player = _motor;
     try {
       // duas leituras seguidas sem imagem (a saída de vídeo do media_kit troca de vo no arranque)
       for (final espera in const [Duration(seconds: 2), Duration(seconds: 1)]) {
         await Future<void>.delayed(espera);
-        if (!mounted || pedido != _pedido || !identical(player, _player)) return;
+        if (!mounted || pedido != _pedido || !identical(player, _motor)) return;
         final m = {
           for (final p in const ['video-codec', 'hwdec-current', 'vo-configured']) p: await mpv.getProperty(p),
         };
@@ -700,10 +718,10 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     setState(() => _aTocar = tocar);
     if (tocar) {
       _relogio.retomou();
-      await _player.play();
+      await _motor.play();
     } else {
       _relogio.pausou(); // o direto continua: fica-se para trás
-      await _player.pause();
+      await _motor.pausar();
     }
   }
 
@@ -724,9 +742,11 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
         final anterior = _historico.anterior;
         if (anterior != null) _irPara(anterior);
       case AcaoPlayer.recuar:
-        _saltar(_saltos.recuar);
+        final saltos = _saltos;
+        if (saltos != null) _saltar(saltos.recuar);
       case AcaoPlayer.avancar:
-        _saltar(_saltos.avancar);
+        final saltos = _saltos;
+        if (saltos != null) _saltar(saltos.avancar);
       case AcaoPlayer.voltarAoDireto:
         _saltar(() async {
           if (!_aTocar) await _tocar(true);
@@ -734,6 +754,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
           // Se entretanto mudou de canal, não se mexe no canal novo.
           final pedido = _pedido;
           final saltos = _saltos;
+          if (saltos == null) return null;
           final r = await saltos.voltarAoDireto(aindaValido: () => mounted && pedido == _pedido);
           if (r == VoltaAoDireto.reabrir && mounted && pedido == _pedido) _abrir();
           return null;
@@ -762,7 +783,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   void _mudarVelocidade(double v) {
     setState(() => _velocidade = v);
     _relogio.mudouVelocidade(v);
-    _motor.setRate(v);
+    _motor.velocidade(v);
   }
 
   /// Muda uma preferência, guarda-a e aplica-a já.
@@ -773,7 +794,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   }
 
   String get _textoDesentrelacamento {
-    final l = _player.state.height ?? 0, n = _linhasNoEcra.value;
+    final l = _tamanhoAgora?.height.round() ?? 0, n = _linhasNoEcra.value;
     if (_deint.meio == MeioDesentrelacamento.shaderFlutter && n != null && n > 0 && !shaderCabe(linhasVideo: l, linhasNoEcra: n)) {
       return 'desligado (imagem reduzida no ecrã)';
     }
@@ -793,8 +814,12 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
 
   bool get _shaderFlutterPronto => _programaFlutter != null && FiltroDesentrelacamento.suportado;
 
+  /// O desentrelaçamento da app só no motor que o suporta e que expõe o mpv.
+  bool get _comDesentrelacamento => _motor.suportaDesentrelacamento && _mpv != null;
+
   /// No Windows há sempre o shader do mpv; no Android, o do Flutter se o aparelho o permitir.
-  bool get _desentrelacamentoPossivel => !_android || _shaderFlutterPronto || _deint.filtros;
+  bool get _desentrelacamentoPossivel =>
+      _comDesentrelacamento && (!_android || _shaderFlutterPronto || _deint.filtros);
 
   /// O Android no modo direto (o mpv não vê as imagens: o filtro não se aplica).
   bool get _diretoAndroid => _android && _modo == ModoDescodificacao.direto && _hardware;
@@ -823,8 +848,10 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   /// entrelaçado), ou a cada segundo enquanto a imagem ou o filtro estão por medir.
   Future<void> _verEntrelacamento(int pedido) async {
     _vigiaEntrelacamento?.cancel();
+    final mpv = _mpv;
+    if (!_comDesentrelacamento || mpv == null) return;
     try {
-      final m = await _motor.getProperties(propriedadesEntrelacamento(_plataforma));
+      final m = await mpv.getProperties(propriedadesEntrelacamento(_plataforma));
       if (!mounted || pedido != _pedido) return;
       // Android direto: o filtro não se aplica, o canal reabre em Compatível (uma vez por canal); e
       // um Compatível com o filtro que perde imagens volta ao direto
@@ -847,7 +874,9 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   /// um canal que entretanto mudou ([pedido]) já não toca no mpv.
   Future<void> _aplicarDesentrelacamento([int? pedido]) async {
     final p = pedido ?? _pedido;
-    final mudou = await _deint.aplicar(_motor,
+    final mpv = _mpv;
+    if (!_comDesentrelacamento || mpv == null) return;
+    final mudou = await _deint.aplicar(mpv,
         ligado: _prefs.desentrelacar,
         forcar: _forcarDesentrelacamento,
         shaderFlutter: _shaderFlutterPronto,
@@ -866,7 +895,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   List<ItemDefinicao> _definicoes() {
     final video = escolhaVideo(_faixas.video, _faixa.video);
     final audio = escolhaAudio(_faixas.audio, _faixa.audio);
-    final legendas = escolhaLegendas(_faixas.subtitle, _faixa.subtitle);
+    final legendas = escolhaLegendas(_faixas.legendas, _faixa.legenda);
     final possivel = _desentrelacamentoPossivel;
     return [
       DefinicaoEscolha(
@@ -889,7 +918,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
         opcoes: video.opcoes,
         atual: video.atual,
         // só com mais de uma faixa (escolher entre "Automática" e a única não muda nada)
-        aoMudar: video.opcoes.length > 2 ? (i) => _player.setVideoTrack(video.faixa(i)) : null,
+        aoMudar: video.opcoes.length > 2 && _mk != null ? (i) => _mk?.escolherVideo(video.faixa(i)) : null,
         nota: video.opcoes.length <= 2 ? 'Este canal só tem uma' : null,
       ),
       DefinicaoEscolha(
@@ -900,7 +929,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
             ? (i) {
                 final faixa = audio.faixa(i);
                 _audioEscolhido = faixa.id == 'auto' ? null : faixa;
-                _player.setAudioTrack(faixa);
+                _motor.escolherAudio(faixa);
               }
             : null,
         nota: audio.opcoes.length <= 2 ? 'Este canal só tem uma' : null,
@@ -909,7 +938,10 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
         'Legendas',
         opcoes: legendas.opcoes,
         atual: legendas.atual,
-        aoMudar: (i) => _player.setSubtitleTrack(legendas.faixa(i)),
+        aoMudar: (i) {
+          final faixa = legendas.faixa(i);
+          _motor.escolherLegenda(faixa.id == FaixaMotor.nenhuma.id ? null : faixa);
+        },
         nota: legendas.opcoes.length < 2 ? 'Este canal não tem legendas' : null,
       ),
       DefinicaoPassos(
@@ -949,7 +981,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
           'Descodificação por hardware',
           valor: _prefs.hardware,
           aoMudar: (v) => _preferir((p) => p.hardware = v, () async {
-            await _motor.setProperty('hwdec', hwdecEmTempoReal(_plataforma, hardware: v)!);
+            await _mpv?.setProperty('hwdec', hwdecEmTempoReal(_plataforma, hardware: v)!);
             await _aplicarDesentrelacamento();
           }),
           nota: 'Desligue se a imagem aparecer com defeitos',
@@ -978,12 +1010,13 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   }
 
   void _mudarVolume(int passo) {
-    _preferir((p) => p.volume = p.volume + passo, () => _motor.setVolume(_prefs.volume));
+    _preferir((p) => p.volume = p.volume + passo, () => _motor.volume(_prefs.volume));
   }
 
   void _mudarAtrasoAudio(int direcao) {
     setState(() => _sessao.atrasoAudio = passoAtrasoAudio(_sessao.atrasoAudio, direcao));
-    aplicarAtrasoAudio(_motor, _sessao.atrasoAudio);
+    final mpv = _mpv;
+    if (mpv != null) aplicarAtrasoAudio(mpv, _sessao.atrasoAudio);
   }
 
   @override
@@ -1000,7 +1033,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       s.cancel();
     }
     // o mpv só se destrói depois dos pedidos que ainda lá estão
-    unawaited(_aposentar(_motor, _player));
+    unawaited(_motor.descartar());
     super.dispose();
   }
 
@@ -1008,26 +1041,25 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   Widget build(BuildContext context) {
     final canal = _canais[_i];
     final ajuste = ajusteVideo(_prefs.formato);
-    Widget video = Video(
-      key: ObjectKey(_video),
-      controller: _video,
-      controls: NoVideoControls,
-      fill: Colors.black,
-      fit: ajuste.fit,
-      aspectRatio: ajuste.aspecto,
-      // Android: o shader de desentrelaçamento por cima da textura (o tamanho lê-se na hora: chega
-      // depois de o Video ser construído)
-      envolverTextura: _deint.meio == MeioDesentrelacamento.shaderFlutter
-          ? (t) => ValueListenableBuilder<double?>(
-              valueListenable: _linhasNoEcra,
-              builder: (_, _, _) => TexturaDesentrelacada(
-              programa: _programaFlutter,
-              colunas: _player.state.width ?? 0,
-              linhas: _player.state.height ?? 0,
-              linhasNoEcra: _linhasNoEcra.value,
-              child: t))
-          : null,
-    );
+    final mk = _mk;
+    Widget video = mk == null
+        ? _motor.video(ajuste: ajuste.fit, proporcao: ajuste.aspecto)
+        : mk.videoMpv(
+            ajuste: ajuste.fit,
+            proporcao: ajuste.aspecto,
+            // Android: o shader de desentrelaçamento por cima da textura (o tamanho lê-se na hora:
+            // chega depois de o Video ser construído)
+            envolverTextura: _deint.meio == MeioDesentrelacamento.shaderFlutter && _comDesentrelacamento
+                ? (t) => ValueListenableBuilder<double?>(
+                    valueListenable: _linhasNoEcra,
+                    builder: (_, _, _) => TexturaDesentrelacada(
+                        programa: _programaFlutter,
+                        colunas: mk.tamanhoAtual?.width.round() ?? 0,
+                        linhas: mk.tamanhoAtual?.height.round() ?? 0,
+                        linhasNoEcra: _linhasNoEcra.value,
+                        child: t))
+                : null,
+          );
     if (ajuste.escala != 1) video = ClipRect(child: Transform.scale(scale: ajuste.escala, child: video));
     if (_android) {
       // as linhas do ecrã que o vídeo ocupa: reduzido, o shader não serve (os campos já vêm misturados)
@@ -1036,8 +1068,8 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
           medir: (caixa, dpr) => linhasMostradas(
               caixa: caixa,
               dpr: dpr,
-              colunas: _player.state.width ?? 0,
-              linhas: _player.state.height ?? 0,
+              colunas: _tamanhoAgora?.width.round() ?? 0,
+              linhas: _tamanhoAgora?.height.round() ?? 0,
               fit: ajuste.fit,
               aspecto: ajuste.aspecto,
               escala: ajuste.escala),
@@ -1101,10 +1133,11 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
                 hzEcra: _hzEcra,
                 extra: [
                   if (_android) ('Modo de descodificação', _rotuloModoAtual),
-                  ('Saída · hwdec pedido', '${_config.vo} · ${_config.hwdec}'),
+                  if (mk != null) ('Saída · hwdec pedido', '${mk.config.vo} · ${mk.config.hwdec}')
+                  else ('Motor', _motor.nome),
                   ('Desentrelaçamento', _textoDesentrelacamento),
                   if (_android && (_linhasNoEcra.value ?? 0) > 0)
-                    ('Linhas no ecrã · do vídeo', '${_linhasNoEcra.value!.round()} · ${_player.state.height ?? 0}'),
+                    ('Linhas no ecrã · do vídeo', '${_linhasNoEcra.value!.round()} · ${_tamanhoAgora?.height.round() ?? 0}'),
                   if (_hzPedidos != null) ('Taxa do ecrã pedida', '${_hzPedidos!.toStringAsFixed(2)} Hz'),
                 ],
               ),
