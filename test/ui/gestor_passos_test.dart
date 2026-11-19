@@ -8,6 +8,8 @@ import 'package:player_iptv/dados/biblioteca.dart';
 import 'package:player_iptv/importar/importar.dart';
 import 'package:player_iptv/modelo/conta.dart';
 import 'package:player_iptv/ui/inicio/tela_inicio.dart';
+import 'package:player_iptv/ui/principal/barra_seccoes.dart';
+import 'package:player_iptv/ui/principal/tela_principal.dart';
 import 'package:player_iptv/ui/verificar/tela_verificar.dart';
 import 'package:player_iptv/verificar/servico.dart';
 
@@ -42,6 +44,24 @@ void main() {
         Importada(contaDeLinha('http://morta.com/l.m3u')!, _u('nao_funciona')),
         Importada(contaDeLinha('http://nova.com/l.m3u')!),
       ]));
+
+  /// A app: Ver TV (vazio) e o Gestor nas secções da casca.
+  Widget casca() => TelaPrincipal(
+      verTv: TelaInicio(biblioteca: bib, area: area),
+      gestor: TelaVerificar(biblioteca: bib, area: area, servico: ServicoVerificacao(bib, colecao: area)),
+      definicoes: const SizedBox());
+
+  /// Só com setas: de "Ir para o Gestor" (Ver TV vazio) ESQUERDA até à barra, BAIXO, OK.
+  Future<void> aoGestor(WidgetTester t) async {
+    expect(textosFocados(), 'Ir para o Gestor');
+    await teclaDpad(t, LogicalKeyboardKey.arrowLeft);
+    expect(textosFocados(), 'Ver TV');
+    await teclaDpad(t, LogicalKeyboardKey.arrowDown);
+    expect(textosFocados(), 'Gestor');
+    await teclaDpad(t, LogicalKeyboardKey.select);
+    await t.pumpAndSettle();
+    expect(find.text('Adicionar listas').hitTestable(), findsOneWidget);
+  }
 
   Widget gestor() => Scaffold(
       body: TelaVerificar(biblioteca: bib, area: area, servico: ServicoVerificacao(bib, colecao: area)));
@@ -95,23 +115,16 @@ void main() {
     expect(textosFocados(), contains('004MORTA'));
   });
 
-  testWidgets('na TV, só com setas: dos separadores desce por todos os passos até às listas e volta acima',
+  testWidgets('na TV, só com setas: da barra das secções desce por todos os passos até às listas e volta acima',
       (t) async {
     ecraTvTeste(t);
     await comListas(t);
-    final s = ServicoVerificacao(bib, colecao: area);
-    await t.pumpWidget(appTeste(TelaInicio(
-        biblioteca: bib, area: area, separadorGestor: TelaVerificar(biblioteca: bib, area: area, servico: s))));
+    await t.pumpWidget(appTeste(casca()));
     await t.pump();
-    // ao Gestor: CIMA até às abas, DIREITA, OK
-    for (var i = 0; i < 4; i++) {
-      await teclaDpad(t, LogicalKeyboardKey.arrowUp);
-    }
+    await aoGestor(t);
+    // DIREITA entra no Gestor, no 1.º controlo
     await teclaDpad(t, LogicalKeyboardKey.arrowRight);
-    expect(textosFocados(), 'Gestor');
-    await teclaDpad(t, LogicalKeyboardKey.select);
-    await t.pumpAndSettle();
-    final descer = <String>[];
+    final descer = <String>[textosFocados()];
     for (var i = 0; i < 40 && !descer.any((d) => d.contains('005NOVA')); i++) {
       await teclaDpad(t, LogicalKeyboardKey.arrowDown);
       descer.add(textosFocados());
@@ -137,23 +150,23 @@ void main() {
 
   testWidgets('na TV: DIREITA alcança os botões ao lado (Importar do Player, Iniciar pesquisa, Esmagar...)',
       (t) async {
-    ecraTvTeste(t);
+    // o Gestor com a largura de antes da barra lateral (960): as datas e "Iniciar pesquisa" na
+    // mesma linha (a 960 com a barra, o botão passa à linha de baixo e chega-se lá com BAIXO)
+    ecraTvTeste(t, largura: 960 + BarraSeccoes.largura);
     await comListas(t);
-    final s = ServicoVerificacao(bib, colecao: area);
-    await t.pumpWidget(appTeste(TelaInicio(
-        biblioteca: bib, area: area, separadorGestor: TelaVerificar(biblioteca: bib, area: area, servico: s))));
+    await t.pumpWidget(appTeste(casca()));
     await t.pump();
-    for (var i = 0; i < 4; i++) {
-      await teclaDpad(t, LogicalKeyboardKey.arrowUp);
-    }
+    await aoGestor(t);
     await teclaDpad(t, LogicalKeyboardKey.arrowRight);
-    await teclaDpad(t, LogicalKeyboardKey.select);
-    await t.pumpAndSettle();
-    await teclaDpad(t, LogicalKeyboardKey.arrowDown);
     expect(textosFocados(), startsWith('Adicionar listas'));
     await teclaDpad(t, LogicalKeyboardKey.arrowRight);
     expect(textosFocados(), startsWith('Importar do Player'));
     await teclaDpad(t, LogicalKeyboardKey.arrowLeft);
+    expect(textosFocados(), startsWith('Adicionar listas'));
+    // no princípio da linha, ESQUERDA vai à barra das secções; DIREITA volta
+    await teclaDpad(t, LogicalKeyboardKey.arrowLeft);
+    expect(textosFocados(), 'Gestor');
+    await teclaDpad(t, LogicalKeyboardKey.arrowRight);
     expect(textosFocados(), startsWith('Adicionar listas'));
     for (var i = 0; i < 6 && !textosFocados().contains('/20'); i++) {
       await teclaDpad(t, LogicalKeyboardKey.arrowDown);

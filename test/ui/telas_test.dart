@@ -86,11 +86,16 @@ void main() {
     expect(mensagemErroPlayer('http://h/live/u/p/1.ts'), 'o canal não abriu');
   });
 
-  testWidgets('Player vazio: diz que não há listas no Player e não adiciona', (t) async {
+  testWidgets('Ver TV vazio: diz que não há listas no Player e não adiciona', (t) async {
     await t.pumpWidget(_app(TelaInicio(biblioteca: bib)));
     expect(find.text('Ainda não há listas no Player'), findsOneWidget);
     expect(find.text('Adicionar listas'), findsNothing);
     expect(find.byTooltip('Adicionar listas'), findsNothing);
+    // só o conteúdo de Ver TV: sem separadores nem roda dentada (são da casca)
+    expect(find.byType(TabBar), findsNothing);
+    expect(find.byTooltip('Definições'), findsNothing);
+    // fora da casca não há Gestor para onde ir
+    expect(find.text('Ir para o Gestor'), findsNothing);
   });
 
   testWidgets('I3: Gestor com 300 listas só constrói as linhas visíveis (lista preguiçosa)', (t) async {

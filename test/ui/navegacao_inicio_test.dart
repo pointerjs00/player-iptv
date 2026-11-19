@@ -10,6 +10,7 @@ import 'package:player_iptv/modelo/canal.dart';
 import 'package:player_iptv/modelo/conta.dart';
 import 'package:player_iptv/ui/conteudo/tela_conteudo.dart';
 import 'package:player_iptv/ui/inicio/tela_inicio.dart';
+import 'package:player_iptv/ui/principal/tela_principal.dart';
 import 'package:player_iptv/ui/realce_foco.dart';
 import 'package:player_iptv/ui/tema.dart';
 
@@ -21,6 +22,10 @@ final _conteudo = ConteudoLista(['Portugal', 'Desporto'], const [
   Canal(id: '2', nome: 'SIC', grupo: 'Portugal'),
   Canal(id: '3', nome: 'Sport TV 1', grupo: 'Desporto'),
 ]);
+
+/// Ver TV dentro da casca (o Voltar e a confirmação da saída são da casca).
+Widget _casca(Biblioteca bib, VoidCallback sair) => TelaPrincipal(
+    verTv: TelaInicio(biblioteca: bib), gestor: const SizedBox(), definicoes: const SizedBox(), sair: sair);
 
 void main() {
   late Directory pasta;
@@ -105,11 +110,11 @@ void main() {
   });
 
   group('confirmar a saída', () {
-    testWidgets('Voltar no Início pede "Carregue outra vez em Voltar para sair"; a segunda vez em 2 s sai',
+    testWidgets('Voltar em Ver TV pede "Carregue outra vez em Voltar para sair"; a segunda vez em 2 s sai',
         (t) async {
       tamanho(t);
       var saidas = 0;
-      await t.pumpWidget(_app(TelaInicio(biblioteca: bib, sair: () => saidas++)));
+      await t.pumpWidget(_app(_casca(bib, () => saidas++)));
       await t.pumpAndSettle();
       await t.binding.handlePopRoute();
       await t.pump();
@@ -124,7 +129,7 @@ void main() {
     testWidgets('passados 2 s volta a pedir', (t) async {
       tamanho(t);
       var saidas = 0;
-      await t.pumpWidget(_app(TelaInicio(biblioteca: bib, sair: () => saidas++)));
+      await t.pumpWidget(_app(_casca(bib, () => saidas++)));
       await t.pumpAndSettle();
       await t.binding.handlePopRoute();
       await t.pump(const Duration(milliseconds: 2100));
@@ -140,7 +145,7 @@ void main() {
     testWidgets('num ecrã por cima (canais), Voltar só fecha esse ecrã', (t) async {
       final l = await preparar(t, visto: false);
       var saidas = 0;
-      await t.pumpWidget(_app(TelaInicio(biblioteca: bib, sair: () => saidas++)));
+      await t.pumpWidget(_app(_casca(bib, () => saidas++)));
       await t.pumpAndSettle();
       await t.runAsync(() async {
         await t.tap(find.text(l.nomeMostrado));
@@ -161,7 +166,7 @@ void main() {
       debugDefaultTargetPlatformOverride = TargetPlatform.windows;
       addTearDown(() => debugDefaultTargetPlatformOverride = null);
       tamanho(t);
-      await t.pumpWidget(_app(TelaInicio(biblioteca: bib, sair: () {})));
+      await t.pumpWidget(_app(_casca(bib, () {})));
       await t.pumpAndSettle();
       await t.binding.handlePopRoute();
       await t.pump();

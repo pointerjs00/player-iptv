@@ -14,10 +14,10 @@ import 'modelo/canal.dart';
 import 'rede/http.dart';
 import 'ui/definicoes/tela_definicoes.dart';
 import 'ui/design/componentes.dart';
-import 'ui/design/movimento.dart';
 import 'ui/design/ecra.dart';
 import 'ui/inicio/tela_inicio.dart';
 import 'ui/player/player_canais.dart';
+import 'ui/principal/tela_principal.dart';
 import 'ui/realce_foco.dart';
 import 'ui/tema.dart';
 import 'ui/verificar/tela_verificar.dart';
@@ -120,24 +120,20 @@ class _AppPlayerIptvState extends State<AppPlayerIptv> {
         locale: _pt,
         supportedLocales: const [_pt],
         localizationsDelegates: GlobalMaterialLocalizations.delegates,
-        home: Builder(builder: (context) {
-          Widget definicoes(BuildContext _) => TelaDefinicoes(
-              biblioteca: widget.biblioteca,
-              area: widget.area,
-              preferencias: Preferencias.atual,
-              servico: _servico);
-          return TelaInicio(
-            biblioteca: widget.biblioteca,
-            area: widget.area,
-            definicoes: definicoes,
-            separadorGestor: TelaVerificar(
+        // três secções fixas que guardam o estado; o "Alterar nas Definições" do Gestor muda de secção
+        home: TelaPrincipal(
+          verTv: TelaInicio(biblioteca: widget.biblioteca, area: widget.area),
+          gestor: Builder(
+            builder: (context) => TelaVerificar(
               biblioteca: widget.biblioteca,
               area: widget.area,
               servico: _servico,
-              abrirDefinicoes: () => Navigator.of(context).push(rotaSuave<void>(definicoes(context))),
+              abrirDefinicoes: () => TelaPrincipal.irPara(context, Seccao.definicoes),
             ),
-          );
-        }),
+          ),
+          definicoes: TelaDefinicoes(
+              biblioteca: widget.biblioteca, area: widget.area, preferencias: Preferencias.atual, servico: _servico),
+        ),
       );
 }
 

@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
@@ -8,34 +7,26 @@ import '../../dados/area_gestor.dart';
 import '../../dados/biblioteca.dart';
 import '../../importar/importar.dart';
 import '../../modelo/canal.dart';
-import '../adicionar.dart';
 import '../campo_tv.dart';
 import '../conteudo/tela_conteudo.dart';
 import '../design/design.dart';
-import '../realce_foco.dart';
+import '../principal/tela_principal.dart';
 import 'acoes_lista.dart';
 import 'cartao_continuar.dart';
 import 'cartao_lista.dart';
 
-/// Início com os separadores "Player" e "Gestor". O Player mostra as listas em cartões (com o
-/// estado da última verificação, pesquisa e filtro por estado) e não gere nada: adicionar,
-/// verificar, exportar e enviar listas para o Player faz-se no Gestor. No topo do Player,
-/// "Continuar a ver" (o último canal visto). No Android, Voltar no Início pede confirmação.
+/// Ver TV: as listas do Player em cartões (com o estado da última verificação, pesquisa e filtro
+/// por estado). Não gere nada: adicionar, verificar, exportar e enviar listas para o Player
+/// faz-se no Gestor. No topo, "Continuar a ver" (o último canal visto). As secções, o Voltar e a
+/// confirmação da saída são da casca ([TelaPrincipal]).
 class TelaInicio extends StatefulWidget {
-  const TelaInicio({super.key, required this.biblioteca, this.area, this.separadorGestor, this.abrirLista, this.definicoes,
-      this.abrirCanal, this.sair = SystemNavigator.pop});
+  const TelaInicio({super.key, required this.biblioteca, this.area, this.abrirLista, this.abrirCanal});
 
   /// As listas do Player.
   final Biblioteca biblioteca;
 
-  /// As listas do Gestor: o "+" (só com o separador Gestor ativo) adiciona aqui.
+  /// As listas do Gestor: o menu do cartão envia para aqui.
   final AreaGestor? area;
-
-  /// O separador "Gestor".
-  final Widget? separadorGestor;
-
-  /// O ecrã de Definições (a roda dentada no topo, nos dois separadores).
-  final WidgetBuilder? definicoes;
 
   /// Para testes: pede os canais de uma lista (em vez do protocolo da conta).
   final AbrirLista? abrirLista;
@@ -43,97 +34,26 @@ class TelaInicio extends StatefulWidget {
   /// Para testes: em vez de abrir o player (ver [TelaConteudo.abrir]).
   final FutureOr<int?> Function(List<Canal> canais, int i)? abrirCanal;
 
-  /// Fecha a app (o segundo Voltar no Início).
-  final VoidCallback sair;
-
   @override
   State<TelaInicio> createState() => _TelaInicioState();
 }
 
 class _TelaInicioState extends State<TelaInicio> {
   String _q = '';
-  int? _abaFocada; // a aba com o foco do comando (para o realce)
-
-  /// O "+": recebe o foco depois de "Ir para o Gestor" (o botão do ecrã vazio desaparece).
-  final _focoMais = FocusNode(debugLabel: 'Adicionar listas');
-
-  /// O conteúdo do separador ativo: BAIXO nas abas entra no primeiro controlo dele.
-  final _focoCorpo = FocusNode(debugLabel: 'Corpo', canRequestFocus: false, skipTraversal: true);
 
   /// O foco de cada cartão (pelo id da lista): depois de eliminar, o foco passa ao cartão ao lado.
   final _focos = <String, FocusNode>{};
 
   FocusNode _focoCartao(String id) => _focos.putIfAbsent(id, () => FocusNode(debugLabel: 'Cartão $id'));
 
-  /// Depois do primeiro Voltar, durante [_tempoSair], o segundo fecha a app.
-  static const _tempoSair = Duration(seconds: 2);
-  Timer? _podeSair;
-
-  /// Android/TV: Voltar no Início (sem nada por cima) não fecha logo a app. No Windows a janela
-  /// fecha-se pelo botão de fechar, como sempre.
-  bool get _confirmarSaida => defaultTargetPlatform == TargetPlatform.android;
-
-  /// O nome de cada aba: o foco da aba (o InkWell à volta) acha-se a partir dele. CIMA a partir
-  /// do topo do separador vai para a aba ativa (e não para a que estiver mais perto na horizontal).
-  final _chavesAbas = [GlobalKey(debugLabel: 'Aba Player'), GlobalKey(debugLabel: 'Aba Gestor')];
-
-  /// CIMA no conteúdo sem nada por cima: a aba do separador à vista.
-  KeyEventResult _teclaCorpo(BuildContext context, KeyEvent e) {
-    if (e is KeyUpEvent || e.logicalKey != LogicalKeyboardKey.arrowUp || widget.separadorGestor == null) {
-      return KeyEventResult.ignored;
-    }
-    final atual = FocusManager.instance.primaryFocus;
-    if (atual == null || !atual.ancestors.contains(_focoCorpo)) return KeyEventResult.ignored;
-    final r = atual.rect;
-    final haAcima = _focoCorpo.traversalDescendants
-        .any((n) => n != atual && n.canRequestFocus && !n.skipTraversal && n.context != null && n.rect.center.dy < r.top);
-    if (haAcima) return KeyEventResult.ignored;
-    final ctxAba = _chavesAbas[DefaultTabController.of(context).index].currentContext;
-    final aba = ctxAba == null ? null : Focus.maybeOf(ctxAba);
-    if (aba == null || aba.context == null) return KeyEventResult.ignored;
-    aba.requestFocus();
-    return KeyEventResult.handled;
-  }
-
-  /// O controlo mais acima (e mais à esquerda) do separador à vista.
-  FocusNode? _primeiroDoCorpo() {
-    final corpo = _focoCorpo.context?.findRenderObject();
-    if (corpo is! RenderBox || !corpo.hasSize) return null;
-    final area = corpo.localToGlobal(Offset.zero) & corpo.size;
-    FocusNode? melhor;
-    for (final n in _focoCorpo.traversalDescendants) {
-      if (!n.canRequestFocus || n.context == null) continue;
-      final r = n.rect;
-      // só os que estão à vista (o separador escondido e o que já saiu de cima não contam)
-      if (!area.contains(r.center)) continue;
-      final m = melhor?.rect;
-      if (m == null || r.top < m.top - 4 || ((r.top - m.top).abs() <= 4 && r.left < m.left)) melhor = n;
-    }
-    return melhor;
-  }
-
-  void _voltar(BuildContext context) {
-    if (_podeSair?.isActive ?? false) {
-      _podeSair!.cancel();
-      widget.sair();
-      return;
-    }
-    _podeSair = Timer(_tempoSair, () {});
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(const SnackBar(content: Text('Carregue outra vez em Voltar para sair'), duration: _tempoSair));
-  }
-
   @override
   void dispose() {
-    _podeSair?.cancel();
-    _focoMais.dispose();
-    _focoCorpo.dispose();
     for (final f in _focos.values) {
       f.dispose();
     }
     super.dispose();
   }
+
   String? _filtro; // null = todas; 'por_verificar' = sem resultado
 
   static const _filtros = [
@@ -204,14 +124,6 @@ class _TelaInicioState extends State<TelaInicio> {
         TelaConteudo(biblioteca: widget.biblioteca, lista: l, atualizar: atualizar, abrirLista: widget.abrirLista,
             abrir: widget.abrirCanal, continuar: continuar),
       ));
-
-  /// "Ir para o Gestor": muda de separador e põe o foco no "+" (que só aparece no Gestor).
-  void _irParaGestor(BuildContext context) {
-    DefaultTabController.of(context).animateTo(1);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && _focoMais.context != null) _focoMais.requestFocus();
-    });
-  }
 
   Widget _listas() => ListenableBuilder(
         listenable: widget.biblioteca,
@@ -306,11 +218,12 @@ class _TelaInicioState extends State<TelaInicio> {
                 const SizedBox(height: Tokens.e8),
                 const Text('Adicione e verifique listas no Gestor e envie-as para o Player.',
                     textAlign: TextAlign.center, style: TextStyle(color: Tokens.texto2)),
-                if (widget.separadorGestor != null) ...[
+                // dentro da casca: muda para o Gestor e o foco vai para "Adicionar listas"
+                if (context.getInheritedWidgetOfExactType<SeccaoAtual>() != null) ...[
                   const SizedBox(height: Tokens.e24),
                   FilledButton.icon(
                     autofocus: true,
-                    onPressed: () => _irParaGestor(context),
+                    onPressed: () => TelaPrincipal.irPara(context, Seccao.gestor),
                     icon: const Icon(Icons.arrow_forward_rounded),
                     label: const Text('Ir para o Gestor'),
                   ),
@@ -321,131 +234,7 @@ class _TelaInicioState extends State<TelaInicio> {
         ),
       );
 
+  // sem barra própria: a marca e as secções estão na casca
   @override
-  Widget build(BuildContext context) {
-    final temGestor = widget.separadorGestor != null;
-    return PopScope(
-      // o Voltar do comando no Início: "Carregue outra vez em Voltar para sair"
-      canPop: !_confirmarSaida,
-      onPopInvokedWithResult: (saiu, _) {
-        if (!saiu) _voltar(context);
-      },
-      child: temGestor ? _comAbas() : _corpo(context, gestorAtivo: false),
-    );
-  }
-
-  Widget _comAbas() {
-    return DefaultTabController(
-      length: 2,
-      // com "reduzir movimento" a troca de abas também é instantânea
-      animationDuration: duracaoAnimada(context, kTabScrollDuration),
-      child: Builder(builder: (context) {
-        final c = DefaultTabController.of(context);
-        return ListenableBuilder(listenable: c, builder: (context, _) => _corpo(context, gestorAtivo: c.index == 1));
-      }),
-    );
-  }
-
-  Widget _corpo(BuildContext context, {required bool gestorAtivo}) {
-    final temGestor = widget.separadorGestor != null;
-    final area = widget.area;
-    return Scaffold(
-      appBar: AppBar(
-        // as abas ficam na mesma linha do "+": CIMA a partir do conteúdo para nas abas (nada
-        // por cima delas) e ESQUERDA/DIREITA trocam Player, Gestor e o "+" (só no Gestor)
-        title: temGestor
-            ? Row(children: [
-                // no telemóvel não há espaço para o nome e as abas
-                if (MediaQuery.sizeOf(context).width >= 600) ...const [_Marca(), SizedBox(width: Tokens.e16)],
-                Expanded(
-                  // sem o "+" (no Player), DIREITA na última aba fica nela (não salta para os filtros)
-                  child: Focus(
-                    canRequestFocus: false,
-                    skipTraversal: true,
-                    includeSemantics: false,
-                    onKeyEvent: (_, e) {
-                      if (e is KeyUpEvent) return KeyEventResult.ignored;
-                      if (e.logicalKey == LogicalKeyboardKey.arrowRight &&
-                          _abaFocada == 1 &&
-                          !(gestorAtivo && area != null) &&
-                          widget.definicoes == null) {
-                        return KeyEventResult.handled;
-                      }
-                      // BAIXO numa aba: o primeiro controlo do separador (a procura direcional
-                      // escolhia o que estivesse mais perto da aba, por exemplo o 2.º botão)
-                      if (e.logicalKey == LogicalKeyboardKey.arrowDown && _abaFocada != null) {
-                        final primeiro = _primeiroDoCorpo();
-                        if (primeiro != null) {
-                          primeiro.requestFocus();
-                          return KeyEventResult.handled;
-                        }
-                      }
-                      return KeyEventResult.ignored;
-                    },
-                    child: TabBar(
-                      isScrollable: true,
-                      tabAlignment: TabAlignment.start,
-                      dividerColor: Colors.transparent,
-                      onFocusChange: (f, i) =>
-                          setState(() => _abaFocada = f ? i : (_abaFocada == i ? null : _abaFocada)),
-                      tabs: [
-                        for (final (i, t) in const ['Player', 'Gestor'].indexed)
-                          Tab(child: MolduraFoco(focado: _abaFocada == i, raio: 8, child: _Aba(t, key: _chavesAbas[i]))),
-                      ],
-                    ),
-                  ),
-                ),
-              ])
-            : const _Marca(),
-        actions: [
-          if (gestorAtivo && area != null)
-            IconButton(
-              focusNode: _focoMais,
-              tooltip: 'Adicionar listas',
-              onPressed: () => mostrarAdicionar(context, area),
-              icon: const Icon(Icons.add),
-            ),
-          if (widget.definicoes != null)
-            IconButton(
-              tooltip: 'Definições',
-              onPressed: () => Navigator.of(context).push(rotaSuave<void>(widget.definicoes!(context))),
-              icon: const Icon(Icons.settings_outlined),
-            ),
-        ],
-      ),
-      body: Focus(
-        focusNode: _focoCorpo,
-        includeSemantics: false,
-        onKeyEvent: (_, e) => _teclaCorpo(context, e),
-        child: temGestor ? TabBarView(children: [_listas(), widget.separadorGestor!]) : _listas(),
-      ),
-    );
-  }
-}
-
-/// O nome da app com o ícone em gradiente.
-class _Marca extends StatelessWidget {
-  const _Marca();
-
-  @override
-  Widget build(BuildContext context) => Row(mainAxisSize: MainAxisSize.min, children: [
-        Container(
-          width: 30,
-          height: 30,
-          decoration: BoxDecoration(gradient: Tokens.gradienteAcento, borderRadius: BorderRadius.circular(9)),
-          child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 22),
-        ),
-        const SizedBox(width: 10),
-        const Text('Player IPTV'),
-      ]);
-}
-
-/// O nome de uma aba (com espaço para a borda do realce).
-class _Aba extends StatelessWidget {
-  const _Aba(this.texto, {super.key});
-  final String texto;
-
-  @override
-  Widget build(BuildContext context) =>
-      Padding(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), child: Text(texto));
+  Widget build(BuildContext context) => Scaffold(body: _listas());
 }

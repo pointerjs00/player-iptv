@@ -6,7 +6,8 @@
 /// fim do bloco, ao primeiro controlo do bloco seguinte; CIMA faz o contrário (no princípio do
 /// bloco, vai ao início da última linha do bloco de cima). ESQUERDA/DIREITA andam só na mesma
 /// linha do bloco: no fim da linha o foco fica (não salta para um botão qualquer noutro sítio,
-/// por exemplo o "+" lá em cima).
+/// por exemplo um botão lá em cima); no princípio, ESQUERDA fica para quem está à volta (a
+/// barra das secções).
 library;
 
 import 'package:flutter/services.dart';
@@ -32,7 +33,7 @@ const _mesmaLinha = 10.0;
 
 /// Trata CIMA/BAIXO com o foco dentro de um dos `blocos` (pela ordem de cima para baixo).
 /// `ignored` quando o foco não está em nenhum bloco ou não há para onde ir (a procura normal
-/// continua: por exemplo do último bloco para uma lista por baixo, ou do primeiro para as abas).
+/// continua: por exemplo do último bloco para uma lista por baixo, ou do primeiro para a barra das secções).
 KeyEventResult moverEntreBlocos(List<FocusNode> blocos, KeyEvent e) {
   if (e is KeyUpEvent) return KeyEventResult.ignored;
   final k = e.logicalKey;
@@ -53,11 +54,14 @@ KeyEventResult moverEntreBlocos(List<FocusNode> blocos, KeyEvent e) {
             (direita ? n.rect.center.dx > r.right - 1 : n.rect.center.dx < r.left + 1))
           n,
     ];
-    if (naLinha.isNotEmpty) {
-      double dh(FocusNode n) => (n.rect.center.dx - r.center.dx).abs();
-      FocusTraversalPolicy.defaultTraversalRequestFocusCallback(naLinha.reduce((a, b) => dh(a) <= dh(b) ? a : b),
-          alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd);
+    if (naLinha.isEmpty) {
+      // ESQUERDA no princípio da linha: quem está à volta decide (a casca leva o foco à barra das
+      // secções); DIREITA no fim da linha fica
+      return direita ? KeyEventResult.handled : KeyEventResult.ignored;
     }
+    double dh(FocusNode n) => (n.rect.center.dx - r.center.dx).abs();
+    FocusTraversalPolicy.defaultTraversalRequestFocusCallback(naLinha.reduce((a, b) => dh(a) <= dh(b) ? a : b),
+        alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd);
     return KeyEventResult.handled;
   }
   final seguintes = [

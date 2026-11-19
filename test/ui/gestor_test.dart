@@ -9,6 +9,8 @@ import 'package:player_iptv/importar/importar.dart';
 import 'package:player_iptv/modelo/conta.dart';
 import 'package:player_iptv/ui/adicionar.dart';
 import 'package:player_iptv/ui/inicio/tela_inicio.dart';
+import 'package:player_iptv/ui/principal/barra_seccoes.dart';
+import 'package:player_iptv/ui/principal/tela_principal.dart';
 import 'package:player_iptv/ui/realce_foco.dart';
 import 'package:player_iptv/ui/tema.dart';
 import 'package:player_iptv/ui/verificar/tela_verificar.dart';
@@ -87,10 +89,10 @@ void main() {
 
   Widget inicio() {
     final s = ServicoVerificacao(bib, colecao: area);
-    return TelaInicio(
-      biblioteca: bib,
-      area: area,
-      separadorGestor: TelaVerificar(biblioteca: bib, area: area, servico: s),
+    return TelaPrincipal(
+      verTv: TelaInicio(biblioteca: bib, area: area),
+      gestor: TelaVerificar(biblioteca: bib, area: area, servico: s),
+      definicoes: const SizedBox(),
     );
   }
 
@@ -111,21 +113,24 @@ void main() {
   });
 
   group('Player', () {
-    testWidgets('os separadores chamam-se Player e Gestor; o "+" só existe com o Gestor ativo', (t) async {
+    testWidgets('as secções chamam-se Ver TV, Gestor e Definições; "Adicionar listas" só no Gestor', (t) async {
       _tamanho(t, 1200, 900);
       await t.pumpWidget(_app(inicio()));
       await t.pump();
-      expect(find.text('Player'), findsOneWidget);
-      expect(find.text('Gestor'), findsOneWidget);
+      final barra = find.byType(BarraSeccoes);
+      for (final r in ['Ver TV', 'Gestor', 'Definições']) {
+        expect(find.descendant(of: barra, matching: find.text(r)), findsOneWidget, reason: r);
+      }
+      expect(find.text('Player'), findsNothing);
       expect(find.text('Listas'), findsNothing);
       expect(find.text('Verificar'), findsNothing);
-      expect(find.byTooltip('Adicionar listas'), findsNothing);
-      await t.tap(find.text('Gestor'));
+      expect(find.text('Adicionar listas'), findsNothing);
+      await t.tap(find.descendant(of: barra, matching: find.text('Gestor')));
       await t.pumpAndSettle();
-      expect(find.byTooltip('Adicionar listas'), findsOneWidget);
-      await t.tap(find.text('Player'));
+      expect(find.text('Adicionar listas').hitTestable(), findsOneWidget);
+      await t.tap(find.descendant(of: barra, matching: find.text('Ver TV')));
       await t.pumpAndSettle();
-      expect(find.byTooltip('Adicionar listas'), findsNothing);
+      expect(find.text('Adicionar listas'), findsNothing);
     });
 
     testWidgets('não gere nada (sem verificar), mas os cartões mostram o estado', (t) async {
@@ -149,7 +154,7 @@ void main() {
       expect(find.widgetWithText(ChoiceChip, 'Funcionam'), findsOneWidget);
     });
 
-    testWidgets('vazio: "Ir para o Gestor" muda de separador e o foco fica no "+"', (t) async {
+    testWidgets('vazio: "Ir para o Gestor" muda de secção e o foco fica em "Adicionar listas"', (t) async {
       _tamanho(t, 960, 540);
       await t.pumpWidget(_app(inicio()));
       await t.pump();

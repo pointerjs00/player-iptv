@@ -72,8 +72,11 @@ class _CampoTvState extends State<CampoTv> {
     }
     final variasLinhas = widget.maxLines != 1;
     if ((k == LogicalKeyboardKey.arrowDown || k == LogicalKeyboardKey.arrowUp) && !(variasLinhas && _aEscrever)) {
-      _foco.focusInDirection(k == LogicalKeyboardKey.arrowDown ? TraversalDirection.down : TraversalDirection.up);
-      return KeyEventResult.handled;
+      final moveu =
+          _foco.focusInDirection(k == LogicalKeyboardKey.arrowDown ? TraversalDirection.down : TraversalDirection.up);
+      // sem nada nessa direção, quem está à volta decide (por exemplo CIMA no topo de uma secção
+      // vai à barra das secções)
+      return moveu ? KeyEventResult.handled : KeyEventResult.ignored;
     }
     if (!_aEscrever &&
         (k == LogicalKeyboardKey.select || k == LogicalKeyboardKey.enter || k == LogicalKeyboardKey.gameButtonA)) {

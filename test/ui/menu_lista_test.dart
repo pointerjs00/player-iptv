@@ -74,7 +74,7 @@ void main() {
           Importada(contaDeLinha('http://b.com/l.m3u')!),
         ]));
     await t.pumpWidget(_app(TelaInicio(
-        biblioteca: bib, area: area, separadorGestor: const Text('GESTOR'), abrirLista: abrirFalso)));
+        biblioteca: bib, area: area, abrirLista: abrirFalso)));
     await t.pump();
   }
 

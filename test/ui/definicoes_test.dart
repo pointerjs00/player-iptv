@@ -13,6 +13,7 @@ import 'package:player_iptv/importar/importar.dart';
 import 'package:player_iptv/modelo/conta.dart';
 import 'package:player_iptv/ui/definicoes/tela_definicoes.dart';
 import 'package:player_iptv/ui/inicio/tela_inicio.dart';
+import 'package:player_iptv/ui/principal/tela_principal.dart';
 import 'package:player_iptv/ui/realce_foco.dart';
 import 'package:player_iptv/ui/tema.dart';
 
@@ -160,7 +161,7 @@ void main() {
     expect(bib.listas, hasLength(1));
   });
 
-  testWidgets('na TV: a roda dentada do Início abre as Definições com o comando e o foco fica visível', (t) async {
+  testWidgets('na TV: a secção Definições abre-se com o comando e o foco fica visível', (t) async {
     t.view.physicalSize = const Size(1280, 800);
     t.view.devicePixelRatio = 1;
     addTearDown(t.view.reset);
@@ -171,25 +172,29 @@ void main() {
     }))!;
     await t.pumpWidget(MediaQuery(
         data: const MediaQueryData(size: Size(1280, 800), navigationMode: NavigationMode.directional),
-        child: _app(TelaInicio(
-      biblioteca: bib,
-      area: area,
-      separadorGestor: const SizedBox(),
-      definicoes: (_) => TelaDefinicoes(
+        child: _app(TelaPrincipal(
+      verTv: TelaInicio(biblioteca: bib, area: area),
+      gestor: const SizedBox(),
+      definicoes: TelaDefinicoes(
           biblioteca: bib, area: area, preferencias: prefs, escolherCopia: () async => textoCopia),
     ))));
     await t.pump(const Duration(milliseconds: 400));
-    expect(find.byTooltip('Definições'), findsOneWidget);
-    // Tab até à roda dentada e OK
-    for (var i = 0; i < 30; i++) {
-      final ctx = FocusManager.instance.primaryFocus?.context;
-      if (ctx != null && ctx.findAncestorWidgetOfExactType<Tooltip>()?.message == 'Definições') break;
-      await t.sendKeyEvent(LogicalKeyboardKey.tab);
+    expect(find.text('Canais de teste'), findsNothing, reason: 'começa em Ver TV');
+    // só com setas: ESQUERDA até à barra, BAIXO até "Definições" e OK
+    expect(_focado(), 'Ir para o Gestor');
+    await t.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await t.pump();
+    for (var i = 0; i < 4 && _focado() != 'Definições'; i++) {
+      await t.sendKeyEvent(LogicalKeyboardKey.arrowDown);
       await t.pump();
     }
+    expect(_focado(), 'Definições');
     await t.sendKeyEvent(LogicalKeyboardKey.enter);
     await t.pumpAndSettle();
     expect(find.text('Canais de teste'), findsOneWidget);
+    // DIREITA entra na secção
+    await t.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await t.pump();
     // o foco entra no ecrã, no primeiro controlo (DAZN 1 / RTP 1 são chips)
     expect(_focado(), anyOf(startsWith('RTP 1'), startsWith('SportTV 1'), startsWith('DAZN 1')));
     // só com setas: até "Importar cópia" e OK
@@ -219,8 +224,10 @@ void main() {
     // depois do diálogo o foco volta ao ecrã (não se perde)
     expect(FocusManager.instance.primaryFocus?.context, isNotNull);
     expect(_focoEm(t, botaoImportar), isTrue);
-    await t.pageBack();
+    // Voltar: de volta a Ver TV
+    await t.binding.handlePopRoute();
     await t.pumpAndSettle();
     expect(find.text('Canais de teste'), findsNothing);
+    expect(find.textContaining('OUTRO'), findsOneWidget, reason: 'Ver TV com a lista importada');
   });
 }
