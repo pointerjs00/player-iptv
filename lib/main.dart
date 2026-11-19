@@ -18,6 +18,7 @@ import 'ui/design/componentes.dart';
 import 'ui/design/ecra.dart';
 import 'ui/design/escala_interface.dart';
 import 'ui/design/mensagens.dart';
+import 'ui/design/revelar_topo.dart';
 import 'ui/gestor/tela_gestor.dart';
 import 'ui/inicio/tela_inicio.dart';
 import 'ui/player/player_canais.dart';
@@ -61,6 +62,7 @@ Future<void> main(List<String> args) async {
     return;
   }
   await configurarRealceFoco(); // Android TV: o realce do foco sempre visível
+  instalarRevelarTopo(); // o topo de uma página com scroll nunca fica cortado
   // o player: desentrelaçamento, formato, descodificação, volume, taxa do ecrã
   Preferencias.atual = await Preferencias.abrir(pasta, tv: EcraTv.nativo);
   runApp(AppPlayerIptv(biblioteca: biblioteca, area: area));
