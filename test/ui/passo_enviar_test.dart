@@ -216,6 +216,21 @@ void main() {
     expect(textosFocados(), 'As que funcionam (1)');
   });
 
+  testWidgets('o Gestor esvazia-se com o foco em Exportar: o foco passa ao chip As que funcionam', (t) async {
+    await abrir(t);
+    await t.tap(find.textContaining('Todas ('));
+    await t.pump();
+    final no = focoDe(t, 'Exportar 5 listas')!;
+    no.requestFocus();
+    await t.pump();
+    expect(no.hasPrimaryFocus, isTrue);
+    await t.runAsync(() => area.remover([for (final l in area.listas) l.id]));
+    await t.pump();
+    await t.pump();
+    expect(area.listas, isEmpty);
+    expect(textosFocados(), 'As que funcionam (0)');
+  });
+
   testWidgets('ecrã estreito: os cartões ficam por baixo da lista', (t) async {
     await abrir(t, largura: 420);
     final lista = t.getTopLeft(find.text('001ALFA 070927'));

@@ -88,14 +88,17 @@ class PassoVerificarState extends State<PassoVerificar> {
   }
 
   /// O botão com o foco ficou desativado (a seleção esvaziou-se): o foco passa a "Verificar
-  /// todas", que está sempre ativo (senão perdia-se e deixava de se ver).
+  /// todas"; com o Gestor vazio também esse fica desativado, e o foco vai a "Ver verificação" (se
+  /// ligado), senão à pesquisa (ou ao filtro escolhido). Senão perdia-se e deixava de se ver.
   void _seDesligou(FocusNode no) {
     if (no.hasFocus || no.canRequestFocus) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final atual = FocusManager.instance.primaryFocus;
-      if (mounted && _focoVerTodas.canRequestFocus && (atual == null || atual is FocusScopeNode)) {
-        _focoVerTodas.requestFocus();
-      }
+      if (!mounted || (atual != null && atual is! FocusScopeNode)) return;
+      bool pode(FocusNode? f) => f != null && f.context != null && f.canRequestFocus;
+      final filtro = _focosFiltros[_filtros.indexWhere((f) => f.$1 == _filtro)];
+      final destino = [_focoVerTodas, _focoVerVer, widget.focoInicial, filtro].firstWhere(pode, orElse: () => null);
+      destino?.requestFocus();
     });
   }
 

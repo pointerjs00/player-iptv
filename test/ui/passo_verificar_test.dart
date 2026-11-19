@@ -58,7 +58,7 @@ void main() {
   var todas = 0, ver = 0;
   var removidas = <List<Lista>>[];
 
-  Future<void> abrir(WidgetTester t) async {
+  Future<void> abrir(WidgetTester t, {FocusNode? focoInicial}) async {
     verificadas = [];
     removidas = [];
     todas = ver = 0;
@@ -75,6 +75,7 @@ void main() {
       aoVerificarTodas: () => todas++,
       aoVerVerificacao: () => ver++,
       aoRemover: (ls) async => removidas.add(ls),
+      focoInicial: focoInicial,
     ))));
     await t.pump();
   }
@@ -242,6 +243,47 @@ void main() {
     await t.pump();
     expect(find.text('Nenhuma selecionada'), findsOneWidget);
     expect(focoDe(t.widget(botao('Verificar todas')))!.hasPrimaryFocus, isTrue);
+  });
+
+  /// Seleciona todas, põe o foco em «Remover do gestor» e esvazia o Gestor.
+  Future<void> removerTodasComFocoNaBarra(WidgetTester t) async {
+    await t.tap(find.text('Todas as visíveis'));
+    await t.pump();
+    final remover = focoDe(t.widget(botao('Remover do gestor')))!;
+    remover.requestFocus();
+    await t.pump();
+    expect(remover.hasPrimaryFocus, isTrue);
+    await t.runAsync(() => area.remover([for (final l in area.listas) l.id]));
+    await t.pump();
+    await t.pump();
+    expect(area.listas, isEmpty);
+    expect(ligado(t, 'Verificar todas'), isFalse);
+  }
+
+  testWidgets('o Gestor esvazia-se com o foco em Remover: o foco passa a Ver verificação, se ligado', (t) async {
+    await abrir(t);
+    servico.fimRonda = _agora;
+    servico.notifyListeners();
+    await t.pump();
+    await removerTodasComFocoNaBarra(t);
+    expect(focoDe(t.widget(botao('Ver verificação')))!.hasPrimaryFocus, isTrue,
+        reason: '${FocusManager.instance.primaryFocus}');
+  });
+
+  testWidgets('o Gestor esvazia-se com o foco em Remover: sem Ver verificação, o foco vai à pesquisa', (t) async {
+    final pesquisa = FocusNode(debugLabel: 'pesquisa');
+    addTearDown(pesquisa.dispose);
+    await abrir(t, focoInicial: pesquisa);
+    await removerTodasComFocoNaBarra(t);
+    expect(pesquisa.hasPrimaryFocus, isTrue, reason: '${FocusManager.instance.primaryFocus}');
+  });
+
+  testWidgets('o Gestor esvazia-se com o foco em Remover: sem pesquisa dada, o foco vai ao filtro Todas', (t) async {
+    await abrir(t);
+    await removerTodasComFocoNaBarra(t);
+    final p = FocusManager.instance.primaryFocus;
+    expect(p is FocusScopeNode, isFalse, reason: '$p');
+    expect(p?.debugLabel, 'Filtro Todas');
   });
 
   testWidgets('TESTE mostra nunca, há 2 h e ontem; MOTIVO o motivo', (t) async {
