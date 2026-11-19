@@ -7,15 +7,17 @@ import 'package:player_iptv/dados/area_gestor.dart';
 import 'package:player_iptv/dados/biblioteca.dart';
 import 'package:player_iptv/importar/importar.dart';
 import 'package:player_iptv/modelo/conta.dart';
+import 'package:player_iptv/tarefas/servico_tarefas.dart';
+import 'package:player_iptv/ui/design/componentes.dart';
+import 'package:player_iptv/ui/gestor/tela_gestor.dart';
 import 'package:player_iptv/ui/inicio/tela_inicio.dart';
 import 'package:player_iptv/ui/principal/barra_seccoes.dart';
 import 'package:player_iptv/ui/principal/tela_principal.dart';
-import 'package:player_iptv/ui/verificar/tela_verificar.dart';
 import 'package:player_iptv/verificar/servico.dart';
 
 import 'ajuda_dpad.dart';
 
-/// O Gestor em 3 passos (Importar → Verificar → Enviar/Exportar), só com o comando.
+/// O Gestor em 3 passos (Importar → Verificar → Enviar ou exportar), só com o comando.
 
 
 UltimaVerificacao _u(String estado) =>
@@ -45,11 +47,12 @@ void main() {
         Importada(contaDeLinha('http://nova.com/l.m3u')!),
       ]));
 
+  TelaGestor telaGestor() => TelaGestor(
+      biblioteca: bib, area: area, servico: ServicoVerificacao(bib, colecao: area), tarefas: ServicoTarefas());
+
   /// A app: Ver TV (vazio) e o Gestor nas secções da casca.
-  Widget casca() => TelaPrincipal(
-      verTv: TelaInicio(biblioteca: bib, area: area),
-      gestor: TelaVerificar(biblioteca: bib, area: area, servico: ServicoVerificacao(bib, colecao: area)),
-      definicoes: const SizedBox());
+  Widget casca() =>
+      TelaPrincipal(verTv: TelaInicio(biblioteca: bib, area: area), gestor: telaGestor(), definicoes: const SizedBox());
 
   /// Só com setas: de "Ir para o Gestor" (Ver TV vazio) ESQUERDA até à barra, BAIXO, OK.
   Future<void> aoGestor(WidgetTester t) async {
@@ -60,23 +63,32 @@ void main() {
     expect(textosFocados(), 'Gestor');
     await teclaDpad(t, LogicalKeyboardKey.select);
     await t.pumpAndSettle();
-    expect(find.text('Adicionar listas').hitTestable(), findsOneWidget);
+    expect(find.text('Gestor de listas').hitTestable(), findsOneWidget);
   }
 
-  Widget gestor() => Scaffold(
-      body: TelaVerificar(biblioteca: bib, area: area, servico: ServicoVerificacao(bib, colecao: area)));
+  Widget gestor() => Scaffold(body: telaGestor());
 
-  testWidgets('três passos numerados, cada um com o seu estado no cabeçalho', (t) async {
+  /// BAIXO a partir de um filtro até sair dos filtros (na TV ocupam duas linhas).
+  Future<void> baixoAteAsListas(WidgetTester t) async {
+    for (var i = 0; i < 3 && textosFocados().contains(' · '); i++) {
+      await teclaDpad(t, LogicalKeyboardKey.arrowDown);
+    }
+  }
+
+  /// O cartão do passo com este nome.
+  Finder passo(String nome) => find.ancestor(of: find.text(nome), matching: find.byType(CartaoModerno));
+
+  testWidgets('três passos numerados, sempre à vista, cada um com o seu estado', (t) async {
     ecraTvTeste(t);
     t.view.physicalSize = const Size(1200, 2400);
     await comListas(t);
     await t.pumpWidget(appTeste(gestor()));
     await t.pump();
-    expect(find.text('1 · Importar'), findsOneWidget);
-    expect(find.text('2 · Verificar'), findsOneWidget);
-    expect(find.text('3 · Enviar / Exportar'), findsOneWidget);
-    expect(find.text('5 listas no Gestor'), findsOneWidget);
-    expect(find.text('2 a funcionar · 1 INC · 1 não funciona · 1 por verificar'), findsOneWidget);
+    for (final (n, nome) in [(1, 'Importar'), (2, 'Verificar'), (3, 'Enviar ou exportar')]) {
+      expect(find.descendant(of: passo(nome), matching: find.text('$n')), findsOneWidget, reason: nome);
+    }
+    expect(find.descendant(of: passo('Importar'), matching: find.text('5 listas no Gestor')), findsOneWidget);
+    expect(find.text('2 funcionam · 1 inconclusiva · 1 não funciona · 1 por verificar'), findsOneWidget);
     expect(find.text('Nenhuma selecionada'), findsOneWidget);
     await t.tap(find.widgetWithText(ActionChip, 'Funcionam'));
     await t.pump();
@@ -98,20 +110,20 @@ void main() {
     await comListas(t);
     await t.pumpWidget(appTeste(gestor()));
     await t.pump();
-    for (final c in ['Todas (5)', 'Funcionam (2)', 'INC (1)', 'Não funcionam (1)', 'Por verificar (1)']) {
+    for (final c in ['Todas · 5', 'Funcionam · 2', 'Inconclusivas · 1', 'Não funcionam · 1', 'Por verificar · 1']) {
       expect(find.widgetWithText(ChoiceChip, c), findsOneWidget, reason: c);
     }
     expect(find.textContaining('003MEIA'), findsOneWidget);
     // Tab até ao filtro "Não funcionam" e OK
-    for (var i = 0; i < 60 && !textosFocados().startsWith('Não funcionam ('); i++) {
+    for (var i = 0; i < 60 && !textosFocados().startsWith('Não funcionam · '); i++) {
       await teclaDpad(t, LogicalKeyboardKey.tab);
     }
     await teclaDpad(t, LogicalKeyboardKey.select);
     expect(find.textContaining('004MORTA'), findsOneWidget);
     expect(find.textContaining('003MEIA'), findsNothing);
     expect(find.textContaining('001BOA'), findsNothing);
-    // BAIXO chega à linha que ficou
-    await teclaDpad(t, LogicalKeyboardKey.arrowDown);
+    // BAIXO chega à linha que ficou (os filtros podem ocupar duas linhas na TV)
+    await baixoAteAsListas(t);
     expect(textosFocados(), contains('004MORTA'));
   });
 
@@ -132,10 +144,9 @@ void main() {
         expect(descer.last, isNot(descer[descer.length - 2]), reason: 'BAIXO preso: $descer');
       }
     }
-    expect(descer.first, startsWith('Adicionar listas'), reason: 'o 1.º passo começa por adicionar: $descer');
+    expect(descer.first, startsWith('1 | Importar'), reason: 'começa no 1.º passo: $descer');
     final caminho = descer.join(' / ');
-    for (final v in ['Limpar o Gestor', '/20', 'Verificar todas', 'Funcionam', 'Enviar para o Player', 'Accounts.json',
-      'Ficheiros .ini', 'Exportar', 'Todas (5)', '001BOA', '005NOVA']) {
+    for (final v in ['Todas · 5', 'Funcionam', 'Verificar (entra na fila)', '001BOA', '005NOVA']) {
       expect(caminho, contains(v), reason: 'BAIXO: $caminho');
     }
     final subir = <String>[descer.last];
@@ -148,8 +159,8 @@ void main() {
     expect(subir.last, 'Gestor', reason: 'CIMA: $subir');
   });
 
-  testWidgets('na TV: DIREITA alcança os botões ao lado (Importar do Player, Iniciar pesquisa, Esmagar...)',
-      (t) async {
+  testWidgets('na TV: DIREITA alcança os passos e os botões ao lado (Importar do Player, Iniciar pesquisa, '
+      'Exportar...)', (t) async {
     // o Gestor com a largura de antes da barra lateral (960): as datas e "Iniciar pesquisa" na
     // mesma linha (a 960 com a barra, o botão passa à linha de baixo e chega-se lá com BAIXO)
     ecraTvTeste(t, largura: 960 + BarraSeccoes.largura);
@@ -158,12 +169,27 @@ void main() {
     await t.pump();
     await aoGestor(t);
     await teclaDpad(t, LogicalKeyboardKey.arrowRight);
+    expect(textosFocados(), startsWith('1 | Importar'));
+    await teclaDpad(t, LogicalKeyboardKey.arrowRight);
+    expect(textosFocados(), startsWith('2 | Verificar'));
+    await teclaDpad(t, LogicalKeyboardKey.arrowRight);
+    expect(textosFocados(), startsWith('3 | Enviar ou exportar'));
+    await teclaDpad(t, LogicalKeyboardKey.arrowLeft);
+    await teclaDpad(t, LogicalKeyboardKey.arrowLeft);
+    expect(textosFocados(), startsWith('1 | Importar'));
+    // no princípio da linha, ESQUERDA vai à barra das secções; DIREITA volta
+    await teclaDpad(t, LogicalKeyboardKey.arrowLeft);
+    expect(textosFocados(), 'Gestor');
+    await teclaDpad(t, LogicalKeyboardKey.arrowRight);
+    expect(textosFocados(), startsWith('1 | Importar'));
+    // OK no passo 1: o sub-ecrã de importar, com o foco em "Adicionar listas"
+    await teclaDpad(t, LogicalKeyboardKey.select);
+    await t.pumpAndSettle();
     expect(textosFocados(), startsWith('Adicionar listas'));
     await teclaDpad(t, LogicalKeyboardKey.arrowRight);
     expect(textosFocados(), startsWith('Importar do Player'));
     await teclaDpad(t, LogicalKeyboardKey.arrowLeft);
     expect(textosFocados(), startsWith('Adicionar listas'));
-    // no princípio da linha, ESQUERDA vai à barra das secções; DIREITA volta
     await teclaDpad(t, LogicalKeyboardKey.arrowLeft);
     expect(textosFocados(), 'Gestor');
     await teclaDpad(t, LogicalKeyboardKey.arrowRight);
@@ -177,16 +203,41 @@ void main() {
       direita.add(textosFocados());
     }
     expect(direita.join(' / '), contains('Iniciar pesquisa'), reason: '$direita');
-    // e o 2.º passo: "Verificar todas" → (as selecionadas estão desligadas sem seleção)
-    for (var i = 0; i < 6 && !textosFocados().startsWith('Verificar todas'); i++) {
-      await teclaDpad(t, LogicalKeyboardKey.arrowDown);
+    // CIMA chega ao "Voltar" e OK regressa ao passo 1
+    for (var i = 0; i < 6 && textosFocados() != 'Voltar'; i++) {
+      await teclaDpad(t, LogicalKeyboardKey.arrowUp);
     }
-    expect(textosFocados(), startsWith('Verificar todas'));
-    for (var i = 0; i < 6 && !textosFocados().startsWith('Enviar para o Player'); i++) {
-      await teclaDpad(t, LogicalKeyboardKey.arrowDown);
-    }
+    expect(textosFocados(), 'Voltar');
+    await teclaDpad(t, LogicalKeyboardKey.select);
+    await t.pumpAndSettle();
+    expect(textosFocados(), startsWith('1 | Importar'));
+    // o passo 2: "Verificar todas"; Voltar do comando regressa ao passo 2
     await teclaDpad(t, LogicalKeyboardKey.arrowRight);
-    expect(textosFocados(), startsWith('Remover do Gestor'));
+    await teclaDpad(t, LogicalKeyboardKey.select);
+    await t.pumpAndSettle();
+    expect(textosFocados(), startsWith('Verificar todas'));
+    await t.binding.handlePopRoute();
+    await t.pumpAndSettle();
+    expect(textosFocados(), startsWith('2 | Verificar'));
+    // a barra das selecionadas: "Verificar (entra na fila)" → "Enviar para o Player" → "Exportar" → "Remover"
+    for (var i = 0; i < 8 && !textosFocados().startsWith('Verificar ('); i++) {
+      await teclaDpad(t, LogicalKeyboardKey.arrowDown);
+    }
+    for (var i = 0; i < 4 && !textosFocados().startsWith('Verificar ('); i++) {
+      await teclaDpad(t, LogicalKeyboardKey.arrowLeft);
+    }
+    expect(textosFocados(), startsWith('Verificar (entra na fila)'));
+    await teclaDpad(t, LogicalKeyboardKey.arrowRight);
+    expect(textosFocados(), startsWith('Enviar para o Player'));
+    // na TV a barra ocupa duas linhas: BAIXO e ESQUERDA chegam a "Exportar" e "Remover"
+    final resto = <String>{};
+    await teclaDpad(t, LogicalKeyboardKey.arrowDown);
+    resto.add(textosFocados());
+    await teclaDpad(t, LogicalKeyboardKey.arrowLeft);
+    resto.add(textosFocados());
+    await teclaDpad(t, LogicalKeyboardKey.arrowRight);
+    resto.add(textosFocados());
+    expect(resto, containsAll(['Exportar', 'Remover']), reason: '$resto');
   });
 
   testWidgets('com um filtro, a linha com o foco que muda de estado sai e o foco passa à seguinte', (t) async {
@@ -195,11 +246,11 @@ void main() {
     await comListas(t);
     await t.pumpWidget(appTeste(gestor()));
     await t.pump();
-    for (var i = 0; i < 60 && !textosFocados().startsWith('Funcionam ('); i++) {
+    for (var i = 0; i < 60 && !textosFocados().startsWith('Funcionam · '); i++) {
       await teclaDpad(t, LogicalKeyboardKey.tab);
     }
     await teclaDpad(t, LogicalKeyboardKey.select);
-    await teclaDpad(t, LogicalKeyboardKey.arrowDown);
+    await baixoAteAsListas(t);
     expect(textosFocados(), contains('001BOA'));
     // a verificação de agora diz que deixou de funcionar
     await t.runAsync(() => area.registarVerificacao(area.listas.first.id, _u('nao_funciona')));
@@ -211,10 +262,10 @@ void main() {
     await t.runAsync(() => area.registarVerificacao(area.listas[1].id, _u('nao_funciona')));
     await t.pump();
     await t.pump();
-    expect(textosFocados(), startsWith('Funcionam (0)'));
+    expect(textosFocados(), startsWith('Funcionam · 0'));
   });
 
-  testWidgets('tirar linhas (a focada, por filtro, Remover do Gestor e Limpar) não dá exceções nem asserções',
+  testWidgets('tirar linhas (a focada, por filtro, Remover e Limpar) não dá exceções nem asserções',
       (t) async {
     ecraTvTeste(t, largura: 1200, altura: 2400);
     await comListas(t);
@@ -231,7 +282,7 @@ void main() {
     expect(t.takeException(), isNull);
     expect(textosFocados(), contains('002OUTRA'), reason: 'o foco passa à linha seguinte');
     // filtros que escondem e mostram linhas
-    for (final c in ['Não funcionam (1)', 'Por verificar (1)', 'Todas (4)']) {
+    for (final c in ['Não funcionam · 1', 'Por verificar · 1', 'Todas · 4']) {
       await t.tap(find.widgetWithText(ChoiceChip, c));
       await t.pump();
       await t.pump();
@@ -240,7 +291,7 @@ void main() {
     // Remover do Gestor (as que funcionam) e Limpar
     await t.tap(find.widgetWithText(ActionChip, 'Funcionam'));
     await t.pump();
-    await t.tap(find.textContaining('Remover do Gestor'));
+    await t.tap(find.widgetWithText(OutlinedButton, 'Remover'));
     await t.pumpAndSettle();
     await t.runAsync(() async {
       await t.tap(find.widgetWithText(FilledButton, 'Remover'));
@@ -249,6 +300,8 @@ void main() {
     await t.pumpAndSettle();
     expect(t.takeException(), isNull);
     expect(area.listas, hasLength(3));
+    await t.tap(find.descendant(of: passo('Importar'), matching: find.text('Importar')));
+    await t.pumpAndSettle();
     await t.tap(find.text('Limpar o Gestor'));
     await t.pumpAndSettle();
     await t.runAsync(() async {

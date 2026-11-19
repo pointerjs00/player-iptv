@@ -172,6 +172,14 @@ void main() {
       expect(r2.canais.map((c) => (c['id'], c['estado'])), [('rtp1', 'nao_funciona'), ('dazn1', 'funciona')]);
     });
 
+    test('o passo diz em que canal de teste vai ("canal 2/2 · ..."), para o Gestor mostrar', () async {
+      srv.responder = (p) => painel(p, temRtp: false);
+      final avisos = <String>[];
+      await v.verificar(conta(), ['rtp1', 'dazn1'], aviso: avisos.add);
+      expect(avisos.where((a) => a.startsWith('canal 2/2 · DAZN 1 · variante 1/')), isNotEmpty, reason: '$avisos');
+      expect(avisos.where((a) => a.startsWith('canal 1/')), isEmpty, reason: 'RTP 1 não existe: não há variantes');
+    });
+
     test('limite de ligações fica inconclusivo (com 2.ª volta)', () async {
       srv.responder = (p) => painel(p, streamStatus: 459);
       final r = await v.verificar(conta(), ['rtp1']);

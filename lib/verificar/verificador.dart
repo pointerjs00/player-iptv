@@ -179,8 +179,10 @@ class Verificador {
     }
     final perfis = perfisDe(canaisTeste);
     final porCanal = <(PerfilCanal, ResultadoVerificacao)>[];
-    for (final p in perfis) {
-      porCanal.add((p, await _testarPerfil(conta, proto, conteudo, p, timeout, cancelamento, aviso)));
+    for (final (i, p) in perfis.indexed) {
+      // "canal 2/3 · …": o Gestor mostra em que canal de teste vai
+      final avisoCanal = aviso == null ? null : (String t) => aviso('canal ${i + 1}/${perfis.length} · $t');
+      porCanal.add((p, await _testarPerfil(conta, proto, conteudo, p, timeout, cancelamento, avisoCanal)));
     }
     final r = porCanal.length == 1 ? porCanal.single.$2 : juntar(porCanal);
     return r.com(validade: conteudo.validade);

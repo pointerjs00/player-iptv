@@ -9,13 +9,14 @@ import 'package:player_iptv/dados/biblioteca.dart';
 import 'package:player_iptv/importar/importar.dart';
 import 'package:player_iptv/modelo/canal.dart';
 import 'package:player_iptv/modelo/conta.dart';
+import 'package:player_iptv/tarefas/servico_tarefas.dart';
 import 'package:player_iptv/ui/conteudo/tela_conteudo.dart';
 import 'package:player_iptv/ui/design/design.dart';
+import 'package:player_iptv/ui/gestor/tela_gestor.dart';
 import 'package:player_iptv/ui/inicio/tela_inicio.dart';
 import 'package:player_iptv/ui/player/player_canais.dart';
 import 'package:player_iptv/ui/realce_foco.dart';
 import 'package:player_iptv/ui/tema.dart';
-import 'package:player_iptv/ui/verificar/tela_verificar.dart';
 import 'package:player_iptv/verificar/servico.dart';
 
 // como a app (main.dart): o tema segue o modo de realce do foco
@@ -106,7 +107,8 @@ void main() {
         ]));
     _tamanho(t, 1200, 1600);
     await t.pumpWidget(_app(Scaffold(
-        body: TelaVerificar(biblioteca: bib, area: area, servico: ServicoVerificacao(bib, colecao: area)))));
+        body: TelaGestor(
+            biblioteca: bib, area: area, servico: ServicoVerificacao(bib, colecao: area), tarefas: ServicoTarefas()))));
     await t.pump();
     final construidas = find.byType(CheckboxListTile, skipOffstage: false).evaluate().length;
     expect(construidas, greaterThan(0));

@@ -11,13 +11,15 @@ import 'package:player_iptv/modelo/canal.dart';
 import 'package:player_iptv/modelo/conta.dart';
 import 'package:player_iptv/protocolos/protocolo.dart';
 import 'package:player_iptv/rede/http.dart';
+import 'package:player_iptv/tarefas/servico_tarefas.dart';
 import 'package:player_iptv/ui/conteudo/tela_conteudo.dart';
+import 'package:player_iptv/ui/design/componentes.dart';
 import 'package:player_iptv/ui/design/ecra.dart';
+import 'package:player_iptv/ui/gestor/tela_gestor.dart';
 import 'package:player_iptv/ui/inicio/tela_inicio.dart';
 import 'package:player_iptv/ui/principal/tela_principal.dart';
 import 'package:player_iptv/ui/realce_foco.dart';
 import 'package:player_iptv/ui/tema.dart';
-import 'package:player_iptv/ui/verificar/tela_verificar.dart';
 import 'package:player_iptv/verificar/estado.dart';
 import 'package:player_iptv/verificar/servico.dart';
 import 'package:player_iptv/verificar/verificador.dart';
@@ -164,19 +166,37 @@ void main() {
     area = await AreaGestor.abrir(pasta);
   });
 
+  TelaGestor telaGestor({ServicoVerificacao? s, String? baseStb}) => baseStb == null
+      ? TelaGestor(biblioteca: bib, area: area, servico: s ?? ServicoVerificacao(bib, colecao: area), tarefas: ServicoTarefas())
+      : TelaGestor(
+          biblioteca: bib,
+          area: area,
+          servico: s ?? ServicoVerificacao(bib, colecao: area),
+          tarefas: ServicoTarefas(),
+          baseStb: baseStb);
+
+  /// Abre o sub-ecrã do passo com este nome (com um toque).
+  Future<void> abrirPasso(WidgetTester t, String passo) async {
+    await t.tap(find.descendant(of: find.byType(CartaoModerno), matching: find.text(passo)));
+    await t.pumpAndSettle();
+  }
+
   /// A app (a casca): Ver TV e, por omissão, o Gestor verdadeiro.
   Widget casca({Widget? gestor}) => TelaPrincipal(
         verTv: TelaInicio(biblioteca: bib, area: area),
-        gestor: gestor ?? TelaVerificar(biblioteca: bib, area: area, servico: ServicoVerificacao(bib, colecao: area)),
+        gestor: gestor ?? telaGestor(),
         definicoes: const SizedBox(),
       );
 
-  /// Ver TV vazio: "Ir para o Gestor" (OK) e "Adicionar listas" no topo do Gestor (OK) abrem o
-  /// diálogo "Adicionar listas" (só com o comando).
+  /// Ver TV vazio: "Ir para o Gestor" (OK), o passo 1 do Gestor (OK) e "Adicionar listas" (OK)
+  /// abrem o diálogo "Adicionar listas" (só com o comando).
   Future<void> abrirAdicionar(WidgetTester t) async {
     await t.pumpWidget(_app(casca()));
     await t.pump();
     expect(_focado(), 'Ir para o Gestor');
+    await _tecla(t, LogicalKeyboardKey.select);
+    await t.pumpAndSettle();
+    expect(_focado(), startsWith('1 | Importar'));
     await _tecla(t, LogicalKeyboardKey.select);
     await t.pumpAndSettle();
     expect(_focado(), 'Adicionar listas');
@@ -348,8 +368,9 @@ void main() {
       await t.runAsync(() => area.adicionar([Importada(contaDeLinha('http://x.com/c/ 00:1A:79:00:00:01')!)]));
       final f = _Lento();
       final s = ServicoVerificacao(bib, colecao: area, verificador: f, ritmo: RitmoHost(intervalo: Duration.zero));
-      await t.pumpWidget(_app(Scaffold(body: TelaVerificar(biblioteca: bib, area: area, servico: s))));
+      await t.pumpWidget(_app(Scaffold(body: telaGestor(s: s))));
       await t.pump();
+      await abrirPasso(t, 'Verificar');
       return (s, f);
     }
 
@@ -383,10 +404,9 @@ void main() {
       });
       addTearDown(() => t.runAsync(calado.close));
       _tamanho(t, 1200, 1600);
-      await t.pumpWidget(_app(Scaffold(
-          body: TelaVerificar(biblioteca: bib, area: area, servico: ServicoVerificacao(bib, colecao: area),
-              baseStb: 'http://127.0.0.1:${calado.port}/'))));
+      await t.pumpWidget(_app(Scaffold(body: telaGestor(baseStb: 'http://127.0.0.1:${calado.port}/'))));
       await t.pump();
+      await abrirPasso(t, 'Importar');
       await _irPara(t, 'Iniciar pesquisa');
       await _tecla(t, LogicalKeyboardKey.select);
       await t.pump();
@@ -408,8 +428,7 @@ void main() {
       await t.pump();
     }
 
-    Widget gestorVerdadeiro() =>
-        TelaVerificar(biblioteca: bib, area: area, servico: ServicoVerificacao(bib, colecao: area));
+    Widget gestorVerdadeiro() => telaGestor();
 
     testWidgets('T3: do 1.º cartão, ESQUERDA chega à barra e BAIXO+OK mostra o Gestor', (t) async {
       await inicioComGestor(t);
@@ -456,10 +475,13 @@ void main() {
       await t.tap(find.descendant(of: nav, matching: find.text('Gestor')));
       await t.pumpAndSettle();
       expect(t.takeException(), isNull);
+      await abrirPasso(t, 'Importar');
+      expect(t.takeException(), isNull);
       expect(find.text('Adicionar listas').hitTestable(), findsOneWidget);
     });
 
-    testWidgets('T3: "Adicionar listas" continua alcançável no Gestor: o 1.º controlo, à direita da barra',
+    testWidgets('T3: "Adicionar listas" continua alcançável no Gestor: o passo 1 é o 1.º controlo, à direita da '
+        'barra, e OK nele leva a "Adicionar listas"',
         (t) async {
       await inicioComGestor(t, gestor: gestorVerdadeiro());
       await _tecla(t, LogicalKeyboardKey.arrowLeft);
@@ -472,6 +494,9 @@ void main() {
       await _tecla(t, LogicalKeyboardKey.select);
       await t.pumpAndSettle();
       await _tecla(t, LogicalKeyboardKey.arrowRight);
+      expect(_focado(), startsWith('1 | Importar'));
+      await _tecla(t, LogicalKeyboardKey.select);
+      await t.pumpAndSettle();
       expect(_focado(), 'Adicionar listas');
       await _tecla(t, LogicalKeyboardKey.select);
       await t.pumpAndSettle();
@@ -605,7 +630,7 @@ void main() {
           ]));
       await t.runAsync(() => area.adicionar([Importada(contaDeLinha('http://g.com/l.m3u')!)]));
       final s = ServicoVerificacao(bib, colecao: area);
-      await t.pumpWidget(_app(casca(gestor: TelaVerificar(biblioteca: bib, area: area, servico: s))));
+      await t.pumpWidget(_app(casca(gestor: telaGestor(s: s))));
       await t.pump();
       expect(_focado(), contains('001A'));
       expect(_semRealce(), isNull);
@@ -626,13 +651,21 @@ void main() {
       // o Player não gere nada
       expect(vistos, isNot(contains('Adicionar listas')));
       expect(vistos.where((v) => v.contains('Verificar')), isEmpty, reason: '$vistos');
-      // o Gestor (com "Adicionar listas")
+      // o Gestor: os passos e a barra das selecionadas; nos sub-ecrãs, "Adicionar listas" e "Verificar todas"
       await t.tap(find.text('Gestor'));
       await t.pumpAndSettle();
       final noGestor = <String>{};
       expect(await _semRealceAoPercorrer(t, 40, vistos: noGestor), isEmpty);
+      expect(noGestor.join(' / '), allOf(contains('Importar'), contains('Enviar ou exportar'),
+          contains('Verificar (entra na fila)'), contains('Enviar para o Player'), contains('Remover')));
+      await abrirPasso(t, 'Importar');
+      expect(await _semRealceAoPercorrer(t, 8, vistos: noGestor), isEmpty);
+      await t.tap(find.widgetWithText(TextButton, 'Voltar'));
+      await t.pumpAndSettle();
+      await abrirPasso(t, 'Verificar');
+      expect(await _semRealceAoPercorrer(t, 4, vistos: noGestor), isEmpty);
       expect(noGestor.join(' / '), allOf(contains('Adicionar listas'), contains('Importar do Player'),
-          contains('Verificar todas'), contains('Enviar para o Player'), contains('Remover do Gestor')));
+          contains('Verificar todas')));
     });
 
     testWidgets('T1: Conteúdo — grupos, canais, pesquisa e Atualizar com realce (a estrela não é paragem)',
@@ -663,17 +696,32 @@ void main() {
       _realceTv();
       _tamanho(t, 1200, 1600);
       await t.runAsync(() => area.adicionar([Importada(contaDeLinha('http://x.com/c/ 00:1A:79:00:00:01')!)]));
-      await t.pumpWidget(_app(Scaffold(
-          body: TelaVerificar(biblioteca: bib, area: area, servico: ServicoVerificacao(bib, colecao: area)))));
+      await t.pumpWidget(_app(Scaffold(body: telaGestor())));
       await t.pump();
       final vistos = <String>{};
-      // o Gestor tem mais botões (adicionar, importar, limpar, enviar, remover) antes das linhas
-      final falhas = await _semRealceAoPercorrer(t, 35, vistos: vistos);
+      // o principal: passos, marcar, a barra das selecionadas, filtros e as linhas
+      final falhas = await _semRealceAoPercorrer(t, 20, vistos: vistos);
       expect(falhas, isEmpty);
-      expect(vistos.join(' / '), allOf(contains('Iniciar pesquisa'), contains('Verificar todas'), contains('Todas'),
-          contains('001X'), contains('Accounts.json')));
-      expect(vistos.join(' / '), allOf(contains('Importar do Player'), contains('Limpar o Gestor'),
-          contains('Enviar para o Player'), contains('Remover do Gestor')));
+      expect(vistos.join(' / '), allOf(contains('Verificar (entra na fila)'), contains('Todas'), contains('001X'),
+          contains('Enviar para o Player'), contains('Exportar'), contains('Remover')));
+      // os sub-ecrãs
+      await abrirPasso(t, 'Importar');
+      expect(await _semRealceAoPercorrer(t, 8, vistos: vistos), isEmpty);
+      await t.tap(find.widgetWithText(TextButton, 'Voltar'));
+      await t.pumpAndSettle();
+      await abrirPasso(t, 'Verificar');
+      expect(await _semRealceAoPercorrer(t, 4, vistos: vistos), isEmpty);
+      await t.tap(find.widgetWithText(TextButton, 'Voltar'));
+      await t.pumpAndSettle();
+      // o formato da exportação (as opções do diálogo)
+      await t.tap(find.widgetWithText(ActionChip, 'Todas'));
+      await t.pump();
+      await t.tap(find.widgetWithText(OutlinedButton, 'Exportar'));
+      await t.pumpAndSettle();
+      expect(await _semRealceAoPercorrer(t, 3, vistos: vistos), isEmpty);
+      expect(vistos.join(' / '), allOf(contains('Iniciar pesquisa'), contains('Verificar todas'),
+          contains('Accounts.json'), contains('Ficheiros .ini')));
+      expect(vistos.join(' / '), allOf(contains('Importar do Player'), contains('Limpar o Gestor')));
     });
 
     testWidgets('T1: diálogo "Adicionar listas" — botões e campo com realce', (t) async {
@@ -683,6 +731,10 @@ void main() {
       await t.pump();
       await t.pump();
       expect(_semRealce(), isNull, reason: '"Ir para o Gestor" com realce');
+      await _tecla(t, LogicalKeyboardKey.select);
+      await t.pumpAndSettle();
+      expect(_focado(), startsWith('1 | Importar'));
+      expect(_semRealce(), isNull, reason: 'o passo 1 com realce');
       await _tecla(t, LogicalKeyboardKey.select);
       await t.pumpAndSettle();
       expect(_focado(), 'Adicionar listas');

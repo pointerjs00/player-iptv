@@ -16,12 +16,12 @@ import 'tarefas/servico_tarefas.dart';
 import 'ui/definicoes/tela_definicoes.dart';
 import 'ui/design/componentes.dart';
 import 'ui/design/ecra.dart';
+import 'ui/gestor/tela_gestor.dart';
 import 'ui/inicio/tela_inicio.dart';
 import 'ui/player/player_canais.dart';
 import 'ui/principal/tela_principal.dart';
 import 'ui/realce_foco.dart';
 import 'ui/tema.dart';
-import 'ui/verificar/tela_verificar.dart';
 import 'verificar/servico.dart';
 
 Future<void> main(List<String> args) async {
@@ -107,7 +107,7 @@ class _AppPlayerIptvState extends State<AppPlayerIptv> {
   final _ritmo = RitmoHost();
   late final _servico = ServicoVerificacao(widget.biblioteca, colecao: widget.area, ritmo: _ritmo);
   late final _servicoPlayer = ServicoVerificacao(widget.biblioteca, ritmo: _ritmo);
-  // trabalho longo fora dos ecrãs; os ecrãs só observam (ligado nas tarefas 11 a 15)
+  // trabalho longo fora dos ecrãs; os ecrãs só observam
   final _tarefas = ServicoTarefas();
 
   @override
@@ -131,14 +131,7 @@ class _AppPlayerIptvState extends State<AppPlayerIptv> {
         // três secções fixas que guardam o estado; o "Alterar nas Definições" do Gestor muda de secção
         home: TelaPrincipal(
           verTv: TelaInicio(biblioteca: widget.biblioteca, area: widget.area, servico: _servicoPlayer),
-          gestor: Builder(
-            builder: (context) => TelaVerificar(
-              biblioteca: widget.biblioteca,
-              area: widget.area,
-              servico: _servico,
-              abrirDefinicoes: () => TelaPrincipal.irPara(context, Seccao.definicoes),
-            ),
-          ),
+          gestor: TelaGestor(biblioteca: widget.biblioteca, area: widget.area, servico: _servico, tarefas: _tarefas),
           definicoes: TelaDefinicoes(
               biblioteca: widget.biblioteca, area: widget.area, preferencias: Preferencias.atual, servico: _servico),
         ),

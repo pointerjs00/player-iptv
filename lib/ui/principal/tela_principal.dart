@@ -50,6 +50,19 @@ class TelaPrincipal extends StatefulWidget {
   static void irPara(BuildContext context, Seccao s) =>
       context.getInheritedWidgetOfExactType<SeccaoAtual>()?.irPara(s);
 
+  /// O que faz Voltar quando a secção de `context` está à vista, antes da casca (por exemplo, num
+  /// sub-ecrã do Gestor, voltar ao ecrã principal do Gestor em vez de ir para Ver TV). `tratar`
+  /// devolve true se tratou. Devolve a função que tira o registo (fora da casca não faz nada).
+  static VoidCallback aoVoltar(BuildContext context, bool Function() tratar) {
+    final s = context.getInheritedWidgetOfExactType<_SeccaoDoEcra>()?.seccao;
+    final casca = context.findAncestorStateOfType<_TelaPrincipalState>();
+    if (s == null || casca == null) return () {};
+    casca._voltarNaSeccao[s] = tratar;
+    return () {
+      if (casca._voltarNaSeccao[s] == tratar) casca._voltarNaSeccao.remove(s);
+    };
+  }
+
   @override
   State<TelaPrincipal> createState() => _TelaPrincipalState();
 }
@@ -65,6 +78,9 @@ class _TelaPrincipalState extends State<TelaPrincipal> {
 
   /// O foco de cada secção na barra lateral.
   final _focosBarra = [for (final s in Seccao.values) FocusNode(debugLabel: 'Barra ${s.name}')];
+
+  /// O Voltar que cada secção trata ela própria (ver [TelaPrincipal.aoVoltar]).
+  final _voltarNaSeccao = <Seccao, bool Function()>{};
 
   /// O último controlo com o foco em cada secção (DIREITA na barra e Voltar regressam a ele).
   final _ultimo = <Seccao, FocusNode>{};
@@ -201,6 +217,7 @@ class _TelaPrincipalState extends State<TelaPrincipal> {
   }
 
   void _voltar(BuildContext context) {
+    if (_voltarNaSeccao[_atual]?.call() ?? false) return;
     if (_atual != Seccao.verTv) {
       _mudar(Seccao.verTv, focar: true);
       return;
@@ -228,7 +245,10 @@ class _TelaPrincipalState extends State<TelaPrincipal> {
         sizing: StackFit.expand,
         children: [
           for (final s in Seccao.values)
-            Focus(focusNode: _focosSeccao[s.index], includeSemantics: false, child: seccoes[s.index]),
+            Focus(
+                focusNode: _focosSeccao[s.index],
+                includeSemantics: false,
+                child: _SeccaoDoEcra(seccao: s, child: seccoes[s.index])),
         ],
       ),
     );
@@ -285,4 +305,13 @@ class _TelaPrincipalState extends State<TelaPrincipal> {
         ),
     );
   }
+}
+
+/// A secção onde está um ecrã (para [TelaPrincipal.aoVoltar]).
+class _SeccaoDoEcra extends InheritedWidget {
+  const _SeccaoDoEcra({required this.seccao, required super.child});
+  final Seccao seccao;
+
+  @override
+  bool updateShouldNotify(_SeccaoDoEcra old) => seccao != old.seccao;
 }
