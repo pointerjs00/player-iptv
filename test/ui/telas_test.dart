@@ -156,18 +156,19 @@ void main() {
       // a pesquisa ignora acentos e o grupo escolhido
       await _escrever(t, find.byKey(const Key('pesquisa-canais')), 'rtp acores');
       await t.pump(const Duration(milliseconds: 200));
-      expect(find.text('1 canal encontrado'), findsOneWidget);
+      expect(find.text('Canais · 1'), findsOneWidget);
       await _escrever(t, find.byKey(const Key('pesquisa-canais')), 'cnn');
       await t.pump(const Duration(milliseconds: 200));
-      expect(find.text('0 canais encontrados'), findsOneWidget);
+      expect(find.text('Canais · 0'), findsOneWidget);
       await _escrever(t, find.byKey(const Key('pesquisa-canais')), 'rtp');
       await t.pump(const Duration(milliseconds: 200));
-      expect(find.text('2 canais encontrados'), findsOneWidget);
+      expect(find.text('Canais · 2'), findsOneWidget);
       expect(find.text('RTP Açores'), findsOneWidget);
 
-      await _escrever(t, find.byKey(const Key('pesquisa-canais')), '');
-      await _escrever(t, find.byKey(const Key('filtro-grupos')), 'desp');
+      // a mesma pesquisa encontra os grupos
+      await _escrever(t, find.byKey(const Key('pesquisa-canais')), 'desp');
       await t.pump(const Duration(milliseconds: 200));
+      expect(find.text('Grupos · 1'), findsOneWidget);
       expect(find.widgetWithText(ListTile, 'Portugal'), findsNothing);
       expect(find.widgetWithText(ListTile, 'Desporto'), findsOneWidget);
     });
@@ -199,7 +200,7 @@ void main() {
       await t.pump(const Duration(milliseconds: 50));
       expect(find.text('1 de 2'), findsOneWidget);
       await t.pump(const Duration(milliseconds: 150));
-      expect(find.text('2 canais encontrados'), findsOneWidget);
+      expect(find.text('Canais · 2'), findsOneWidget);
     });
 
     testWidgets('I5: com 100 mil canais, cada rebuild (favorito) não volta a percorrer os nomes', (t) async {
@@ -221,7 +222,7 @@ void main() {
       await t.pump(const Duration(milliseconds: 200));
       await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 500)));
       await t.pump();
-      expect(find.text('11 canais encontrados'), findsOneWidget);
+      expect(find.text('Canais · 11'), findsOneWidget);
       final sw = Stopwatch()..start();
       for (var k = 0; k < 5; k++) {
         await t.tap(find.byTooltip(k.isEven ? 'Pôr nos favoritos' : 'Tirar dos favoritos').first);

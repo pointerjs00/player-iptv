@@ -282,12 +282,8 @@ void main() {
     final l = await comCache(t, pequena);
     await mostrar(t, l);
     expect(_focado(), contains('Portugal'));
-    // a pesquisa está no topo: CIMA até ao "‹ Início" e DIREITA até ao campo
+    // a pesquisa está no topo: CIMA no primeiro grupo vai direto ao campo
     await _tecla(t, LogicalKeyboardKey.arrowUp);
-    expect(_focado(), contains('Início'));
-    for (var i = 0; i < 3 && !_focado().contains('[campo'); i++) {
-      await _tecla(t, LogicalKeyboardKey.arrowRight);
-    }
     expect(_focado(), contains('[campo'));
     expect(t.testTextInput.isVisible, isFalse, reason: 'o foco sozinho não abre o teclado no ecrã');
     // as setas saem do campo (não ficam presas)

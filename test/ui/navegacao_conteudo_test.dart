@@ -141,11 +141,13 @@ void main() {
     final l = await preparar(t);
     await mostrar(t, l);
     expect(_nomesCanais(t), ['SIC', 'RTP 1']);
-    // do grupo, CIMA leva ao topo ("‹ Início") e DIREITA percorre a barra até "Ordem"
-    for (var i = 0; i < 4 && textosFocados() != '‹ Início'; i++) {
-      await _tecla(t, LogicalKeyboardKey.arrowUp);
-    }
+    // do grupo, CIMA leva à pesquisa; ESQUERDA chega ao "‹ Início" e, por baixo da pesquisa, a
+    // linha do estado tem a "Ordem"
+    await _tecla(t, LogicalKeyboardKey.arrowUp);
+    await _tecla(t, LogicalKeyboardKey.arrowLeft);
     expect(textosFocados(), '‹ Início');
+    await _tecla(t, LogicalKeyboardKey.arrowRight);
+    await _tecla(t, LogicalKeyboardKey.arrowDown);
     for (var i = 0; i < 4; i++) {
       final ctx = FocusManager.instance.primaryFocus?.context;
       if (ctx?.findAncestorWidgetOfExactType<Tooltip>()?.message == 'Opções dos canais') break;
@@ -175,7 +177,7 @@ void main() {
     await t.pump();
     await t.enterText(find.byKey(const Key('pesquisa-canais')), 'bbc');
     await t.pump(const Duration(milliseconds: 200));
-    expect(find.text('0 canais encontrados'), findsOneWidget);
+    expect(find.text('Canais · 0'), findsOneWidget);
   });
 
   testWidgets('abrir um canal regista-o como "último visto" (e o que tocava ao sair)', (t) async {
@@ -277,8 +279,7 @@ void main() {
       expect(find.text('54 canais'), findsOneWidget);
       expect(find.text('Ordem: da lista'), findsOneWidget);
       expect(find.text('Grupos escondidos: 0'), findsOneWidget);
-      expect(find.text('Filtrar grupos…'), findsOneWidget);
-      expect(find.text('Pesquisar canais ou escrever o número'), findsOneWidget);
+      expect(find.text('Pesquisar canais, grupos ou o número'), findsOneWidget);
     });
 
     testWidgets('OK mantido põe nos favoritos, avisa com "Desfazer", e Desfazer repõe', (t) async {
@@ -318,7 +319,7 @@ void main() {
       await t.pump();
       await t.enterText(find.byKey(const Key('pesquisa-canais')), '37');
       await t.pump(const Duration(milliseconds: 200));
-      expect(find.text('1 canal encontrado'), findsOneWidget);
+      expect(find.text('Canais · 1'), findsOneWidget);
     });
   });
 }

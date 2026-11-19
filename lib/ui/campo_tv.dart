@@ -15,6 +15,7 @@ class CampoTv extends StatefulWidget {
     this.maxLines = 1,
     this.autofocus = false,
     this.obscureText = false,
+    this.focusNode,
   });
 
   final InputDecoration decoration;
@@ -27,25 +28,41 @@ class CampoTv extends StatefulWidget {
   /// Esconde o texto (passwords).
   final bool obscureText;
 
+  /// O foco do campo, para o pôr nele de fora (sem ele, o campo tem um seu).
+  final FocusNode? focusNode;
+
   @override
   State<CampoTv> createState() => _CampoTvState();
 }
 
 class _CampoTvState extends State<CampoTv> {
-  final _foco = FocusNode();
+  FocusNode? _proprio;
+  FocusNode get _foco => widget.focusNode ?? (_proprio ??= FocusNode());
   bool _aEscrever = false;
 
   @override
   void initState() {
     super.initState();
-    _foco.addListener(() {
-      if (!_foco.hasFocus && _aEscrever) setState(() => _aEscrever = false);
-    });
+    _foco.addListener(_mudouFoco);
+  }
+
+  @override
+  void didUpdateWidget(CampoTv old) {
+    super.didUpdateWidget(old);
+    if (old.focusNode != widget.focusNode) {
+      (old.focusNode ?? _proprio)?.removeListener(_mudouFoco);
+      _foco.addListener(_mudouFoco);
+    }
+  }
+
+  void _mudouFoco() {
+    if (!_foco.hasFocus && _aEscrever) setState(() => _aEscrever = false);
   }
 
   @override
   void dispose() {
-    _foco.dispose();
+    _foco.removeListener(_mudouFoco);
+    _proprio?.dispose();
     super.dispose();
   }
 

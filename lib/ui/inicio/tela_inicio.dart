@@ -52,6 +52,9 @@ class TelaInicio extends StatefulWidget {
 class _TelaInicioState extends State<TelaInicio> {
   String _q = '';
 
+  /// O texto da pesquisa (fica ao mudar de disposição, estreita ↔ larga).
+  final _pesquisa = TextEditingController();
+
   /// O resumo da cache de cada lista (pelo id): contagens, favoritos e o número do canal visto.
   Map<String, ResumoLista> _resumos = const {};
   late ResumosInicio _resumidor = ResumosInicio(widget.biblioteca);
@@ -94,6 +97,7 @@ class _TelaInicioState extends State<TelaInicio> {
   @override
   void dispose() {
     widget.biblioteca.removeListener(_mudou);
+    _pesquisa.dispose();
     for (final f in _focos.values) {
       f.dispose();
     }
@@ -294,6 +298,39 @@ class _TelaInicioState extends State<TelaInicio> {
     ]);
   }
 
+  /// A pesquisa e os filtros por estado. Os filtros vão sempre numa só fila (com scroll para o
+  /// lado quando não cabem): partidos em duas linhas (num `Wrap`), do último filtro da primeira
+  /// linha → não tinha nada à direita e ↓ saltava para os cartões (por baixo dele não há outro
+  /// filtro), e o comando nunca chegava aos da segunda linha («Por verificar»). Ao lado da
+  /// pesquisa quando há largura; por baixo dela no ecrã estreito.
+  Widget _pesquisaEFiltros() {
+    final pesquisa = CampoTv(
+      controller: _pesquisa,
+      decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Pesquisar listas'),
+      onChanged: (v) => setState(() => _q = v),
+    );
+    final filtros = SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      // margem para o anel do foco não ser cortado
+      padding: const EdgeInsets.all(Tokens.e4),
+      child: Row(children: [
+        for (final (i, (v, t)) in _filtros.indexed) ...[
+          if (i > 0) const SizedBox(width: Tokens.e8),
+          ChoiceChip(label: Text(t), selected: _filtro == v, onSelected: (_) => setState(() => _filtro = v)),
+        ],
+      ]),
+    );
+    return LayoutBuilder(
+      builder: (_, c) => c.maxWidth < 560
+          ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [pesquisa, filtros])
+          : Row(children: [
+              SizedBox(width: 280, child: pesquisa),
+              const SizedBox(width: Tokens.e8),
+              Expanded(child: filtros),
+            ]),
+    );
+  }
+
   Widget _listas() => ListenableBuilder(
         listenable: widget.biblioteca,
         builder: (context, _) {
@@ -308,17 +345,7 @@ class _TelaInicioState extends State<TelaInicio> {
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(Tokens.e16, 0, Tokens.e16, Tokens.e4),
-                child: Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
-                  SizedBox(
-                    width: 280,
-                    child: CampoTv(
-                      decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Pesquisar listas'),
-                      onChanged: (v) => setState(() => _q = v),
-                    ),
-                  ),
-                  for (final (v, t) in _filtros)
-                    ChoiceChip(label: Text(t), selected: _filtro == v, onSelected: (_) => setState(() => _filtro = v)),
-                ]),
+                child: _pesquisaEFiltros(),
               ),
             ),
             if (vis.isEmpty)
