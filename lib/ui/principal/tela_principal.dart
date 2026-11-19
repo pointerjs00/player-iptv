@@ -108,8 +108,11 @@ class _TelaPrincipalState extends State<TelaPrincipal> {
   static const _tempoSair = Duration(seconds: 2);
   Timer? _podeSair;
 
-  /// As mensagens no canto superior direito (ver [mostrarMensagem]).
-  final _mensagens = ControladorMensagens();
+  /// As mensagens no canto superior direito (ver [mostrarMensagem]): as do [AnfitriaoMensagens] da
+  /// app (por cima de todas as rotas) ou, sem ele (testes de um ecrã), as da própria casca.
+  final _proprias = ControladorMensagens();
+  ControladorMensagens? _daApp;
+  ControladorMensagens get _mensagens => _daApp ?? _proprias;
 
   /// Android/TV: Voltar em Ver TV não fecha logo a app. No Windows a janela fecha-se pelo
   /// botão de fechar, como sempre.
@@ -121,6 +124,21 @@ class _TelaPrincipalState extends State<TelaPrincipal> {
     FocusManager.instance.addListener(_focoMudou);
     _ouvirAvisos();
   }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _daApp = MensagensHost.maybeOf(context);
+  }
+
+  /// A ação de um aviso da casca pode chegar com a lista aberta ou o player por cima (a mensagem
+  /// vê-se em todas as rotas): primeiro volta-se à casca, para a ação se ver.
+  VoidCallback? _naCasca(VoidCallback? f) => f == null
+      ? null
+      : () {
+          if (mounted) Navigator.of(context).popUntil((r) => r.isFirst);
+          f();
+        };
 
   StreamSubscription<Tarefa>? _subTarefas;
   bool _verificava = false;
@@ -160,7 +178,7 @@ class _TelaPrincipalState extends State<TelaPrincipal> {
         _ => MensagemTipo.info,
       },
       acao: acao,
-      aoAcao: aoAcao,
+      aoAcao: _naCasca(aoAcao),
     );
   }
 
@@ -179,10 +197,10 @@ class _TelaPrincipalState extends State<TelaPrincipal> {
       '${inconclusivas > 0 ? ' · $inconclusivas inconclusivas' : ''}',
       tipo: MensagemTipo.sucesso,
       acao: 'Ver resultados',
-      aoAcao: () {
+      aoAcao: _naCasca(() {
         _mudar(Seccao.gestor, focar: false);
         widget.pedidoGestor?.value = EcraGestor.verificacao;
-      },
+      }),
     );
   }
 
@@ -192,7 +210,7 @@ class _TelaPrincipalState extends State<TelaPrincipal> {
     _podeSair?.cancel();
     _subTarefas?.cancel();
     widget.verificacao?.removeListener(_aoMudarVerificacao);
-    _mensagens.dispose();
+    _proprias.dispose();
     for (final f in [..._focosSeccao, ..._focosBarra]) {
       f.dispose();
     }
@@ -341,13 +359,15 @@ class _TelaPrincipalState extends State<TelaPrincipal> {
     return SeccaoAtual(
       seccao: _atual,
       irPara: (s) => _mudar(s, focar: true),
-      child: MensagensHost(
-        controlador: _mensagens,
-        child: Stack(children: [
-          Positioned.fill(child: _casca(context, largo, conteudo)),
-          SobreposicaoMensagens(controlador: _mensagens),
-        ]),
-      ),
+      child: _daApp != null
+          ? _casca(context, largo, conteudo)
+          : MensagensHost(
+              controlador: _proprias,
+              child: Stack(children: [
+                Positioned.fill(child: _casca(context, largo, conteudo)),
+                SobreposicaoMensagens(controlador: _proprias),
+              ]),
+            ),
     );
   }
 

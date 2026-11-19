@@ -16,13 +16,18 @@ class Mensagem {
   final VoidCallback? aoAcao;
 }
 
-/// Guarda a mensagem à vista (uma de cada vez: a nova substitui a anterior). Vive na
-/// `TelaPrincipal`; a tecla Menu do comando ativa a ação enquanto a mensagem está visível,
-/// sem passar pelo foco (por isso nunca o rouba).
+/// Guarda a mensagem à vista (uma de cada vez: a nova substitui a anterior). Vive no
+/// [AnfitriaoMensagens] da app (ou, sem ele, na `TelaPrincipal`). Enquanto uma mensagem com ação
+/// está de facto à vista, a tecla Menu do comando ativa a ação antes de chegar ao ecrã (sem
+/// passar pelo foco, por isso nunca o rouba); sem ela, a tecla Menu é do ecrã.
 class ControladorMensagens extends ChangeNotifier {
   Mensagem? _atual;
   Timer? _fim;
   bool _ouve = false;
+
+  /// A sobreposição está tapada por outra rota (só acontece com a da `TelaPrincipal`, quando a
+  /// lista aberta ou o player estão por cima): a mensagem não se vê e a tecla Menu não é dela.
+  bool tapada = false;
 
   Mensagem? get atual => _atual;
 
@@ -37,7 +42,8 @@ class ControladorMensagens extends ChangeNotifier {
     if (comAcao && duracao < const Duration(seconds: 8)) duracao = const Duration(seconds: 8);
     _fim = Timer(duracao, fechar);
     if (comAcao && !_ouve) {
-      HardwareKeyboard.instance.addHandler(_tecla);
+      // antes do foco: se a tecla é da mensagem, o ecrã não a recebe
+      FocusManager.instance.addEarlyKeyEventHandler(_tecla);
       _ouve = true;
     }
     if (!comAcao) _largarTecla();
@@ -46,7 +52,7 @@ class ControladorMensagens extends ChangeNotifier {
 
   void _largarTecla() {
     if (!_ouve) return;
-    HardwareKeyboard.instance.removeHandler(_tecla);
+    FocusManager.instance.removeEarlyKeyEventHandler(_tecla);
     _ouve = false;
   }
 
@@ -66,10 +72,12 @@ class ControladorMensagens extends ChangeNotifier {
     f?.call();
   }
 
-  bool _tecla(KeyEvent e) {
-    if (e is! KeyDownEvent || e.logicalKey != LogicalKeyboardKey.contextMenu || _atual?.aoAcao == null) return false;
+  KeyEventResult _tecla(KeyEvent e) {
+    if (e is! KeyDownEvent || e.logicalKey != LogicalKeyboardKey.contextMenu || _atual?.aoAcao == null || tapada) {
+      return KeyEventResult.ignored;
+    }
     ativarAcao();
-    return true;
+    return KeyEventResult.handled;
   }
 
   @override
@@ -80,7 +88,7 @@ class ControladorMensagens extends ChangeNotifier {
   }
 }
 
-/// Dá aos ecrãs o [ControladorMensagens] da `TelaPrincipal`.
+/// Dá aos ecrãs o [ControladorMensagens] do [AnfitriaoMensagens] (ou da `TelaPrincipal`).
 class MensagensHost extends InheritedWidget {
   const MensagensHost({super.key, required this.controlador, required super.child});
   final ControladorMensagens controlador;
@@ -92,12 +100,42 @@ class MensagensHost extends InheritedWidget {
   bool updateShouldNotify(MensagensHost old) => controlador != old.controlador;
 }
 
+/// O anfitrião das mensagens da app inteira: vive no `MaterialApp.builder`, por cima do
+/// Navigator, por isso todas as rotas (a casca, a lista aberta, o player do Android) partilham
+/// o mesmo canto superior direito e a mesma tecla Menu.
+class AnfitriaoMensagens extends StatefulWidget {
+  const AnfitriaoMensagens({super.key, required this.child});
+  final Widget child;
+
+  @override
+  State<AnfitriaoMensagens> createState() => _AnfitriaoMensagensState();
+}
+
+class _AnfitriaoMensagensState extends State<AnfitriaoMensagens> {
+  final _controlador = ControladorMensagens();
+
+  @override
+  void dispose() {
+    _controlador.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => MensagensHost(
+        controlador: _controlador,
+        child: Stack(children: [
+          Positioned.fill(child: widget.child),
+          SobreposicaoMensagens(controlador: _controlador),
+        ]),
+      );
+}
+
 typedef Mensageiro = void Function(String texto,
     {MensagemTipo tipo, String? acao, VoidCallback? aoAcao, Duration duracao});
 
 /// Mostra uma mensagem no canto superior direito. Com `acao` (e `aoAcao`), a mensagem dura
 /// 8 s e mostra "Menu: (a ação)"; a tecla Menu do comando (ou um toque/clique) ativa-a.
-/// Fora da `TelaPrincipal` (a janela do player, um ecrã sozinho) cai numa SnackBar.
+/// Sem anfitrião (a janela do player no Windows, um ecrã testado sozinho) cai numa SnackBar.
 void mostrarMensagem(BuildContext context, String texto,
     {MensagemTipo tipo = MensagemTipo.info,
     String? acao,
@@ -123,15 +161,37 @@ Mensageiro mensageiroDe(BuildContext context) {
   };
 }
 
-/// A sobreposição no canto superior direito. Não recebe foco.
-class SobreposicaoMensagens extends StatelessWidget {
+/// A sobreposição no canto superior direito. Não recebe foco. Dentro de uma rota (a da
+/// `TelaPrincipal`, sem anfitrião na app), marca o controlador como tapado quando essa rota não
+/// é a de cima.
+class SobreposicaoMensagens extends StatefulWidget {
   const SobreposicaoMensagens({super.key, required this.controlador});
   final ControladorMensagens controlador;
 
   @override
+  State<SobreposicaoMensagens> createState() => _SobreposicaoMensagensState();
+}
+
+class _SobreposicaoMensagensState extends State<SobreposicaoMensagens> {
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    widget.controlador.tapada = !(ModalRoute.of(context)?.isCurrent ?? true);
+  }
+
+  @override
+  void didUpdateWidget(SobreposicaoMensagens antigo) {
+    super.didUpdateWidget(antigo);
+    if (antigo.controlador != widget.controlador) {
+      widget.controlador.tapada = !(ModalRoute.of(context)?.isCurrent ?? true);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) => ListenableBuilder(
-        listenable: controlador,
+        listenable: widget.controlador,
         builder: (context, _) {
+          final controlador = widget.controlador;
           final m = controlador.atual;
           if (m == null) return const SizedBox.shrink();
           return Positioned(
