@@ -135,7 +135,8 @@ class Verificador {
     final relogio = RelogioConta(espera, () {
       if (!esgotou.isCompleted) {
         esgotou.complete(ResultadoVerificacao(
-            EstadoV.inconclusivo, 'tempo esgotado (limite de ${_segundos(espera)}s por ${porLista ? 'lista' : 'conta'})'));
+            EstadoV.inconclusivo, 'tempo esgotado (limite de ${_segundos(espera)}s por ${porLista ? 'lista' : 'conta'})',
+            tempoEsgotado: true));
       }
       filho.cancelar();
     });

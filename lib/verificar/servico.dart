@@ -282,9 +282,10 @@ class ServicoVerificacao extends ChangeNotifier {
         }
       };
 
-  Future<ResultadoVerificacao> _umaVolta(_Tarefa t, Duration timeout) => runZoned(
+  /// Uma volta com o tempo por canal `timeout` e o limite da lista `limite`.
+  Future<ResultadoVerificacao> _umaVolta(_Tarefa t, Duration timeout, Duration limite) => runZoned(
       () => verificador.verificarComLimite(t.lista.conta, biblioteca.canaisTeste,
-          timeout: timeout, limite: _limiteLista, cancelamento: t.cancelamento, aviso: _aviso(t)),
+          timeout: timeout, limite: limite, cancelamento: t.cancelamento, aviso: _aviso(t)),
       zoneValues: {ritmoZona: ritmo});
 
   /// Grava o resultado da volta; enquanto grava, `cancelar` ignora-a. Devolve false se a
@@ -310,7 +311,7 @@ class ServicoVerificacao extends ChangeNotifier {
     ResultadoVerificacao r;
     var falhou = false;
     try {
-      r = await _umaVolta(t, _timeout);
+      r = await _umaVolta(t, _timeout, _limiteLista);
     } on Cancelado {
       return null; // parada: fica o resultado anterior
     } catch (e) {
@@ -330,8 +331,11 @@ class ServicoVerificacao extends ChangeNotifier {
     notifyListeners();
     try {
       await esperarCancelavel(verificador.pausaReteste, can);
-      final r2 = await _umaVolta(t, _timeout * 2);
+      // no reteste, o dobro do tempo: por canal e por lista
+      final r2 = await _umaVolta(t, _timeout * 2, _limiteLista * 2);
       if (can.cancelado) return; // parada ou cancelada: fica o resultado da 1.ª volta
+      // esgotou o tempo: fica o resultado da 1.ª volta, com o seu motivo (diz mais)
+      if (r2.tempoEsgotado) return;
       // o reteste pode não chegar à data
       final r = r2.validade.isEmpty && r1.validade.isNotEmpty ? r2.com(validade: r1.validade) : r2;
       await _gravar(t, r); // se falhar, fica o resultado da 1.ª volta
