@@ -15,9 +15,11 @@ import '../../verificar/canais_teste.dart';
 import '../../verificar/servico.dart';
 import '../campo_tv.dart';
 import '../design/design.dart';
+import '../design/escala_interface.dart';
 import '../design/mensagens.dart';
 import '../player/configuracao_mpv.dart';
 import '../principal/tela_principal.dart';
+import 'linha_opcao.dart';
 import 'seletor_numero.dart';
 import '../realce_foco.dart';
 
@@ -265,54 +267,21 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
 
   // ---- peças ----
 
-  /// Uma opção: título, explicação de uma linha e o controlo à direita (ou por baixo, se não cabe
-  /// ou se `empilhar`).
-  Widget _opcao(String titulo, String explicacao, {Widget? controlo, bool empilhar = false}) => Padding(
-        padding: const EdgeInsets.only(bottom: Tokens.e12),
-        child: SuperficieVidro(
-          padding: const EdgeInsets.all(Tokens.e16),
-          child: LayoutBuilder(builder: (context, c) {
-            final texto = Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-              Text(titulo, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Tokens.texto)),
-              const SizedBox(height: Tokens.e4),
-              Text(explicacao, style: const TextStyle(fontSize: 13.5, color: Tokens.texto2)),
-            ]);
-            if (controlo == null) return SizedBox(width: double.infinity, child: texto);
-            if (empilhar || c.maxWidth < 520) {
-              return SizedBox(
-                  width: double.infinity,
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    texto,
-                    const SizedBox(height: Tokens.e12),
-                    controlo,
-                  ]));
-            }
-            return Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-              Expanded(child: texto),
-              const SizedBox(width: Tokens.e16),
-              Flexible(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 340), child: controlo)),
-            ]);
-          }),
-        ),
-      );
+  /// Uma opção: uma linha simples (ver [LinhaOpcao]).
+  Widget _opcao(String titulo, String explicacao, {Widget? controlo, bool empilhar = false}) =>
+      LinhaOpcao(titulo: titulo, explicacao: explicacao, controlo: controlo, empilhar: empilhar);
 
-  /// Uma opção ligada/desligada: o cartão todo é o interruptor.
-  Widget _interruptor(String titulo, String explicacao, bool valor, ValueChanged<bool> aoMudar) => Padding(
-        padding: const EdgeInsets.only(bottom: Tokens.e12),
-        child: RealceFoco(
-          raio: Tokens.raioCartao,
-          construir: (context, aoMudarFoco) => SuperficieVidro(
-            padding: EdgeInsets.zero,
-            child: SwitchListTile(
-              contentPadding: const EdgeInsets.symmetric(horizontal: Tokens.e16, vertical: Tokens.e4),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Tokens.raioCartao)),
-              title: Text(titulo, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-              subtitle: Text(explicacao, style: const TextStyle(fontSize: 13.5, color: Tokens.texto2)),
-              value: valor,
-              onFocusChange: aoMudarFoco,
-              onChanged: (v) => _mudou(() => aoMudar(v), player: true),
-            ),
-          ),
+  /// Uma opção ligada/desligada: a linha toda é o interruptor.
+  Widget _interruptor(String titulo, String explicacao, bool valor, ValueChanged<bool> aoMudar) => RealceFoco(
+        raio: Tokens.raioBotao,
+        construir: (context, aoMudarFoco) => SwitchListTile(
+          contentPadding: paddingLinhaOpcao,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Tokens.raioBotao)),
+          title: Text(titulo, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+          subtitle: Text(explicacao, style: const TextStyle(fontSize: 13.5, color: Tokens.texto2)),
+          value: valor,
+          onFocusChange: aoMudarFoco,
+          onChanged: (v) => _mudou(() => aoMudar(v), player: true),
         ),
       );
 
@@ -346,16 +315,15 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
     switch (c) {
       case _Categoria.imagemSom:
         return [
-          _opcao('Tamanho da interface',
-              'Compacto mostra mais em cada ecrã (80 % na TV e no Windows). No telemóvel fica igual.',
-              empilhar: true,
-              controlo: _escolhas(TamanhoInterface.values, (t) => t.rotulo, _p.tamanhoInterface,
-                  (t) => _mudou(() => _p.tamanhoInterface = t))),
+          // no telemóvel a escala é sempre 100 %: a opção não faria nada
+          if (escalaPara(context, TamanhoInterface.compacto) != 1)
+            _opcao('Tamanho da interface', 'Compacto mostra mais em cada ecrã (80 % na TV e no Windows).',
+                controlo: _escolhas(TamanhoInterface.values, (t) => t.rotulo, _p.tamanhoInterface,
+                    (t) => _mudou(() => _p.tamanhoInterface = t))),
           _opcao(
               'Desentrelaçamento',
               'Evita riscas nos canais entrelaçados. Automático só o liga quando é preciso.'
               '${_android ? ' Na descodificação Direta, um direto entrelaçado reabre em Compatível.' : ''}',
-              empilhar: true,
               controlo: _escolhas(ModoDesentrelacamento.values, (m) => m.rotulo, _p.modoDesentrelacamento,
                   (m) => _mudou(() => _p.modoDesentrelacamento = m, player: true))),
           _interruptor('Descodificação por hardware', 'Mais leve. Desliga se a imagem falhar.', _p.hardware,
@@ -365,7 +333,6 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
                 _p.ajustarTaxaEcra, (v) => _p.ajustarTaxaEcra = v),
             _opcao('Descodificação no Android',
                 'Direta é a mais leve. Compatível serve se o direto mostrar ecrã preto ou cores erradas.',
-                empilhar: true,
               controlo: _escolhas(ModoDescodificacao.values, (m) => m.rotulo, _p.modoAndroid,
                     (m) => _mudou(() => _p.modoAndroid = m, player: true))),
           ],
@@ -426,7 +393,7 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
                   ),
               ])),
           const Padding(
-            padding: EdgeInsets.symmetric(horizontal: Tokens.e4),
+            padding: EdgeInsets.fromLTRB(Tokens.e8, Tokens.e12, Tokens.e8, 0),
             child: Text(
                 'Com uma verificação a decorrer, as mudanças valem para as próximas listas. '
                 '← → mudam o valor; ↑ ↓ mudam de opção.',
@@ -493,6 +460,10 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
     }
   }
 
+  /// Um separador fino entre cada duas linhas.
+  List<Widget> _comSeparadores(List<Widget> linhas) =>
+      [for (var i = 0; i < linhas.length; i++) ...[if (i > 0) const SeparadorOpcao(), linhas[i]]];
+
   Widget _painel(_Categoria c, bool ocupado) => Focus(
         focusNode: _focoPainel,
         canRequestFocus: false,
@@ -506,7 +477,7 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
             child: ListView(
               key: ValueKey(c),
               padding: const EdgeInsets.all(Tokens.e16),
-              children: _opcoes(c, ocupado),
+              children: _comSeparadores(_opcoes(c, ocupado)),
             ),
           ),
         ),

@@ -3,6 +3,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../design/design.dart';
 import '../realce_foco.dart';
+import 'linha_opcao.dart';
 
 /// Uma linha das Definições com um número: título e descrição à esquerda, `− valor +` à direita.
 /// A linha toda é uma paragem do foco: ← → mudam o valor em `passo` (sem sair de `min`..`max`) e
@@ -52,10 +53,8 @@ class SeletorNumero extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(bottom: Tokens.e12),
-        child: RealceFoco(
-          raio: Tokens.raioCartao,
+  Widget build(BuildContext context) => RealceFoco(
+          raio: Tokens.raioBotao,
           construir: (context, aoMudarFoco) => Semantics(
             container: true,
             label: titulo,
@@ -70,18 +69,11 @@ class SeletorNumero extends StatelessWidget {
               onFocusChange: aoMudarFoco,
               onKeyEvent: _tecla,
               includeSemantics: false,
-              child: SuperficieVidro(
-                padding: const EdgeInsets.all(Tokens.e16),
+              child: Padding(
+                padding: paddingLinhaOpcao,
                 child: Row(children: [
                   Expanded(
-                    child: ExcludeSemantics(
-                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-                        Text(titulo,
-                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Tokens.texto)),
-                        const SizedBox(height: Tokens.e4),
-                        Text(descricao, style: const TextStyle(fontSize: 13.5, color: Tokens.texto2)),
-                      ]),
-                    ),
+                    child: ExcludeSemantics(child: TextoOpcao(titulo, descricao)),
                   ),
                   const SizedBox(width: Tokens.e16),
                   ExcludeSemantics(
@@ -107,7 +99,6 @@ class SeletorNumero extends StatelessWidget {
               ),
             ),
           ),
-        ),
       );
 }
 
