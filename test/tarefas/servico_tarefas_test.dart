@@ -141,5 +141,41 @@ void main() {
     test('JSON', () {
       expect(mascararSegredos('{"password":"xyz"}'), isNot(contains('xyz')));
     });
+
+    test('I1: palavra-passe com @ no link', () {
+      expect(mascararSegredos('http://u:p@ss@host/x'), 'http://host/…');
+    });
+    test('I1: palavra-passe com / no link', () {
+      expect(mascararSegredos('http://u:p/w@host/x'), 'http://host/…');
+    });
+    test('I2: MAC com hifens', () {
+      expect(mascararSegredos('mac 00-1A-79-AA-BB-CC ok'), isNot(contains('1A')));
+    });
+    test('I2: MAC com %3A fora de um link', () {
+      expect(mascararSegredos('a 00%3A1A%3A79%3AAA%3ABB%3ACC b'), isNot(contains('1A')));
+    });
+    test('I2: MAC com 12 hex seguidos', () {
+      expect(mascararSegredos('a 001A79AABBCC b'), isNot(contains('1A79')));
+    });
+    test('I2: MAC colado a uma palavra', () {
+      expect(mascararSegredos('id00:1A:79:AA:BB:CCz'), isNot(contains('1A:79')));
+    });
+    test('I3: token com dois pontos', () {
+      expect(mascararSegredos('token: segredo1'), isNot(contains('segredo1')));
+    });
+    test('I3: mac=, user= e pass= fora de um link', () {
+      final r = mascararSegredos('mac=00:1A:79:AA:BB:CC user=joao pass=segredo2');
+      expect(r, isNot(contains('1A')));
+      expect(r, isNot(contains('joao')));
+      expect(r, isNot(contains('segredo2')));
+    });
+    test('I3: chaves em maiúsculas e com dois pontos', () {
+      final r = mascararSegredos('PASSWORD=Zz9 Username: ana');
+      expect(r, isNot(contains('Zz9')));
+      expect(r, isNot(contains('ana')));
+    });
+    test('I3: host/caminho sem esquema', () {
+      expect(mascararSegredos('ver h.example.com/c/abc?x=1 fim'), 'ver h.example.com/… fim');
+    });
   });
 }
