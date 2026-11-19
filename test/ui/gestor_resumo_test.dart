@@ -118,6 +118,9 @@ void main() {
     for (final i in [1, 2, 3]) {
       expect(faixa(t, i).border, i == n ? isNotNull : isNull, reason: 'realce no passo $n');
     }
+    // o anel com a espessura do resto da app (4 px), na cor do foco
+    final anel = (faixa(t, n).border! as Border).top;
+    expect((anel.width, anel.color), (4.0, Tokens.anelFoco));
   }
 
   testWidgets('ao entrar: título, resumo, três cartões com "OK: abrir →" e o foco no cartão 1', (t) async {

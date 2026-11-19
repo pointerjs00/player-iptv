@@ -592,7 +592,7 @@ class _TelaGestorState extends State<TelaGestor> {
             decoration: BoxDecoration(
               color: aberto ? Tokens.acento : Tokens.superficie2,
               borderRadius: BorderRadius.circular(Tokens.raioCampo),
-              border: focado ? Border.all(color: Tokens.anelFoco, width: 3) : null,
+              border: focado ? Border.all(color: Tokens.anelFoco, width: 4) : null,
             ),
             child: Text('${i + 1} · $nome',
                 maxLines: 1,
