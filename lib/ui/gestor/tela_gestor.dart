@@ -7,7 +7,6 @@ import '../../importar/importar.dart';
 import '../../importar/stbstalker.dart';
 import '../../rede/http.dart';
 import '../../tarefas/servico_tarefas.dart';
-import '../../verificar/canais_teste.dart';
 import '../../verificar/exportar.dart';
 import '../../verificar/servico.dart';
 import '../design/barra_teclas.dart';
@@ -20,6 +19,7 @@ import '../tema.dart';
 import '../verificar/dialogos_gestor.dart';
 import 'indicador_atividade.dart';
 import 'tela_importar.dart';
+import 'tela_verificacao.dart';
 
 /// Os ecrãs do Gestor: o principal e os sub-ecrãs que se abrem dos passos 1 e 2.
 enum EcraGestor { principal, importar, verificacao }
@@ -74,7 +74,7 @@ class _TelaGestorState extends State<TelaGestor> {
 
   /// O primeiro controlo de cada sub-ecrã (recebe o foco ao abrir).
   final _focoOrigens = FocusNode(debugLabel: 'Origens da importação');
-  final _focoVerificarTodas = FocusNode(debugLabel: 'Verificar todas');
+  final _focoVerificarMais = FocusNode(debugLabel: 'Verificar mais (fila)');
 
   final _focosFiltros = [for (final (_, t) in _filtros) FocusNode(debugLabel: 'Filtro $t')];
 
@@ -130,7 +130,7 @@ class _TelaGestorState extends State<TelaGestor> {
       ..._focosPassos,
       _focoEnviar,
       _focoOrigens,
-      _focoVerificarTodas,
+      _focoVerificarMais,
       ..._focosFiltros,
       ..._blocos,
       _blocoVerificacao,
@@ -173,7 +173,7 @@ class _TelaGestorState extends State<TelaGestor> {
         case EcraGestor.importar:
           _focoOrigens.requestFocus();
         case EcraGestor.verificacao:
-          _focoVerificarTodas.requestFocus();
+          _focoVerificarMais.requestFocus();
       }
     });
   }
@@ -249,20 +249,25 @@ class _TelaGestorState extends State<TelaGestor> {
     _aviso(novas.length == 1 ? '1 lista entrou na fila.' : '${novas.length} listas entraram na fila.');
   }
 
-  /// "Verificar todas": as que ainda não estão na fila juntam-se a ela.
-  void _verificarTodas() {
-    final listas = _g.listas;
-    if (listas.isEmpty) return _aviso('Importe listas primeiro.');
-    final novas = [for (final l in listas) if (!_s.aVerificar(l.id)) l];
-    if (novas.isEmpty) return _aviso('Todas as listas já estão na fila.');
-    _s.verificarVarias(novas);
+  /// "Verificar mais (fila)": vai ao ecrã principal só com as "Por verificar"; aí escolhem-se as
+  /// listas e "Verificar (entra na fila)" junta-as à ronda que decorre.
+  void _verificarMais() {
+    setState(() => _filtro = EstadoLista.porVerificar);
+    _abrir(EcraGestor.principal);
+    // depois de _abrir (que põe o foco no passo): o foco vai ao filtro escolhido
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _ecra == EcraGestor.principal) {
+        _focosFiltros[_filtros.indexWhere((f) => f.$1 == _filtro)].requestFocus();
+      }
+    });
   }
 
   void _parar() {
     final tinhaFoco = FocusManager.instance.primaryFocus?.context?.widget is! EditableText;
     _s.parar();
-    // "Parar" desaparece: o foco passa para "Verificar todas"
-    if (tinhaFoco) _focoVerificarTodas.requestFocus();
+    _aviso('Verificação parada. As listas que faltavam ficaram como estavam.');
+    // "Parar" desaparece: o foco passa para "Verificar mais (fila)"
+    if (tinhaFoco) _focoVerificarMais.requestFocus();
   }
 
   /// "Enviar para o Player": pede sempre confirmação (como, e o que fica ao esmagar).
@@ -375,7 +380,15 @@ class _TelaGestorState extends State<TelaGestor> {
                 focoOrigens: _focoOrigens,
               ),
             ),
-            _verificacao(),
+            TelaVerificacao(
+              biblioteca: _b,
+              area: _g,
+              servico: _s,
+              focoVerificarMais: _focoVerificarMais,
+              bloco: _blocoVerificacao,
+              aoVerificarMais: _verificarMais,
+              aoParar: _parar,
+            ),
           ],
         ),
       ),
@@ -714,80 +727,4 @@ class _TelaGestorState extends State<TelaGestor> {
       ),
     );
   }
-
-  /// O sub-ecrã da verificação: verificar todas, o progresso e "Parar".
-  Widget _verificacao() => ListenableBuilder(
-        listenable: Listenable.merge([_b, _g, _s]),
-        builder: (context, _) {
-          final s = _s;
-          final n = _g.listas.length;
-          final casca = SeccaoAtual.maybeOf(context) != null;
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(Tokens.e16),
-            child: Focus(
-              canRequestFocus: false,
-              skipTraversal: true,
-              includeSemantics: false,
-              onKeyEvent: (_, e) => moverEntreBlocos([_blocoVerificacao], e),
-              child: Focus(
-                focusNode: _blocoVerificacao,
-                canRequestFocus: false,
-                skipTraversal: true,
-                includeSemantics: false,
-                child: SuperficieVidro(
-                  padding: const EdgeInsets.all(Tokens.e16 + 4),
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    CabecalhoSeccao(
-                      titulo: '2 · Verificar',
-                      subtitulo: n == 0
-                          ? 'Importe listas primeiro'
-                          : s.ocupado
-                              ? 'A verificar ${s.feitas}/${s.total}'
-                              : _n(n, 'lista no Gestor', 'listas no Gestor'),
-                      icone: Icons.playlist_add_check,
-                    ),
-                    Wrap(
-                        spacing: Tokens.e8,
-                        runSpacing: Tokens.e8,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        children: [
-                          // ligado enquanto verifica: as que faltam juntam-se à fila
-                          FilledButton.icon(
-                            focusNode: _focoVerificarTodas,
-                            onPressed: _verificarTodas,
-                            icon: const Icon(Icons.playlist_add_check),
-                            label: Text('Verificar todas ($n)'),
-                          ),
-                          if (s.ocupado)
-                            OutlinedButton.icon(
-                                onPressed: _parar, icon: const Icon(Icons.stop), label: const Text('Parar')),
-                        ]),
-                    if (s.ocupado) ...[
-                      const SizedBox(height: Tokens.e12),
-                      LinearProgressIndicator(value: s.total == 0 ? null : s.feitas / s.total, minHeight: 6),
-                      const SizedBox(height: Tokens.e4),
-                      Text('${s.feitas} de ${s.total} verificadas', style: const TextStyle(color: Tokens.texto2)),
-                    ],
-                    const SizedBox(height: Tokens.e12),
-                    Wrap(
-                        spacing: Tokens.e8,
-                        runSpacing: Tokens.e8,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        children: [
-                          Text('Canais de teste: ${perfisDe(_b.canaisTeste).map((p) => p.nome).join(', ')}',
-                              style: const TextStyle(color: Tokens.texto2)),
-                          if (casca)
-                            TextButton.icon(
-                              onPressed: () => TelaPrincipal.irPara(context, Seccao.definicoes),
-                              icon: const Icon(Icons.settings_outlined),
-                              label: const Text('Alterar nas Definições'),
-                            ),
-                        ]),
-                  ]),
-                ),
-              ),
-            ),
-          );
-        },
-      );
 }

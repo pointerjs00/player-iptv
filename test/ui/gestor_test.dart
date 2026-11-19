@@ -627,10 +627,10 @@ void main() {
       await t.pumpWidget(_app(inicio(inicial: Seccao.gestor)));
       await t.pump();
       await abrirPasso(t, 'Verificar');
-      expect(_focado(), startsWith('Verificar todas'));
+      expect(_focado(), startsWith('Verificar mais (fila)'));
       await t.binding.handlePopRoute();
       await t.pumpAndSettle();
-      expect(find.text('Verificar todas (1)'), findsNothing);
+      expect(find.text('Verificar mais (fila)'), findsNothing);
       expect(find.text('Gestor de listas'), findsOneWidget);
       expect(_focado(), startsWith('2 | Verificar'), reason: 'o foco volta ao passo 2');
       await t.binding.handlePopRoute();

@@ -185,23 +185,17 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
                           autofocus: p.id == perfisCanais.keys.first,
                           label: Text(p.nome),
                           selected: b.canaisTeste.contains(p.id),
-                          onSelected: ocupado
-                              ? null
-                              : (on) {
-                                  final novo = [
-                                    for (final id in perfisCanais.keys)
-                                      if (id == p.id ? on : b.canaisTeste.contains(id)) id
-                                  ];
-                                  if (novo.isEmpty) return _aviso('Escolha pelo menos um canal.');
-                                  b.definirCanaisTeste(novo);
-                                },
+                          onSelected: (on) {
+                            final novo = [
+                              for (final id in perfisCanais.keys)
+                                if (id == p.id ? on : b.canaisTeste.contains(id)) id
+                            ];
+                            if (novo.isEmpty) return _aviso('Escolha pelo menos um canal.');
+                            b.definirCanaisTeste(novo);
+                          },
                         ),
                     ]),
-                    if (ocupado)
-                      const Padding(
-                        padding: EdgeInsets.only(top: Tokens.e8),
-                        child: Text('Não se mudam durante uma verificação.', style: TextStyle(color: Tokens.texto2)),
-                      ),
+                    if (ocupado) const _ValeParaAsProximas(),
                   ]),
                   _seccao('Verificação', 'Quanto tempo se espera por cada canal.', Icons.timer_outlined, [
                     Text('Tempo limite: ${_p.timeoutVerificacao} s'),
@@ -215,6 +209,7 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
                     ),
                     const Text('Entre 5 e 30 segundos. As inconclusivas voltam a ser testadas com o dobro.',
                         style: TextStyle(color: Tokens.texto2, fontSize: 12.5)),
+                    if (ocupado) const _ValeParaAsProximas(),
                   ]),
                   _seccao('Preferências do player', 'Valem para todos os canais.', Icons.tune_rounded, [
                     _interruptor('Desentrelaçamento', _android
@@ -312,5 +307,17 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
             );
           },
         ),
+      );
+}
+
+/// Com uma verificação a decorrer os canais de teste e o tempo limite mudam-se na mesma: valem para
+/// as listas que ainda não começaram (a volta em curso acaba como começou).
+class _ValeParaAsProximas extends StatelessWidget {
+  const _ValeParaAsProximas();
+
+  @override
+  Widget build(BuildContext context) => const Padding(
+        padding: EdgeInsets.only(top: Tokens.e8),
+        child: Text('Vale para as próximas listas.', style: TextStyle(color: Tokens.texto2)),
       );
 }

@@ -58,6 +58,10 @@ class ServicoVerificacao extends ChangeNotifier {
   Cancelamento _cancelamento = Cancelamento();
   int feitas = 0, total = 0;
 
+  /// Os ids das listas que acabaram nesta ronda, pela ordem em que acabaram (o ecrã da
+  /// verificação mostra o resultado de cada uma). Esvazia-se quando a ronda acaba.
+  final concluidas = <String>[];
+
   /// Quando começou esta ronda e quantas 1.as voltas já terminaram nela (para a estimativa).
   DateTime? _inicioRonda;
   int _nTerminadas = 0;
@@ -141,6 +145,7 @@ class ServicoVerificacao extends ChangeNotifier {
 
   void _recomecarContas() {
     feitas = total = 0;
+    concluidas.clear();
     _inicioRonda = null;
     _nTerminadas = 0;
   }
@@ -240,6 +245,7 @@ class ServicoVerificacao extends ChangeNotifier {
   void _concluir(_Tarefa t) {
     passos.remove(t.id);
     feitas++;
+    concluidas.add(t.id);
     if (passos.isEmpty) _recomecarContas();
     t.acabar();
   }

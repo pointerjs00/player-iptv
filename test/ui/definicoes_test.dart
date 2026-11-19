@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -16,6 +17,11 @@ import 'package:player_iptv/ui/inicio/tela_inicio.dart';
 import 'package:player_iptv/ui/principal/tela_principal.dart';
 import 'package:player_iptv/ui/realce_foco.dart';
 import 'package:player_iptv/ui/tema.dart';
+import 'package:player_iptv/protocolos/protocolo.dart';
+import 'package:player_iptv/rede/http.dart';
+import 'package:player_iptv/verificar/estado.dart';
+import 'package:player_iptv/verificar/servico.dart';
+import 'package:player_iptv/verificar/verificador.dart';
 
 Widget _app(Widget w) => MaterialApp(theme: temaApp(), builder: (_, c) => TemaConformeRealce(child: c!), home: w);
 
@@ -45,6 +51,18 @@ bool _focoEm(WidgetTester t, Finder finder) {
     return !dentro;
   });
   return dentro;
+}
+
+/// Fica preso até ao fim do teste: o serviço continua ocupado.
+class _Preso extends Verificador {
+  final _nunca = Completer<void>();
+
+  @override
+  Future<ResultadoVerificacao> verificarComLimite(Conta conta, List<String> canaisTeste,
+      {Duration timeout = const Duration(seconds: 8), Cancelamento? cancelamento, Aviso? aviso}) async {
+    await _nunca.future;
+    return const ResultadoVerificacao(EstadoV.funciona, 'ok');
+  }
 }
 
 void main() {
@@ -99,6 +117,31 @@ void main() {
     }
     final m = jsonDecode(File('${pasta.path}${Platform.pathSeparator}preferencias.json').readAsStringSync()) as Map;
     expect(m['timeoutVerificacao'], v);
+  });
+
+  testWidgets('durante uma verificação os canais e o tempo limite mudam e dizem que valem para as próximas',
+      (t) async {
+    await t.runAsync(() => area.adicionar([Importada(contaDeLinha('http://a.com/c/ 00:1A:79:00:00:01')!)]));
+    final s = ServicoVerificacao(bib, colecao: area, verificador: _Preso());
+    t.view.physicalSize = const Size(1000, 2400);
+    t.view.devicePixelRatio = 1;
+    addTearDown(t.view.reset);
+    await t.pumpWidget(
+        _app(TelaDefinicoes(biblioteca: bib, area: area, preferencias: prefs, servico: s)));
+    await t.pump(const Duration(milliseconds: 400));
+    expect(find.text('Vale para as próximas listas.'), findsNothing);
+    // com a verificação a decorrer (o verificador fica preso: o serviço está ocupado)
+    s.verificar(area.listas.first);
+    await t.pump();
+    expect(find.text('Vale para as próximas listas.'), findsNWidgets(2));
+    expect(find.textContaining('Não se mudam'), findsNothing);
+    await t.tap(find.text('DAZN 1'));
+    await t.pump();
+    expect(bib.canaisTeste, contains('dazn1'));
+    final antes = prefs.timeoutVerificacao;
+    await t.tap(find.byType(Slider).first);
+    await t.pump();
+    expect(prefs.timeoutVerificacao, isNot(antes));
   });
 
   testWidgets('o user-agent escrito fica nas preferências', (t) async {

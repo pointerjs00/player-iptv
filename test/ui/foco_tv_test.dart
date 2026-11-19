@@ -376,17 +376,17 @@ void main() {
       return (s, f);
     }
 
-    testWidgets('I6: "Verificar todas" mantém o foco; "Parar" devolve-o a "Verificar todas"', (t) async {
+    testWidgets('I6: "Verificar mais (fila)" é o primeiro foco; "Parar" devolve-lhe o foco', (t) async {
       final (s, f) = await abrirVerificar(t);
-      await _irPara(t, 'Verificar todas');
-      await _tecla(t, LogicalKeyboardKey.select);
+      expect(_focado(), contains('Verificar mais (fila)'));
+      s.verificarVarias(area.listas);
       await t.pump();
       expect(s.ocupado, isTrue);
-      expect(_focado(), contains('Verificar todas'));
+      expect(_focado(), contains('Verificar mais (fila)'));
       await _irPara(t, 'Parar');
       await _tecla(t, LogicalKeyboardKey.select);
       await t.pump();
-      expect(_focado(), contains('Verificar todas'));
+      expect(_focado(), contains('Verificar mais (fila)'));
       f.soltar.complete();
       for (var i = 0; i < 10 && s.ocupado; i++) {
         await t.pump();
@@ -394,7 +394,7 @@ void main() {
       }
       await t.pump();
       expect(s.ocupado, isFalse);
-      expect(_focado(), contains('Verificar todas'));
+      expect(_focado(), contains('Verificar mais (fila)'));
     });
 
     testWidgets('I6: "Procurar e juntar" (stbstalker) mantém o foco e inicia a pesquisa em segundo plano', (t) async {
@@ -658,7 +658,7 @@ void main() {
       // o Player não gere nada
       expect(vistos, isNot(contains('Adicionar listas')));
       expect(vistos.where((v) => v.contains('Verificar')), isEmpty, reason: '$vistos');
-      // o Gestor: os passos e a barra das selecionadas; nos sub-ecrãs, "Adicionar listas" e "Verificar todas"
+      // o Gestor: os passos e a barra das selecionadas; nos sub-ecrãs, "Adicionar listas" e "Verificar mais (fila)"
       await t.tap(find.text('Gestor'));
       await t.pumpAndSettle();
       final noGestor = <String>{};
@@ -672,7 +672,7 @@ void main() {
       await abrirPasso(t, 'Verificar');
       expect(await _semRealceAoPercorrer(t, 4, vistos: noGestor), isEmpty);
       expect(noGestor.join(' / '), allOf(contains('Ficheiros'), contains('Escolher ficheiros'),
-          contains('Limpar o Gestor'), contains('Verificar todas')));
+          contains('Limpar o Gestor'), contains('Verificar mais (fila)')));
     });
 
     testWidgets('T1: Conteúdo — grupos, canais, pesquisa e Atualizar com realce (a estrela não é paragem)',
@@ -726,7 +726,7 @@ void main() {
       await t.tap(find.widgetWithText(OutlinedButton, 'Exportar'));
       await t.pumpAndSettle();
       expect(await _semRealceAoPercorrer(t, 3, vistos: vistos), isEmpty);
-      expect(vistos.join(' / '), allOf(contains('Escolher ficheiros'), contains('Verificar todas'),
+      expect(vistos.join(' / '), allOf(contains('Escolher ficheiros'), contains('Verificar mais (fila)'),
           contains('Accounts.json'), contains('Ficheiros .ini')));
       expect(vistos.join(' / '), allOf(contains('Colar texto'), contains('Limpar o Gestor')));
     });

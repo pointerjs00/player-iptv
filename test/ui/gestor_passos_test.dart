@@ -210,11 +210,11 @@ void main() {
     await teclaDpad(t, LogicalKeyboardKey.select);
     await t.pumpAndSettle();
     expect(textosFocados(), startsWith('1 | Importar'));
-    // o passo 2: "Verificar todas"; Voltar do comando regressa ao passo 2
+    // o passo 2: "Verificar mais (fila)"; Voltar do comando regressa ao passo 2
     await teclaDpad(t, LogicalKeyboardKey.arrowRight);
     await teclaDpad(t, LogicalKeyboardKey.select);
     await t.pumpAndSettle();
-    expect(textosFocados(), startsWith('Verificar todas'));
+    expect(textosFocados(), startsWith('Verificar mais (fila)'));
     await t.binding.handlePopRoute();
     await t.pumpAndSettle();
     expect(textosFocados(), startsWith('2 | Verificar'));
