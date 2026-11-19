@@ -102,6 +102,19 @@ void main() {
     expect(procurarLigado(t), isFalse);
   });
 
+  testWidgets('o Espaço (Windows) marca o dia como o OK', (t) async {
+    await abrir(t);
+    await tecla(t, LogicalKeyboardKey.arrowLeft); // 18
+    await tecla(t, LogicalKeyboardKey.space); // De 18
+    expect(find.text('18 nov. 2026'), findsOneWidget);
+    expect(find.text('—'), findsOneWidget);
+    await tecla(t, LogicalKeyboardKey.arrowLeft); // 17
+    await tecla(t, LogicalKeyboardKey.space); // Até 18, de 17
+    expect(find.text('17 nov. 2026'), findsOneWidget);
+    expect(find.text('—'), findsNothing);
+    expect(procurarLigado(t), isTrue);
+  });
+
   testWidgets('«Recomeçar» limpa as marcas e «Procurar e juntar» devolve o intervalo', (t) async {
     DateTimeRange? r;
     var fechou = false;

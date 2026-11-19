@@ -149,13 +149,6 @@ class _CalendarioIntervaloState extends State<CalendarioIntervalo> {
     Navigator.of(context).pop(DateTimeRange(start: _de!, end: _ate!));
   }
 
-  static final _teclasOk = {
-    LogicalKeyboardKey.select,
-    LogicalKeyboardKey.enter,
-    LogicalKeyboardKey.numpadEnter,
-    LogicalKeyboardKey.gameButtonA,
-  };
-
   KeyEventResult _tecla(FocusNode no, KeyEvent e) {
     if (e is KeyUpEvent) return KeyEventResult.ignored;
     final k = e.logicalKey;
@@ -167,7 +160,7 @@ class _CalendarioIntervaloState extends State<CalendarioIntervalo> {
       _mover(-7);
     } else if (k == LogicalKeyboardKey.arrowDown) {
       _mover(7);
-    } else if (_teclasOk.contains(k)) {
+    } else if (teclasOk.contains(k)) {
       if (e is KeyDownEvent) _marcar(_foco);
     } else {
       return KeyEventResult.ignored;
@@ -181,7 +174,7 @@ class _CalendarioIntervaloState extends State<CalendarioIntervalo> {
     final k = e.logicalKey;
     if (k == LogicalKeyboardKey.arrowDown) {
       _noGrade.requestFocus();
-    } else if (_teclasOk.contains(k)) {
+    } else if (teclasOk.contains(k)) {
       // o OK do comando muda de mês (não depender do InkWell para isto)
       if (e is KeyDownEvent) {
         if (_noAnterior.hasFocus && _haMesAntes) _mudarMes(-1);
