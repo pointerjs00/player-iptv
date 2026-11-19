@@ -14,7 +14,6 @@ import '../adicionar.dart';
 import '../design/design.dart';
 import '../navegacao_blocos.dart';
 import '../realce_foco.dart';
-import '../tema.dart';
 import 'dialogos_gestor.dart';
 
 /// Separador "Gestor": a área de trabalho com as suas próprias listas ([AreaGestor]), em três

@@ -99,10 +99,10 @@ void main() {
 
   group('Estados no Gestor', () {
     testWidgets('a linha de uma lista inconclusiva diz "Inconclusiva"', (t) async {
-      await t.runAsync(() => bib.adicionar([
+      await t.runAsync(() => area.adicionar([
             Importada(contaDeLinha('http://outro.com/c/ 00:1A:79:00:00:02')!, _u('inconclusivo', motivo: 'tempo esgotado')),
           ]));
-      _tamanho(t, 1200, 900);
+      _tamanho(t, 1200, 2400);
       await t.pumpWidget(_app(gestor()));
       await t.pump();
       expect(find.textContaining('Inconclusiva · tempo esgotado'), findsOneWidget);
