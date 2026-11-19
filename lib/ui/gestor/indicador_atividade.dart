@@ -11,11 +11,14 @@ const tituloTarefaStb = 'Pesquisa no stbstalker';
 /// Sem nada a decorrer diz "Nada a decorrer". Com [aoAbrir] é um botão (abre o painel de
 /// atividade); sem ele só mostra o texto e o comando não pára nele.
 class IndicadorAtividade extends StatelessWidget {
-  const IndicadorAtividade({super.key, required this.servico, required this.tarefas, this.aoAbrir});
+  const IndicadorAtividade({super.key, required this.servico, required this.tarefas, this.aoAbrir, this.foco});
 
   final ServicoVerificacao servico;
   final ServicoTarefas tarefas;
   final VoidCallback? aoAbrir;
+
+  /// O foco do botão (o painel de atividade devolve-lhe o foco ao fechar).
+  final FocusNode? foco;
 
   /// O texto do indicador ('' sem nada a decorrer).
   static String texto(ServicoVerificacao s, ServicoTarefas tarefas) {
@@ -64,6 +67,7 @@ class IndicadorAtividade extends StatelessWidget {
             child: abrir == null
                 ? caixa
                 : TextButton(
+                    focusNode: foco,
                     onPressed: abrir,
                     style: TextButton.styleFrom(padding: EdgeInsets.zero, shape: const StadiumBorder()),
                     child: caixa,

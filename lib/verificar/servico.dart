@@ -70,6 +70,9 @@ class ServicoVerificacao extends ChangeNotifier {
   DateTime? _inicioRonda;
   int _nTerminadas = 0;
 
+  /// A ronda acabou porque o utilizador carregou em Parar (não merece o aviso de "terminada").
+  bool parada = false;
+
   bool aVerificar(String id) => passos.containsKey(id);
   bool get ocupado => passos.isNotEmpty;
 
@@ -95,6 +98,7 @@ class ServicoVerificacao extends ChangeNotifier {
       feitas--;
       total--;
     }
+    if (passos.isEmpty) parada = false;
     passos[l.id] = 'na fila';
     total++;
     _fila.add(t);
@@ -109,6 +113,7 @@ class ServicoVerificacao extends ChangeNotifier {
   /// Pára tudo: as que estão a meio ficam com o resultado que tinham (as que esperavam a
   /// 2.ª volta ficam com o da 1.ª).
   void parar() {
+    parada = true;
     _cancelamento.cancelar();
     _cancelamento = Cancelamento();
     for (final t in _fila) {

@@ -1,5 +1,5 @@
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../dados/area_gestor.dart';
@@ -20,6 +20,7 @@ import '../realce_foco.dart';
 import '../tema.dart';
 import '../verificar/dialogos_gestor.dart';
 import 'indicador_atividade.dart';
+import 'painel_atividade.dart';
 import 'tela_importar.dart';
 import 'tela_verificacao.dart';
 
@@ -39,7 +40,7 @@ enum EcraGestor { principal, importar, verificacao }
 /// Voltar num sub-ecrã regressa ao principal, com o foco no passo de onde se veio.
 class TelaGestor extends StatefulWidget {
   const TelaGestor({super.key, required this.biblioteca, required this.area, required this.servico,
-      required this.tarefas, this.baseStb = stbBase, this.guardar = guardarFicheiro});
+      required this.tarefas, this.pedido, this.baseStb = stbBase, this.guardar = guardarFicheiro});
 
   /// As listas do Player (recebem os envios) e os canais de teste.
   final Biblioteca biblioteca;
@@ -50,6 +51,10 @@ class TelaGestor extends StatefulWidget {
 
   /// O trabalho longo que corre fora dos ecrãs (o indicador mostra-o).
   final ServicoTarefas tarefas;
+
+  /// Quem quiser que o Gestor abra um sub-ecrã (a casca, no "Ver resultados" do aviso da verificação)
+  /// põe aqui o ecrã; o Gestor abre-o e volta a pôr null.
+  final ValueNotifier<EcraGestor?>? pedido;
 
   /// O blog a pesquisar (injetável para os testes).
   final String baseStb;
@@ -96,6 +101,9 @@ class _TelaGestorState extends State<TelaGestor> {
   String? _linhaFocada;
   List<String> _ordemVista = const [];
 
+  /// O foco do indicador de atividade (o painel devolve-lho ao fechar).
+  final _focoIndicador = FocoForaDaEntrada(debugLabel: 'Indicador de atividade');
+
   /// Tira o registo do Voltar na casca.
   VoidCallback? _tirarVoltar;
 
@@ -109,6 +117,19 @@ class _TelaGestorState extends State<TelaGestor> {
   void initState() {
     super.initState();
     _g.addListener(_aoMudarArea);
+    widget.pedido?.addListener(_aoPedido);
+  }
+
+  /// A casca pediu um sub-ecrã.
+  void _aoPedido() {
+    final e = widget.pedido?.value;
+    if (e == null) return;
+    widget.pedido!.value = null;
+    if (e != _ecra) return _abrir(e);
+    // já lá está: só leva o foco ao primeiro controlo
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _ecra == EcraGestor.verificacao) _focoVerificarMais.requestFocus();
+    });
   }
 
   @override
@@ -120,6 +141,10 @@ class _TelaGestorState extends State<TelaGestor> {
   @override
   void didUpdateWidget(TelaGestor antigo) {
     super.didUpdateWidget(antigo);
+    if (antigo.pedido != widget.pedido) {
+      antigo.pedido?.removeListener(_aoPedido);
+      widget.pedido?.addListener(_aoPedido);
+    }
     if (antigo.area != widget.area) {
       antigo.area.removeListener(_aoMudarArea);
       widget.area.addListener(_aoMudarArea);
@@ -129,6 +154,8 @@ class _TelaGestorState extends State<TelaGestor> {
   @override
   void dispose() {
     _tirarVoltar?.call();
+    widget.pedido?.removeListener(_aoPedido);
+    _focoIndicador.dispose();
     _registo.dispose();
     _g.removeListener(_aoMudarArea);
     for (final f in [
@@ -181,6 +208,16 @@ class _TelaGestorState extends State<TelaGestor> {
           _focoVerificarMais.requestFocus();
       }
     });
+  }
+
+  /// O indicador abre o painel de atividade; ao fechar, o foco volta ao indicador.
+  Future<void> _abrirAtividade() async {
+    var mudouDeEcra = false;
+    await abrirPainelAtividade(context, servico: _s, tarefas: widget.tarefas, aoVerVerificacao: () {
+      mudouDeEcra = true;
+      _abrir(EcraGestor.verificacao);
+    });
+    if (mounted && !mudouDeEcra) _focoIndicador.requestFocus();
   }
 
   /// Voltar (do comando ou o botão): num sub-ecrã regressa ao principal. false = não tratou.
@@ -480,7 +517,9 @@ class _TelaGestorState extends State<TelaGestor> {
               style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Tokens.texto)),
         ),
         const SizedBox(width: Tokens.e12),
-        Flexible(child: IndicadorAtividade(servico: _s, tarefas: widget.tarefas)),
+        Flexible(
+            child: IndicadorAtividade(
+                servico: _s, tarefas: widget.tarefas, foco: _focoIndicador, aoAbrir: _abrirAtividade)),
       ]),
     );
   }

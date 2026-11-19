@@ -109,12 +109,14 @@ class _AppPlayerIptvState extends State<AppPlayerIptv> {
   late final _servicoPlayer = ServicoVerificacao(widget.biblioteca, ritmo: _ritmo);
   // trabalho longo fora dos ecrãs; os ecrãs só observam
   final _tarefas = ServicoTarefas();
+  final _pedidoGestor = ValueNotifier<EcraGestor?>(null);
 
   @override
   void dispose() {
     _servico.parar();
     _servicoPlayer.parar();
     _tarefas.dispose();
+    _pedidoGestor.dispose();
     super.dispose();
   }
 
@@ -130,8 +132,11 @@ class _AppPlayerIptvState extends State<AppPlayerIptv> {
         localizationsDelegates: GlobalMaterialLocalizations.delegates,
         // três secções fixas que guardam o estado; o "Alterar nas Definições" do Gestor muda de secção
         home: TelaPrincipal(
+          tarefas: _tarefas,
+          verificacao: _servico,
+          pedidoGestor: _pedidoGestor,
           verTv: TelaInicio(biblioteca: widget.biblioteca, area: widget.area, servico: _servicoPlayer),
-          gestor: TelaGestor(biblioteca: widget.biblioteca, area: widget.area, servico: _servico, tarefas: _tarefas),
+          gestor: TelaGestor(biblioteca: widget.biblioteca, area: widget.area, servico: _servico, tarefas: _tarefas, pedido: _pedidoGestor),
           definicoes: TelaDefinicoes(
               biblioteca: widget.biblioteca, area: widget.area, preferencias: Preferencias.atual, servico: _servico),
         ),

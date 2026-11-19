@@ -4,11 +4,21 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../../tarefas/servico_tarefas.dart';
+import '../../verificar/servico.dart';
+import '../design/design.dart';
 import '../design/mensagens.dart';
+import '../gestor/tela_gestor.dart';
 import 'barra_seccoes.dart';
 
 /// As três secções fixas da app.
 enum Seccao { verTv, gestor, definicoes }
+
+/// Um foco que alcança-se com as setas mas que não conta como "primeiro controlo" de uma secção
+/// (o foco ao entrar nela vai para o conteúdo, não para o indicador de atividade no canto).
+class FocoForaDaEntrada extends FocusNode {
+  FocoForaDaEntrada({super.debugLabel});
+}
 
 /// A secção à vista e como mudar de secção (para os ecrãs dentro de [TelaPrincipal]).
 class SeccaoAtual extends InheritedWidget {
@@ -34,7 +44,7 @@ class SeccaoAtual extends InheritedWidget {
 /// Ver TV (Android) pede "Carregue outra vez em Voltar para sair".
 class TelaPrincipal extends StatefulWidget {
   const TelaPrincipal({super.key, required this.verTv, required this.gestor, required this.definicoes,
-      this.inicial = Seccao.verTv, this.sair = SystemNavigator.pop});
+      this.inicial = Seccao.verTv, this.sair = SystemNavigator.pop, this.tarefas, this.verificacao, this.pedidoGestor});
 
   final Widget verTv;
   final Widget gestor;
@@ -45,6 +55,15 @@ class TelaPrincipal extends StatefulWidget {
 
   /// Fecha a app (o segundo Voltar em Ver TV).
   final VoidCallback sair;
+
+  /// O trabalho longo: cada tarefa que acaba dá aqui o seu aviso, em qualquer secção.
+  final ServicoTarefas? tarefas;
+
+  /// A verificação do Gestor (não é uma tarefa): quando uma ronda acaba, dá o aviso "Verificação terminada".
+  final ServicoVerificacao? verificacao;
+
+  /// Por onde se pede ao Gestor que abra um sub-ecrã ("Ver resultados" abre o da verificação).
+  final ValueNotifier<EcraGestor?>? pedidoGestor;
 
   /// Mostra a secção `s` e põe o foco nela (onde estava, ou no primeiro controlo).
   static void irPara(BuildContext context, Seccao s) =>
@@ -100,12 +119,79 @@ class _TelaPrincipalState extends State<TelaPrincipal> {
   void initState() {
     super.initState();
     FocusManager.instance.addListener(_focoMudou);
+    _ouvirAvisos();
+  }
+
+  StreamSubscription<Tarefa>? _subTarefas;
+  bool _verificava = false;
+
+  @override
+  void didUpdateWidget(TelaPrincipal antigo) {
+    super.didUpdateWidget(antigo);
+    if (antigo.tarefas != widget.tarefas || antigo.verificacao != widget.verificacao) {
+      antigo.verificacao?.removeListener(_aoMudarVerificacao);
+      _subTarefas?.cancel();
+      _ouvirAvisos();
+    }
+  }
+
+  /// Esta casca é a única dona dos avisos de fim: o de cada tarefa e o da verificação do Gestor.
+  void _ouvirAvisos() {
+    _subTarefas = widget.tarefas?.acabadas.listen(_avisarTarefa);
+    final v = widget.verificacao;
+    _verificava = v?.ocupado ?? false;
+    v?.addListener(_aoMudarVerificacao);
+  }
+
+  /// O aviso de fim de uma tarefa: o resultado, com a ação da tarefa (ou "Tentar de novo" se falhou).
+  void _avisarTarefa(Tarefa t) {
+    final falhou = t.estado == EstadoTarefa.falhou;
+    String? acao = t.rotuloAcao;
+    VoidCallback? aoAcao = t.aoAcao;
+    if (acao == null && falhou && t.repetir != null) {
+      acao = 'Tentar de novo';
+      aoAcao = () => t.repetir!();
+    }
+    _mensagens.mostrar(
+      t.resultado ?? t.titulo,
+      tipo: switch (t.estado) {
+        EstadoTarefa.terminada => MensagemTipo.sucesso,
+        EstadoTarefa.falhou => MensagemTipo.erro,
+        _ => MensagemTipo.info,
+      },
+      acao: acao,
+      aoAcao: aoAcao,
+    );
+  }
+
+  /// Uma ronda do Gestor acabou (ocupado passou de true a false, com listas concluídas e sem Parar).
+  void _aoMudarVerificacao() {
+    final v = widget.verificacao!;
+    final acabou = _verificava && !v.ocupado;
+    _verificava = v.ocupado;
+    if (!acabou || v.parada) return;
+    final estados = [for (final id in v.concluidas) if (v.colecao.porId(id) != null) estadoDe(v.colecao.porId(id)!)];
+    if (estados.isEmpty) return;
+    int n(EstadoLista e) => estados.where((x) => x == e).length;
+    final inconclusivas = n(EstadoLista.inconclusiva);
+    _mensagens.mostrar(
+      'Verificação terminada: ${n(EstadoLista.funciona)} funcionam, ${n(EstadoLista.naoFunciona)} não'
+      '${inconclusivas > 0 ? ' · $inconclusivas inconclusivas' : ''}',
+      tipo: MensagemTipo.sucesso,
+      acao: 'Ver resultados',
+      aoAcao: () {
+        _mudar(Seccao.gestor, focar: false);
+        widget.pedidoGestor?.value = EcraGestor.verificacao;
+      },
+    );
   }
 
   @override
   void dispose() {
     FocusManager.instance.removeListener(_focoMudou);
     _podeSair?.cancel();
+    _subTarefas?.cancel();
+    widget.verificacao?.removeListener(_aoMudarVerificacao);
     _mensagens.dispose();
     for (final f in [..._focosSeccao, ..._focosBarra]) {
       f.dispose();
@@ -132,7 +218,7 @@ class _TelaPrincipalState extends State<TelaPrincipal> {
     final area = caixa.localToGlobal(Offset.zero) & caixa.size;
     FocusNode? melhor;
     for (final n in seccao.traversalDescendants) {
-      if (!n.canRequestFocus || n.skipTraversal || n.context == null || n is FocusScopeNode) continue;
+      if (!n.canRequestFocus || n.skipTraversal || n.context == null || n is FocusScopeNode || n is FocoForaDaEntrada) continue;
       final r = n.rect;
       // só os que estão à vista (o que já saiu de cima não conta)
       if (!area.contains(r.center)) continue;
