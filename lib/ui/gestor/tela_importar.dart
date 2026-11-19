@@ -422,8 +422,6 @@ class _TelaImportarState extends State<TelaImportar> {
   Widget build(BuildContext context) => ListenableBuilder(
         listenable: Listenable.merge([_g, _b, widget.tarefas, widget.registo]),
         builder: (context, _) {
-          final n = _g.listas.length;
-          final vazio = n == 0;
           final ultima = widget.registo.ultima;
           return SingleChildScrollView(
             padding: const EdgeInsets.all(Tokens.e16),
@@ -433,11 +431,7 @@ class _TelaImportarState extends State<TelaImportar> {
               includeSemantics: false,
               onKeyEvent: (_, e) => moverEntreBlocos(_blocos, e),
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                CabecalhoSeccao(
-                  titulo: '1 · Importar',
-                  subtitulo: vazio ? 'O Gestor está vazio' : _n(n, 'lista no Gestor', 'listas no Gestor'),
-                  icone: Icons.inventory_2_outlined,
-                ),
+                // sem cabeçalho: a faixa dos passos, por cima, já diz «1 · Importar»
                 _bloco(0, _origens(), vidro: false),
                 _bloco(1, _painel()),
                 if (ultima != null) _bloco(2, _resultado(ultima)) else const SizedBox.shrink(),

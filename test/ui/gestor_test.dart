@@ -303,6 +303,11 @@ void main() {
       await t.pumpAndSettle();
       expect(find.text('Listas do stbstalker').hitTestable(), findsOneWidget);
       expect(_focado(), startsWith('Ficheiros'));
+      // o passo não repete a faixa: «1 · Importar» só uma vez (na faixa)
+      expect(find.text('1 · Importar'), findsOneWidget);
+      expect(find.byKey(const ValueKey('faixa 1')), findsOneWidget);
+      expect(find.descendant(of: find.byKey(const ValueKey('faixa 1')), matching: find.text('1 · Importar')),
+          findsOneWidget);
       // OK numa origem escolhe-a e mostra o painel dela
       await _tecla(t, LogicalKeyboardKey.arrowRight);
       await _tecla(t, LogicalKeyboardKey.select);
