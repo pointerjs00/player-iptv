@@ -585,7 +585,13 @@ class Biblioteca extends ChangeNotifier implements ColecaoListas {
 
   File _ficheiroCanais(String id) => File('${_pastaCanais.path}${Platform.pathSeparator}$id.json');
 
+  /// Quantas vezes se leu a cache de cada lista (pelo id): os testes confirmam que o Início não
+  /// relê caches que não mudaram.
+  @visibleForTesting
+  final leiturasCache = <String, int>{};
+
   Future<ConteudoLista?> canaisEmCache(String id) async {
+    leiturasCache.update(id, (n) => n + 1, ifAbsent: () => 1);
     final f = _ficheiroCanais(id);
     if (!await f.exists()) return null;
     try {

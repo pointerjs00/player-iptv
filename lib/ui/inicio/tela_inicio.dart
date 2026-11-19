@@ -54,8 +54,13 @@ class _TelaInicioState extends State<TelaInicio> {
 
   /// O resumo da cache de cada lista (pelo id): contagens, favoritos e o número do canal visto.
   Map<String, ResumoLista> _resumos = const {};
-  String? _assinaturaLida;
+  late ResumosInicio _resumidor = ResumosInicio(widget.biblioteca);
   int _geracao = 0;
+
+  /// Se o Início está à vista (a rota dele é a de cima e a secção está ativa). Tapado (lista
+  /// aberta, player, outra secção), as mudanças só marcam [_pendente]: lê-se ao voltar.
+  bool _visivel = false;
+  bool _pendente = true;
 
   /// O foco de cada cartão (pelo id da lista): depois de eliminar, o foco passa ao cartão ao lado.
   final _focos = <String, FocusNode>{};
@@ -66,7 +71,13 @@ class _TelaInicioState extends State<TelaInicio> {
   void initState() {
     super.initState();
     widget.biblioteca.addListener(_mudou);
-    _carregar();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _visivel = TickerMode.valuesOf(context).enabled && (ModalRoute.of(context)?.isCurrent ?? true);
+    if (_visivel && _pendente) _carregar();
   }
 
   @override
@@ -75,7 +86,8 @@ class _TelaInicioState extends State<TelaInicio> {
     if (old.biblioteca != widget.biblioteca) {
       old.biblioteca.removeListener(_mudou);
       widget.biblioteca.addListener(_mudou);
-      _carregar();
+      _resumidor = ResumosInicio(widget.biblioteca);
+      _mudou();
     }
   }
 
@@ -88,25 +100,23 @@ class _TelaInicioState extends State<TelaInicio> {
     super.dispose();
   }
 
-  /// Muda quando as listas, os favoritos ou o último visto mudam (então relêem-se as caches).
-  String _assinatura() {
-    final b = widget.biblioteca;
-    return '${b.ultimoVisto?.lista}/${b.ultimoVisto?.canal}|'
-        '${[for (final l in b.listas) '${l.id}:${l.favoritos.length}:${Object.hashAll(l.favoritos)}'].join(',')}';
-  }
-
-  /// Os resumos vêm das caches de canais, lidas fora do build.
+  /// Os resumos vêm das caches de canais, lidas fora do build; só se relêem as listas que mudaram
+  /// ([ResumosInicio]).
   Future<void> _carregar() async {
+    _pendente = false;
     final b = widget.biblioteca;
     final minha = ++_geracao;
-    _assinaturaLida = _assinatura();
-    final resumos = await resumirListas(b, visto: b.ultimoVisto);
+    final resumos = await _resumidor.atualizar(visto: b.ultimoVisto);
     if (!mounted || minha != _geracao) return;
     setState(() => _resumos = resumos);
   }
 
   void _mudou() {
-    if (_assinatura() != _assinaturaLida) _carregar();
+    if (_visivel) {
+      _carregar();
+    } else {
+      _pendente = true;
+    }
   }
 
   String? _filtro; // null = todas; 'por_verificar' = sem resultado

@@ -158,6 +158,65 @@ void main() {
       expect(abertos.single.$1[abertos.single.$2].id, 'B3');
     });
 
+    /// IO real e frames até `feito` (ou, sem ele, uns quantos passos), com prazo.
+    Future<void> assentar(WidgetTester t, [bool Function()? feito]) async {
+      for (var i = 0; i < (feito == null ? 10 : 100) && !(feito?.call() ?? false); i++) {
+        await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 40)));
+        await t.pump();
+      }
+    }
+
+    testWidgets('um favorito na lista A relê só a cache de A (no máximo uma vez), não a de B', (t) async {
+      tamanho(t);
+      await preparar(t);
+      await abrir(t);
+      final [a, b, _] = bib.listas;
+      expect(find.text('Favoritos · 3'), findsOneWidget);
+      bib.leiturasCache.clear();
+      await t.runAsync(() => bib.alternarFavorito(a.id, 'A3'));
+      await assentar(t, () => find.text('Favoritos · 4').evaluate().isNotEmpty);
+      expect(find.text('Favoritos · 4'), findsOneWidget, reason: 'o favorito novo aparece');
+      expect(bib.leiturasCache[a.id] ?? 0, lessThanOrEqualTo(1));
+      expect(bib.leiturasCache[b.id] ?? 0, 0, reason: 'B não mudou');
+      // um "visto" na lista B não relê a A
+      bib.leiturasCache.clear();
+      await t.runAsync(() => bib.registarVisto(b.id, _conteudo('B').canais[1]));
+      await assentar(t, () => find.text('Canal 2 · Portugal').evaluate().isNotEmpty);
+      expect(find.text('Canal 2 · Portugal'), findsOneWidget);
+      expect(bib.leiturasCache[a.id] ?? 0, 0);
+      expect(bib.leiturasCache[b.id] ?? 0, lessThanOrEqualTo(1));
+    });
+
+    testWidgets('com outra rota por cima (lista aberta, player), o Início não lê caches; lê ao voltar',
+        (t) async {
+      tamanho(t);
+      await preparar(t);
+      await abrir(t);
+      final [a, b, _] = bib.listas;
+      final nav = t.state<NavigatorState>(find.byType(Navigator));
+      nav.push(MaterialPageRoute<void>(builder: (_) => const Scaffold(body: Text('player'))));
+      await t.pumpAndSettle();
+      bib.leiturasCache.clear();
+      // zapping no player e um favorito: nada se lê enquanto o Início está tapado
+      await t.runAsync(() async {
+        for (final c in _conteudo('B').canais) {
+          await bib.registarVisto(b.id, c);
+        }
+        await bib.alternarFavorito(a.id, 'A3');
+      });
+      await assentar(t);
+      expect(bib.leiturasCache, isEmpty, reason: 'o Início não está à vista');
+      nav.pop();
+      await t.pumpAndSettle();
+      await assentar(t, () =>
+          find.text('Favoritos · 4').evaluate().isNotEmpty && find.text('Canal 3 · Desporto').evaluate().isNotEmpty);
+      await t.pumpAndSettle();
+      expect(find.text('Favoritos · 4'), findsOneWidget, reason: 'ao voltar fica em dia');
+      expect(find.text('Canal 3 · Desporto'), findsOneWidget);
+      expect(bib.leiturasCache[a.id] ?? 0, lessThanOrEqualTo(1));
+      expect(bib.leiturasCache[b.id] ?? 0, lessThanOrEqualTo(1));
+    });
+
     testWidgets('a barra de teclas tem as três dicas', (t) async {
       tamanho(t);
       await preparar(t);
