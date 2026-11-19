@@ -42,12 +42,9 @@ typedef AbrirLista = Future<ConteudoLista> Function(Conta conta, {Cancelamento? 
 Future<ConteudoLista> _abrirPeloProtocolo(Conta conta, {Cancelamento? cancelamento, Aviso? aviso}) =>
     Protocolo.para(conta).abrir(conta, cancelamento: cancelamento, aviso: aviso);
 
-/// Onde procura a pesquisa da lista aberta: nos canais e nos grupos, só nos canais ou só nos grupos.
-enum _Alcance { tudo, canais, grupos }
-
 /// O conteúdo de uma lista: grupos à esquerda, canais à direita (no telemóvel, grupos em
-/// cima). Uma só pesquisa procura canais (em todos os grupos) e grupos, sem acentos nem
-/// maiúsculas; os encontrados ficam nas duas colunas.
+/// cima). No topo da coluna dos grupos, «Filtrar grupos» só mexe nos grupos; no topo da coluna
+/// dos canais, «Pesquisar canais ou número» procura em todos os grupos (sem acentos nem maiúsculas).
 class TelaConteudo extends StatefulWidget {
   const TelaConteudo({super.key, required this.biblioteca, required this.lista, this.abrir,
       this.atualizar = false, AbrirLista? abrirLista, this.dns = resolverDns, this.continuar})
@@ -90,18 +87,20 @@ class _TelaConteudoState extends State<TelaConteudo> {
   FocusNode? _focoAntes;
   String? _grupo;
 
-  /// A pesquisa (já com o atraso de [_pesquisar]) e onde procura.
+  /// A pesquisa dos canais (já com o atraso de [_pesquisar]) e o filtro dos grupos (idem).
   String _q = '';
-  _Alcance _alcance = _Alcance.tudo;
+  String _qGrupos = '';
   final _textoPesquisa = TextEditingController();
-  final _focoPesquisa = FocusNode(debugLabel: 'Pesquisa da lista');
+  final _focoPesquisa = FocusNode(debugLabel: 'Pesquisa dos canais');
+  final _textoGrupos = TextEditingController();
+  final _focoFiltroGrupos = FocusNode(debugLabel: 'Filtro dos grupos');
 
-  /// Há texto no campo (já, sem o atraso): o Voltar limpa-o e a barra de teclas muda.
+  /// Há texto num campo (já, sem o atraso): o Voltar limpa-o e a barra de teclas muda.
   bool _comTexto = false;
+  bool _comTextoGrupos = false;
 
-  /// A pesquisa aplica-se aos canais / aos grupos (conforme [_alcance]).
-  bool get _pesquisaCanais => _alcance != _Alcance.grupos && _q.trim().isNotEmpty;
-  bool get _pesquisaGrupos => _alcance != _Alcance.canais && _q.trim().isNotEmpty;
+  bool get _pesquisaCanais => _q.trim().isNotEmpty;
+  bool get _pesquisaGrupos => _qGrupos.trim().isNotEmpty;
   Map<String, int> _contagens = const {};
 
   // feitos uma vez por lista (com 100 mil canais, refazê-los a cada build congela a TV)
@@ -109,6 +108,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
   Map<String, String> _gruposSemAcentos = const {}; // para a pesquisa nos grupos
   List<String>? _nomes; // os nomes sem acentos, pela ordem de `canais`
   Timer? _atrasoPesquisa;
+  Timer? _atrasoFiltro;
   int _versaoFavoritos = 0;
   String? _chaveVisiveis;
   List<Canal> _visiveis = const [];
@@ -124,6 +124,9 @@ class _TelaConteudoState extends State<TelaConteudo> {
   /// Os grupos escondidos também à vista (com um ícone), para os voltar a mostrar.
   bool _verEscondidos = false;
   bool _continuou = false;
+
+  /// A coluna dos grupos (não recebe o foco: diz se o foco está num grupo).
+  final _focoColunaGrupos = FocusNode(debugLabel: 'Coluna dos grupos', canRequestFocus: false, skipTraversal: true);
 
   /// O foco de cada grupo (depois de esconder um, o foco passa ao grupo escolhido).
   final _focosGrupos = <String, FocusNode>{};
@@ -150,8 +153,12 @@ class _TelaConteudoState extends State<TelaConteudo> {
   void dispose() {
     _cancelamento?.cancelar();
     _atrasoPesquisa?.cancel();
+    _atrasoFiltro?.cancel();
     _atrasoDigitos?.cancel();
     _scrollCanais.dispose();
+    _textoGrupos.dispose();
+    _focoFiltroGrupos.dispose();
+    _focoColunaGrupos.dispose();
     _focoRegresso.dispose();
     _focoColunaCanais.dispose();
     _focoCancelar.dispose();
@@ -318,8 +325,37 @@ class _TelaConteudoState extends State<TelaConteudo> {
     });
   }
 
-  /// Escolhe o grupo `g`. Com pesquisa, apaga-a e abre o grupo, com o foco nele (já na coluna
-  /// com todos os grupos).
+  void _filtrarGrupos(String v) {
+    if (_comTextoGrupos != v.isNotEmpty) setState(() => _comTextoGrupos = v.isNotEmpty);
+    _atrasoFiltro?.cancel();
+    _atrasoFiltro = Timer(const Duration(milliseconds: 150), () {
+      if (mounted) setState(() => _qGrupos = v);
+    });
+  }
+
+  /// Apaga o filtro dos grupos. Com o foco num grupo, o foco vai ao grupo escolhido (ou, se ele
+  /// não estiver à vista, ao campo): a linha focada pode deixar de existir.
+  void _limparFiltroGrupos() {
+    _atrasoFiltro?.cancel();
+    _textoGrupos.clear();
+    final nosGrupos = _focoColunaGrupos.hasFocus;
+    setState(() {
+      _qGrupos = '';
+      _comTextoGrupos = false;
+    });
+    if (!nosGrupos) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final g = _focosGrupos[_grupo];
+      if (g != null && g.context != null && g.canRequestFocus) {
+        g.requestFocus();
+      } else {
+        _focoFiltroGrupos.requestFocus();
+      }
+    });
+  }
+
+  /// Escolhe o grupo `g`. Com pesquisa de canais, apaga-a e abre o grupo, com o foco nele.
   void _escolherGrupo(String g) {
     if (!_comTexto && _q.trim().isEmpty) {
       setState(() => _grupo = g);
@@ -332,17 +368,30 @@ class _TelaConteudoState extends State<TelaConteudo> {
     });
   }
 
-  /// A escrever na pesquisa (com o teclado): aí o Voltar só acaba a edição (é do [CampoTv]).
+  /// A escrever num campo (com o teclado): aí o Voltar só acaba a edição (é do [CampoTv]).
   /// Lê-se o campo como foi construído: o Voltar que acaba a edição ainda não o refez.
-  bool _aEscreverNaPesquisa() {
-    final e = _focoPesquisa.context?.findAncestorWidgetOfExactType<EditableText>();
-    return _focoPesquisa.hasFocus && e != null && !e.readOnly;
+  bool _aEscreverEm(FocusNode foco) {
+    final e = foco.context?.findAncestorWidgetOfExactType<EditableText>();
+    return foco.hasFocus && e != null && !e.readOnly;
   }
 
-  /// O Voltar do sistema com texto na pesquisa limpa-a; sem texto, sai.
+  /// O Voltar com texto limpa um campo: o da coluna onde está o foco, se tiver texto; senão o outro.
+  void _limparComVoltar() {
+    final nosGrupos = _focoFiltroGrupos.hasFocus || _focoColunaGrupos.hasFocus;
+    if (nosGrupos && _comTextoGrupos) {
+      _limparFiltroGrupos();
+    } else if (_comTexto) {
+      _limparPesquisa();
+    } else if (_comTextoGrupos) {
+      _limparFiltroGrupos();
+    }
+  }
+
+  /// O Voltar do sistema com texto num campo limpa-o; sem texto, sai.
   void _voltar(bool saiu, Object? _) {
-    if (saiu || !_comTexto || _aEscreverNaPesquisa()) return;
-    _limparPesquisa();
+    if (saiu || !(_comTexto || _comTextoGrupos)) return;
+    if (_aEscreverEm(_focoPesquisa) || _aEscreverEm(_focoFiltroGrupos)) return;
+    _limparComVoltar();
   }
 
   Future<void> _carregar() async {
@@ -435,14 +484,14 @@ class _TelaConteudoState extends State<TelaConteudo> {
     if (mounted) setState(() {});
   }
 
-  /// Os grupos à vista; com pesquisa nos grupos, só os encontrados (sem os virtuais, como os
+  /// Os grupos à vista; com o filtro (`filtrar`), só os encontrados (sem os virtuais, como os
   /// favoritos, e sem os escondidos).
-  List<String> _gruposVisiveis() {
+  List<String> _gruposVisiveis({bool filtrar = true}) {
     final c = _conteudo;
     if (c == null) return const [];
     final escondidos = widget.lista.gruposEscondidos;
-    if (_pesquisaGrupos) {
-      final q = semAcentos(_q.trim());
+    if (filtrar && _pesquisaGrupos) {
+      final q = semAcentos(_qGrupos.trim());
       return [
         for (final g in c.grupos)
           if ((_gruposSemAcentos[g] ?? semAcentos(g)).contains(q) && (_verEscondidos || !escondidos.contains(g))) g,
@@ -550,9 +599,9 @@ class _TelaConteudoState extends State<TelaConteudo> {
   @override
   Widget build(BuildContext context) {
     final largo = MediaQuery.sizeOf(context).width >= 720;
-    // o Voltar com texto na pesquisa limpa-a em vez de sair
+    // o Voltar com texto num campo limpa-o em vez de sair
     return PopScope(
-      canPop: !_comTexto,
+      canPop: !(_comTexto || _comTextoGrupos),
       onPopInvokedWithResult: _voltar,
       child: Scaffold(
       body: SafeArea(
@@ -571,10 +620,10 @@ class _TelaConteudoState extends State<TelaConteudo> {
                   _opcoes();
                   return KeyEventResult.handled;
                 }
-                // a tecla Voltar com texto na pesquisa limpa-a (a escrever, o campo fica com ela)
-                if (_comTexto &&
+                // a tecla Voltar com texto num campo limpa-o (a escrever, o campo fica com ela)
+                if ((_comTexto || _comTextoGrupos) &&
                     (e.logicalKey == LogicalKeyboardKey.goBack || e.logicalKey == LogicalKeyboardKey.escape)) {
-                  _limparPesquisa();
+                  _limparComVoltar();
                   return KeyEventResult.handled;
                 }
                 return KeyEventResult.ignored;
@@ -582,7 +631,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
               child: Column(children: [
                 _barraTopo(largo),
                 Expanded(child: _corpo()),
-                BarraTeclas(_comTexto
+                BarraTeclas(_comTexto || _comTextoGrupos
                     ? const [('↑', 'pesquisa'), ('OK', 'abrir'), ('Voltar', 'limpar')]
                     : const [
                         ('OK', 'ver'),
@@ -630,7 +679,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
     }
   }
 
-  /// O topo: "‹ Início", o nome da lista, o n.º de canais, a pesquisa, a ordem e os grupos escondidos.
+  /// O topo: "‹ Início", o nome da lista, o n.º de canais, a ordem e os grupos escondidos.
   Widget _barraTopo(bool largo) {
     final tv = ecraTv(context);
     final l = widget.lista;
@@ -650,35 +699,6 @@ class _TelaConteudoState extends State<TelaConteudo> {
     final contagem = total == null
         ? null
         : Text(total == 1 ? '1 canal' : '$total canais', style: TextStyle(color: Tokens.texto2, fontSize: tamanho));
-    final pesquisa = CampoTv(
-      key: const Key('pesquisa-canais'),
-      controller: _textoPesquisa,
-      focusNode: _focoPesquisa,
-      decoration: const InputDecoration(
-        prefixIcon: Icon(Icons.search),
-        hintText: 'Pesquisar canais, grupos ou o número',
-      ),
-      onChanged: _pesquisar,
-    );
-    // onde procura: «Tudo · Canais · Grupos» (uma escolha só)
-    final alcance = Row(mainAxisSize: MainAxisSize.min, children: [
-      for (final (i, (a, t)) in const [
-        (_Alcance.tudo, 'Tudo'),
-        (_Alcance.canais, 'Canais'),
-        (_Alcance.grupos, 'Grupos'),
-      ].indexed) ...[
-        if (i > 0) const SizedBox(width: Tokens.e4),
-        ChoiceChip(
-          label: Text(t),
-          selected: _alcance == a,
-          // compactos: cabem ao lado da pesquisa na TV a 960
-          showCheckmark: false,
-          visualDensity: VisualDensity.compact,
-          labelPadding: const EdgeInsets.symmetric(horizontal: Tokens.e4),
-          onSelected: (_) => setState(() => _alcance = a),
-        ),
-      ],
-    ]);
     final ordem = Tooltip(
       message: 'Opções dos canais',
       child: OutlinedButton(
@@ -698,40 +718,24 @@ class _TelaConteudoState extends State<TelaConteudo> {
     // o estado da última verificação e a validade (sugestão 9), discretos
     Widget info([Widget? antes]) => Align(alignment: Alignment.centerLeft, child: _cabecalhoLista(antes));
     if (largo) {
-      // a pesquisa e o «Tudo · Canais · Grupos» ficam na 1.ª linha; abaixo de 1600 px a ordem e os
-      // grupos escondidos passam para a linha do estado; entre 900 e 1100 px também o n.º de canais
-      // (a pesquisa fica larga na TV a 960); abaixo de 900 px é o «Tudo · Canais · Grupos» que
-      // desce, para uma linha sua
-      final largura = MediaQuery.sizeOf(context).width;
-      final medio = largura < 1600;
-      final alcanceEmBaixo = largura < 900;
-      final contagemEmBaixo = largura < 1100 && !alcanceEmBaixo;
-      final caixaPesquisa = Expanded(
-          child: Align(alignment: Alignment.centerRight,
-              child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 420), child: pesquisa)));
+      // abaixo de 1600 px a ordem e os grupos escondidos passam para a linha do estado
+      final medio = MediaQuery.sizeOf(context).width < 1600;
       return Padding(
         padding: const EdgeInsets.fromLTRB(Tokens.e16, Tokens.e8, Tokens.e16, Tokens.e8),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Row(children: [
             inicio,
             const SizedBox(width: Tokens.e8),
-            ConstrainedBox(constraints: BoxConstraints(maxWidth: contagemEmBaixo ? 180 : 220), child: nome),
-            if (contagem != null && !contagemEmBaixo) ...[const SizedBox(width: Tokens.e12), contagem],
-            const SizedBox(width: Tokens.e16),
-            caixaPesquisa,
-            if (!alcanceEmBaixo) ...[const SizedBox(width: Tokens.e8), alcance],
-            if (!medio) ...[const SizedBox(width: Tokens.e12), ordem, const SizedBox(width: Tokens.e8), escondidos],
+            Flexible(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 360), child: nome)),
+            if (contagem != null) ...[const SizedBox(width: Tokens.e12), contagem],
+            const Spacer(),
+            if (!medio) ...[ordem, const SizedBox(width: Tokens.e8), escondidos],
             atualizar,
           ]),
-          if (alcanceEmBaixo) ...[
-            const SizedBox(height: Tokens.e4),
-            Align(alignment: Alignment.centerLeft, child: alcance),
-          ],
           const SizedBox(height: Tokens.e4),
           if (medio)
             Row(children: [
-              // o n.º de canais vai com o estado (parte de linha como ele, se não couber)
-              Expanded(child: info(contagemEmBaixo ? contagem : null)),
+              Expanded(child: info()),
               ordem,
               const SizedBox(width: Tokens.e8),
               escondidos,
@@ -750,11 +754,6 @@ class _TelaConteudoState extends State<TelaConteudo> {
           if (contagem != null) ...[const SizedBox(width: Tokens.e8), contagem],
           atualizar,
         ]),
-        Padding(padding: const EdgeInsets.symmetric(horizontal: Tokens.e8), child: pesquisa),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(Tokens.e8, Tokens.e8, Tokens.e8, 0),
-          child: Align(alignment: Alignment.centerLeft, child: alcance),
-        ),
         Padding(
           padding: const EdgeInsets.fromLTRB(Tokens.e8, Tokens.e8, Tokens.e8, 0),
           child: Wrap(spacing: Tokens.e8, runSpacing: Tokens.e4, children: [ordem, escondidos]),
@@ -841,7 +840,8 @@ class _TelaConteudoState extends State<TelaConteudo> {
           const SizedBox(width: Tokens.e16),
           Expanded(
             child: SuperficieVidro(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                _campoPesquisaCanais(),
                 _cabecalhoCanais(canais.length, pesquisa),
                 Expanded(child: lista),
               ]),
@@ -850,12 +850,9 @@ class _TelaConteudoState extends State<TelaConteudo> {
         ]),
       );
     }
-    // sem coluna dos grupos: os grupos (com pesquisa, os encontrados) numa fila de chips por
-    // cima dos canais
-    final grupos = _gruposVisiveis();
-    final q = _pesquisaGrupos ? semAcentos(_q.trim()) : '';
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      if (_pesquisaGrupos) _titulo('Grupos · ${grupos.length}'),
+    // sem coluna dos grupos (nem filtro): os grupos numa fila de chips por cima da pesquisa dos canais
+    final grupos = _gruposVisiveis(filtrar: false);
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       SizedBox(
         height: 48,
         child: ListView.separated(
@@ -864,12 +861,13 @@ class _TelaConteudoState extends State<TelaConteudo> {
           itemCount: grupos.length,
           separatorBuilder: (_, _) => const SizedBox(width: 6),
           itemBuilder: (_, i) => ChoiceChip(
-            label: _comRealce(grupos[i], q, const TextStyle()),
+            label: Text(grupos[i], maxLines: 1, overflow: TextOverflow.ellipsis),
             selected: !pesquisa && grupos[i] == _grupo,
             onSelected: (_) => _escolherGrupo(grupos[i]),
           ),
         ),
       ),
+      _campoPesquisaCanais(),
       _cabecalhoCanais(canais.length, pesquisa),
       Expanded(
         child: Padding(
@@ -936,11 +934,22 @@ class _TelaConteudoState extends State<TelaConteudo> {
   TextStyle _estiloCabecalho() =>
       TextStyle(color: Tokens.texto2, fontWeight: FontWeight.w700, fontSize: ecraTv(context) ? 16.0 : 14.0);
 
-  /// O cabeçalho de uma coluna ("Grupos · 2").
-  Widget _titulo(String texto) => Padding(
-        padding: const EdgeInsets.fromLTRB(Tokens.e16, Tokens.e12, Tokens.e16, Tokens.e4),
-        child: Text(texto, maxLines: 1, overflow: TextOverflow.ellipsis, style: _estiloCabecalho()),
+  /// Um campo no topo de uma coluna.
+  Widget _campoColuna(Key chave, TextEditingController texto, FocusNode foco, IconData icone, String dica,
+          ValueChanged<String> aoMudar) =>
+      Padding(
+        padding: const EdgeInsets.fromLTRB(Tokens.e12, Tokens.e8, Tokens.e12, 0),
+        child: CampoTv(
+          key: chave,
+          controller: texto,
+          focusNode: foco,
+          decoration: InputDecoration(prefixIcon: Icon(icone), hintText: dica),
+          onChanged: aoMudar,
+        ),
       );
+
+  Widget _campoPesquisaCanais() => _campoColuna(const Key('pesquisa-canais'), _textoPesquisa, _focoPesquisa,
+      Icons.search, 'Pesquisar canais ou número', _pesquisar);
 
   /// O texto com a parte encontrada (`q`, já sem acentos) em [Tokens.anelFoco]; sem ela, só o texto.
   Widget _comRealce(String texto, String q, TextStyle estilo) {
@@ -983,27 +992,27 @@ class _TelaConteudoState extends State<TelaConteudo> {
     );
   }
 
-  /// ↑ no primeiro grupo ou no primeiro canal vai à pesquisa (a procura direcional podia ir
-  /// parar à ordem ou aos grupos escondidos, que estão mais perto).
-  bool _subirParaPesquisa(KeyEvent e, bool noPrimeiro) {
+  /// ↑ no primeiro grupo ou no primeiro canal vai ao campo dessa coluna (a procura direcional podia
+  /// ir parar à ordem ou aos grupos escondidos, que estão mais perto).
+  bool _subirParaCampo(KeyEvent e, bool noPrimeiro, FocusNode campo) {
     if (e is! KeyDownEvent || e.logicalKey != LogicalKeyboardKey.arrowUp || !noPrimeiro) return false;
-    _focoPesquisa.requestFocus();
+    campo.requestFocus();
     return true;
   }
 
   Widget _colunaGrupos() {
     final grupos = _gruposVisiveis();
     final tv = ecraTv(context);
-    final q = _pesquisaGrupos ? semAcentos(_q.trim()) : '';
+    final q = _pesquisaGrupos ? semAcentos(_qGrupos.trim()) : '';
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      if (_pesquisaGrupos) _titulo('Grupos · ${grupos.length}'),
+      _campoColuna(const Key('filtro-grupos'), _textoGrupos, _focoFiltroGrupos, Icons.filter_list,
+          'Filtrar grupos', _filtrarGrupos),
       Expanded(
         child: Focus(
-          canRequestFocus: false,
-          skipTraversal: true,
+          focusNode: _focoColunaGrupos,
           includeSemantics: false,
-          onKeyEvent: (_, e) =>
-              _subirParaPesquisa(e, grupos.isNotEmpty && (_focosGrupos[grupos.first]?.hasPrimaryFocus ?? false))
+          onKeyEvent: (_, e) => _subirParaCampo(
+                  e, grupos.isNotEmpty && (_focosGrupos[grupos.first]?.hasPrimaryFocus ?? false), _focoFiltroGrupos)
                   ? KeyEventResult.handled
                   : KeyEventResult.ignored,
           child: FocusTraversalGroup(
@@ -1186,7 +1195,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
 
   /// Nos canais: DIREITA fica no canal (à direita não há nada; a procura direcional saltava
   /// para o "Atualizar" lá em cima) e ESQUERDA volta ao grupo escolhido (não ao filtro dos
-  /// grupos, que pode estar mais perto do canal de cima).
+  /// grupos de cima, que pode estar mais perto).
   KeyEventResult _teclaCanais(FocusNode _, KeyEvent e) {
     if (e is KeyUpEvent) return KeyEventResult.ignored;
     final d = _digito(e.logicalKey);
@@ -1195,7 +1204,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
       return KeyEventResult.handled;
     }
     if (e.logicalKey == LogicalKeyboardKey.arrowRight) return KeyEventResult.handled;
-    if (_subirParaPesquisa(e, _indice == 0)) return KeyEventResult.handled;
+    if (_subirParaCampo(e, _indice == 0, _focoPesquisa)) return KeyEventResult.handled;
     if (e.logicalKey == LogicalKeyboardKey.arrowLeft) {
       final g = _focosGrupos[_grupo];
       if (g != null && g.context != null && g.canRequestFocus) {

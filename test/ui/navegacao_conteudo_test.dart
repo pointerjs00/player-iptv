@@ -141,10 +141,10 @@ void main() {
     final l = await preparar(t);
     await mostrar(t, l);
     expect(_nomesCanais(t), ['SIC', 'RTP 1']);
-    // do grupo, CIMA leva à pesquisa; ESQUERDA chega ao "‹ Início" e, por baixo da pesquisa, a
+    // do grupo, CIMA leva ao filtro dos grupos e outra vez ao "‹ Início"; por baixo dele, a
     // linha do estado tem a "Ordem"
     await _tecla(t, LogicalKeyboardKey.arrowUp);
-    await _tecla(t, LogicalKeyboardKey.arrowLeft);
+    await _tecla(t, LogicalKeyboardKey.arrowUp);
     expect(textosFocados(), '‹ Início');
     await _tecla(t, LogicalKeyboardKey.arrowRight);
     await _tecla(t, LogicalKeyboardKey.arrowDown);
@@ -279,7 +279,8 @@ void main() {
       expect(find.text('54 canais'), findsOneWidget);
       expect(find.text('Ordem: da lista'), findsOneWidget);
       expect(find.text('Grupos escondidos: 0'), findsOneWidget);
-      expect(find.text('Pesquisar canais, grupos ou o número'), findsOneWidget);
+      expect(find.text('Pesquisar canais ou número'), findsOneWidget);
+      expect(find.text('Filtrar grupos'), findsOneWidget);
     });
 
     testWidgets('OK mantido põe nos favoritos, avisa com "Desfazer", e Desfazer repõe', (t) async {

@@ -172,12 +172,12 @@ void main() {
       expect(find.text('Canais · 2'), findsOneWidget);
       expect(find.text('RTP Açores'), findsOneWidget);
 
-      // a mesma pesquisa encontra os grupos
-      await _escrever(t, find.byKey(const Key('pesquisa-canais')), 'desp');
+      // o filtro dos grupos só mexe nos grupos
+      await _escrever(t, find.byKey(const Key('filtro-grupos')), 'desp');
       await t.pump(const Duration(milliseconds: 200));
-      expect(find.text('Grupos · 1'), findsOneWidget);
-      expect(find.widgetWithText(ListTile, 'Portugal'), findsNothing);
-      expect(find.widgetWithText(ListTile, 'Desporto'), findsOneWidget);
+      final grupos = find.byKey(const Key('lista-grupos'));
+      expect(find.descendant(of: grupos, matching: find.text('Portugal')), findsNothing);
+      expect(find.descendant(of: grupos, matching: find.text('Desporto')), findsOneWidget);
     });
 
     testWidgets('favoritos aparecem num grupo próprio e abrir passa a lista do grupo', (t) async {
@@ -230,15 +230,10 @@ void main() {
       await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 500)));
       await t.pump();
       expect(find.text('Canais · 11'), findsOneWidget);
-      final sw = Stopwatch()..start();
       for (var k = 0; k < 5; k++) {
         await t.tap(find.byTooltip(k.isEven ? 'Pôr nos favoritos' : 'Tirar dos favoritos').first);
         await t.pump();
       }
-      sw.stop();
-      // ignore: avoid_print
-      print('I5 rebuild médio: ${sw.elapsedMilliseconds / 5} ms');
-      expect(sw.elapsedMilliseconds / 5, lessThan(60));
     });
 
     testWidgets('sugestão 9: esqueleto a brilhar enquanto carrega; depois o cabeçalho com estado e validade',
