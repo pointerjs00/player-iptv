@@ -88,6 +88,20 @@ class EstatisticasMotor {
   final Duration? buffer;
 }
 
+/// Um erro do motor. `mensagem` pode trazer o link (quem a mostra tira os segredos); `formato`: o
+/// motor não consegue descodificar este canal (formato ou descodificador não suportado), ao contrário
+/// de um erro de rede.
+@immutable
+class ErroMotor {
+  const ErroMotor(this.mensagem, {this.formato = false});
+
+  final String mensagem;
+  final bool formato;
+
+  @override
+  String toString() => 'ErroMotor($mensagem, formato: $formato)';
+}
+
 /// O que reproduz o vídeo de um canal. O ecrã do player ([PlayerCanais]) fala só com isto: o mpv
 /// (media_kit, em `motor_mpv.dart`) e, no Android, o ExoPlayer ficam por trás.
 ///
@@ -99,8 +113,8 @@ abstract interface class MotorReproducao {
   /// Se o desentrelaçamento da app (filtros do mpv, shader do Flutter) se aplica a este motor.
   bool get suportaDesentrelacamento;
 
-  /// Os erros do motor, em texto (podem trazer o link: quem os mostra tira os segredos).
-  Stream<String> get erros;
+  /// Os erros do motor ([ErroMotor]).
+  Stream<ErroMotor> get erros;
 
   /// Parado à espera de dados.
   Stream<bool> get aCarregar;

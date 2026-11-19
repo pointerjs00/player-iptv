@@ -16,7 +16,7 @@ class MotorFalso implements MotorReproducao {
   final audios = <FaixaMotor>[];
   bool descartado = false;
 
-  final _erros = StreamController<String>.broadcast();
+  final _erros = StreamController<ErroMotor>.broadcast();
   final _aCarregar = StreamController<bool>.broadcast();
   final _percentagem = StreamController<double>.broadcast();
   final _tamanho = StreamController<Size?>.broadcast();
@@ -25,7 +25,7 @@ class MotorFalso implements MotorReproducao {
   final _faixas = StreamController<FaixasMotor>.broadcast();
   final _faixaAtual = StreamController<FaixaAtual>.broadcast();
 
-  void erro(String e) => _erros.add(e);
+  void erro(String e, {bool formato = false}) => _erros.add(ErroMotor(e, formato: formato));
   void carregar(bool b) => _aCarregar.add(b);
   void percentagem(double p) => _percentagem.add(p);
   void tamanho(Size? s) => _tamanho.add(s);
@@ -38,7 +38,7 @@ class MotorFalso implements MotorReproducao {
   @override
   bool get suportaDesentrelacamento => false;
   @override
-  Stream<String> get erros => _erros.stream;
+  Stream<ErroMotor> get erros => _erros.stream;
   @override
   Stream<bool> get aCarregar => _aCarregar.stream;
   @override
@@ -147,6 +147,16 @@ void main() {
     expect(find.textContaining('RTP 1: o canal não abriu'), findsOneWidget);
     expect(find.textContaining('exemplo.invalido'), findsNothing);
     expect(find.text('Tentar de novo'), findsOneWidget);
+    await _sair(t);
+  });
+
+  testWidgets('um erro de formato chega ao ecrã (por agora como um erro normal)', (t) async {
+    final m = await _montar(t);
+    m.erro('Unsupported codec', formato: true);
+    await t.pump();
+    expect(find.text('RTP 1: o canal não abriu (Unsupported codec)'), findsOneWidget);
+    expect(find.text('Tentar de novo'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
     await _sair(t);
   });
 

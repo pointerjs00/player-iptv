@@ -250,7 +250,9 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     _saltos = mpv == null ? null : SaltosDireto(mpv, _relogio);
     _tamanho = null;
     _leitor.esquecer();
-    _subsPlayer.add(_motor.erros.listen((e) {
+    _subsPlayer.add(_motor.erros.listen((erro) {
+      // um erro de formato trata-se como os outros (a troca de motor é noutro passo)
+      final e = erro.mensagem;
       if (mounted && e.isNotEmpty && erroFatalPlayer(e)) {
         // a reabrir depois de um corte: uma falha passageira (rede, 401) tenta-se outra vez
         if (_aRetomar && _tentarContinuarDepois(_pedido)) return;
@@ -342,7 +344,6 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   /// O buffer chegou ao fim a meio do canal (o servidor fechou a ligação e o mpv não reconecta):
   /// pede o canal de novo, com "A carregar…", nunca em ciclo.
   Future<void> _fimDoBuffer() async {
-    const fim = true;
     final mk = _mk;
     // sem mpv não se sabe se é um direto nem onde parou (o motor trata do fim)
     if (!mounted || mk == null) return;
@@ -357,7 +358,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     final cortado = !eDireto && ContinuarDireto.cortadoAntesDoFim(posicao: posicao, duracao: mk.duracao);
     final direto = eDireto || cortado;
     if (!ContinuarDireto.deve(
-        fimDoBuffer: fim, aAbrir: _aAbrir, erro: _erro != null, aTocar: _aTocar, direto: direto)) {
+        fimDoBuffer: true, aAbrir: _aAbrir, erro: _erro != null, aTocar: _aTocar, direto: direto)) {
       return;
     }
     final abriu = _abriuEm;

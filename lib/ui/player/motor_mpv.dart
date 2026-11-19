@@ -22,10 +22,9 @@ class MotorMediaKit implements MotorReproducao {
     mpv = MotorForaDaUi.doPlayer(player);
     _video = VideoController(player, configuration: config.configuracaoVideo);
     configurado = aplicarConfiguracao(mpv, config);
-    void tamanho(_) => _tamanho.add(tamanhoAtual);
-    _subs
-      ..add(player.stream.width.listen(tamanho))
-      ..add(player.stream.height.listen(tamanho));
+    // só no width, como o ecrã fazia antes (a altura lê-se do estado nesse momento)
+    _subs.add(player.stream.width.listen(
+        (w) => _tamanho.add(w == null ? null : Size(w.toDouble(), (player.state.height ?? 0).toDouble()))));
   }
 
   final ConfiguracaoMpv config;
@@ -56,7 +55,8 @@ class MotorMediaKit implements MotorReproducao {
   bool get suportaDesentrelacamento => true;
 
   @override
-  Stream<String> get erros => player.stream.error;
+  /// O mpv não distingue aqui um erro de formato: `formato` é sempre false.
+  Stream<ErroMotor> get erros => player.stream.error.map(ErroMotor.new);
 
   @override
   Stream<bool> get aCarregar => player.stream.buffering;
