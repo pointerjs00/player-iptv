@@ -227,6 +227,27 @@ void main() {
     Future<List<String>> descerEsubir(WidgetTester t, Preferencias prefs) async {
       await teclaDpad(t, LogicalKeyboardKey.arrowRight);
       final topo = id();
+      // a linha de escolhas (Wrap) da primeira opção: com várias lado a lado, CIMA chega a qualquer uma
+      // (pelos textos: ao descer, a lista larga a linha e volta a construí-la)
+      String? linhaFocada() {
+        Element? w;
+        FocusManager.instance.primaryFocus?.context?.visitAncestorElements((a) {
+          if (a.widget is Wrap) w = a;
+          return w == null;
+        });
+        if (w == null) return null;
+        final textos = <String>[];
+        void visitar(Element e) {
+          if (e.widget case Text(:final data?)) textos.add(data);
+          e.visitChildren(visitar);
+        }
+
+        w!.visitChildren(visitar);
+        return textos.join(' | ');
+      }
+
+      final linhaDoTopo = linhaFocada();
+      bool noTopo() => id() == topo || (linhaDoTopo != null && linhaFocada() == linhaDoTopo);
       final timeout = prefs.timeoutVerificacao, volume = prefs.volume;
       final descer = <String>[topo];
       for (var i = 0; i < 40 && !descer.last.startsWith('Slider'); i++) {
@@ -240,12 +261,12 @@ void main() {
       expect(prefs.volume, volume, reason: 'CIMA/BAIXO não mudam o volume');
       // CIMA até ao topo
       final subir = <String>[descer.last];
-      for (var i = 0; i < 40 && subir.last != topo; i++) {
+      for (var i = 0; i < 40 && !noTopo(); i++) {
         await teclaDpad(t, LogicalKeyboardKey.arrowUp);
         expect(id(), isNot(subir.last), reason: 'CIMA preso: $subir');
         subir.add(id());
       }
-      expect(subir.last, topo, reason: 'CIMA volta ao topo: $subir');
+      expect(noTopo(), isTrue, reason: 'CIMA volta ao topo ($topo): $subir');
       // ESQUERDA/DIREITA no deslizador continuam a mudar o valor
       for (var i = 0; i < 40 && !id().startsWith('Slider'); i++) {
         await teclaDpad(t, LogicalKeyboardKey.arrowDown);

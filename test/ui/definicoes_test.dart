@@ -133,6 +133,52 @@ void main() {
     expect(find.text('Evita soluços nas imagens (Android TV)'), findsOneWidget);
   });
 
+  testWidgets('Android: "Motor do player" (ExoPlayer / mpv) e "Modo túnel"; no Windows não aparecem', (t) async {
+    await abrir(t);
+    expect(find.text('Motor do player'), findsNothing);
+    expect(find.text('Modo túnel'), findsNothing);
+    await t.pumpWidget(_app(TelaDefinicoes(biblioteca: bib, area: area, preferencias: prefs, android: true)));
+    await t.pump();
+    expect(find.text('Motor do player'), findsOneWidget);
+    expect(find.text('Modo túnel'), findsOneWidget);
+    expect(find.text('Só em aparelhos que o suportam. Pode ajudar a fluidez; se a imagem falhar, desliga.'),
+        findsOneWidget);
+    final exo = t.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'ExoPlayer'));
+    expect(exo.selected, isTrue, reason: 'o ExoPlayer é a omissão');
+    expect(t.widget<SwitchListTile>(find.widgetWithText(SwitchListTile, 'Modo túnel')).value, isFalse);
+    await t.tap(find.widgetWithText(SwitchListTile, 'Modo túnel'));
+    await t.pump();
+    expect(prefs.modoTunel, isTrue);
+    await t.tap(find.widgetWithText(ChoiceChip, 'mpv'));
+    await t.pump();
+    expect(prefs.motorAndroid, MotorAndroid.mpv);
+    expect(find.text('Guardado · vale a partir do próximo canal'), findsOneWidget);
+  });
+
+  testWidgets('Android com o ExoPlayer: as opções só do mpv ficam desativadas, com "só no motor mpv"', (t) async {
+    t.view.physicalSize = const Size(1000, 2400);
+    t.view.devicePixelRatio = 1;
+    addTearDown(t.view.reset);
+    await t.pumpWidget(_app(TelaDefinicoes(biblioteca: bib, area: area, preferencias: prefs, android: true)));
+    await t.pump();
+    expect(find.text('só no motor mpv'), findsNWidgets(3));
+    for (final m in ['Automático', 'Ligado', 'Desligado', 'Direta (recomendada)', 'Compatível']) {
+      expect(t.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, m)).onSelected, isNull, reason: m);
+    }
+    expect(t.widget<SwitchListTile>(find.widgetWithText(SwitchListTile, 'Descodificação por hardware')).onChanged,
+        isNull);
+    await t.tap(find.widgetWithText(ChoiceChip, 'Desligado'));
+    await t.pump();
+    expect(prefs.modoDesentrelacamento, ModoDesentrelacamento.automatico, reason: 'desativada: não muda');
+    // com o mpv voltam a estar ativas
+    await t.tap(find.widgetWithText(ChoiceChip, 'mpv'));
+    await t.pump();
+    expect(find.text('só no motor mpv'), findsNothing);
+    expect(t.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Compatível')).onSelected, isNotNull);
+    expect(t.widget<SwitchListTile>(find.widgetWithText(SwitchListTile, 'Descodificação por hardware')).onChanged,
+        isNotNull);
+  });
+
   testWidgets('mudar uma opção confirma: "Guardado" (e, no player, que vale a partir do próximo canal)', (t) async {
     await abrir(t);
     await t.tap(find.text('Desligado'));

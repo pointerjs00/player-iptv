@@ -23,9 +23,11 @@ import 'estatisticas.dart';
 import 'faixas.dart';
 import 'filtro_desentrelacamento.dart';
 import 'leitor_partilhado.dart';
+import '../design/mensagens.dart';
 import 'maquina_controlos.dart';
 import 'motor_exo.dart';
 import 'motor_mpv.dart';
+import 'motor_na_sessao.dart';
 import 'motor_reproducao.dart';
 import 'mpv_fora_da_ui.dart';
 import 'numero_canal.dart';
@@ -65,12 +67,22 @@ typedef CriarMotor = MotorReproducao Function(ModoDescodificacao modo, bool hard
 MotorReproducao criarMotorMpv(ModoDescodificacao modo, bool hardware) =>
     MotorMediaKit(ConfiguracaoMpv.para(PlataformaVideo.atual, modo: modo, hardware: hardware));
 
+/// Cria o ExoPlayer de um player (Android; `tunel`: o modo túnel das preferências). Os testes dão
+/// um motor falso.
+typedef CriarMotorExo = MotorReproducao Function({required bool tunel});
+
+/// O aviso quando o ExoPlayer não conseguiu tocar um canal e ele abriu no mpv.
+const avisoMotorMpv = 'Este canal abriu com o motor mpv';
+
+/// A nota das opções que só existem no mpv, com o ExoPlayer.
+const soNoMpv = 'só no motor mpv';
+
 /// O player: toca o canal `indice` de `canais`, com a barra de controlos e o painel de
 /// definições ([ControlosPlayer]). As preferências ([Preferencias.atual]) aplicam-se a cada canal.
 class PlayerCanais extends StatefulWidget {
   const PlayerCanais({super.key, required this.canais, required this.indice, required this.resolver,
       required this.nomeLista, required this.aoSair, this.alternarEcraInteiro, this.aoMudarCanal,
-      this.criarMotor = criarMotorMpv});
+      this.criarMotor = criarMotorMpv, this.criarMotorExo = novoMotorExo, @visibleForTesting this.plataforma});
 
   final List<Canal> canais;
   final int indice;
@@ -84,16 +96,23 @@ class PlayerCanais extends StatefulWidget {
   /// O canal que está a tocar mudou (cima/baixo): ao sair, a lista foca este.
   final ValueChanged<int>? aoMudarCanal;
 
-  /// O motor que reproduz o vídeo (por omissão o mpv).
+  /// O mpv: o motor no Windows, no Android quando é o das preferências, e o recurso quando o
+  /// ExoPlayer não consegue tocar um canal.
   final CriarMotor criarMotor;
+
+  /// O ExoPlayer (Android, quando é o motor das preferências: [Preferencias.motorAndroid]).
+  final CriarMotorExo criarMotorExo;
+
+  /// Só para os testes: a plataforma (por omissão a deste aparelho).
+  final PlataformaVideo? plataforma;
 
   @override
   State<PlayerCanais> createState() => PlayerCanaisState();
 }
 
 class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver {
-  static final _plataforma = PlataformaVideo.atual;
-  static final _android = _plataforma == PlataformaVideo.android;
+  late final _plataforma = widget.plataforma ?? PlataformaVideo.atual;
+  late final _android = _plataforma == PlataformaVideo.android;
 
   final _prefs = Preferencias.atual;
   final _sessao = SessaoPlayer();
@@ -105,6 +124,15 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   late ModoDescodificacao _modo = Preferencias.atual.modoAndroid;
   late bool _hardware = Preferencias.atual.hardware;
   late MotorReproducao _motor;
+
+  /// O motor que está por trás agora (o do canal: [MotorNaSessao]).
+  late TipoMotor _tipo;
+
+  /// O ExoPlayer a ser largado antes de o mpv o substituir (quem abre a seguir espera por ele).
+  Future<void>? _largando;
+
+  /// Ao abrir no mpv um canal que o ExoPlayer não tocou: diz-se quando abrir.
+  bool _avisarMpv = false;
   SaltosDireto? _saltos;
 
   /// O motor do mpv (media_kit), quando é ele que está por trás: as propriedades do mpv para o
@@ -139,7 +167,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   /// O desentrelaçamento: decide-se com a imagem, depois da primeira e a cada
   /// [_intervaloEntrelacamento] (ver `controlo_desentrelacamento.dart`). [_playerDoDesentrelacamento]:
   /// o player para que o meio foi posto (um player recriado não tem o vf do antigo).
-  final _deint = ControloDesentrelacamento(_plataforma);
+  late final _deint = ControloDesentrelacamento(_plataforma);
   MotorReproducao? _playerDoDesentrelacamento;
   Timer? _vigiaEntrelacamento;
   static const _intervaloEntrelacamento = Duration(seconds: 10);
@@ -214,6 +242,10 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
           _ultima.largar();
         }
       });
+      if (_avisarMpv) {
+        _avisarMpv = false;
+        mostrarMensagem(context, avisoMotorMpv);
+      }
       _vigiarImagem(_pedido);
       _verEntrelacamento(_pedido);
       if (retomou) _reporFaixaAudio(_pedido);
@@ -241,20 +273,40 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
         return null;
       });
     }
-    _criarPlayer();
+    _criarPlayer(_tipoPara(_canais[_i]));
     _abrir();
   }
 
-  void _criarPlayer() {
-    _motor = widget.criarMotor(_modo, _hardware);
+  /// O motor com que o canal abre: no Android o das preferências (o mpv para os canais que o
+  /// ExoPlayer não tocou nesta sessão); nas outras plataformas o mpv.
+  TipoMotor _tipoPara(Canal c) =>
+      MotorNaSessao.instancia.para(_chave(c), plataforma: _plataforma, preferido: _prefs.motorAndroid);
+
+  /// O ExoPlayer está por trás (também um [MotorExo] dado pela fábrica do mpv, nos testes).
+  bool get _exo => _tipo == TipoMotor.exoplayer || _motor is MotorExo;
+
+  /// O volume que vai para o motor: sem mpv não há "mute", o silêncio é o volume a 0.
+  double get _volumeMotor => _mpv == null && _sessao.silencio ? 0 : _prefs.volume;
+
+  void _criarPlayer(TipoMotor tipo) {
+    _tipo = tipo;
+    _motor = tipo == TipoMotor.exoplayer
+        ? widget.criarMotorExo(tunel: _prefs.modoTunel)
+        : widget.criarMotor(_modo, _hardware);
     final mpv = _mpv;
     _saltos = mpv == null ? null : SaltosDireto(mpv, _relogio);
     _tamanho = null;
     _leitor.esquecer();
     _subsPlayer.add(_motor.erros.listen((erro) {
-      // um erro de formato trata-se como os outros (a troca de motor é noutro passo)
+      if (!mounted) return;
+      // o ExoPlayer não toca este canal (formato ou descodificador): abre no mpv, que fica com ele
+      // nesta sessão (um 2.º erro já é do mpv: nunca há ciclos)
+      if (erro.formato && _tipo == TipoMotor.exoplayer) {
+        _passarAoMpv(aviso: true);
+        return;
+      }
       final e = erro.mensagem;
-      if (mounted && e.isNotEmpty && erroFatalPlayer(e)) {
+      if (e.isNotEmpty && erroFatalPlayer(e)) {
         // a reabrir depois de um corte: uma falha passageira (rede, 401) tenta-se outra vez
         if (_aRetomar && _tentarContinuarDepois(_pedido)) return;
         _vigia.parar();
@@ -294,21 +346,52 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     }));
   }
 
-  /// Recria o player noutra descodificação (o vo do Android fixa-se ao criar) ou no lugar de um
-  /// mpv que deixou de responder. Devolve a aposentação do antigo (quem abre não espera por ela:
-  /// ver [prepararPlayer]).
-  Future<void> _recriar(ModoDescodificacao modo, bool hardware) {
+  /// Recria o player noutro motor ([tipo]), noutra descodificação (o vo do Android fixa-se ao
+  /// criar) ou no lugar de um mpv que deixou de responder. Devolve a aposentação do antigo (quem
+  /// abre não espera por ela: ver [prepararPlayer]).
+  Future<void> _recriar(TipoMotor tipo, ModoDescodificacao modo, bool hardware) {
+    _largarSubscricoes();
+    final antigo = _motor;
+    _modo = modo;
+    _hardware = hardware;
+    _criarPlayer(tipo);
+    if (mounted) setState(() {});
+    // pára o antigo (nunca toca por trás); nenhum pedido ao mpv antigo depois de destruído
+    return antigo.descartar();
+  }
+
+  /// Do ExoPlayer para o mpv: o ExoPlayer é largado primeiro e só depois se cria o mpv (nunca dois
+  /// motores ao mesmo tempo).
+  Future<void> _largarExoECriar(TipoMotor tipo, ModoDescodificacao modo, bool hardware) async {
+    _largarSubscricoes();
+    final antigo = _motor;
+    try {
+      await antigo.descartar().timeout(_limiteStop);
+    } catch (e) {
+      debugPrint('exoplayer: não foi largado a tempo (${e.runtimeType})');
+    }
+    // saiu do player entretanto (o dispose já largou o antigo)
+    if (!mounted) return;
+    _modo = modo;
+    _hardware = hardware;
+    _criarPlayer(tipo);
+    setState(() {});
+  }
+
+  void _largarSubscricoes() {
     for (final s in _subsPlayer) {
       s.cancel();
     }
     _subsPlayer.clear();
-    final antigo = _motor;
-    _modo = modo;
-    _hardware = hardware;
-    _criarPlayer();
-    if (mounted) setState(() {});
-    // pára o antigo (nunca toca por trás); nenhum pedido ao mpv antigo depois de destruído
-    return antigo.descartar();
+  }
+
+  /// O ExoPlayer não tocou o canal (ou o utilizador pediu o modo compatível): o canal passa ao mpv
+  /// nesta sessão e reabre já lá (no mesmo ponto, se se estava a reabrir depois de um corte).
+  void _passarAoMpv({required bool aviso}) {
+    MotorNaSessao.instancia.passarAoMpv(_chave(_canais[_i]));
+    _vigia.parar();
+    _avisarMpv = aviso;
+    _abrir(continuar: _aRetomar, mesmoCanal: true);
   }
 
   /// A chave do canal para lembrar, nesta sessão, que precisa do modo "Compatível".
@@ -419,10 +502,15 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     }
   }
 
-  /// Abre o canal `_i`. `continuar`: o mesmo canal outra vez porque o buffer acabou.
-  Future<void> _abrir({bool continuar = false}) async {
+  /// Abre o canal `_i`. `continuar`: o mesmo canal outra vez porque o buffer acabou. `mesmoCanal`:
+  /// o mesmo canal outra vez noutro motor ou de volta ao direto (não é "visto" de novo nem mostra
+  /// o nome).
+  Future<void> _abrir({bool continuar = false, bool mesmoCanal = false}) async {
     final pedido = ++_pedido;
     final canal = _canais[_i];
+    final repetido = continuar || mesmoCanal;
+    // o aviso do mpv é só do recurso, quando for ele a abrir
+    if (!repetido) _avisarMpv = false;
     if (!continuar) {
       _continuar.reiniciar();
       _audioEscolhido = null;
@@ -446,7 +534,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     _leitor.esquecer();
     // o nome do canal uns segundos (no primeiro canal a barra ainda não foi construída)
     final controlos = _controlos.currentState;
-    if (continuar) {
+    if (repetido) {
       // o mesmo canal: sem o nome por cima
     } else if (controlos != null) {
       controlos.mostrarInfoCanal();
@@ -462,21 +550,35 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       final hardware = _prefs.hardware;
       // Windows: "Abrir em modo compatível" (cartão de erro) põe este canal por software
       final hardwareCanal = hardware && (_android || !CompativelNaSessao.instancia.software(_chave(canal)));
-      // um mpv que deixou de responder não se volta a usar: player novo
-      await prepararPlayer(
-        novo: (_android && (modo != _modo || hardware != _hardware)) || (_mpv?.semResposta ?? false),
-        zap: pedido > 1,
-        parar: () => _motor.parar(),
-        trocar: () => _recriar(modo, hardware),
-        limiteStop: _limiteStop,
-      );
+      // o ExoPlayer de um canal anterior ainda a ser largado: espera-se (senão eram dois motores)
+      final largando = _largando;
+      if (largando != null) await largando;
+      if (!mounted || pedido != _pedido) return;
+      final tipo = _tipoPara(canal);
+      if (tipo != _tipo && _tipo == TipoMotor.exoplayer) {
+        final l = _largando = _largarExoECriar(tipo, modo, hardware);
+        await l;
+        if (identical(_largando, l)) _largando = null;
+        if (!mounted || pedido != _pedido) return;
+      } else {
+        // um mpv que deixou de responder não se volta a usar: player novo
+        final mpvNovo = tipo == TipoMotor.mpv &&
+            ((_android && (modo != _modo || hardware != _hardware)) || (_mpv?.semResposta ?? false));
+        await prepararPlayer(
+          novo: tipo != _tipo || mpvNovo,
+          zap: pedido > 1,
+          parar: () => _motor.parar(),
+          trocar: () => _recriar(tipo, modo, hardware),
+          limiteStop: _limiteStop,
+        );
+      }
       // o desentrelaçamento: no mesmo canal (corte do servidor) e no mesmo mpv fica tudo como estava;
       // noutro canal tira-se o filtro do anterior e decide-se de novo com a imagem
       final playerNovo = !identical(_playerDoDesentrelacamento, _motor);
       _playerDoDesentrelacamento = _motor;
       final desentrelacamento = _deint.abrir(continuar: continuar, playerNovo: playerNovo);
       if (!mounted || pedido != _pedido) return;
-      final f = await widget.resolver(canal, continuar: continuar);
+      final f = await widget.resolver(canal, continuar: repetido);
       if (!mounted || pedido != _pedido) return;
       final mk = _mk;
       if (mk != null) {
@@ -490,9 +592,9 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
             limparFiltro: desentrelacamento.limpar,
             manterDesentrelacamento: desentrelacamento.manter);
       } else {
-        // outro motor: só o que a interface tem (1× e o volume)
+        // outro motor: só o que a interface tem (1× e o volume; o silêncio é o volume a 0)
         await _motor.velocidade(1);
-        await _motor.volume(_prefs.volume);
+        await _motor.volume(_volumeMotor);
       }
       if (!mounted || pedido != _pedido) return;
       _vigia.abrindo();
@@ -527,6 +629,19 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   /// As propriedades do mpv para as estatísticas (texto; "" quando não há).
   Future<Map<String, String>> _lerMpv() => _leitor.ler(propriedadesDiagnostico);
 
+  /// A informação da barra (resolução, imagens/s, débito) num motor sem mpv: das estatísticas
+  /// dele, com os nomes do mpv ([textoInfoStream]).
+  Future<Map<String, String>> _infoDoMotor() async {
+    final e = await _motor.estatisticas();
+    final r = e.resolucao, fps = e.fps, br = e.bitrate;
+    return {
+      if (r != null) 'width': '${r.width}',
+      if (r != null) 'height': '${r.height}',
+      if (fps != null) 'container-fps': '$fps',
+      if (br != null) 'video-bitrate': '$br',
+    };
+  }
+
   /// A barra de progresso: num direto pelos saltos do cache ([SaltosDireto.irPara]: seek
   /// relativo, nunca reabre o canal, o relógio do direto fica certo); num filme, seek absoluto.
   Future<void> _procurar(JanelaProgresso janela, double alvo) async {
@@ -551,15 +666,21 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     if (!_android) return;
     await _lerHzEcra();
     if (!_prefs.ajustarTaxaEcra) return;
-    // o fps do canal lê-se do mpv: sem ele não se pede modo
+    // o fps do canal lê-se do mpv, ou das estatísticas do ExoPlayer: sem ele não se pede modo
     final mpv = _mpv;
-    if (mpv == null) return;
+    final motor = _motor;
+    if (mpv == null && !_exo) return;
     // o container-fps costuma vir logo; senão o medido, que demora uns segundos
     try {
       for (var tentativa = 0; tentativa < 5; tentativa++) {
-        if (!mounted || pedido != _pedido) return;
-        var fps = double.tryParse(await mpv.getProperty('container-fps')) ?? 0;
-        if (fps <= 0) fps = double.tryParse(await mpv.getProperty('estimated-vf-fps')) ?? 0;
+        if (!mounted || pedido != _pedido || !identical(motor, _motor)) return;
+        double fps;
+        if (mpv != null) {
+          fps = double.tryParse(await mpv.getProperty('container-fps')) ?? 0;
+          if (fps <= 0) fps = double.tryParse(await mpv.getProperty('estimated-vf-fps')) ?? 0;
+        } else {
+          fps = (await motor.estatisticas()).fps ?? 0;
+        }
         if (fps > 0) {
           if (!mounted || pedido != _pedido) return;
           final hz = await _taxa.ajustarPara(fps);
@@ -756,7 +877,11 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
           // Se entretanto mudou de canal, não se mexe no canal novo.
           final pedido = _pedido;
           final saltos = _saltos;
-          if (saltos == null) return null;
+          if (saltos == null) {
+            // sem saltos (ExoPlayer): o canal outra vez, no direto
+            if (mounted && pedido == _pedido) _abrir(mesmoCanal: true);
+            return null;
+          }
           final r = await saltos.voltarAoDireto(aindaValido: () => mounted && pedido == _pedido);
           if (r == VoltaAoDireto.reabrir && mounted && pedido == _pedido) _abrir();
           return null;
@@ -810,6 +935,8 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   /// "Abrir em modo compatível" (cartão de erro): só este canal, nesta sessão (Compatível no
   /// Android, software no Windows).
   void _abrirCompativel() {
+    // no ExoPlayer não há modo compatível: o mais compatível é o mpv
+    if (_tipo == TipoMotor.exoplayer) return _passarAoMpv(aviso: false);
     CompativelNaSessao.instancia.pedir(_chave(_canais[_i]));
     _abrir();
   }
@@ -830,6 +957,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   /// só quando o filtro existe; antes da primeira leitura do mpv não se promete nem se nega.
   /// Ligado: em todas as imagens (as que o mpv vê como progressivas também).
   String get _notaDesentrelacamento {
+    if (_exo) return soNoMpv;
     if (!_desentrelacamentoPossivel) return 'Este aparelho não permite o desentrelaçamento do player';
     final forcar = _forcarDesentrelacamento;
     if (_deint.filtrosPorSaber) {
@@ -899,6 +1027,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     final audio = escolhaAudio(_faixas.audio, _faixa.audio);
     final legendas = escolhaLegendas(_faixas.legendas, _faixa.legenda);
     final possivel = _desentrelacamentoPossivel;
+    final exo = _exo;
     return [
       DefinicaoEscolha(
         'Desentrelaçamento',
@@ -956,24 +1085,29 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
         setState(() => _sessao.silencio = v);
         // durante a espera do salto o som fica desligado; o silêncio aplica-se no fim dela
         _porMudo(_mudo.mudouSilencio(v));
+        if (_mpv == null) _motor.volume(_volumeMotor);
       }),
       DefinicaoPassos(
         'Atraso do áudio',
         valor: textoAtrasoAudio(_sessao.atrasoAudio),
-        nota: 'Positivo: o som chega mais tarde',
-        menos: _sessao.atrasoAudio > -limiteAtrasoAudio ? () => _mudarAtrasoAudio(-1) : null,
-        mais: _sessao.atrasoAudio < limiteAtrasoAudio ? () => _mudarAtrasoAudio(1) : null,
+        nota: exo ? soNoMpv : 'Positivo: o som chega mais tarde',
+        menos: !exo && _sessao.atrasoAudio > -limiteAtrasoAudio ? () => _mudarAtrasoAudio(-1) : null,
+        mais: !exo && _sessao.atrasoAudio < limiteAtrasoAudio ? () => _mudarAtrasoAudio(1) : null,
       ),
       if (_android)
         DefinicaoEscolha(
           'Descodificação',
           opcoes: [ModoDescodificacao.direto.rotulo, ModoDescodificacao.compativel.rotulo, 'Software (sem hardware)'],
           atual: _descodificacaoAndroid,
-          aoMudar: (i) => _preferir((p) {
-            p.hardware = i != 2;
-            if (i != 2) p.modoAndroid = i == 0 ? ModoDescodificacao.direto : ModoDescodificacao.compativel;
-          }, () async => _abrir()),
-          nota: _rotuloModoAtual != [ModoDescodificacao.direto.rotulo, ModoDescodificacao.compativel.rotulo,
+          aoMudar: exo
+              ? null
+              : (i) => _preferir((p) {
+                    p.hardware = i != 2;
+                    if (i != 2) p.modoAndroid = i == 0 ? ModoDescodificacao.direto : ModoDescodificacao.compativel;
+                  }, () async => _abrir()),
+          nota: exo
+              ? soNoMpv
+              : _rotuloModoAtual != [ModoDescodificacao.direto.rotulo, ModoDescodificacao.compativel.rotulo,
                   'Software'][_descodificacaoAndroid]
               ? 'Este canal está em $_rotuloModoAtual (sem imagem na direta, ou entrelaçado)'
               : 'Compatível: para imagem preta ou cores erradas',
@@ -1012,7 +1146,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   }
 
   void _mudarVolume(int passo) {
-    _preferir((p) => p.volume = p.volume + passo, () => _motor.volume(_prefs.volume));
+    _preferir((p) => p.volume = p.volume + passo, () => _motor.volume(_volumeMotor));
   }
 
   void _mudarAtrasoAudio(int direcao) {
@@ -1043,7 +1177,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   Widget build(BuildContext context) {
     final canal = _canais[_i];
     // o ExoPlayer ajusta a SurfaceView no nativo (sem aumento no Flutter: o zoom fica preencher)
-    final exo = _motor is MotorExo;
+    final exo = _exo;
     final ajuste = exo ? ajusteVideoExo(_prefs.formato) : ajusteVideo(_prefs.formato);
     final mk = _mk;
     Widget video = mk == null
@@ -1098,9 +1232,12 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
         ),
         aoNumero: _irParaNumero,
         atraso: () => _relogio.atraso,
-        lerInfoStream: () => _leitor.ler(propriedadesInfoStream),
-        lerProgresso: () async => janelaDe(await _leitor.ler(propriedadesProgresso)),
+        // sem mpv: a informação vem das estatísticas do motor e não há barra de progresso nem
+        // saltos (só o mpv salta no que já recebeu)
+        lerInfoStream: exo ? _infoDoMotor : () => _leitor.ler(propriedadesInfoStream),
+        lerProgresso: exo ? null : () async => janelaDe(await _leitor.ler(propriedadesProgresso)),
         aoProcurar: _procurar,
+        comSaltos: !exo,
         aoAgir: _agir,
         aoMudarVelocidade: _mudarVelocidade,
         definicoes: _definicoes,
@@ -1134,14 +1271,17 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
               top: 88, // por baixo do botão Voltar da barra
               left: 24,
               child: PainelEstatisticas(
-                ler: _lerMpv,
+                // o ExoPlayer: imagens perdidas e mostradas, fps, codec, resolução, débito e buffer
+                ler: exo ? null : _lerMpv,
+                lerMotor: exo ? _motor.estatisticas : null,
                 geracao: _pedido,
                 hzEcra: _hzEcra,
                 extra: [
-                  if (_android) ('Modo de descodificação', _rotuloModoAtual),
+                  if (_android && !exo) ('Modo de descodificação', _rotuloModoAtual),
                   if (mk != null) ('Saída · hwdec pedido', '${mk.config.vo} · ${mk.config.hwdec}')
                   else ('Motor', _motor.nome),
-                  ('Desentrelaçamento', _textoDesentrelacamento),
+                  if (exo) ('Modo túnel', _prefs.modoTunel ? 'pedido' : 'desligado')
+                  else ('Desentrelaçamento', _textoDesentrelacamento),
                   if (_android && (_linhasNoEcra.value ?? 0) > 0)
                     ('Linhas no ecrã · do vídeo', '${_linhasNoEcra.value!.round()} · ${_tamanhoAgora?.height.round() ?? 0}'),
                   if (_hzPedidos != null) ('Taxa do ecrã pedida', '${_hzPedidos!.toStringAsFixed(2)} Hz'),

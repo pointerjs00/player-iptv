@@ -158,6 +158,21 @@ void main() {
       await m.descartar();
     });
 
+    test('"Automática" no áudio e nas legendas volta à escolha do ExoPlayer (sem grupo)', () async {
+      final exo = _ExoFalso();
+      final m = _motor();
+      await m.escolherAudio(const FaixaMotor('2:1'));
+      await m.escolherAudio(FaixaMotor.auto);
+      await m.escolherLegenda(FaixaMotor.auto);
+      final pedidos = [for (final c in exo.chamadas) if (c.method != 'criar') '${c.method} ${exo.args(c)}'];
+      expect(pedidos, [
+        'audio {id: 7, grupo: 2, faixa: 1}',
+        'audio {id: 7}',
+        'legenda {id: 7, auto: true}',
+      ]);
+      await m.descartar();
+    });
+
     test('os eventos viram os streams do MotorReproducao', () async {
       final exo = _ExoFalso();
       final m = _motor();

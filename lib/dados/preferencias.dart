@@ -59,6 +59,26 @@ enum ModoDesentrelacamento {
   static ModoDesentrelacamento? deNome(String? n) => values.where((m) => m.nome == n).firstOrNull;
 }
 
+/// O motor do player no Android (no Windows é sempre o mpv).
+enum MotorAndroid {
+  /// O ExoPlayer (Media3) numa `SurfaceView`: a imagem vai do descodificador para o ecrã.
+  exoplayer('exoplayer', 'ExoPlayer'),
+
+  /// O mpv (media_kit): desentrelaçamento, modo Compatível e descodificação por software.
+  mpv('mpv', 'mpv');
+
+  const MotorAndroid(this.nome, this.rotulo);
+
+  /// O nome guardado nas preferências.
+  final String nome;
+
+  /// O texto mostrado.
+  final String rotulo;
+
+  /// Um nome desconhecido dá o ExoPlayer (a omissão).
+  static MotorAndroid deNome(String? n) => values.firstWhere((m) => m.nome == n, orElse: () => exoplayer);
+}
+
 /// As preferências da app (`preferencias.json`), partilhadas pelo player (aqui), pela
 /// verificação e pelo ecrã de Definições. Valem para todos os canais, no Android e no Windows.
 ///
@@ -100,6 +120,8 @@ class Preferencias extends ChangeNotifier {
   double _volume = 100;
   ModoDescodificacao _modoAndroid = ModoDescodificacao.direto;
   bool _ajustarTaxaEcra;
+  MotorAndroid _motorAndroid = MotorAndroid.exoplayer;
+  bool _modoTunel = false;
   int _timeoutVerificacao = padraoTimeoutVerificacao;
   int _listasEmSimultaneo = padraoListasEmSimultaneo;
   int _tempoLimiteLista = padraoTempoLimiteLista;
@@ -148,6 +170,14 @@ class Preferencias extends ChangeNotifier {
   /// "Ajustar a taxa do ecrã ao canal" (ligada por omissão na TV).
   bool get ajustarTaxaEcra => _ajustarTaxaEcra;
   set ajustarTaxaEcra(bool v) => _mudar('ajustarTaxaEcra', _ajustarTaxaEcra != v, () => _ajustarTaxaEcra = v);
+
+  /// O motor do player no Android (o ExoPlayer por omissão; no Windows é sempre o mpv).
+  MotorAndroid get motorAndroid => _motorAndroid;
+  set motorAndroid(MotorAndroid v) => _mudar('motorAndroid', _motorAndroid != v, () => _motorAndroid = v);
+
+  /// O túnel de vídeo do ExoPlayer (desligado por omissão: só alguns aparelhos o suportam bem).
+  bool get modoTunel => _modoTunel;
+  set modoTunel(bool v) => _mudar('modoTunel', _modoTunel != v, () => _modoTunel = v);
 
   /// O tempo limite da verificação de cada canal, em segundos (5–30; 8 por omissão). A 2.ª
   /// volta das inconclusivas usa o dobro.
@@ -245,6 +275,9 @@ class Preferencias extends ChangeNotifier {
     final modo = campo<String>('modoAndroid');
     if (modo != null) _modoAndroid = ModoDescodificacao.deNome(modo);
     _ajustarTaxaEcra = campo<bool>('ajustarTaxaEcra') ?? _ajustarTaxaEcra;
+    final motor = campo<String>('motorAndroid');
+    if (motor != null) _motorAndroid = MotorAndroid.deNome(motor);
+    _modoTunel = campo<bool>('modoTunel') ?? _modoTunel;
     final tempo = campo<num>('timeoutVerificacao');
     if (tempo != null) {
       _timeoutVerificacao = tempo.toInt().clamp(minTimeoutVerificacao, maxTimeoutVerificacao);
@@ -270,6 +303,8 @@ class Preferencias extends ChangeNotifier {
         'volume': _volume,
         'modoAndroid': _modoAndroid.nome,
         'ajustarTaxaEcra': _ajustarTaxaEcra,
+        'motorAndroid': _motorAndroid.nome,
+        'modoTunel': _modoTunel,
         'timeoutVerificacao': _timeoutVerificacao,
         'listasEmSimultaneo': _listasEmSimultaneo,
         'tempoLimiteLista': _tempoLimiteLista,
@@ -292,6 +327,8 @@ class Preferencias extends ChangeNotifier {
     if (lidas.contains('volume')) volume = outro._volume;
     if (lidas.contains('modoAndroid')) modoAndroid = outro._modoAndroid;
     if (lidas.contains('ajustarTaxaEcra')) ajustarTaxaEcra = outro._ajustarTaxaEcra;
+    if (lidas.contains('motorAndroid')) motorAndroid = outro._motorAndroid;
+    if (lidas.contains('modoTunel')) modoTunel = outro._modoTunel;
     if (lidas.contains('timeoutVerificacao')) timeoutVerificacao = outro._timeoutVerificacao;
     if (lidas.contains('listasEmSimultaneo')) listasEmSimultaneo = outro._listasEmSimultaneo;
     if (lidas.contains('tempoLimiteLista')) tempoLimiteLista = outro._tempoLimiteLista;

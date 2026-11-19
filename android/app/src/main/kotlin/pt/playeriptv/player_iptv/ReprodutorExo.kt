@@ -173,7 +173,13 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
                     result.success(null)
                 }
                 "legenda" -> {
-                    escolherFaixa(p, C.TRACK_TYPE_TEXT, call.argument<Int>("grupo"), call.argument<Int>("faixa"))
+                    escolherFaixa(
+                        p,
+                        C.TRACK_TYPE_TEXT,
+                        call.argument<Int>("grupo"),
+                        call.argument<Int>("faixa"),
+                        auto = call.argument<Boolean>("auto") == true,
+                    )
                     result.success(null)
                 }
                 "volume" -> {
@@ -342,14 +348,18 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
         Log.i(TAG, "libertar: id=$idAtual")
     }
 
-    private fun escolherFaixa(p: ExoPlayer, tipo: Int, grupo: Int?, faixa: Int?) {
+    /** Sem grupo: o áudio (e a legenda com `auto`) volta à escolha automática do ExoPlayer; a
+     *  legenda sem `auto` desliga-se. */
+    private fun escolherFaixa(p: ExoPlayer, tipo: Int, grupo: Int?, faixa: Int?, auto: Boolean = false) {
         val construtor = p.trackSelectionParameters.buildUpon()
         if (grupo == null || faixa == null) {
-            // só a legenda se desliga (áudio sem faixa não faz sentido)
-            if (tipo == C.TRACK_TYPE_TEXT) {
-                construtor.clearOverridesOfType(tipo).setTrackTypeDisabled(tipo, true)
-                p.trackSelectionParameters = construtor.build()
+            construtor.clearOverridesOfType(tipo)
+            when {
+                tipo == C.TRACK_TYPE_AUDIO -> Unit
+                auto -> construtor.setTrackTypeDisabled(tipo, false)
+                else -> construtor.setTrackTypeDisabled(tipo, true)
             }
+            p.trackSelectionParameters = construtor.build()
             return
         }
         val grupos = p.currentTracks.groups

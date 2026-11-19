@@ -55,6 +55,9 @@ const _guardado = 'Guardado';
 const _guardadoListas = 'Guardado · vale para as próximas listas';
 const _guardadoPlayer = 'Guardado · vale a partir do próximo canal';
 
+/// A nota das opções que só o mpv tem, com o ExoPlayer escolhido.
+const _soNoMpv = 'só no motor mpv';
+
 /// Definições por categorias (a lista à esquerda, as opções da categoria à direita; no telemóvel,
 /// uma lista que abre cada categoria). Cada opção explica-se e grava logo ao mudar.
 class TelaDefinicoes extends StatefulWidget {
@@ -266,16 +269,17 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
   // ---- peças ----
 
   /// Uma opção: título, explicação de uma linha e o controlo à direita (ou por baixo, se não cabe
-  /// ou se `empilhar`).
-  Widget _opcao(String titulo, String explicacao, {Widget? controlo, bool empilhar = false}) => Padding(
+  /// ou se `empilhar`). Com `nota` está desativada (a nota diz porquê) e é o cartão que recebe o foco.
+  Widget _opcao(String titulo, String explicacao, {Widget? controlo, bool empilhar = false, String? nota}) => Padding(
         padding: const EdgeInsets.only(bottom: Tokens.e12),
-        child: SuperficieVidro(
+        child: _desativada(nota != null, SuperficieVidro(
           padding: const EdgeInsets.all(Tokens.e16),
           child: LayoutBuilder(builder: (context, c) {
             final texto = Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
               Text(titulo, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Tokens.texto)),
               const SizedBox(height: Tokens.e4),
               Text(explicacao, style: const TextStyle(fontSize: 13.5, color: Tokens.texto2)),
+              if (nota != null) _nota(nota),
             ]);
             if (controlo == null) return SizedBox(width: double.infinity, child: texto);
             if (empilhar || c.maxWidth < 520) {
@@ -293,33 +297,62 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
               Flexible(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 340), child: controlo)),
             ]);
           }),
-        ),
+        )),
       );
 
-  /// Uma opção ligada/desligada: o cartão todo é o interruptor.
-  Widget _interruptor(String titulo, String explicacao, bool valor, ValueChanged<bool> aoMudar) => Padding(
+  /// Uma opção desativada continua a receber o foco (no comando, CIMA/BAIXO passam por ela e lê-se
+  /// a nota; sem isso, várias seguidas deixavam um buraco que a procura direcional não salta).
+  Widget _desativada(bool sim, Widget cartao) => !sim
+      ? cartao
+      : RealceFoco(
+          raio: Tokens.raioCartao,
+          construir: (context, aoMudarFoco) => Focus(onFocusChange: aoMudarFoco, child: cartao),
+        );
+
+  Widget _nota(String texto) => Padding(
+        padding: const EdgeInsets.only(top: Tokens.e4),
+        child: Text(texto,
+            style: const TextStyle(fontSize: 13, fontStyle: FontStyle.italic, color: Tokens.texto2)),
+      );
+
+  /// Uma opção ligada/desligada: o cartão todo é o interruptor. Com `nota` fica desativada (a nota
+  /// diz porquê), mas continua a receber o foco (ver [_desativada]).
+  Widget _interruptor(String titulo, String explicacao, bool valor, ValueChanged<bool> aoMudar, {String? nota}) =>
+      Padding(
         padding: const EdgeInsets.only(bottom: Tokens.e12),
         child: RealceFoco(
           raio: Tokens.raioCartao,
-          construir: (context, aoMudarFoco) => SuperficieVidro(
-            padding: EdgeInsets.zero,
-            child: SwitchListTile(
-              contentPadding: const EdgeInsets.symmetric(horizontal: Tokens.e16, vertical: Tokens.e4),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Tokens.raioCartao)),
-              title: Text(titulo, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-              subtitle: Text(explicacao, style: const TextStyle(fontSize: 13.5, color: Tokens.texto2)),
-              value: valor,
-              onFocusChange: aoMudarFoco,
-              onChanged: (v) => _mudou(() => aoMudar(v), player: true),
+          construir: (context, aoMudarFoco) => Focus(
+            // desativado, o SwitchListTile não recebe o foco: recebe-o o cartão
+            canRequestFocus: nota != null,
+            skipTraversal: nota == null,
+            onFocusChange: nota != null ? aoMudarFoco : null,
+            child: SuperficieVidro(
+              padding: EdgeInsets.zero,
+              child: SwitchListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: Tokens.e16, vertical: Tokens.e4),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Tokens.raioCartao)),
+                title: Text(titulo, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(explicacao, style: const TextStyle(fontSize: 13.5, color: Tokens.texto2)),
+                  if (nota != null) _nota(nota),
+                ]),
+                value: valor,
+                onFocusChange: aoMudarFoco,
+                onChanged: nota != null ? null : (v) => _mudou(() => aoMudar(v), player: true),
+              ),
             ),
           ),
         ),
       );
 
-  Widget _escolhas<T>(List<T> valores, String Function(T) rotulo, T atual, ValueChanged<T> aoEscolher) =>
+  /// `ativo` falso: as opções veem-se mas não mudam.
+  Widget _escolhas<T>(List<T> valores, String Function(T) rotulo, T atual, ValueChanged<T> aoEscolher,
+          {bool ativo = true}) =>
       Wrap(spacing: Tokens.e8, runSpacing: Tokens.e8, children: [
         for (final v in valores)
-          ChoiceChip(label: Text(rotulo(v)), selected: atual == v, onSelected: (_) => aoEscolher(v)),
+          ChoiceChip(
+              label: Text(rotulo(v)), selected: atual == v, onSelected: ativo ? (_) => aoEscolher(v) : null),
       ]);
 
   Widget _deslizador(
@@ -345,24 +378,40 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
     final b = widget.biblioteca;
     switch (c) {
       case _Categoria.imagemSom:
+        // no Android com o ExoPlayer, o que só o mpv tem fica à vista mas desativado
+        final soMpv = _android && _p.motorAndroid == MotorAndroid.exoplayer ? _soNoMpv : null;
         return [
+          if (_android) ...[
+            _opcao('Motor do player',
+                'O ExoPlayer é o mais fluido. Se um canal não abrir nele, abre sozinho no mpv.',
+                empilhar: true,
+                controlo: _escolhas(MotorAndroid.values, (m) => m.rotulo, _p.motorAndroid,
+                    (m) => _mudou(() => _p.motorAndroid = m, player: true))),
+            _interruptor('Modo túnel',
+                'Só em aparelhos que o suportam. Pode ajudar a fluidez; se a imagem falhar, desliga.',
+                _p.modoTunel, (v) => _p.modoTunel = v),
+          ],
           _opcao(
               'Desentrelaçamento',
               'Evita riscas nos canais entrelaçados. Automático só o liga quando é preciso.'
               '${_android ? ' Na descodificação Direta, um direto entrelaçado reabre em Compatível.' : ''}',
               empilhar: true,
+              nota: soMpv,
               controlo: _escolhas(ModoDesentrelacamento.values, (m) => m.rotulo, _p.modoDesentrelacamento,
-                  (m) => _mudou(() => _p.modoDesentrelacamento = m, player: true))),
+                  (m) => _mudou(() => _p.modoDesentrelacamento = m, player: true),
+                  ativo: soMpv == null)),
           _interruptor('Descodificação por hardware', 'Mais leve. Desliga se a imagem falhar.', _p.hardware,
-              (v) => _p.hardware = v),
+              (v) => _p.hardware = v, nota: soMpv),
           if (_android) ...[
             _interruptor('Ajustar a taxa do ecrã ao canal', 'Evita soluços nas imagens (Android TV)',
                 _p.ajustarTaxaEcra, (v) => _p.ajustarTaxaEcra = v),
             _opcao('Descodificação no Android',
                 'Direta é a mais leve. Compatível serve se o direto mostrar ecrã preto ou cores erradas.',
                 empilhar: true,
-              controlo: _escolhas(ModoDescodificacao.values, (m) => m.rotulo, _p.modoAndroid,
-                    (m) => _mudou(() => _p.modoAndroid = m, player: true))),
+                nota: soMpv,
+                controlo: _escolhas(ModoDescodificacao.values, (m) => m.rotulo, _p.modoAndroid,
+                    (m) => _mudou(() => _p.modoAndroid = m, player: true),
+                    ativo: soMpv == null)),
           ],
           _opcao('Formato da imagem', 'Vale para todos os canais',
               empilhar: true,

@@ -4,16 +4,22 @@ import 'package:material_ui/material_ui.dart';
 
 import '../design/componentes.dart';
 import 'diagnostico.dart';
+import 'motor_reproducao.dart';
 
 /// A sobreposição "Estatísticas" do player: lê o mpv a cada `intervalo` (`ler` devolve as
 /// [propriedadesDiagnostico] como texto) e mostra os valores e um veredicto simples sobre a
 /// fluidez (rede / descodificação / ecrã / fluido). Peça independente: a Task 5 liga-a a partir
-/// do painel de definições do player.
+/// do painel de definições do player. Num motor sem mpv (o ExoPlayer) lê-se [lerMotor] em vez de
+/// [ler].
 class PainelEstatisticas extends StatefulWidget {
-  const PainelEstatisticas({super.key, required this.ler, this.hzEcra, this.geracao, this.extra = const [],
-      this.intervalo = const Duration(seconds: 1)});
+  const PainelEstatisticas({super.key, this.ler, this.lerMotor, this.hzEcra, this.geracao, this.extra = const [],
+      this.intervalo = const Duration(seconds: 1)})
+      : assert((ler == null) != (lerMotor == null), 'ou o mpv ou o motor');
 
-  final Future<Map<String, String>> Function() ler;
+  final Future<Map<String, String>> Function()? ler;
+
+  /// O retrato do motor ([MotorReproducao.estatisticas]), quando não há mpv.
+  final Future<EstatisticasMotor> Function()? lerMotor;
 
   /// Os Hz do ecrã segundo o sistema (Android), para quando o mpv não os sabe.
   final double? hzEcra;
@@ -34,6 +40,9 @@ class _PainelEstatisticasState extends State<PainelEstatisticas> {
   /// ~5 s de história: chega para ver o buffer a cair ou as perdas a subir.
   static const _historia = 5;
   final _amostras = <AmostraMpv>[];
+
+  /// A última leitura do motor (só com [PainelEstatisticas.lerMotor]).
+  EstatisticasMotor? _motor;
   Timer? _timer;
   bool _aLer = false;
 
@@ -48,10 +57,13 @@ class _PainelEstatisticasState extends State<PainelEstatisticas> {
     if (_aLer) return;
     _aLer = true;
     try {
-      final m = await widget.ler();
+      final lerMotor = widget.lerMotor;
+      final EstatisticasMotor? e = lerMotor == null ? null : await lerMotor();
+      final amostra = e != null ? amostraDoMotor(e) : AmostraMpv.deMapa(await widget.ler!());
       if (!mounted) return;
       setState(() {
-        _amostras.add(AmostraMpv.deMapa(m));
+        _motor = e;
+        _amostras.add(amostra);
         if (_amostras.length > _historia) _amostras.removeAt(0);
       });
     } catch (_) {
@@ -79,7 +91,13 @@ class _PainelEstatisticasState extends State<PainelEstatisticas> {
     final v = diagnosticar(_amostras, hzEcra: widget.hzEcra);
     const rotulo = TextStyle(color: Colors.white60, fontSize: 13);
     const valor = TextStyle(color: Colors.white, fontSize: 13, fontFeatures: [FontFeature.tabularFigures()]);
-    final linhas = [...linhasEstatisticas(ultima, hzEcra: widget.hzEcra), ...widget.extra];
+    final motor = _motor;
+    final linhas = [
+      ...(widget.lerMotor != null
+          ? linhasEstatisticasMotor(motor ?? const EstatisticasMotor(), hzEcra: widget.hzEcra)
+          : linhasEstatisticas(ultima, hzEcra: widget.hzEcra)),
+      ...widget.extra,
+    ];
     return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 420),
       child: SuperficieVidro(

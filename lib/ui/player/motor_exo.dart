@@ -7,12 +7,10 @@ import '../../dados/preferencias.dart';
 import '../../rede/http.dart';
 import '../design/componentes.dart';
 import '../design/ecra.dart';
-import 'configuracao_mpv.dart';
 import 'motor_reproducao.dart';
 
-/// A fábrica do [MotorExo] com a assinatura do `CriarMotor` do ecrã do player (o modo e o
-/// hardware são do mpv: aqui não contam).
-MotorReproducao criarMotorExo(ModoDescodificacao modo, bool hardware) => MotorExo();
+/// A fábrica do [MotorExo] do ecrã do player (o `CriarMotorExo` dele).
+MotorReproducao novoMotorExo({required bool tunel}) => MotorExo(tunel: tunel);
 
 /// Como o vídeo do ExoPlayer mostra cada formato de imagem: o ajuste vai para o nativo (a
 /// `SurfaceView` fica com o tamanho certo dentro da caixa), por isso não há aumento no Flutter. O
@@ -201,19 +199,26 @@ class MotorExo implements MotorReproducao {
     return _pedir<void>('parar');
   }
 
-  /// O ExoPlayer só escolhe uma faixa concreta (`grupo:faixa`): a "Automática" fica como está.
+  /// Uma faixa concreta (`grupo:faixa`) ou a "Automática" (sem grupo: o nativo tira a escolha e
+  /// volta à do ExoPlayer).
   @override
   Future<void> escolherAudio(FaixaMotor faixa) async {
     final gf = _grupoFaixa(faixa.id);
-    if (gf == null) return;
-    await _pedir<void>('audio', {'grupo': gf.$1, 'faixa': gf.$2});
+    if (gf == null && faixa.id != FaixaMotor.auto.id) return;
+    await _pedir<void>('audio', {if (gf != null) 'grupo': gf.$1, if (gf != null) 'faixa': gf.$2});
   }
 
+  /// null ou "nenhuma": desliga; "auto": a escolha do ExoPlayer; senão a faixa `grupo:faixa`.
   @override
   Future<void> escolherLegenda(FaixaMotor? faixa) async {
     final gf = faixa == null ? null : _grupoFaixa(faixa.id);
-    if (faixa != null && faixa.id != FaixaMotor.nenhuma.id && gf == null) return; // "auto": fica
-    await _pedir<void>('legenda', {if (gf != null) 'grupo': gf.$1, if (gf != null) 'faixa': gf.$2});
+    final auto = faixa?.id == FaixaMotor.auto.id;
+    if (faixa != null && faixa.id != FaixaMotor.nenhuma.id && gf == null && !auto) return;
+    await _pedir<void>('legenda', {
+      if (gf != null) 'grupo': gf.$1,
+      if (gf != null) 'faixa': gf.$2,
+      if (auto) 'auto': true,
+    });
     if (gf == null) legenda.value = '';
   }
 
