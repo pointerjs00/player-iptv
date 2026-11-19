@@ -9,17 +9,20 @@ import '../../importar/importar.dart';
 import '../../modelo/canal.dart';
 import '../campo_tv.dart';
 import '../conteudo/tela_conteudo.dart';
+import '../design/barra_teclas.dart';
 import '../design/design.dart';
 import '../principal/tela_principal.dart';
 import 'acoes_lista.dart';
 import 'cartao_continuar.dart';
 import 'cartao_lista.dart';
+import 'favoritos_inicio.dart';
 import '../design/mensagens.dart';
 
-/// Ver TV: as listas do Player em cartões (com o estado da última verificação, pesquisa e filtro
-/// por estado). Não gere nada: adicionar, verificar, exportar e enviar listas para o Player
-/// faz-se no Gestor. No topo, "Continuar a ver" (o último canal visto). As secções, o Voltar e a
-/// confirmação da saída são da casca ([TelaPrincipal]).
+/// Ver TV, o Início: "Continuar a ver" (o último canal visto), os favoritos de todas as listas e
+/// as listas em cartões (com o estado da última verificação, pesquisa e filtro por estado). Sem
+/// listas, explica como as trazer do Gestor. Não gere nada: adicionar, verificar, exportar e
+/// enviar listas para o Player faz-se no Gestor. As secções, o Voltar e a confirmação da saída
+/// são da casca ([TelaPrincipal]).
 class TelaInicio extends StatefulWidget {
   const TelaInicio({super.key, required this.biblioteca, this.area, this.abrirLista, this.abrirCanal});
 
@@ -42,17 +45,61 @@ class TelaInicio extends StatefulWidget {
 class _TelaInicioState extends State<TelaInicio> {
   String _q = '';
 
+  /// O resumo da cache de cada lista (pelo id): contagens, favoritos e o número do canal visto.
+  Map<String, ResumoLista> _resumos = const {};
+  String? _assinaturaLida;
+  int _geracao = 0;
+
   /// O foco de cada cartão (pelo id da lista): depois de eliminar, o foco passa ao cartão ao lado.
   final _focos = <String, FocusNode>{};
 
   FocusNode _focoCartao(String id) => _focos.putIfAbsent(id, () => FocusNode(debugLabel: 'Cartão $id'));
 
   @override
+  void initState() {
+    super.initState();
+    widget.biblioteca.addListener(_mudou);
+    _carregar();
+  }
+
+  @override
+  void didUpdateWidget(TelaInicio old) {
+    super.didUpdateWidget(old);
+    if (old.biblioteca != widget.biblioteca) {
+      old.biblioteca.removeListener(_mudou);
+      widget.biblioteca.addListener(_mudou);
+      _carregar();
+    }
+  }
+
+  @override
   void dispose() {
+    widget.biblioteca.removeListener(_mudou);
     for (final f in _focos.values) {
       f.dispose();
     }
     super.dispose();
+  }
+
+  /// Muda quando as listas, os favoritos ou o último visto mudam (então relêem-se as caches).
+  String _assinatura() {
+    final b = widget.biblioteca;
+    return '${b.ultimoVisto?.lista}/${b.ultimoVisto?.canal}|'
+        '${[for (final l in b.listas) '${l.id}:${l.favoritos.length}:${Object.hashAll(l.favoritos)}'].join(',')}';
+  }
+
+  /// Os resumos vêm das caches de canais, lidas fora do build.
+  Future<void> _carregar() async {
+    final b = widget.biblioteca;
+    final minha = ++_geracao;
+    _assinaturaLida = _assinatura();
+    final resumos = await resumirListas(b, visto: b.ultimoVisto);
+    if (!mounted || minha != _geracao) return;
+    setState(() => _resumos = resumos);
+  }
+
+  void _mudou() {
+    if (_assinatura() != _assinaturaLida) _carregar();
   }
 
   String? _filtro; // null = todas; 'por_verificar' = sem resultado
@@ -124,116 +171,208 @@ class _TelaInicioState extends State<TelaInicio> {
             abrir: widget.abrirCanal, continuar: continuar),
       ));
 
+  Widget _titulo(String texto, bool tv) => Padding(
+        padding: const EdgeInsets.fromLTRB(Tokens.e24, Tokens.e16, Tokens.e24, Tokens.e8),
+        child: Text(texto,
+            style: TextStyle(color: Tokens.texto2, fontSize: tv ? 17 : 14, fontWeight: FontWeight.w700)),
+      );
+
+  Widget _continuar(bool tv) {
+    final visto = widget.biblioteca.ultimoVisto;
+    final lista = visto == null ? null : widget.biblioteca.porId(visto.lista);
+    if (visto == null || lista == null) return const SizedBox.shrink();
+    return Padding(
+      // margem para o cartão focado crescer e brilhar sem ser cortado
+      padding: const EdgeInsets.fromLTRB(Tokens.e24, Tokens.e16, Tokens.e24, Tokens.e4),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: SizedBox(
+          height: CartaoContinuar.altura(tv),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 760),
+            child: entradaEmCascata(0, CartaoContinuar(
+              visto: visto,
+              lista: lista,
+              numero: _resumos[lista.id]?.numeroVisto,
+              autofocus: true,
+              aoAbrir: () => _abrir(lista, continuar: visto.canal),
+            )),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _filaFavoritos(bool tv) {
+    final f = favoritosDeResumos(widget.biblioteca.listas, _resumos);
+    if (f.isEmpty) return const SizedBox.shrink();
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      _titulo('Favoritos · ${f.length}', tv),
+      SizedBox(
+        height: (tv ? 96 : 80) + 16, // com margem para o cartão focado crescer
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: Tokens.e24, vertical: Tokens.e8),
+          itemCount: f.length,
+          separatorBuilder: (_, _) => const SizedBox(width: Tokens.e12),
+          itemBuilder: (_, i) => SizedBox(
+            width: tv ? 250 : 210,
+            child: CartaoModerno(
+              onTap: () => _abrir(f[i].lista, continuar: f[i].canal.id),
+              padding: EdgeInsets.symmetric(horizontal: Tokens.e16, vertical: tv ? 14 : 10),
+              child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(f[i].canal.nome,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: tv ? 18 : 15, fontWeight: FontWeight.w700)),
+                    Text(f[i].lista.nomeMostrado,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: Tokens.texto2, fontSize: tv ? 14 : 12.5)),
+                  ]),
+            ),
+          ),
+        ),
+      ),
+    ]);
+  }
+
   Widget _listas() => ListenableBuilder(
         listenable: widget.biblioteca,
         builder: (context, _) {
           final todas = widget.biblioteca.listas;
+          if (todas.isEmpty) return _vazio(context);
           final vis = _visiveis();
           final tv = ecraTv(context);
-          final visto = widget.biblioteca.ultimoVisto;
-          final listaVista = visto == null ? null : widget.biblioteca.porId(visto.lista);
-          return Column(children: [
-            if (visto != null && listaVista != null)
-              Padding(
-                // margem para o cartão focado crescer e brilhar sem ser cortado
-                padding: const EdgeInsets.fromLTRB(Tokens.e24, Tokens.e16, Tokens.e24, Tokens.e4),
-                child: SizedBox(
-                  height: CartaoContinuar.altura(tv),
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 760),
-                    child: entradaEmCascata(0, CartaoContinuar(
-                      visto: visto,
-                      lista: listaVista,
-                      autofocus: true,
-                      aoAbrir: () => _abrir(listaVista, continuar: visto.canal),
+          return CustomScrollView(slivers: [
+            SliverToBoxAdapter(child: _continuar(tv)),
+            SliverToBoxAdapter(child: _filaFavoritos(tv)),
+            SliverToBoxAdapter(child: _titulo('Listas · ${todas.length}', tv)),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(Tokens.e16, 0, Tokens.e16, Tokens.e4),
+                child: Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+                  SizedBox(
+                    width: 280,
+                    child: CampoTv(
+                      decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Pesquisar listas'),
+                      onChanged: (v) => setState(() => _q = v),
+                    ),
+                  ),
+                  for (final (v, t) in _filtros)
+                    ChoiceChip(label: Text(t), selected: _filtro == v, onSelected: (_) => setState(() => _filtro = v)),
+                ]),
+              ),
+            ),
+            if (vis.isEmpty)
+              const SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.all(Tokens.e32),
+                  child: Center(child: Text('Nenhuma lista com este filtro.', style: TextStyle(color: Tokens.texto2))),
+                ),
+              )
+            else
+              SliverPadding(
+                // margem para o cartão focado crescer (1.04) e brilhar sem ser cortado
+                padding: const EdgeInsets.all(Tokens.e24),
+                sliver: SliverGrid(
+                  // no telemóvel, um cartão por linha (com o nome inteiro)
+                  gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                    maxCrossAxisExtent: MediaQuery.sizeOf(context).width < 600 ? 600 : (tv ? 400 : 340),
+                    mainAxisExtent: CartaoLista.altura(tv),
+                    crossAxisSpacing: Tokens.e16,
+                    mainAxisSpacing: Tokens.e16,
+                  ),
+                  delegate: SliverChildBuilderDelegate(
+                    childCount: vis.length,
+                    // só os primeiros entram em cascata (entradaEmCascata ignora índices > 30)
+                    (_, i) => entradaEmCascata(i, CartaoLista(
+                      lista: vis[i],
+                      resumo: _resumos[vis[i].id],
+                      // com "Continuar a ver" o foco começa nele
+                      autofocus: i == 0 && widget.biblioteca.ultimoVisto == null,
+                      aoAbrir: () => _abrir(vis[i]),
+                      focusNode: _focoCartao(vis[i].id),
+                      aoMenu: () => _menu(vis[i]),
                     )),
                   ),
                 ),
               ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(Tokens.e16, Tokens.e12, Tokens.e16, Tokens.e4),
-              child: Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
-                SizedBox(
-                  width: 280,
-                  child: CampoTv(
-                    decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Pesquisar listas'),
-                    onChanged: (v) => setState(() => _q = v),
-                  ),
-                ),
-                for (final (v, t) in _filtros)
-                  ChoiceChip(label: Text(t), selected: _filtro == v, onSelected: (_) => setState(() => _filtro = v)),
-              ]),
-            ),
-            Expanded(
-              child: todas.isEmpty
-                  ? _vazio(context)
-                  : vis.isEmpty
-                      ? const Center(
-                          child: Text('Nenhuma lista com este filtro.', style: TextStyle(color: Tokens.texto2)))
-                      : GridView.builder(
-                          // margem para o cartão focado crescer (1.04) e brilhar sem ser cortado
-                          padding: const EdgeInsets.all(Tokens.e24),
-                          // no telemóvel, um cartão por linha (com o nome inteiro)
-                          gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-                            maxCrossAxisExtent: MediaQuery.sizeOf(context).width < 600 ? 600 : (tv ? 400 : 340),
-                            mainAxisExtent: CartaoLista.altura(tv),
-                            crossAxisSpacing: Tokens.e16,
-                            mainAxisSpacing: Tokens.e16,
-                          ),
-                          itemCount: vis.length,
-                          // só os primeiros entram em cascata (entradaEmCascata ignora índices > 30)
-                          itemBuilder: (_, i) => entradaEmCascata(i, CartaoLista(
-                            lista: vis[i],
-                            // com "Continuar a ver" o foco começa nele
-                            autofocus: i == 0 && widget.biblioteca.ultimoVisto == null,
-                            aoAbrir: () => _abrir(vis[i]),
-                            focusNode: _focoCartao(vis[i].id),
-                            aoMenu: () => _menu(vis[i]),
-                          )),
-                        ),
-            ),
           ]);
         },
       );
 
-  Widget _vazio(BuildContext context) => Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(Tokens.e24),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 460),
-            child: entradaEmCascata(0, SuperficieVidro(
-              padding: const EdgeInsets.all(Tokens.e32),
-              elevacao: 2,
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
-                Container(
-                  width: 72,
-                  height: 72,
-                  decoration: const BoxDecoration(shape: BoxShape.circle, gradient: Tokens.gradienteAcento),
-                  child: const Icon(Icons.live_tv_outlined, size: 36, color: Colors.white),
-                ),
-                const SizedBox(height: Tokens.e16),
-                const Text('Ainda não há listas no Player',
-                    textAlign: TextAlign.center, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
-                const SizedBox(height: Tokens.e8),
-                const Text('Adicione e verifique listas no Gestor e envie-as para o Player.',
-                    textAlign: TextAlign.center, style: TextStyle(color: Tokens.texto2)),
-                // dentro da casca: muda para o Gestor e o foco vai para "Adicionar listas"
-                if (context.getInheritedWidgetOfExactType<SeccaoAtual>() != null) ...[
-                  const SizedBox(height: Tokens.e24),
-                  FilledButton.icon(
-                    autofocus: true,
-                    onPressed: () => TelaPrincipal.irPara(context, Seccao.gestor),
-                    icon: const Icon(Icons.arrow_forward_rounded),
-                    label: const Text('Ir para o Gestor'),
-                  ),
-                ],
-              ]),
-            )),
-          ),
+  Widget _passo(int n, String titulo, String texto, bool tv) => Container(
+        width: tv ? 250 : 220,
+        padding: const EdgeInsets.all(Tokens.e16),
+        decoration: BoxDecoration(
+          color: Tokens.superficie2,
+          borderRadius: BorderRadius.circular(Tokens.raioCartao),
+          border: Border.all(color: Tokens.bordaVidro),
         ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Container(
+            width: 32,
+            height: 32,
+            alignment: Alignment.center,
+            decoration: const BoxDecoration(shape: BoxShape.circle, gradient: Tokens.gradienteAcento),
+            child: Text('$n', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
+          ),
+          const SizedBox(height: Tokens.e12),
+          Text(titulo, style: TextStyle(fontSize: tv ? 19 : 16, fontWeight: FontWeight.w700)),
+          const SizedBox(height: Tokens.e4),
+          Text(texto, style: TextStyle(color: Tokens.texto2, fontSize: tv ? 15 : 13.5)),
+        ]),
       );
+
+  /// A primeira vez (sem listas): para onde ir e o que acontece lá.
+  Widget _vazio(BuildContext context) {
+    final tv = ecraTv(context);
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(Tokens.e24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 860),
+          child: entradaEmCascata(0, Column(mainAxisSize: MainAxisSize.min, children: [
+            const Text('Ainda não há listas para ver',
+                textAlign: TextAlign.center, style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700)),
+            const SizedBox(height: Tokens.e8),
+            const Text(
+                'As listas entram pelo Gestor. Lá podes importá-las, ver quais funcionam e enviar as boas para aqui.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Tokens.texto2)),
+            const SizedBox(height: Tokens.e24),
+            Wrap(spacing: Tokens.e16, runSpacing: Tokens.e16, alignment: WrapAlignment.center, children: [
+              _passo(1, 'Importar', 'Ficheiro, texto colado ou listas do stbstalker', tv),
+              _passo(2, 'Verificar', 'Testamos 3 canais de cada lista', tv),
+              _passo(3, 'Enviar', 'As que funcionam aparecem aqui', tv),
+            ]),
+            // dentro da casca: muda para o Gestor e o foco vai para "Adicionar listas". A cópia de
+            // segurança não se importa a partir daqui (é nas Definições): não há segundo botão.
+            if (context.getInheritedWidgetOfExactType<SeccaoAtual>() != null) ...[
+              const SizedBox(height: Tokens.e24),
+              FilledButton.icon(
+                autofocus: true,
+                onPressed: () => TelaPrincipal.irPara(context, Seccao.gestor),
+                icon: const Icon(Icons.arrow_forward_rounded),
+                label: const Text('Ir para o Gestor'),
+              ),
+            ],
+          ])),
+        ),
+      ),
+    );
+  }
 
   // sem barra própria: a marca e as secções estão na casca
   @override
-  Widget build(BuildContext context) => Scaffold(body: _listas());
+  Widget build(BuildContext context) => Scaffold(
+        body: Column(children: [
+          Expanded(child: _listas()),
+          const BarraTeclas([('OK', 'abrir'), ('OK mantido', 'opções da lista'), ('←', 'menu')]),
+        ]),
+      );
 }

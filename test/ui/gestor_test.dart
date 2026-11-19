@@ -123,7 +123,8 @@ void main() {
       }
       expect(find.text('Player'), findsNothing);
       expect(find.text('Listas'), findsNothing);
-      expect(find.text('Verificar'), findsNothing);
+      // o Player não verifica: sem botão "Verificar" (só o passo 2 do ecrã sem listas o nomeia)
+      expect(find.widgetWithText(ButtonStyleButton, 'Verificar'), findsNothing);
       expect(find.text('Adicionar listas'), findsNothing);
       await t.tap(find.descendant(of: barra, matching: find.text('Gestor')));
       await t.pumpAndSettle();
@@ -143,7 +144,7 @@ void main() {
       await t.pumpWidget(_app(inicio()));
       await t.pump();
       expect(find.text('001NXTBOX 161027'), findsOneWidget);
-      expect(find.text('Funciona'), findsWidgets);
+      expect(find.textContaining('Funciona'), findsWidgets);
       expect(find.text('até 16/10/2027'), findsNWidgets(2));
       expect(find.text('tempo esgotado'), findsOneWidget);
       expect(find.textContaining('Verificar'), findsNothing);
@@ -158,7 +159,7 @@ void main() {
       _tamanho(t, 960, 540);
       await t.pumpWidget(_app(inicio()));
       await t.pump();
-      expect(find.text('Ainda não há listas no Player'), findsOneWidget);
+      expect(find.text('Ainda não há listas para ver'), findsOneWidget);
       expect(_focado(), 'Ir para o Gestor');
       await _tecla(t, LogicalKeyboardKey.select);
       await t.pumpAndSettle();

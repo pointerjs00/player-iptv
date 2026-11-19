@@ -4,6 +4,7 @@ import '../../dados/biblioteca.dart';
 import '../../modelo/conta.dart';
 import '../design/design.dart';
 import '../tema.dart';
+import 'favoritos_inicio.dart';
 
 /// Cartão de uma lista no Player: ícone do tipo, nome, servidor, pílula do último resultado,
 /// validade e motivo (a verificação faz-se no Gestor). Com o foco do comando cresce e brilha
@@ -11,13 +12,16 @@ import '../tema.dart';
 /// clique direito, OK mantido). O cartão não tem botões de dentro: é uma só paragem do foco.
 class CartaoLista extends StatelessWidget {
   const CartaoLista({super.key, required this.lista, required this.aoAbrir, this.aoMenu, this.autofocus = false,
-      this.focusNode});
+      this.focusNode, this.resumo});
 
   final Lista lista;
   final VoidCallback aoAbrir;
   final VoidCallback? aoMenu;
   final bool autofocus;
   final FocusNode? focusNode;
+
+  /// As contagens da cache de canais (null = a lista não tem cache: não se mostram).
+  final ResumoLista? resumo;
 
   static const _tipos = {Tipo.stalker: 'Stalker', Tipo.xtream: 'Xtream', Tipo.m3u: 'M3U'};
   static const _icones = {
@@ -54,12 +58,15 @@ class CartaoLista extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text('${_tipos[lista.conta.tipo]} · ${hostDe(lista.conta.endereco)}',
                     maxLines: 1, overflow: TextOverflow.ellipsis, style: secundario),
+                if (resumo != null)
+                  Text('${resumo!.canais} canais · ${resumo!.grupos} grupos',
+                      maxLines: 1, overflow: TextOverflow.ellipsis, style: secundario),
               ]),
             ),
           ]),
           const Spacer(),
           Wrap(spacing: Tokens.e8, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
-            PilulaEstado(estadoDe(lista)),
+            PilulaEstado(estadoDe(lista), detalhe: u == null ? null : verificadaHa(u.data)),
             if (validade.isNotEmpty)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
@@ -73,7 +80,6 @@ class CartaoLista extends StatelessWidget {
                   Text(validade, style: TextStyle(fontSize: tv ? 14 : 12.5)),
                 ]),
               ),
-            if (u != null) Text(dataRelativa(u.data), style: secundario),
           ]),
           if (u != null && u.motivo.isNotEmpty && u.estado != 'funciona')
             Padding(
@@ -85,6 +91,16 @@ class CartaoLista extends StatelessWidget {
       ),
     );
   }
+}
+
+/// "verificada há 2 h", "verificada há 3 dias"... (para o detalhe da [PilulaEstado]).
+String verificadaHa(DateTime d, [DateTime? agora]) {
+  final dif = (agora ?? DateTime.now()).difference(d);
+  if (dif.inMinutes < 1) return 'verificada agora';
+  if (dif.inMinutes < 60) return 'verificada há ${dif.inMinutes} min';
+  if (dif.inHours < 24) return 'verificada há ${dif.inHours} h';
+  if (dif.inDays < 30) return 'verificada há ${dif.inDays} ${dif.inDays == 1 ? 'dia' : 'dias'}';
+  return 'verificada em ${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
 }
 
 /// O ícone do tipo de lista num quadrado com o gradiente de acento.
@@ -100,7 +116,7 @@ class _IconeTipo extends StatelessWidget {
         decoration: BoxDecoration(
           gradient: Tokens.gradienteAcento,
           borderRadius: BorderRadius.circular(tamanho * .3),
-          boxShadow: const [BoxShadow(color: Color(0x406C7BFF), blurRadius: 12, offset: Offset(0, 4))],
+          boxShadow: [BoxShadow(color: Tokens.acento.withValues(alpha: .25), blurRadius: 12, offset: const Offset(0, 4))],
         ),
         child: Icon(icone, color: Colors.white, size: tamanho * .52),
       );

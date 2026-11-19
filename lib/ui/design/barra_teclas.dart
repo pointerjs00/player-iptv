@@ -30,7 +30,12 @@ class BarraTeclas extends StatelessWidget {
                   style: const TextStyle(color: Tokens.texto, fontSize: 12, fontWeight: FontWeight.w700)),
             ),
             const SizedBox(width: Tokens.e8),
-            Text(acao, style: const TextStyle(color: Tokens.texto2, fontSize: 13)),
+            Flexible(
+              child: Text(acao,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Tokens.texto2, fontSize: 13)),
+            ),
           ]),
       ]),
     );

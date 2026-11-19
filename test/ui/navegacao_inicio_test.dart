@@ -72,7 +72,7 @@ void main() {
       await t.pumpAndSettle();
       final cartao = find.byKey(const Key('continuar-a-ver'));
       expect(cartao, findsOneWidget);
-      expect(find.descendant(of: cartao, matching: find.text('Continuar a ver')), findsOneWidget);
+      expect(find.descendant(of: cartao, matching: find.textContaining('CONTINUAR A VER')), findsOneWidget);
       expect(find.descendant(of: cartao, matching: find.text('Sport TV 1')), findsOneWidget);
       expect(find.descendant(of: cartao, matching: find.textContaining(l.nomeMostrado)), findsOneWidget);
       final focado = FocusManager.instance.primaryFocus!.context!;
