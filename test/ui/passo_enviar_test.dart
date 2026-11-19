@@ -82,6 +82,12 @@ void main() {
     return w is FilledButton ? w.focusNode : (w as OutlinedButton).focusNode;
   }
 
+  /// Carrega num chip de marcar (a fila desliza: primeiro leva-o à vista).
+  Future<void> tocarChip(WidgetTester t, Finder chip) async {
+    await t.ensureVisible(chip);
+    await t.tap(chip);
+  }
+
   testWidgets('os textos do mockup: marcar com contagens, cartões e rodapé', (t) async {
     await abrir(t);
     for (final s in [
@@ -105,20 +111,20 @@ void main() {
 
   testWidgets('cada chip substitui a marcação', (t) async {
     await abrir(t);
-    await t.tap(find.text('As que funcionam (2)'));
+    await tocarChip(t, find.text('As que funcionam (2)'));
     await t.pump();
     expect(find.text('2 marcadas · OK marca/desmarca uma lista'), findsOneWidget);
-    await t.tap(find.text('+ inconclusivas (3)'));
+    await tocarChip(t, find.text('+ inconclusivas (3)'));
     await t.pump();
     expect(find.text('3 marcadas · OK marca/desmarca uma lista'), findsOneWidget);
-    await t.tap(find.text('Todas (5)'));
+    await tocarChip(t, find.text('Todas (5)'));
     await t.pump();
     expect(find.text('5 marcadas · OK marca/desmarca uma lista'), findsOneWidget);
-    await t.tap(find.text('As que funcionam (2)'));
+    await tocarChip(t, find.text('As que funcionam (2)'));
     await t.pump();
     expect(find.text('2 marcadas · OK marca/desmarca uma lista'), findsOneWidget);
     expect(t.widget<CheckboxListTile>(linha('019DELTA 161027')).value, isFalse);
-    await t.tap(find.text('Nenhuma'));
+    await tocarChip(t, find.text('Nenhuma'));
     await t.pump();
     expect(marcadas, isEmpty);
     expect(mudou, 5);
@@ -164,7 +170,7 @@ void main() {
 
   testWidgets('uma marcada que sai do Gestor deixa de contar', (t) async {
     await abrir(t);
-    await t.tap(find.text('Todas (5)'));
+    await tocarChip(t, find.text('Todas (5)'));
     await t.pump();
     await t.runAsync(() => area.remover([area.listas.first.id]));
     await t.pump();
@@ -186,7 +192,7 @@ void main() {
 
   testWidgets('→ da lista leva aos cartões; ← volta à linha', (t) async {
     await abrir(t);
-    await t.tap(find.text('Todas (5)'));
+    await tocarChip(t, find.text('Todas (5)'));
     await t.pump();
     final linhaNo = t.widget<CheckboxListTile>(linha('002ALFA 040227')).focusNode!;
     linhaNo.requestFocus();
@@ -218,7 +224,7 @@ void main() {
 
   testWidgets('o Gestor esvazia-se com o foco em Exportar: o foco passa ao chip As que funcionam', (t) async {
     await abrir(t);
-    await t.tap(find.textContaining('Todas ('));
+    await tocarChip(t, find.textContaining('Todas ('));
     await t.pump();
     final no = focoDe(t, 'Exportar 5 listas')!;
     no.requestFocus();

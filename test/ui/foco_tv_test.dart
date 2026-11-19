@@ -764,6 +764,7 @@ void main() {
       await t.pumpAndSettle();
       // o passo 3 e o formato da exportação (as opções do diálogo)
       await abrirPasso(t, 'Enviar ou exportar');
+      await t.ensureVisible(find.textContaining('Todas ('));
       await t.tap(find.textContaining('Todas ('));
       await t.pump();
       expect(await _semRealceAoPercorrer(t, 10, vistos: vistos), isEmpty);

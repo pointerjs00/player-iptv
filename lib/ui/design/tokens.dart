@@ -64,6 +64,10 @@ abstract final class Tokens {
   static const e24 = 24.0;
   static const e32 = 32.0;
 
+  /// A altura das linhas das tabelas do Gestor (passos 2 e 3): fixa e baixa (na TV cabem pelo
+  /// menos 12).
+  static const alturaLinhaTabela = 32.0;
+
   // --- sombras (em camadas: uma curta e nítida + uma longa e difusa); pintadas só por fora
   // das superfícies de vidro (ver SombraExterior) ---
   static const sombra1 = [

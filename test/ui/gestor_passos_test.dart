@@ -94,6 +94,7 @@ void main() {
     expect(find.descendant(of: passo('Enviar ou exportar'), matching: find.text('2')), findsOneWidget);
     await abrir(t, 'Enviar ou exportar');
     expect(find.text('0 marcadas · OK marca/desmarca uma lista'), findsOneWidget);
+    await t.ensureVisible(find.text('As que funcionam (2)'));
     await t.tap(find.text('As que funcionam (2)'));
     await t.pump();
     expect(find.text('2 marcadas · OK marca/desmarca uma lista'), findsOneWidget);
@@ -308,6 +309,8 @@ void main() {
     await t.pump();
     // no passo 3, as marcadas que saem do Gestor saem das marcadas
     await abrir(t, 'Enviar ou exportar');
+    // (os chips de marcar vão numa só fila: com a letra dos testes, larga, os da direita deslizam)
+    await t.ensureVisible(find.text('Todas (5)'));
     await t.tap(find.text('Todas (5)'));
     await t.pump();
     await t.tap(find.text('2 · Verificar'));

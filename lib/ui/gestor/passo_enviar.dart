@@ -124,7 +124,7 @@ class _PassoEnviarState extends State<PassoEnviar> {
           final lista = SliverList.builder(
             itemCount: listas.length,
             itemBuilder: (_, i) => Padding(
-              padding: const EdgeInsets.only(bottom: Tokens.e4),
+              padding: const EdgeInsets.only(bottom: 2),
               child: Material(type: MaterialType.transparency, child: _linha(listas[i])),
             ),
           );
@@ -181,57 +181,79 @@ class _PassoEnviarState extends State<PassoEnviar> {
     final funcionam = listas.where((l) => estadoDe(l) == EstadoLista.funciona).length;
     final ateInconcl =
         listas.where((l) => estadoDe(l) == EstadoLista.funciona || estadoDe(l) == EstadoLista.inconclusiva).length;
-    return Wrap(spacing: Tokens.e8, runSpacing: Tokens.e8, crossAxisAlignment: WrapCrossAlignment.center, children: [
-      const Text('Marcar:', style: TextStyle(color: Tokens.texto2, fontWeight: FontWeight.w500)),
-      ActionChip(
-        focusNode: _focoChip,
-        label: Text('As que funcionam ($funcionam)'),
-        onPressed: () => _marcar((e) => e == EstadoLista.funciona),
-      ),
-      ActionChip(
-        label: Text('+ inconclusivas ($ateInconcl)'),
-        onPressed: () => _marcar((e) => e == EstadoLista.funciona || e == EstadoLista.inconclusiva),
-      ),
-      ActionChip(label: Text('Todas (${listas.length})'), onPressed: () => _marcar((_) => true)),
-      ActionChip(label: const Text('Nenhuma'), onPressed: () => _marcar((_) => false)),
-    ]);
+    ActionChip chip(String texto, VoidCallback aoCarregar, {FocusNode? foco}) => ActionChip(
+          focusNode: foco,
+          label: Text(texto),
+          visualDensity: VisualDensity.compact,
+          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          onPressed: aoCarregar,
+        );
+    final chips = [
+      chip('As que funcionam ($funcionam)', () => _marcar((e) => e == EstadoLista.funciona), foco: _focoChip),
+      chip('+ inconclusivas ($ateInconcl)',
+          () => _marcar((e) => e == EstadoLista.funciona || e == EstadoLista.inconclusiva)),
+      chip('Todas (${listas.length})', () => _marcar((_) => true)),
+      chip('Nenhuma', () => _marcar((_) => false)),
+    ];
+    // numa só linha: se não couberem, deslizam para o lado (o foco leva-os à vista)
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      // margem para o anel do foco não ser cortado
+      padding: const EdgeInsets.all(Tokens.e4),
+      child: Row(children: [
+        const Text('Marcar:', style: TextStyle(color: Tokens.texto2, fontWeight: FontWeight.w500)),
+        for (final c in chips) ...[const SizedBox(width: Tokens.e8), c],
+      ]),
+    );
   }
+
+  /// Linhas baixas, como as do passo 2 (a mesma altura, [Tokens.alturaLinhaTabela]).
+  static const _densidade = VisualDensity(vertical: VisualDensity.minimumDensity);
 
   Widget _linha(Lista l) => Focus(
         canRequestFocus: false,
         skipTraversal: true,
         onKeyEvent: (_, e) => _teclaLinha(e),
-        child: RealceFoco(
-          construir: (_, aoMudarFoco) => CheckboxListTile(
-            focusNode: _focoLinha(l.id),
-            onFocusChange: (f) {
-              aoMudarFoco(f);
-              if (f) _linhaFocada = l.id;
-            },
-            value: widget.marcadas.contains(l.id),
-            onChanged: (v) => _alternar(l.id, v == true),
-            title: Row(children: [
-              Expanded(
-                  child: Text(l.nomeMostrado,
-                      maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600))),
-              const SizedBox(width: Tokens.e12),
-              PilulaEstado(estadoDe(l)),
-            ]),
-            contentPadding: const EdgeInsets.symmetric(horizontal: Tokens.e16),
-            controlAffinity: ListTileControlAffinity.leading,
-            dense: true,
+        child: SizedBox(
+          height: Tokens.alturaLinhaTabela,
+          child: RealceFoco(
+            raio: 8,
+            construir: (_, aoMudarFoco) => CheckboxListTile(
+              focusNode: _focoLinha(l.id),
+              onFocusChange: (f) {
+                aoMudarFoco(f);
+                if (f) _linhaFocada = l.id;
+              },
+              value: widget.marcadas.contains(l.id),
+              onChanged: (v) => _alternar(l.id, v == true),
+              title: Row(children: [
+                Expanded(
+                    child: Text(l.nomeMostrado,
+                        maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600))),
+                const SizedBox(width: Tokens.e12),
+                PilulaEstado(estadoDe(l)),
+              ]),
+              contentPadding: const EdgeInsets.symmetric(horizontal: Tokens.e12),
+              horizontalTitleGap: Tokens.e12,
+              minVerticalPadding: 0,
+              minTileHeight: Tokens.alturaLinhaTabela,
+              visualDensity: _densidade,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              controlAffinity: ListTileControlAffinity.leading,
+              dense: true,
+            ),
           ),
         ),
       );
 
   Widget _cartao({required String titulo, required String texto, required Widget botao}) => Container(
-        padding: const EdgeInsets.all(Tokens.e16),
+        padding: const EdgeInsets.all(Tokens.e12),
         decoration: BoxDecoration(color: Tokens.superficie3, borderRadius: BorderRadius.circular(Tokens.raioCartao)),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text(titulo, style: const TextStyle(color: Tokens.texto, fontSize: 17, fontWeight: FontWeight.w700)),
-          const SizedBox(height: Tokens.e8),
+          Text(titulo, style: const TextStyle(color: Tokens.texto, fontSize: 16, fontWeight: FontWeight.w700)),
+          const SizedBox(height: Tokens.e4),
           Text(texto, style: const TextStyle(color: Tokens.texto2, fontSize: 13, fontWeight: FontWeight.w500)),
-          const SizedBox(height: Tokens.e12),
+          const SizedBox(height: Tokens.e8),
           botao,
         ]),
       );

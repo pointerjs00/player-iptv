@@ -200,8 +200,13 @@ void main() {
   }
 
   /// No passo 3: o chip de marcar que começa por `rotulo` ("As que funcionam", "Todas"...).
+  /// Primeiro à vista: os chips vão numa só fila e, com a letra dos testes (larga), os da
+  /// direita deslizam.
   Future<void> marcarChip(WidgetTester t, String rotulo) async {
-    await t.tap(find.ancestor(of: find.textContaining(rotulo), matching: find.byType(ActionChip)).first);
+    final chip = find.ancestor(of: find.textContaining(rotulo), matching: find.byType(ActionChip)).first;
+    await t.ensureVisible(chip);
+    await t.pump();
+    await t.tap(chip);
     await t.pump();
   }
 

@@ -156,8 +156,7 @@ void main() {
     expect(em(c3, 'prontas a enviar'), findsOneWidget);
     expect(em(c3, 'No Player'), findsOneWidget);
     expect(em(c3, '0 listas'), findsOneWidget);
-    expect(find.text('Nenhum passo está aberto: o Gestor abre sempre neste resumo. Voltar dentro de um passo volta aqui.'),
-        findsOneWidget);
+    expect(find.textContaining('Nenhum passo está aberto'), findsNothing, reason: 'sem o texto de rodapé');
     expect(find.byType(PassoVerificar).hitTestable(), findsNothing, reason: 'nenhum passo aberto');
     expect(textosFocados(), startsWith('1 | Importar'), reason: 'o foco começa no cartão 1');
     // as cores do mockup: por verificar em aviso, funcionam em ok, não funcionam em mau
@@ -498,6 +497,101 @@ void main() {
     expect(acoes.right, lessThanOrEqualTo(960));
     expect(acoes.center.dy, moreOrLessEquals(t.getCenter(find.descendant(of: passo, matching: find.byType(TextField))).dy,
         epsilon: 1));
+  });
+
+  /// A casca já no Gestor, a 80 % (como na TV no Compacto).
+  Widget cascaCompacta() => MaterialApp(
+      theme: temaApp(),
+      builder: (_, c) => TemaConformeRealce(child: EscalaInterface(escala: escalaCompacto, child: c!)),
+      home: TelaPrincipal(
+          inicial: Seccao.gestor,
+          verTv: TelaInicio(biblioteca: bib, area: area),
+          gestor: telaGestor(),
+          definicoes: const SizedBox()));
+
+  testWidgets('na TV (960×540, a 80 %) o resumo tem cartões baixos (≤ 160) e sem o texto de rodapé', (t) async {
+    ecraTvTeste(t);
+    await vinteQuatro(t);
+    await t.pumpWidget(cascaCompacta());
+    await t.pump();
+    expect(t.takeException(), isNull);
+    final c1 = cartao('Importar'), c2 = cartao('Verificar'), c3 = cartao('Enviar ou exportar');
+    for (final (n, c) in [(1, c1), (2, c2), (3, c3)]) {
+      final r = t.getRect(c);
+      expect(r.height, lessThanOrEqualTo(160 * escalaCompacto), reason: 'cartão $n: $r');
+      expect(r.bottom, lessThanOrEqualTo(540), reason: 'cartão $n à vista');
+      expect(em(c, 'OK: abrir →'), findsOneWidget, reason: 'cartão $n');
+    }
+    // a informação fica: o número, o rótulo e as duas linhas
+    for (final (c, textos) in [
+      (c2, ['5', 'por verificar', 'Funcionam', '12', 'Não funcionam', '4']),
+      (c3, ['12', 'prontas a enviar', 'No Player', '0 listas']),
+    ]) {
+      for (final x in textos) {
+        expect(em(c, x), findsOneWidget, reason: x);
+      }
+    }
+    expect(find.textContaining('Nenhum passo está aberto'), findsNothing);
+    // os três lado a lado, com a mesma altura
+    expect(t.getRect(c2).top, moreOrLessEquals(t.getRect(c1).top, epsilon: 1));
+    expect(t.getRect(c3).height, moreOrLessEquals(t.getRect(c1).height, epsilon: 1));
+  });
+
+  testWidgets('na TV (960×540, a 80 %) o passo 3: linhas como as do Verificar, chips numa linha e → aos dois destinos',
+      (t) async {
+    ecraTvTeste(t);
+    await t.runAsync(() => area.adicionar([
+          for (var i = 0; i < 30; i++) Importada(contaDeLinha('http://h$i.com/l.m3u')!, i.isEven ? _u('funciona') : null),
+        ]));
+    await t.pumpWidget(cascaCompacta());
+    await t.pump();
+    await t.tap(em(cartao('Enviar ou exportar'), 'Enviar ou exportar'));
+    await t.pumpAndSettle();
+    expect(t.takeException(), isNull);
+    final passo = find.byType(PassoEnviar);
+    final linhas = find.descendant(of: passo, matching: find.byType(CheckboxListTile));
+    final alturas = <double>{};
+    var inteiras = 0;
+    for (var i = 0; i < linhas.evaluate().length; i++) {
+      final r = t.getRect(linhas.at(i));
+      alturas.add((r.height * 10).roundToDouble() / 10);
+      if (r.bottom <= 540) inteiras++;
+    }
+    expect(alturas, hasLength(1), reason: 'altura fixa: $alturas');
+    expect(alturas.single, moreOrLessEquals(PassoVerificarState.alturaLinha * escalaCompacto, epsilon: .1),
+        reason: 'a altura das linhas do passo 2');
+    expect(inteiras, greaterThanOrEqualTo(10), reason: 'linhas à vista');
+    // «Marcar:» e os quatro chips numa só linha
+    final marcar = t.getCenter(find.descendant(of: passo, matching: find.text('Marcar:'))).dy;
+    final chips = find.descendant(of: passo, matching: find.byType(ActionChip));
+    expect(chips, findsNWidgets(4));
+    for (var i = 0; i < 4; i++) {
+      expect(t.getCenter(chips.at(i)).dy, moreOrLessEquals(marcar, epsilon: 2), reason: 'chip $i');
+    }
+    // → numa linha leva ao Enviar; ↓ ao Exportar; os dois à vista
+    // (a fila desliza: com o comando, o foco leva o chip à vista)
+    await t.ensureVisible(find.text('Todas (30)'));
+    await t.tap(find.text('Todas (30)'));
+    await t.pump();
+    final linhaNo = t.widget<CheckboxListTile>(linhas.at(2)).focusNode!;
+    linhaNo.requestFocus();
+    await t.pump();
+    await teclaDpad(t, LogicalKeyboardKey.arrowRight);
+    expect(textosFocados(), 'Enviar 30 listas');
+    await teclaDpad(t, LogicalKeyboardKey.arrowDown);
+    expect(textosFocados(), 'Exportar 30 listas');
+    for (final b in ['Enviar 30 listas', 'Exportar 30 listas']) {
+      expect(t.getRect(find.text(b)).bottom, lessThanOrEqualTo(540), reason: b);
+    }
+    await teclaDpad(t, LogicalKeyboardKey.arrowLeft);
+    expect(linhaNo.hasPrimaryFocus, isTrue);
+    // → pela fila dos chips chega ao último (desliza para a vista)
+    await irPara(t, 'As que funcionam');
+    for (var i = 0; i < 6 && textosFocados() != 'Nenhuma'; i++) {
+      await teclaDpad(t, LogicalKeyboardKey.arrowRight);
+    }
+    expect(textosFocados(), 'Nenhuma');
+    expect(t.getRect(find.text('Nenhuma')).right, lessThanOrEqualTo(960));
   });
 
   testWidgets('no passo 2 a tecla Menu abre as ações também do «Voltar», da faixa e do indicador', (t) async {

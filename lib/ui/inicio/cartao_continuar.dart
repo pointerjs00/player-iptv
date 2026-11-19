@@ -17,14 +17,16 @@ class CartaoContinuar extends StatelessWidget {
   /// O número do canal na lista (null = não se sabe: só se mostra o grupo).
   final int? numero;
 
-  static double altura(bool tv) => tv ? 132 : 108;
+  /// Uma faixa baixa: o logótipo pequeno, "CONTINUAR A VER · lista" por cima do canal (com o
+  /// número e o grupo ao lado) e o botão "Ver".
+  static double altura(bool tv) => tv ? 68 : 60;
 
   @override
   Widget build(BuildContext context) {
     final tv = ecraTv(context);
-    final logo = tv ? 76.0 : 60.0;
+    final logo = tv ? 40.0 : 34.0;
     final vazio = Text(_iniciais(visto.nome),
-        style: TextStyle(color: Colors.white, fontSize: logo * .34, fontWeight: FontWeight.w800));
+        style: TextStyle(color: Colors.white, fontSize: logo * .36, fontWeight: FontWeight.w800));
     final detalhe = [if (numero != null) 'Canal $numero', if (visto.grupo.isNotEmpty) visto.grupo].join(' · ');
     return Semantics(
       button: true,
@@ -35,24 +37,23 @@ class CartaoContinuar extends StatelessWidget {
         autofocus: autofocus,
         onTap: aoAbrir,
         escalaFoco: 1.02,
-        padding: EdgeInsets.all(tv ? 18 : 14),
+        padding: EdgeInsets.symmetric(horizontal: tv ? 14 : 12, vertical: tv ? 8 : 7),
         child: Row(children: [
           Container(
             width: logo,
             height: logo,
-            padding: const EdgeInsets.all(6),
+            padding: const EdgeInsets.all(4),
             alignment: Alignment.center,
             decoration: BoxDecoration(
               gradient: Tokens.gradienteAcento,
               borderRadius: BorderRadius.circular(logo * .26),
-              boxShadow: [BoxShadow(color: Tokens.acento.withValues(alpha: .25), blurRadius: 16, offset: const Offset(0, 6))],
             ),
             child: visto.logo.startsWith('http')
                 ? Image.network(visto.logo, fit: BoxFit.contain, errorBuilder: (_, _, _) => vazio,
                     cacheWidth: (logo * MediaQuery.devicePixelRatioOf(context)).round())
                 : vazio,
           ),
-          SizedBox(width: tv ? Tokens.e24 : Tokens.e16),
+          SizedBox(width: tv ? Tokens.e16 : Tokens.e12),
           Expanded(
             child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -60,29 +61,36 @@ class CartaoContinuar extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                      color: Tokens.acento, fontSize: tv ? 15 : 12.5, fontWeight: FontWeight.w700, letterSpacing: .4)),
-              const SizedBox(height: 2),
-              Text(visto.nome, maxLines: 1, overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: tv ? 26 : 20, fontWeight: FontWeight.w700)),
-              if (detalhe.isNotEmpty)
-                Text(detalhe,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: Tokens.texto2, fontSize: tv ? 16 : 13)),
+                      color: Tokens.acento, fontSize: tv ? 12.5 : 11, fontWeight: FontWeight.w700, letterSpacing: .4)),
+              Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
+                Flexible(
+                  child: Text(visto.nome, maxLines: 1, overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: tv ? 18 : 15.5, fontWeight: FontWeight.w700)),
+                ),
+                if (detalhe.isNotEmpty) ...[
+                  const SizedBox(width: Tokens.e12),
+                  Flexible(
+                    child: Text(detalhe,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: Tokens.texto2, fontSize: tv ? 14 : 12.5)),
+                  ),
+                ],
+              ]),
             ]),
           ),
           const SizedBox(width: Tokens.e12),
           // o botão "Ver" é só visual: o foco é do cartão (uma só paragem)
           Container(
-            padding: EdgeInsets.symmetric(horizontal: tv ? 24 : 18, vertical: tv ? 12 : 9),
+            padding: EdgeInsets.symmetric(horizontal: tv ? 16 : 14, vertical: tv ? 6 : 5),
             decoration: BoxDecoration(
               gradient: Tokens.gradienteAcento,
               borderRadius: BorderRadius.circular(Tokens.raioBotao),
             ),
             child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(Icons.play_arrow_rounded, color: Colors.white, size: tv ? 26 : 22),
+              Icon(Icons.play_arrow_rounded, color: Colors.white, size: tv ? 20 : 18),
               const SizedBox(width: 4),
-              Text('Ver', style: TextStyle(color: Colors.white, fontSize: tv ? 18 : 15, fontWeight: FontWeight.w700)),
+              Text('Ver', style: TextStyle(color: Colors.white, fontSize: tv ? 15 : 13.5, fontWeight: FontWeight.w700)),
             ]),
           ),
         ]),

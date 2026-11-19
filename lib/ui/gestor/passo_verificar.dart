@@ -67,8 +67,8 @@ class PassoVerificarState extends State<PassoVerificar> {
     (EstadoLista.porVerificar, 'Por verificar'),
   ];
 
-  /// A altura de cada linha da tabela (fixa e baixa: na TV cabem pelo menos 12).
-  static const alturaLinha = 32.0;
+  /// A altura de cada linha da tabela (fixa e baixa: na TV cabem pelo menos 12; a mesma do passo 3).
+  static const alturaLinha = Tokens.alturaLinhaTabela;
 
   final _pesquisa = TextEditingController();
 

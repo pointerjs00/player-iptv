@@ -362,10 +362,10 @@ class _TelaInicioState extends State<TelaInicio> {
                 sliver: SliverGrid(
                   // no telemóvel, um cartão por linha (com o nome inteiro)
                   gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-                    maxCrossAxisExtent: MediaQuery.sizeOf(context).width < 600 ? 600 : (tv ? 400 : 340),
+                    maxCrossAxisExtent: MediaQuery.sizeOf(context).width < 600 ? 600 : (tv ? 340 : 320),
                     mainAxisExtent: CartaoLista.altura(tv),
-                    crossAxisSpacing: Tokens.e16,
-                    mainAxisSpacing: Tokens.e16,
+                    crossAxisSpacing: Tokens.e12,
+                    mainAxisSpacing: Tokens.e12,
                   ),
                   delegate: SliverChildBuilderDelegate(
                     childCount: vis.length,

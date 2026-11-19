@@ -71,6 +71,8 @@ class PilulaEstado extends StatelessWidget {
         const SizedBox(width: 6),
         Flexible(
           child: Text(d == null || d.isEmpty ? estado.rotulo : '${estado.rotulo} · $d',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(color: cor, fontWeight: FontWeight.w600, fontSize: tam)),
         ),
       ]),

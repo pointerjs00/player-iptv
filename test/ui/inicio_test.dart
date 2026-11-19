@@ -7,10 +7,15 @@ import 'package:player_iptv/importar/importar.dart';
 import 'package:player_iptv/modelo/canal.dart';
 import 'package:player_iptv/modelo/conta.dart';
 import 'package:player_iptv/ui/design/design.dart';
+import 'package:player_iptv/ui/design/escala_interface.dart';
 import 'package:player_iptv/ui/inicio/favoritos_inicio.dart';
+import 'package:player_iptv/ui/inicio/cartao_lista.dart';
 import 'package:player_iptv/ui/inicio/tela_inicio.dart';
+import 'package:player_iptv/ui/principal/tela_principal.dart';
 import 'package:player_iptv/ui/realce_foco.dart';
 import 'package:player_iptv/ui/tema.dart';
+
+import 'ajuda_dpad.dart';
 
 Widget _app(Widget w) =>
     MaterialApp(theme: temaApp(), builder: (_, c) => TemaConformeRealce(child: c!), home: w);
@@ -245,6 +250,74 @@ void main() {
       expect(find.text('As que funcionam aparecem aqui'), findsOneWidget);
       // o Início não oferece importar a cópia de segurança (é nas Definições)
       expect(find.text('Importar cópia de segurança'), findsNothing);
+    });
+  });
+
+  group('compacto na TV (960×540, a 80 %, na casca)', () {
+    testWidgets('«Continuar a ver» baixo, pesquisa e filtros numa linha e pelo menos 3 cartões por linha',
+        (t) async {
+      ecraTvTeste(t);
+      await t.runAsync(() async {
+        await bib.adicionar([
+          for (var i = 0; i < 9; i++)
+            Importada(
+                contaDeLinha('http://servidor-$i.exemplo.pt/c/ 00:1A:79:00:00:0$i')!,
+                i.isEven
+                    ? UltimaVerificacao(
+                        estado: i == 2 ? 'nao_funciona' : 'funciona',
+                        motivo: i == 2 ? 'sem resposta' : '',
+                        validade: '2027-10-16',
+                        data: DateTime.now().subtract(const Duration(hours: 2)))
+                    : null),
+        ]);
+        await bib.guardarCanais(bib.listas.first.id, _conteudo('A'));
+        await bib.registarVisto(bib.listas.first.id, _conteudo('A').canais[2]);
+      });
+      await t.pumpWidget(MaterialApp(
+          theme: temaApp(),
+          builder: (_, c) => TemaConformeRealce(child: EscalaInterface(escala: escalaCompacto, child: c!)),
+          home: TelaPrincipal(
+              verTv: TelaInicio(biblioteca: bib), gestor: const SizedBox(), definicoes: const SizedBox())));
+      // os resumos (contagens, número do canal visto) leem-se das caches fora do build
+      for (var i = 0; i < 50 && find.text('3 canais · 2 grupos').evaluate().isEmpty; i++) {
+        await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 40)));
+        await t.pump();
+      }
+      await t.pumpAndSettle();
+      expect(t.takeException(), isNull);
+
+      // «Continuar a ver»: uma faixa baixa (≤ 72 lógicos), com o canal, a lista e o botão Ver
+      final continuar = find.byKey(const Key('continuar-a-ver'));
+      expect(t.getRect(continuar).height, lessThanOrEqualTo(72 * escalaCompacto));
+      for (final s in ['A Sport TV', 'Canal 3 · Desporto', 'Ver', 'CONTINUAR A VER']) {
+        expect(find.descendant(of: continuar, matching: find.textContaining(s)), findsOneWidget, reason: s);
+      }
+
+      // a pesquisa e os filtros na mesma linha
+      final pesquisa = t.getCenter(find.byType(TextField));
+      for (final f in ['Todas', 'Funcionam']) {
+        expect(t.getCenter(find.widgetWithText(ChoiceChip, f)).dy, moreOrLessEquals(pesquisa.dy, epsilon: 2), reason: f);
+      }
+
+      // pelo menos 3 cartões na primeira linha
+      final cartoes = find.byType(CartaoLista);
+      final topo = t.getRect(cartoes.first).top;
+      var naLinha = 0;
+      for (var i = 0; i < cartoes.evaluate().length; i++) {
+        if ((t.getRect(cartoes.at(i)).top - topo).abs() < 1) naLinha++;
+      }
+      expect(naLinha, greaterThanOrEqualTo(3));
+
+      // cada cartão: «tipo · host» e as contagens numa linha; a pílula e a validade na mesma linha
+      final c = find.byWidget(t.widget<CartaoLista>(cartoes.first));
+      final tipo = t.getCenter(find.descendant(of: c, matching: find.textContaining('Stalker · ')));
+      expect(t.getCenter(find.descendant(of: c, matching: find.text('3 canais · 2 grupos'))).dy,
+          moreOrLessEquals(tipo.dy, epsilon: 1));
+      final pilula = t.getCenter(find.descendant(of: c, matching: find.byType(PilulaEstado)));
+      expect(t.getCenter(find.descendant(of: c, matching: find.text('até 16/10/2027'))).dy,
+          moreOrLessEquals(pilula.dy, epsilon: 1));
+      // o motivo continua no cartão que não funciona
+      expect(find.text('sem resposta'), findsOneWidget);
     });
   });
 }

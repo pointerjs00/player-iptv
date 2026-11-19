@@ -31,62 +31,84 @@ class CartaoLista extends StatelessWidget {
   };
 
   /// A altura do cartão na grelha (maior na TV); sem botões em baixo (verificar é no Gestor).
-  static double altura(bool tv) => tv ? 216 : 188;
+  /// Baixo: o nome e "tipo · servidor · contagens" ao lado do ícone, a pílula e a validade numa
+  /// só linha e, quando a lista não funciona, o motivo.
+  static double altura(bool tv) => tv ? 128 : 116;
 
   @override
   Widget build(BuildContext context) {
     final tv = ecraTv(context);
     final u = lista.ultima;
     final validade = textoValidade(u?.validade ?? '');
-    final secundario = TextStyle(color: Tokens.texto2, fontSize: tv ? 14 : 12.5);
+    final secundario = TextStyle(color: Tokens.texto2, fontSize: tv ? 13 : 12);
     return CartaoModerno(
       autofocus: autofocus,
       focusNode: focusNode,
       onTap: aoAbrir,
       onLongPress: aoMenu,
-      padding: EdgeInsets.all(tv ? 18 : Tokens.e16),
+      padding: EdgeInsets.symmetric(horizontal: tv ? 14 : Tokens.e12, vertical: Tokens.e12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(children: [
-            _IconeTipo(_icones[lista.conta.tipo]!, tamanho: tv ? 48 : 40),
-            const SizedBox(width: Tokens.e12),
+            _IconeTipo(_icones[lista.conta.tipo]!, tamanho: tv ? 34 : 30),
+            const SizedBox(width: 10),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(lista.nomeMostrado, maxLines: 1, overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: tv ? 19 : 16, fontWeight: FontWeight.w700)),
-                const SizedBox(height: 2),
-                Text('${_tipos[lista.conta.tipo]} · ${hostDe(lista.conta.endereco)}',
-                    maxLines: 1, overflow: TextOverflow.ellipsis, style: secundario),
-                if (resumo != null)
-                  Text('${resumo!.canais} canais · ${resumo!.grupos} grupos',
-                      maxLines: 1, overflow: TextOverflow.ellipsis, style: secundario),
+                    style: TextStyle(fontSize: tv ? 17 : 15, fontWeight: FontWeight.w700)),
+                // numa linha: o servidor encolhe primeiro (com reticências); as contagens só
+                // encolhem se não couberem em 2/3 da largura
+                LayoutBuilder(
+                  builder: (_, c) => Row(children: [
+                    Flexible(
+                      child: Text('${_tipos[lista.conta.tipo]} · ${hostDe(lista.conta.endereco)}',
+                          maxLines: 1, overflow: TextOverflow.ellipsis, style: secundario),
+                    ),
+                    if (resumo != null) ...[
+                      Text(' · ', style: secundario),
+                      ConstrainedBox(
+                        constraints: BoxConstraints(maxWidth: c.maxWidth * 2 / 3),
+                        child: Text('${resumo!.canais} canais · ${resumo!.grupos} grupos',
+                            maxLines: 1, overflow: TextOverflow.ellipsis, style: secundario),
+                      ),
+                    ],
+                  ]),
+                ),
               ]),
             ),
           ]),
           const Spacer(),
-          Wrap(spacing: Tokens.e8, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
-            PilulaEstado(estadoDe(lista), detalhe: u == null ? null : verificadaHa(u.data)),
-            if (validade.isNotEmpty)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-                decoration: BoxDecoration(
-                  color: Tokens.vidroForte,
-                  borderRadius: BorderRadius.circular(Tokens.raioPilula),
+          // a pílula e a validade na mesma linha: a validade fica com até 40 % da largura
+          LayoutBuilder(
+            builder: (_, c) => Row(children: [
+              Flexible(child: PilulaEstado(estadoDe(lista), detalhe: u == null ? null : verificadaHa(u.data))),
+              if (validade.isNotEmpty) ...[
+                const SizedBox(width: Tokens.e8),
+                Container(
+                  constraints: BoxConstraints(maxWidth: c.maxWidth * .4),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: Tokens.vidroForte,
+                    borderRadius: BorderRadius.circular(Tokens.raioPilula),
+                  ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(Icons.event_outlined, size: tv ? 15 : 13, color: Tokens.texto2),
+                    const SizedBox(width: 4),
+                    Flexible(
+                      child: Text(validade,
+                          maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: tv ? 13 : 12)),
+                    ),
+                  ]),
                 ),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(Icons.event_outlined, size: tv ? 16 : 14, color: Tokens.texto2),
-                  const SizedBox(width: 5),
-                  Text(validade, style: TextStyle(fontSize: tv ? 14 : 12.5)),
-                ]),
-              ),
-          ]),
+              ],
+            ]),
+          ),
           if (u != null && u.motivo.isNotEmpty && u.estado != 'funciona')
             Padding(
-              padding: const EdgeInsets.only(top: 6),
+              padding: const EdgeInsets.only(top: Tokens.e4),
               child: Text(u.motivo, maxLines: 1, overflow: TextOverflow.ellipsis, style: secundario),
             ),
-          const SizedBox(height: Tokens.e4),
         ],
       ),
     );

@@ -681,8 +681,7 @@ class _TelaGestorState extends State<TelaGestor> {
               if (vazio)
                 const Text('Importe listas primeiro', style: _mut)
               else ...[
-                _numeroGrande(conta(EstadoLista.porVerificar), Tokens.aviso),
-                const Text('por verificar', style: _mut),
+                _numeroGrande(conta(EstadoLista.porVerificar), Tokens.aviso, 'por verificar'),
                 _linhaCartao('Funcionam', '${conta(EstadoLista.funciona)}', cor: Tokens.ok),
                 _linhaCartao('Não funcionam', '${conta(EstadoLista.naoFunciona)}', cor: Tokens.mau),
               ],
@@ -691,8 +690,7 @@ class _TelaGestorState extends State<TelaGestor> {
               if (vazio)
                 const Text('Importe listas primeiro', style: _mut)
               else ...[
-                _numeroGrande(conta(EstadoLista.funciona), Tokens.texto),
-                const Text('prontas a enviar', style: _mut),
+                _numeroGrande(conta(EstadoLista.funciona), Tokens.texto, 'prontas a enviar'),
               ],
               _linhaCartao('No Player', _n(_b.listas.length, 'lista', 'listas')),
               if (_ultimaExportacao case final quando?) _linhaCartao('Última exportação', _ha(quando)),
@@ -702,7 +700,7 @@ class _TelaGestorState extends State<TelaGestor> {
             padding: const EdgeInsets.fromLTRB(Tokens.e16, Tokens.e4, Tokens.e16, Tokens.e16),
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               Text('${_n(listas.length, 'lista', 'listas')} no Gestor · escolhe por onde começar', style: _mut),
-              const SizedBox(height: Tokens.e16),
+              const SizedBox(height: Tokens.e12),
               if (largo)
                 IntrinsicHeight(
                   child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -715,45 +713,55 @@ class _TelaGestorState extends State<TelaGestor> {
               else
                 for (final (i, c) in cartoes.indexed) ...[if (i > 0) const SizedBox(height: Tokens.e12), c],
               if (_s.ocupado) ...[const SizedBox(height: Tokens.e16), _barraAtividade()],
-              const SizedBox(height: Tokens.e16),
-              const Text(
-                  'Nenhum passo está aberto: o Gestor abre sempre neste resumo. Voltar dentro de um passo volta aqui.',
-                  style: _mut),
             ]),
           );
         }),
       );
 
-  /// Um cartão do resumo: o número, o nome do passo, o seu estado e "OK: abrir →".
+  /// Um cartão do resumo, baixo: o número e o nome do passo numa linha, o estado (o número
+  /// grande com o rótulo ao lado e até duas linhas) e "OK: abrir →".
   Widget _cartao(int i, bool largo, List<Widget> corpo) => CartaoModerno(
         focusNode: _focosCartoes[i],
         escalaFoco: 1.02,
-        padding: const EdgeInsets.all(Tokens.e16),
+        padding: const EdgeInsets.symmetric(horizontal: Tokens.e12, vertical: 10),
         onTap: () => _abrir(_passos[i]),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Container(
-            width: 40,
-            height: 40,
-            alignment: Alignment.center,
-            decoration: const BoxDecoration(color: Tokens.acento, shape: BoxShape.circle),
-            child: Text('${i + 1}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Tokens.texto)),
-          ),
-          const SizedBox(height: Tokens.e8),
-          Text(_nomesPassos[i], style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Tokens.texto)),
-          const SizedBox(height: Tokens.e8),
-          for (final w in corpo) Padding(padding: const EdgeInsets.only(bottom: Tokens.e4), child: w),
+          Row(children: [
+            Container(
+              width: 26,
+              height: 26,
+              alignment: Alignment.center,
+              decoration: const BoxDecoration(color: Tokens.acento, shape: BoxShape.circle),
+              child: Text('${i + 1}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Tokens.texto)),
+            ),
+            const SizedBox(width: Tokens.e8),
+            Expanded(
+              child: Text(_nomesPassos[i],
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Tokens.texto)),
+            ),
+          ]),
+          const SizedBox(height: 6),
+          for (final w in corpo) Padding(padding: const EdgeInsets.only(bottom: 2), child: w),
           // lado a lado (com a mesma altura), "OK: abrir →" fica em baixo em todos
-          if (largo) const Spacer(),
-          const SizedBox(height: Tokens.e8),
-          const Text('OK: abrir →', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Tokens.anelFoco)),
+          if (largo) const Spacer() else const SizedBox(height: Tokens.e4),
+          const Text('OK: abrir →', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Tokens.anelFoco)),
         ]),
       );
 
-  static Widget _numeroGrande(int n, Color cor) =>
-      Text('$n', style: TextStyle(fontSize: 34, fontWeight: FontWeight.w700, color: cor, height: 1.1));
+  /// O número grande com o rótulo ao lado ("5 por verificar").
+  static Widget _numeroGrande(int n, Color cor, String rotulo) => Row(
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
+          children: [
+            Text('$n', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: cor, height: 1.1)),
+            const SizedBox(width: 6),
+            Flexible(child: Text(rotulo, maxLines: 1, overflow: TextOverflow.ellipsis, style: _mut)),
+          ]);
 
   static Widget _linhaCartao(String rotulo, String valor, {Color cor = Tokens.texto}) => Container(
-        padding: const EdgeInsets.symmetric(vertical: Tokens.e4),
+        padding: const EdgeInsets.symmetric(vertical: 2),
         decoration: const BoxDecoration(border: Border(top: BorderSide(color: Tokens.bordaVidro))),
         child: Row(children: [
           Expanded(
