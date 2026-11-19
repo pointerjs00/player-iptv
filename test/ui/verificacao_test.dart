@@ -11,7 +11,7 @@ import 'package:player_iptv/modelo/conta.dart';
 import 'package:player_iptv/protocolos/protocolo.dart';
 import 'package:player_iptv/rede/http.dart';
 import 'package:player_iptv/tarefas/servico_tarefas.dart';
-import 'package:player_iptv/ui/design/componentes.dart';
+import 'package:player_iptv/ui/gestor/passo_verificar.dart';
 import 'package:player_iptv/ui/gestor/tela_gestor.dart';
 import 'package:player_iptv/ui/gestor/tela_verificacao.dart';
 import 'package:player_iptv/ui/realce_foco.dart';
@@ -75,11 +75,15 @@ void main() {
     t.view.physicalSize = const Size(1200, 2400);
     t.view.devicePixelRatio = 1;
     addTearDown(t.view.reset);
-    await t.pumpWidget(
-        _app(Scaffold(body: TelaGestor(biblioteca: bib, area: area, servico: s, tarefas: ServicoTarefas()))));
+    // o progresso abre do passo 2 ("Ver verificação") ou da casca ("Ver resultados"): aqui pela casca
+    final pedido = ValueNotifier<EcraGestor?>(null);
+    addTearDown(pedido.dispose);
+    await t.pumpWidget(_app(Scaffold(
+        body: TelaGestor(biblioteca: bib, area: area, servico: s, tarefas: ServicoTarefas(), pedido: pedido))));
     await t.pump();
-    await t.tap(find.descendant(of: find.byType(CartaoModerno), matching: find.text('Verificar')));
+    pedido.value = EcraGestor.verificacao;
     await t.pumpAndSettle();
+    expect(find.byType(TelaVerificacao).hitTestable(), findsOneWidget);
   }
 
   /// Deixa acabar as escritas em disco (IO real).
@@ -166,7 +170,7 @@ void main() {
     expect(find.text('Parar'), findsNothing);
   });
 
-  testWidgets('"Verificar mais (fila)" vai ao principal com o filtro "Por verificar"', (t) async {
+  testWidgets('"Verificar mais (fila)" vai ao passo 2 com o filtro "Por verificar" (e o foco nele)', (t) async {
     await t.runAsync(() => area.adicionar([
           Importada(_conta('boa', 1), UltimaVerificacao(estado: 'funciona', data: DateTime(2026, 3, 1))),
           Importada(_conta('nova', 2)),
@@ -174,10 +178,15 @@ void main() {
     await abrirVerificacao(t, servico({}));
     await t.tap(find.text('Verificar mais (fila)'));
     await t.pumpAndSettle();
-    expect(find.text('Gestor de listas'), findsOneWidget);
-    expect(t.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Por verificar · 1')).selected, isTrue);
+    expect(find.byType(PassoVerificar).hitTestable(), findsOneWidget);
+    final chip = find.widgetWithText(ChoiceChip, 'Por verificar · 1');
+    expect(t.widget<ChoiceChip>(chip).selected, isTrue);
     expect(find.textContaining('NOVA'), findsWidgets);
-    expect(find.text('Verificar (entra na fila)'), findsOneWidget);
+    expect(find.textContaining('BOA'), findsNothing);
+    expect(find.text('Verificar selecionadas'), findsOneWidget);
+    expect(FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<ChoiceChip>()?.label,
+        isA<Text>().having((t) => t.data, 'texto', 'Por verificar · 1'),
+        reason: 'o foco vai ao filtro escolhido');
   });
 
   group('ronda 1 da revisão', () {

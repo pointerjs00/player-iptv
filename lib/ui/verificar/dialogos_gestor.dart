@@ -137,30 +137,16 @@ String textoResultadoEnvio(int n, ResumoEnvio r, {int aDecorrer = 0}) {
       '${aDecorrer > 0 ? ' · $aDecorrer ainda a verificar' : ''}';
 }
 
-/// Que listas selecionadas vão para o Player.
-enum QueEnviar {
-  funcionam,
-  funcionamEInconclusivas,
-
-  /// Todas as selecionadas, seja qual for o estado (por verificar, não funciona…).
-  todas,
-}
-
-/// "Enviar n listas para o Player": como (adicionar ou substituir) e que listas (só as que funcionam,
-/// também as inconclusivas, ou todas as selecionadas). `funcionam`, `inconclusivas` e `todas` contam
-/// só as selecionadas que não estão a ser verificadas. Devolve o modo e que listas; null = cancelado.
-/// "Substituir" deixa o Player só com as enviadas ([ModoEnvio.esmagarTodas]).
-Future<(ModoEnvio, QueEnviar)?> perguntarEnvio(BuildContext context,
-    {required int funcionam, required int inconclusivas, required int todas}) {
-  return showDialog<(ModoEnvio, QueEnviar)>(
-    context: context,
-    builder: (_) => _DialogoEnvio(funcionam: funcionam, inconclusivas: inconclusivas, todas: todas),
-  );
+/// "Enviar n listas para o Player": como — adicionar, ou substituir (e o que manter das que já lá
+/// estão). As listas já vêm escolhidas do passo 3. Devolve o modo; null = cancelado.
+/// "Substituir" sem manter nenhuma deixa o Player só com as enviadas ([ModoEnvio.esmagarTodas]).
+Future<ModoEnvio?> perguntarEnvio(BuildContext context, {required int n}) {
+  return showDialog<ModoEnvio>(context: context, builder: (_) => _DialogoEnvio(n: n));
 }
 
 class _DialogoEnvio extends StatefulWidget {
-  const _DialogoEnvio({required this.funcionam, required this.inconclusivas, required this.todas});
-  final int funcionam, inconclusivas, todas;
+  const _DialogoEnvio({required this.n});
+  final int n;
 
   @override
   State<_DialogoEnvio> createState() => _DialogoEnvioState();
@@ -169,43 +155,20 @@ class _DialogoEnvio extends StatefulWidget {
 class _DialogoEnvioState extends State<_DialogoEnvio> {
   var _substituir = false;
   var _manter = ModoEnvio.esmagarTodas;
-  late var _que = widget.funcionam > 0
-      ? QueEnviar.funcionam
-      : widget.inconclusivas > 0
-          ? QueEnviar.funcionamEInconclusivas
-          : QueEnviar.todas;
 
   @override
   Widget build(BuildContext context) {
-    final f = widget.funcionam, i = widget.inconclusivas, todas = widget.todas;
-    final outras = todas - f - i;
+    final n = widget.n;
     final baixo = MediaQuery.sizeOf(context).height < 640;
-    final n = switch (_que) {
-      QueEnviar.funcionam => f,
-      QueEnviar.funcionamEInconclusivas => f + i,
-      QueEnviar.todas => todas,
-    };
     final espaco = SizedBox(height: baixo ? Tokens.e8 : Tokens.e12);
     return AlertDialog(
       insetPadding: EdgeInsets.symmetric(horizontal: 40, vertical: baixo ? 8 : 24),
-      title: Text('Enviar ${_listas(todas)} para o Player'),
+      title: Text('Enviar ${_listas(n)} para o Player'),
       content: SizedBox(
         width: ecraTv(context) ? 560 : 480,
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: Tokens.e8, vertical: Tokens.e4),
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Text(
-                '${f == 1 ? '1 funciona' : '$f funcionam'} e '
-                '${i == 1 ? '1 é inconclusiva' : '$i são inconclusivas'}',
-                style: const TextStyle(color: Tokens.texto2)),
-            // na TV o espaço é curto: a contagem já está na opção "Todas as selecionadas"
-            if (outras > 0 && !baixo)
-              Text(
-                  outras == 1
-                      ? '1 está por verificar ou não funciona'
-                      : '$outras estão por verificar ou não funcionam',
-                  style: const TextStyle(color: Tokens.texto2)),
-            SizedBox(height: baixo ? Tokens.e8 : Tokens.e16),
             _CartaoEscolha(
               autofocus: true,
               compacto: baixo,
@@ -230,7 +193,7 @@ class _DialogoEnvioState extends State<_DialogoEnvio> {
               aoEscolher: () => setState(() => _substituir = true),
             ),
             if (_substituir) ...[
-              SizedBox(height: baixo ? Tokens.e8 : Tokens.e12),
+              espaco,
               const Text('Das listas que já estão no Player, manter:', style: TextStyle(fontWeight: FontWeight.w600)),
               const SizedBox(height: Tokens.e8),
               for (final (modo, rotulo) in [
@@ -247,39 +210,13 @@ class _DialogoEnvioState extends State<_DialogoEnvio> {
                 const SizedBox(height: Tokens.e8),
               ],
             ],
-            SizedBox(height: baixo ? Tokens.e12 : Tokens.e16),
-            const Text('Que listas enviar?', style: TextStyle(fontWeight: FontWeight.w600)),
-            espaco,
-            _CartaoEscolha(
-              compacto: true,
-              titulo: 'Só as que funcionam ($f)',
-              escolhido: _que == QueEnviar.funcionam,
-              aoEscolher: () => setState(() => _que = QueEnviar.funcionam),
-            ),
-            SizedBox(height: baixo ? Tokens.e4 : Tokens.e8),
-            _CartaoEscolha(
-              compacto: true,
-              titulo: 'Funcionam + inconclusivas (${f + i})',
-              escolhido: _que == QueEnviar.funcionamEInconclusivas,
-              aoEscolher: () => setState(() => _que = QueEnviar.funcionamEInconclusivas),
-            ),
-            SizedBox(height: baixo ? Tokens.e4 : Tokens.e8),
-            _CartaoEscolha(
-              compacto: true,
-              titulo: 'Todas as selecionadas ($todas)',
-              escolhido: _que == QueEnviar.todas,
-              aoEscolher: () => setState(() => _que = QueEnviar.todas),
-            ),
           ]),
         ),
       ),
       actions: [
         TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
         FilledButton(
-          onPressed: n == 0
-              ? null
-              : () => Navigator.pop(
-                  context, (_substituir ? _manter : ModoEnvio.adicionar, _que)),
+          onPressed: () => Navigator.pop(context, _substituir ? _manter : ModoEnvio.adicionar),
           child: Text('Enviar ${_listas(n)}'),
         ),
       ],

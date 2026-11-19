@@ -151,7 +151,9 @@ class _PassoEnviarState extends State<PassoEnviar> {
                   ),
                 ),
                 const SizedBox(width: Tokens.e16),
-                SizedBox(width: 380, child: SingleChildScrollView(child: cartoes)),
+                // na TV (~740) os cartões estreitam para a lista caber ao lado
+                SizedBox(
+                    width: (caixa.maxWidth * .4).clamp(280.0, 380.0), child: SingleChildScrollView(child: cartoes)),
               ]),
             );
           }

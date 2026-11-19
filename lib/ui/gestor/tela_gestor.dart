@@ -1,11 +1,11 @@
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../dados/area_gestor.dart';
 import '../../dados/biblioteca.dart';
 import '../../dados/guardar_ficheiro.dart';
-import '../../importar/importar.dart';
 import '../../importar/stbstalker.dart';
 import '../../rede/http.dart';
 import '../../tarefas/servico_tarefas.dart';
@@ -14,30 +14,32 @@ import '../../verificar/servico.dart';
 import '../design/barra_teclas.dart';
 import '../design/design.dart';
 import '../design/mensagens.dart';
-import '../navegacao_blocos.dart';
 import '../principal/tela_principal.dart';
 import '../realce_foco.dart';
-import '../tema.dart';
 import '../verificar/dialogos_gestor.dart';
 import 'indicador_atividade.dart';
 import 'painel_atividade.dart';
+import 'passo_enviar.dart';
+import 'passo_verificar.dart';
 import 'tela_importar.dart';
 import 'tela_verificacao.dart';
 
-/// Os ecrãs do Gestor: o principal e os sub-ecrãs que se abrem dos passos 1 e 2.
-enum EcraGestor { principal, importar, verificacao }
+/// Os ecrãs do Gestor: o resumo (ao entrar), os três passos e o progresso da verificação (que
+/// se abre do passo 2).
+enum EcraGestor { resumo, importar, verificar, enviar, verificacao }
 
 /// Separador "Gestor": a área de trabalho com as suas próprias listas ([AreaGestor]).
 ///
-/// O ecrã principal tem sempre à vista os três passos (1 Importar · 2 Verificar · 3 Enviar ou
-/// exportar, cada um com o seu estado), os filtros pelo estado, a tabela das listas com caixas para
-/// marcar e a barra das selecionadas (`Verificar (entra na fila)` · `Enviar para o Player` ·
-/// `Exportar` · `Remover`). Em cima, o [IndicadorAtividade] diz o que está a decorrer.
+/// Abre sempre no resumo, sem nenhum passo aberto: três cartões (1 Importar · 2 Verificar · 3
+/// Enviar ou exportar), cada um com o seu estado, e, com uma verificação a decorrer, a barra do
+/// progresso (OK nela abre o progresso). Dentro de cada passo, a faixa dos passos no topo diz em
+/// qual se está (← → mudam de passo). Em cima, o [IndicadorAtividade] diz o que está a decorrer.
 ///
-/// Nada espera: com uma verificação a decorrer todos os botões continuam ligados (verificar mais
-/// junta à fila; remover uma lista a ser verificada cancela só essa). Os sub-ecrãs vivem num
+/// Nada espera: com uma verificação a decorrer todos os passos continuam ligados (verificar mais
+/// junta à fila; remover uma lista a ser verificada cancela só essa). Os ecrãs vivem num
 /// [IndexedStack]: trocar de ecrã (ou de secção) não perde o filtro, a seleção nem o que lá estava.
-/// Voltar num sub-ecrã regressa ao principal, com o foco no passo de onde se veio.
+/// Voltar num passo regressa ao resumo, com o foco no cartão desse passo; no progresso regressa
+/// ao passo 2, com o foco onde estava.
 class TelaGestor extends StatefulWidget {
   const TelaGestor({super.key, required this.biblioteca, required this.area, required this.servico,
       required this.tarefas, this.pedido, this.baseStb = stbBase, this.guardar = guardarFicheiro});
@@ -52,7 +54,7 @@ class TelaGestor extends StatefulWidget {
   /// O trabalho longo que corre fora dos ecrãs (o indicador mostra-o).
   final ServicoTarefas tarefas;
 
-  /// Quem quiser que o Gestor abra um sub-ecrã (a casca, no "Ver resultados" do aviso da verificação)
+  /// Quem quiser que o Gestor abra um ecrã (a casca, no "Ver resultados" do aviso da verificação)
   /// põe aqui o ecrã; o Gestor abre-o e volta a pôr null.
   final ValueNotifier<EcraGestor?>? pedido;
 
@@ -67,47 +69,49 @@ class TelaGestor extends StatefulWidget {
 }
 
 class _TelaGestorState extends State<TelaGestor> {
-  EcraGestor _ecra = EcraGestor.principal;
-  final _selecao = <String>{};
+  EcraGestor _ecra = EcraGestor.resumo;
 
-  /// O filtro da tabela pelo estado (null = todas).
-  EstadoLista? _filtro;
+  /// Os passos, pela ordem da faixa.
+  static const _passos = [EcraGestor.importar, EcraGestor.verificar, EcraGestor.enviar];
+  static const _nomesPassos = ['Importar', 'Verificar', 'Enviar ou exportar'];
 
-  /// Os passos (o foco volta ao passo de onde se abriu um sub-ecrã).
-  final _focosPassos = [for (final p in ['Importar', 'Verificar', 'Enviar']) FocusNode(debugLabel: 'Passo $p')];
-
-  /// O passo 3 traz o foco para a barra das selecionadas.
-  final _focoEnviar = FocusNode(debugLabel: 'Enviar para o Player');
+  /// As marcadas do passo 3 (ids): ficam ao mudar de passo; as que saem do Gestor saem daqui.
+  final _marcadas = <String>{};
 
   /// As importações em curso e o seu resumo (sobrevivem a sair do ecrã de importar).
   final _registo = RegistoImportacoes();
 
-  /// O primeiro controlo de cada sub-ecrã (recebe o foco ao abrir).
+  /// Quando acabou a última exportação desta sessão (null antes da primeira).
+  DateTime? _ultimaExportacao;
+
+  /// O passo 2 ("Verificar mais (fila)" abre-o já filtrado).
+  final _passoVerificar = GlobalKey<PassoVerificarState>();
+
+  /// Os cartões do resumo (o foco volta ao cartão do passo de onde se veio).
+  final _focosCartoes = [for (final p in _nomesPassos) FocusNode(debugLabel: 'Cartão $p')];
+
+  /// A barra do progresso no resumo (OK abre o progresso).
+  final _focoBarraAtividade = FocusNode(debugLabel: 'Barra da verificação');
+
+  /// A faixa dos passos (uma só paragem do foco) e o "Voltar" por cima dela.
+  final _focoFaixa = FocusNode(debugLabel: 'Faixa dos passos');
+  final _focoVoltar = FocusNode(debugLabel: 'Voltar');
+
+  /// O primeiro controlo de cada ecrã (recebe o foco ao abrir).
   final _focoOrigens = FocusNode(debugLabel: 'Origens da importação');
+  final _focoPesquisa = FocusNode(debugLabel: 'Pesquisar listas');
+  final _focoFuncionam = FocusNode(debugLabel: 'As que funcionam');
   final _focoVerificarMais = FocusNode(debugLabel: 'Verificar mais (fila)');
-
-  final _focosFiltros = [for (final (_, t) in _filtros) FocusNode(debugLabel: 'Filtro $t')];
-
-  /// Os blocos para CIMA/BAIXO no ecrã principal (ver [moverEntreBlocos]); a tabela vem depois.
-  final _blocos = [
-    for (final b in ['Passos', 'Seleção', 'Filtros'])
-      FocusNode(debugLabel: 'Bloco $b', canRequestFocus: false, skipTraversal: true),
-  ];
   final _blocoVerificacao = FocusNode(debugLabel: 'Bloco Verificação', canRequestFocus: false, skipTraversal: true);
 
-  /// O foco de cada linha (pelo id): se a linha com o foco sai da tabela (mudou de estado com um
-  /// filtro ativo, ou foi removida), o foco passa à que fica no lugar dela.
-  final _focosLinhas = <String, FocusNode>{};
-  String? _linhaFocada;
-  List<String> _ordemVista = const [];
+  /// Onde estava o foco ao sair de cada ecrã (Voltar no progresso devolve-o ao passo 2).
+  final _ultimoFoco = <EcraGestor, FocusNode?>{};
 
   /// O foco do indicador de atividade (o painel devolve-lho ao fechar).
   final _focoIndicador = FocoForaDaEntrada(debugLabel: 'Indicador de atividade');
 
   /// Tira o registo do Voltar na casca.
   VoidCallback? _tirarVoltar;
-
-  FocusNode _focoLinha(String id) => _focosLinhas.putIfAbsent(id, () => FocusNode(debugLabel: 'Linha'));
 
   Biblioteca get _b => widget.biblioteca;
   AreaGestor get _g => widget.area;
@@ -120,7 +124,7 @@ class _TelaGestorState extends State<TelaGestor> {
     widget.pedido?.addListener(_aoPedido);
   }
 
-  /// A casca pediu um sub-ecrã.
+  /// A casca pediu um ecrã.
   void _aoPedido() {
     final e = widget.pedido?.value;
     if (e == null) return;
@@ -135,7 +139,7 @@ class _TelaGestorState extends State<TelaGestor> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _tirarVoltar ??= TelaPrincipal.aoVoltar(context, _voltarAoPrincipal);
+    _tirarVoltar ??= TelaPrincipal.aoVoltar(context, _voltar);
   }
 
   @override
@@ -159,55 +163,57 @@ class _TelaGestorState extends State<TelaGestor> {
     _registo.dispose();
     _g.removeListener(_aoMudarArea);
     for (final f in [
-      ..._focosPassos,
-      _focoEnviar,
+      ..._focosCartoes,
+      _focoBarraAtividade,
+      _focoFaixa,
+      _focoVoltar,
       _focoOrigens,
+      _focoPesquisa,
+      _focoFuncionam,
       _focoVerificarMais,
-      ..._focosFiltros,
-      ..._blocos,
       _blocoVerificacao,
-      ..._focosLinhas.values,
     ]) {
       f.dispose();
     }
     super.dispose();
   }
 
-  /// As listas do Gestor mudaram (verificação, remoção...): fora do build, vê se a linha com o
-  /// foco saiu da tabela e, depois do frame (quando as linhas antigas já saíram da árvore),
-  /// liberta o foco das linhas que já não existem.
-  void _aoMudarArea() {
-    _vigiarLinhaFocada(_visiveis());
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      _focosLinhas.removeWhere((id, f) {
-        if (_g.porId(id) != null || f.context != null || f.hasFocus) return false;
-        f.dispose();
-        return true;
-      });
-    });
-  }
+  /// As listas do Gestor mudaram: as marcadas que saíram do Gestor saem das marcadas.
+  void _aoMudarArea() => _marcadas.removeWhere((id) => _g.porId(id) == null);
 
   // ---------------------------------------------------------------- ecrãs
 
-  /// Mostra o ecrã `e` e põe-lhe o foco: no primeiro controlo de um sub-ecrã, ou (ao voltar ao
-  /// principal) no passo de onde se veio.
-  void _abrir(EcraGestor e) {
+  /// Mostra o ecrã `e` e põe-lhe o foco: na faixa (`naFaixa`, ao mudar de passo nela), no
+  /// primeiro controlo de um passo, no cartão do passo de onde se veio (no resumo) ou, ao voltar
+  /// do progresso ao passo 2, onde lá estava.
+  void _abrir(EcraGestor e, {bool naFaixa = false}) {
     final antes = _ecra;
     if (e == antes) return;
+    _ultimoFoco[antes] = FocusManager.instance.primaryFocus;
     setState(() => _ecra = e);
     // depois do frame: o ecrã novo já pode receber o foco (o antigo deixa de poder)
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || _ecra != e) return;
-      switch (e) {
-        case EcraGestor.principal:
-          _focosPassos[antes.index - 1].requestFocus();
-        case EcraGestor.importar:
-          _focoOrigens.requestFocus();
-        case EcraGestor.verificacao:
-          _focoVerificarMais.requestFocus();
-      }
+      _alvoDoFoco(e, antes, naFaixa).requestFocus();
     });
+  }
+
+  FocusNode _alvoDoFoco(EcraGestor e, EcraGestor antes, bool naFaixa) {
+    if (naFaixa && _passos.contains(e)) return _focoFaixa;
+    switch (e) {
+      case EcraGestor.resumo:
+        final i = _passos.indexOf(antes == EcraGestor.verificacao ? EcraGestor.verificar : antes);
+        return _focosCartoes[i < 0 ? 0 : i];
+      case EcraGestor.importar:
+        return _focoOrigens;
+      case EcraGestor.verificar:
+        final f = antes == EcraGestor.verificacao ? _ultimoFoco[EcraGestor.verificar] : null;
+        return f != null && f.context != null && f.canRequestFocus ? f : _focoPesquisa;
+      case EcraGestor.enviar:
+        return _focoFuncionam;
+      case EcraGestor.verificacao:
+        return _focoVerificarMais;
+    }
   }
 
   /// O indicador abre o painel de atividade; ao fechar, o foco volta ao indicador.
@@ -220,68 +226,33 @@ class _TelaGestorState extends State<TelaGestor> {
     if (mounted && !mudouDeEcra) _focoIndicador.requestFocus();
   }
 
-  /// Voltar (do comando ou o botão): num sub-ecrã regressa ao principal. false = não tratou.
-  bool _voltarAoPrincipal() {
-    if (_ecra == EcraGestor.principal) return false;
+  /// Voltar (do comando ou o botão): num passo regressa ao resumo; no progresso, ao passo 2.
+  /// false = não tratou (no resumo, a casca vai para Ver TV).
+  bool _voltar() {
+    if (_ecra == EcraGestor.resumo) return false;
     // a escrever num campo (colar texto): o Voltar só fecha o teclado (é o CampoTv que o trata)
     final contexto = FocusManager.instance.primaryFocus?.context;
     final campo = contexto?.widget is EditableText
         ? contexto!.widget as EditableText
         : contexto?.findAncestorWidgetOfExactType<EditableText>();
     if (campo != null && !campo.readOnly) return true;
-    _abrir(EcraGestor.principal);
+    _abrir(_ecra == EcraGestor.verificacao ? EcraGestor.verificar : EcraGestor.resumo);
     return true;
   }
 
-  // ---------------------------------------------------------------- seleção e filtros
-
-  /// Os filtros da tabela.
-  static const _filtros = <(EstadoLista?, String)>[
-    (null, 'Todas'),
-    (EstadoLista.funciona, 'Funcionam'),
-    (EstadoLista.inconclusiva, 'Inconclusivas'),
-    (EstadoLista.naoFunciona, 'Não funcionam'),
-    (EstadoLista.porVerificar, 'Por verificar'),
-  ];
+  // ---------------------------------------------------------------- ações
 
   static String _n(int n, String um, String varios) => '$n ${n == 1 ? um : varios}';
-
-  List<Lista> get _selecionadas => [for (final l in _g.listas) if (_selecao.contains(l.id)) l];
-
-  List<Lista> _visiveis() => [for (final l in _g.listas) if (_filtro == null || estadoDe(l) == _filtro) l];
-
-  void _selecionar(bool Function(Lista) criterio) =>
-      setState(() => _selecao..clear()..addAll([for (final l in _g.listas) if (criterio(l)) l.id]));
-
-  /// A linha com o foco saiu da tabela: o foco passa à linha que ficou no lugar dela (ou, sem
-  /// linhas, ao filtro escolhido). Sem isto o foco perdia-se (ficava invisível).
-  void _vigiarLinhaFocada(List<Lista> visiveis) {
-    final id = _linhaFocada;
-    if (id == null || visiveis.any((l) => l.id == id)) return;
-    final no = _focosLinhas[id];
-    _linhaFocada = null;
-    if (no == null || !no.hasPrimaryFocus) return;
-    final antes = _ordemVista.indexOf(id);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      final vis = _visiveis();
-      if (vis.isEmpty) {
-        _focosFiltros[_filtros.indexWhere((f) => f.$1 == _filtro)].requestFocus();
-      } else {
-        _focoLinha(vis[antes.clamp(0, vis.length - 1)].id).requestFocus();
-      }
-    });
-  }
-
-  // ---------------------------------------------------------------- ações
 
   void _aviso(String t) {
     if (mounted) mostrarMensagem(context, t);
   }
 
-  /// "Verificar (entra na fila)": as selecionadas juntam-se à fila, mesmo a meio de uma verificação.
-  void _verificarSelecionadas() {
-    final listas = _selecionadas;
+  /// As listas como estão agora no Gestor (as que saíram ficam de fora).
+  List<Lista> _atuais(List<Lista> listas) => [for (final l in listas) ?_g.porId(l.id)];
+
+  /// "Verificar selecionadas" (passo 2): juntam-se à fila, mesmo a meio de uma verificação.
+  void _verificarSelecionadas(List<Lista> listas) {
     if (listas.isEmpty) return _aviso('Selecione as listas a verificar.');
     final novas = [for (final l in listas) if (!_s.aVerificar(l.id)) l];
     if (novas.isEmpty) {
@@ -291,20 +262,15 @@ class _TelaGestorState extends State<TelaGestor> {
     _aviso(novas.length == 1 ? '1 lista entrou na fila.' : '${novas.length} listas entraram na fila.');
   }
 
-  /// "Verificar mais (fila)": vai ao ecrã principal só com as "Por verificar"; aí escolhem-se as
-  /// listas e "Verificar (entra na fila)" junta-as à ronda que decorre.
+  /// "Verificar mais (fila)" (no progresso): vai ao passo 2 só com as "Por verificar"; aí
+  /// escolhem-se as listas e "Verificar selecionadas" junta-as à ronda que decorre.
   void _verificarMais() {
-    setState(() => _filtro = EstadoLista.porVerificar);
-    _abrir(EcraGestor.principal);
+    _abrir(EcraGestor.verificar);
     // depois de _abrir (que põe o foco no passo): o foco vai ao filtro escolhido
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && _ecra == EcraGestor.principal) {
-        _focosFiltros[_filtros.indexWhere((f) => f.$1 == _filtro)].requestFocus();
-      }
-    });
+    _passoVerificar.currentState?.filtrar(EstadoLista.porVerificar);
   }
 
-  /// "Verificar todas" (no sub-ecrã): as que ainda não estão na fila juntam-se a ela; a seleção fica.
+  /// "Verificar todas": as que ainda não estão na fila juntam-se a ela; a seleção fica.
   void _verificarTodas() {
     final listas = _g.listas;
     if (listas.isEmpty) return _aviso('Importe listas primeiro.');
@@ -321,36 +287,27 @@ class _TelaGestorState extends State<TelaGestor> {
     if (tinhaFoco) _focoVerificarMais.requestFocus();
   }
 
-  /// "Enviar para o Player": vão as selecionadas que não estão a ser verificadas (as que estão ficam
-  /// de fora e a mensagem final diz quantas são): as que funcionam, também as inconclusivas, ou todas,
-  /// seja qual for o estado. A escolha faz-se antes; depois o envio corre como tarefa, sem esperar.
-  Future<void> _enviar() async {
-    if (_selecionadas.isEmpty) return _aviso('Selecione as listas a enviar.');
+  /// "Enviar N listas" (passo 3): vão as marcadas que não estão a ser verificadas (as que estão
+  /// ficam de fora e a mensagem final diz quantas são). O diálogo só pergunta como (adicionar ou
+  /// substituir); depois o envio corre como tarefa, sem esperar.
+  Future<void> _enviar(List<Lista> marcadas) async {
     ({List<Lista> prontas, int aDecorrer}) ponto() {
-      final sel = _selecionadas;
-      return (prontas: [for (final l in sel) if (!_s.aVerificar(l.id)) l], aDecorrer: sel.where((l) => _s.aVerificar(l.id)).length);
+      final ls = _atuais(marcadas);
+      return (prontas: [for (final l in ls) if (!_s.aVerificar(l.id)) l], aDecorrer: ls.where((l) => _s.aVerificar(l.id)).length);
     }
 
-    int conta(List<Lista> ls, EstadoLista e) => ls.where((l) => estadoDe(l) == e).length;
     final antes = ponto();
-    final f = conta(antes.prontas, EstadoLista.funciona), i = conta(antes.prontas, EstadoLista.inconclusiva);
-    if (antes.prontas.isEmpty) return _aviso('As listas selecionadas ainda estão a ser verificadas.');
-    final escolha = await perguntarEnvio(context, funcionam: f, inconclusivas: i, todas: antes.prontas.length);
-    if (escolha == null || !mounted) return;
-    final (modo, que) = escolha;
+    if (antes.prontas.isEmpty) {
+      return _aviso(marcadas.length == 1
+          ? 'A lista marcada ainda está a ser verificada.'
+          : 'As listas marcadas ainda estão a ser verificadas.');
+    }
+    final modo = await perguntarEnvio(context, n: antes.prontas.length);
+    if (modo == null || !mounted) return;
     // o estado pode ter mudado com o diálogo aberto: conta-se de novo
     final agora = ponto();
-    final enviar = [
-      for (final l in agora.prontas)
-        if (switch (que) {
-          QueEnviar.funcionam => estadoDe(l) == EstadoLista.funciona,
-          QueEnviar.funcionamEInconclusivas =>
-            estadoDe(l) == EstadoLista.funciona || estadoDe(l) == EstadoLista.inconclusiva,
-          QueEnviar.todas => true,
-        })
-          l,
-    ];
-    if (enviar.isEmpty) return _aviso('Já não há listas com resultado para enviar.');
+    final enviar = agora.prontas;
+    if (enviar.isEmpty) return _aviso('Já não há listas para enviar.');
     // o que a tarefa precisa, antes de qualquer await
     final b = _b;
     final ctx = context;
@@ -376,12 +333,12 @@ class _TelaGestorState extends State<TelaGestor> {
     );
   }
 
-  /// "Exportar": a escolha do formato faz-se antes; depois o ficheiro é guardado numa tarefa (a
-  /// janela "Guardar como" do sistema é a única espera). Se falhar, "Tentar de novo" repete tudo
-  /// com a mesma escolha e volta a perguntar onde guardar.
-  Future<void> _exportar() async {
-    final listas = _selecionadas;
-    if (listas.isEmpty) return _aviso('Selecione as listas a exportar.');
+  /// "Exportar N listas" (passo 3): a escolha do formato faz-se antes; depois o ficheiro é guardado
+  /// numa tarefa (a janela "Guardar como" do sistema é a única espera). Se falhar, "Tentar de
+  /// novo" repete tudo com a mesma escolha e volta a perguntar onde guardar.
+  Future<void> _exportar(List<Lista> marcadas) async {
+    final listas = _atuais(marcadas);
+    if (listas.isEmpty) return _aviso('Marque as listas a exportar.');
     final n = listas.length;
     final formato = await perguntarExportacao(context, n);
     if (formato == null || !mounted) return;
@@ -392,7 +349,7 @@ class _TelaGestorState extends State<TelaGestor> {
       bytes = exportarAccountsJson(listas);
     } else {
       final (zip, ignoradas) = exportarZipIni(listas);
-      if (zip == null) return _aviso('Nenhuma das listas selecionadas é Stalker (portal + MAC).');
+      if (zip == null) return _aviso('Nenhuma das listas marcadas é Stalker (portal + MAC).');
       (nome, mime, bytes) = ('listas_stalker.zip', 'application/zip', zip);
       texto = 'Listas exportadas.${ignoradas > 0 ? ' $ignoradas sem MAC (Xtream/M3U) ficaram de fora.' : ''}';
     }
@@ -412,7 +369,9 @@ class _TelaGestorState extends State<TelaGestor> {
           } catch (e) {
             throw _ErroTarefa(mensagemErroGuardar(e));
           }
-          return r.cancelado ? 'Exportação cancelada.' : '$texto Guardado em ${r.destino}';
+          if (r.cancelado) return 'Exportação cancelada.';
+          if (mounted) setState(() => _ultimaExportacao = DateTime.now());
+          return '$texto Guardado em ${r.destino}';
         },
         repetir: () async => lancar(),
       );
@@ -421,10 +380,9 @@ class _TelaGestorState extends State<TelaGestor> {
     lancar();
   }
 
-  /// "Remover": pede confirmação; as que estão a ser verificadas têm a verificação cancelada (só
-  /// essas: as outras continuam).
-  Future<void> _removerSelecionadas() async {
-    final listas = _selecionadas;
+  /// "Remover do gestor" (passo 2): pede confirmação; as que estão a ser verificadas têm a
+  /// verificação cancelada (só essas: as outras continuam).
+  Future<void> _removerSelecionadas(List<Lista> listas) async {
     if (listas.isEmpty) return _aviso('Selecione as listas a remover.');
     final n = listas.length;
     final m = listas.where((l) => _s.aVerificar(l.id)).length;
@@ -448,25 +406,20 @@ class _TelaGestorState extends State<TelaGestor> {
     await _g.remover(listas.map((l) => l.id));
   }
 
-  /// O passo 3: o foco vai para a barra das selecionadas.
-  void _irParaEnviar() {
-    _focoEnviar.requestFocus();
-    if (_selecao.isEmpty) _aviso('Marque as listas na tabela e escolha "Enviar para o Player" ou "Exportar".');
-  }
-
   // ---------------------------------------------------------------- construção
 
   @override
   Widget build(BuildContext context) {
-    final sub = _ecra != EcraGestor.principal;
+    final noPasso = _passos.contains(_ecra);
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       _barraTopo(),
+      if (noPasso) _faixa(),
       Expanded(
         child: IndexedStack(
           index: _ecra.index,
           sizing: StackFit.expand,
           children: [
-            _principal(),
+            _resumo(),
             // escondido, o progresso sem fim da importação não pede frames
             TickerMode(
               enabled: _ecra == EcraGestor.importar,
@@ -479,6 +432,25 @@ class _TelaGestorState extends State<TelaGestor> {
                 baseStb: widget.baseStb,
                 focoOrigens: _focoOrigens,
               ),
+            ),
+            PassoVerificar(
+              key: _passoVerificar,
+              area: _g,
+              servico: _s,
+              aoVerificar: _verificarSelecionadas,
+              aoVerificarTodas: _verificarTodas,
+              aoVerVerificacao: () => _abrir(EcraGestor.verificacao),
+              aoRemover: _removerSelecionadas,
+              focoInicial: _focoPesquisa,
+            ),
+            PassoEnviar(
+              area: _g,
+              marcadas: _marcadas,
+              // o resumo não mostra as marcadas: nada a reconstruir aqui
+              aoMudarMarcadas: () {},
+              aoEnviar: _enviar,
+              aoExportar: _exportar,
+              focoInicial: _focoFuncionam,
             ),
             TelaVerificacao(
               biblioteca: _b,
@@ -493,24 +465,29 @@ class _TelaGestorState extends State<TelaGestor> {
           ],
         ),
       ),
-      BarraTeclas(sub
-          ? const [('Voltar', 'ecrã principal do Gestor'), ('OK', 'escolher')]
-          : const [('OK', 'abrir o passo ou marcar a lista'), ('←', 'menu')]),
+      BarraTeclas(switch (_ecra) {
+        EcraGestor.resumo => const [('OK', 'abrir o passo'), ('←', 'menu')],
+        EcraGestor.verificacao => const [('Voltar', 'passo 2 · Verificar'), ('OK', 'escolher')],
+        _ => const [('Voltar', 'resumo do Gestor'), ('← →', 'mudar de passo na faixa'), ('OK', 'escolher')],
+      }),
     ]);
   }
 
   Widget _barraTopo() {
     final titulo = switch (_ecra) {
-      EcraGestor.principal => 'Gestor de listas',
+      EcraGestor.resumo => 'Gestor de listas',
       EcraGestor.importar => 'Importar listas',
+      EcraGestor.verificar => 'Verificar listas',
+      EcraGestor.enviar => 'Enviar ou exportar listas',
       EcraGestor.verificacao => 'Verificação',
     };
     return Padding(
       padding: const EdgeInsets.fromLTRB(Tokens.e16, Tokens.e12, Tokens.e16, 0),
       child: Row(children: [
-        if (_ecra != EcraGestor.principal) ...[
+        if (_ecra != EcraGestor.resumo) ...[
           TextButton.icon(
-            onPressed: _voltarAoPrincipal,
+            focusNode: _focoVoltar,
+            onPressed: _voltar,
             icon: const Icon(Icons.arrow_back),
             label: const Text('Voltar'),
           ),
@@ -530,303 +507,243 @@ class _TelaGestorState extends State<TelaGestor> {
     );
   }
 
-  /// Um bloco do ecrã principal para CIMA/BAIXO.
-  Widget _bloco(int i, Widget filho) => Padding(
-        padding: const EdgeInsets.only(bottom: Tokens.e12),
+  // ---------------------------------------------------------------- faixa dos passos
+
+  /// A faixa dos passos no topo de cada passo, com o aberto em destaque. É uma só paragem do
+  /// foco, da largura da faixa (CIMA a partir do passo chega-lhe, seja qual for a coluna); ← →
+  /// abrem o passo ao lado e o foco fica na faixa; BAIXO entra no passo e CIMA vai ao "Voltar".
+  Widget _faixa() {
+    final atual = _passos.indexOf(_ecra);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(Tokens.e16, Tokens.e8, Tokens.e16, 0),
+      child: Semantics(
+        container: true,
+        label: 'Passos do Gestor',
         child: Focus(
-          focusNode: _blocos[i],
-          canRequestFocus: false,
-          skipTraversal: true,
-          includeSemantics: false,
-          child: filho,
+          focusNode: _focoFaixa,
+          onKeyEvent: (_, e) => _teclaFaixa(atual, e),
+          child: Builder(builder: (context) {
+            final focado = Focus.of(context).hasPrimaryFocus;
+            return Row(children: [
+              for (final (i, nome) in _nomesPassos.indexed) ...[
+                if (i > 0) const SizedBox(width: Tokens.e8),
+                Expanded(child: _itemFaixa(i, nome, aberto: i == atual, focado: focado && i == atual)),
+              ],
+            ]);
+          }),
+        ),
+      ),
+    );
+  }
+
+  KeyEventResult _teclaFaixa(int atual, KeyEvent e) {
+    if (e is KeyUpEvent) return KeyEventResult.ignored;
+    // BAIXO entra no passo pelo seu primeiro controlo (a faixa é larga: a procura direcional
+    // escolheria um qualquer)
+    if (e.logicalKey == LogicalKeyboardKey.arrowDown) {
+      _alvoDoFoco(_ecra, EcraGestor.resumo, false).requestFocus();
+      return KeyEventResult.handled;
+    }
+    // CIMA vai ao "Voltar" (por cima, à esquerda)
+    if (e.logicalKey == LogicalKeyboardKey.arrowUp) {
+      _focoVoltar.requestFocus();
+      return KeyEventResult.handled;
+    }
+    final passo = switch (e.logicalKey) {
+      LogicalKeyboardKey.arrowRight => atual + 1,
+      LogicalKeyboardKey.arrowLeft => atual - 1,
+      _ => -1,
+    };
+    // no 1.º, ESQUERDA segue para a barra das secções
+    if (passo < 0 || passo >= _passos.length) return KeyEventResult.ignored;
+    _abrir(_passos[passo], naFaixa: true);
+    return KeyEventResult.handled;
+  }
+
+  Widget _itemFaixa(int i, String nome, {required bool aberto, required bool focado}) => Semantics(
+        button: true,
+        selected: aberto,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => _abrir(_passos[i], naFaixa: true),
+          child: Container(
+            key: ValueKey('faixa ${i + 1}'),
+            height: 46,
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            alignment: Alignment.centerLeft,
+            decoration: BoxDecoration(
+              color: aberto ? Tokens.acento : Tokens.superficie2,
+              borderRadius: BorderRadius.circular(Tokens.raioCampo),
+              border: focado ? Border.all(color: Tokens.anelFoco, width: 3) : null,
+            ),
+            child: Text('${i + 1} · $nome',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: aberto ? Tokens.texto : Tokens.texto2)),
+          ),
         ),
       );
 
-  /// O estado do passo 2: "8 funcionam · 2 inconclusivas · 1 não funciona · 3 por verificar".
-  String _resumoVerificacao(Map<EstadoLista, int> contagens, int total) {
-    if (total == 0) return 'Importe listas primeiro';
-    if (_s.ocupado) return 'A verificar ${_s.feitas}/${_s.total}';
-    int c(EstadoLista e) => contagens[e] ?? 0;
-    return [
-      if (c(EstadoLista.funciona) > 0) _n(c(EstadoLista.funciona), 'funciona', 'funcionam'),
-      if (c(EstadoLista.inconclusiva) > 0) _n(c(EstadoLista.inconclusiva), 'inconclusiva', 'inconclusivas'),
-      if (c(EstadoLista.naoFunciona) > 0) _n(c(EstadoLista.naoFunciona), 'não funciona', 'não funcionam'),
-      if (c(EstadoLista.porVerificar) > 0) '${c(EstadoLista.porVerificar)} por verificar',
-    ].join(' · ');
+  // ---------------------------------------------------------------- resumo
+
+  /// "agora", "há 3 min", "há 2 h", "ontem" ou "há 3 dias".
+  static String _ha(DateTime d) {
+    final dif = DateTime.now().difference(d);
+    if (dif.inMinutes < 1) return 'agora';
+    if (dif.inMinutes < 60) return 'há ${dif.inMinutes} min';
+    if (dif.inHours < 24) return 'há ${dif.inHours} h';
+    return dif.inDays == 1 ? 'ontem' : 'há ${dif.inDays} dias';
   }
 
-  Widget _principal() => ListenableBuilder(
-        listenable: Listenable.merge([_b, _g, _s]),
+  static const _mut = TextStyle(color: Tokens.texto2, fontSize: 14, fontWeight: FontWeight.w500);
+
+  Widget _resumo() => ListenableBuilder(
+        listenable: Listenable.merge([_b, _g, _s, _registo, widget.tarefas]),
         builder: (context, _) => LayoutBuilder(builder: (context, caixa) {
           final listas = _g.listas;
-          _selecao.removeWhere((id) => _g.porId(id) == null);
-          final contagens = <EstadoLista, int>{};
-          for (final l in listas) {
-            contagens.update(estadoDe(l), (n) => n + 1, ifAbsent: () => 1);
-          }
-          final visiveis = _visiveis();
+          int conta(EstadoLista e) => listas.where((l) => estadoDe(l) == e).length;
           final vazio = listas.isEmpty;
-          // a TV (960 com a barra lateral) dá ~740: passos lado a lado e as 4 colunas
+          final ultima = _registo.ultima;
+          final importada = ultima == null ? null : _registo.resumoDe(ultima);
+          // a TV (960 com a barra lateral) dá ~740: os três lado a lado
           final largo = caixa.maxWidth >= 560;
-          final nSel = _selecao.length;
-          // CustomScrollView: os blocos em cima e as linhas preguiçosas (SliverList.builder), para
-          // não construir centenas de linhas em cada passo da verificação
-          return Focus(
-            canRequestFocus: false,
-            skipTraversal: true,
-            includeSemantics: false,
-            onKeyEvent: (_, e) => moverEntreBlocos(_blocos, e),
-            child: CustomScrollView(slivers: [
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(Tokens.e16, Tokens.e12, Tokens.e16, 0),
-                sliver: SliverList.list(children: [
-                  _bloco(0, _passos(largo, [
-                    (
-                      'Importar',
-                      vazio ? 'O Gestor está vazio' : _n(listas.length, 'lista no Gestor', 'listas no Gestor'),
-                      () => _abrir(EcraGestor.importar),
-                    ),
-                    ('Verificar', _resumoVerificacao(contagens, listas.length), () => _abrir(EcraGestor.verificacao)),
-                    (
-                      'Enviar ou exportar',
-                      vazio
-                          ? 'Importe listas primeiro'
-                          : nSel == 0
-                              ? 'Nenhuma selecionada'
-                              : _n(nSel, 'selecionada', 'selecionadas'),
-                      _irParaEnviar,
-                    ),
-                  ])),
-                  _bloco(1, _marcarESelecionadas(nSel)),
-                  // os filtros por cima da tabela: BAIXO num filtro vai às linhas
-                  _bloco(
-                    2,
-                    Wrap(spacing: Tokens.e8, runSpacing: Tokens.e8, children: [
-                      for (final (i, (e, t)) in _filtros.indexed)
-                        ChoiceChip(
-                          focusNode: _focosFiltros[i],
-                          label: Text('$t · ${e == null ? listas.length : contagens[e] ?? 0}'),
-                          selected: _filtro == e,
-                          onSelected: (_) => setState(() => _filtro = e),
-                        ),
-                    ]),
-                  ),
-                  if (vazio)
-                    const Padding(
-                      padding: EdgeInsets.only(top: Tokens.e8, bottom: Tokens.e16),
-                      child: Text('Ainda não há listas. Comece pelo passo 1: adicione ficheiros ou linhas coladas, '
-                          'pesquise no stbstalker ou importe as do Player.',
-                          style: TextStyle(color: Tokens.texto2)),
-                    )
-                  else ...[
-                    _cabecalhoTabela(largo),
-                    if (visiveis.isEmpty)
-                      const Padding(
-                        padding: EdgeInsets.only(top: Tokens.e12, bottom: Tokens.e16),
-                        child: Text('Nenhuma lista com este estado.', style: TextStyle(color: Tokens.texto2)),
-                      ),
-                  ],
-                ]),
-              ),
-              if (visiveis.isNotEmpty)
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(Tokens.e16, 0, Tokens.e16, Tokens.e16),
-                  // o vidro por trás da parte visível da tabela (sem construir as linhas todas)
-                  sliver: DecoratedSliver(
-                    decoration: BoxDecoration(
-                      color: Tokens.vidro,
-                      borderRadius: BorderRadius.circular(Tokens.raioCartao),
-                      border: Border.all(color: Tokens.bordaVidro),
-                    ),
-                    sliver: SliverPadding(
-                      padding: const EdgeInsets.all(Tokens.e8),
-                      sliver: SliverList.builder(
-                        itemCount: visiveis.length,
-                        // o "ink" (foco, toque) pinta-se aqui, por cima do vidro
-                        itemBuilder: (_, i) =>
-                            Material(type: MaterialType.transparency, child: _linha(visiveis[i], largo)),
-                      ),
-                    ),
-                  ),
-                ),
+          final cartoes = [
+            _cartao(0, largo, [
+              const Text('Ficheiros, texto, stbstalker ou do Player', style: _mut),
+              if (ultima != null)
+                _linhaCartao('Última importação',
+                    ultima.estado == EstadoTarefa.aDecorrer ? 'a decorrer' : _ha(ultima.fim ?? ultima.inicio)),
+              if (importada != null) _linhaCartao('Entraram', _n(importada.novas, 'nova', 'novas')),
+            ]),
+            _cartao(1, largo, [
+              if (vazio)
+                const Text('Importe listas primeiro', style: _mut)
+              else ...[
+                _numeroGrande(conta(EstadoLista.porVerificar), Tokens.aviso),
+                const Text('por verificar', style: _mut),
+                _linhaCartao('Funcionam', '${conta(EstadoLista.funciona)}', cor: Tokens.ok),
+                _linhaCartao('Não funcionam', '${conta(EstadoLista.naoFunciona)}', cor: Tokens.mau),
+              ],
+            ]),
+            _cartao(2, largo, [
+              if (vazio)
+                const Text('Importe listas primeiro', style: _mut)
+              else ...[
+                _numeroGrande(conta(EstadoLista.funciona), Tokens.texto),
+                const Text('prontas a enviar', style: _mut),
+              ],
+              _linhaCartao('No Player', _n(_b.listas.length, 'lista', 'listas')),
+              if (_ultimaExportacao case final quando?) _linhaCartao('Última exportação', _ha(quando)),
+            ]),
+          ];
+          return SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(Tokens.e16, Tokens.e4, Tokens.e16, Tokens.e16),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Text('${_n(listas.length, 'lista', 'listas')} no Gestor · escolhe por onde começar', style: _mut),
+              const SizedBox(height: Tokens.e16),
+              if (largo)
+                IntrinsicHeight(
+                  child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                    for (final (i, c) in cartoes.indexed) ...[
+                      if (i > 0) const SizedBox(width: Tokens.e16),
+                      Expanded(child: c),
+                    ],
+                  ]),
+                )
+              else
+                for (final (i, c) in cartoes.indexed) ...[if (i > 0) const SizedBox(height: Tokens.e12), c],
+              if (_s.ocupado) ...[const SizedBox(height: Tokens.e16), _barraAtividade()],
+              const SizedBox(height: Tokens.e16),
+              const Text(
+                  'Nenhum passo está aberto: o Gestor abre sempre neste resumo. Voltar dentro de um passo volta aqui.',
+                  style: _mut),
             ]),
           );
         }),
       );
 
-  /// Os três passos, sempre à vista: lado a lado (ou um por linha num ecrã estreito).
-  Widget _passos(bool largo, List<(String, String, VoidCallback)> passos) {
-    final cartoes = [
-      for (final (i, (titulo, estado, abrir)) in passos.indexed)
-        CartaoModerno(
-          focusNode: _focosPassos[i],
-          escalaFoco: 1.02,
-          raio: Tokens.raioBotao,
-          padding: const EdgeInsets.all(Tokens.e12),
-          onTap: abrir,
-          child: Row(children: [
-            Container(
-              width: 28,
-              height: 28,
-              alignment: Alignment.center,
-              decoration: const BoxDecoration(gradient: Tokens.gradienteAcento, shape: BoxShape.circle),
-              child: Text('${i + 1}', style: const TextStyle(fontWeight: FontWeight.w700, color: Tokens.texto)),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-                Text(titulo,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Tokens.texto)),
-                const SizedBox(height: 2),
-                Text(estado,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 12.5, color: Tokens.texto2)),
-              ]),
-            ),
-            const Icon(Icons.chevron_right, color: Tokens.texto2),
-          ]),
-        ),
-    ];
-    if (!largo) {
-      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        for (final (i, c) in cartoes.indexed) ...[if (i > 0) const SizedBox(height: Tokens.e8), c],
-      ]);
-    }
-    return IntrinsicHeight(
-      child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        for (final (i, c) in cartoes.indexed) ...[if (i > 0) const SizedBox(width: Tokens.e8), Expanded(child: c)],
-      ]),
-    );
-  }
-
-  /// Marcar listas e a barra das selecionadas. Sempre ligada: sem seleção, cada botão diz o que falta.
-  Widget _marcarESelecionadas(int n) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Wrap(spacing: Tokens.e8, runSpacing: Tokens.e8, crossAxisAlignment: WrapCrossAlignment.center, children: [
-          Text('Selecionadas: $n', style: const TextStyle(color: Tokens.texto, fontWeight: FontWeight.w600)),
-          const Text('· Marcar:', style: TextStyle(color: Tokens.texto2)),
-          ActionChip(
-              label: const Text('Funcionam'),
-              onPressed: () => _selecionar((l) => estadoDe(l) == EstadoLista.funciona)),
-          ActionChip(
-              label: const Text('Funcionam + inconclusivas'),
-              onPressed: () => _selecionar(
-                  (l) => const {EstadoLista.funciona, EstadoLista.inconclusiva}.contains(estadoDe(l)))),
-          ActionChip(label: const Text('Todas'), onPressed: () => _selecionar((_) => true)),
-          ActionChip(label: const Text('Nenhuma'), onPressed: () => _selecionar((_) => false)),
+  /// Um cartão do resumo: o número, o nome do passo, o seu estado e "OK: abrir →".
+  Widget _cartao(int i, bool largo, List<Widget> corpo) => CartaoModerno(
+        focusNode: _focosCartoes[i],
+        escalaFoco: 1.02,
+        padding: const EdgeInsets.all(Tokens.e16),
+        onTap: () => _abrir(_passos[i]),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Container(
+            width: 40,
+            height: 40,
+            alignment: Alignment.center,
+            decoration: const BoxDecoration(color: Tokens.acento, shape: BoxShape.circle),
+            child: Text('${i + 1}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Tokens.texto)),
+          ),
+          const SizedBox(height: Tokens.e8),
+          Text(_nomesPassos[i], style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Tokens.texto)),
+          const SizedBox(height: Tokens.e8),
+          for (final w in corpo) Padding(padding: const EdgeInsets.only(bottom: Tokens.e4), child: w),
+          // lado a lado (com a mesma altura), "OK: abrir →" fica em baixo em todos
+          if (largo) const Spacer(),
+          const SizedBox(height: Tokens.e8),
+          const Text('OK: abrir →', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Tokens.anelFoco)),
         ]),
-        const SizedBox(height: Tokens.e8),
-        _barraSelecionadas(),
-      ]);
-
-  /// A barra das selecionadas.
-  Widget _barraSelecionadas() => Wrap(
-        spacing: Tokens.e8,
-        runSpacing: Tokens.e8,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          FilledButton.icon(
-            onPressed: _verificarSelecionadas,
-            icon: const Icon(Icons.playlist_add_check),
-            label: const Text('Verificar (entra na fila)'),
-          ),
-          OutlinedButton.icon(
-            focusNode: _focoEnviar,
-            onPressed: _enviar,
-            icon: const Icon(Icons.send_rounded),
-            label: const Text('Enviar para o Player'),
-          ),
-          OutlinedButton.icon(
-            onPressed: _exportar,
-            icon: const Icon(Icons.download),
-            label: const Text('Exportar'),
-          ),
-          OutlinedButton.icon(
-            onPressed: _removerSelecionadas,
-            icon: const Icon(Icons.remove_circle_outline),
-            label: const Text('Remover'),
-          ),
-        ],
       );
 
-  /// As colunas da tabela (o cabeçalho e cada linha usam as mesmas larguras).
-  static Widget _colunas(bool largo, Widget lista, Widget estado, Widget canais, Widget validade) =>
-      Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-        Expanded(flex: 5, child: lista),
-        const SizedBox(width: Tokens.e8),
-        Expanded(flex: 5, child: estado),
-        if (largo) ...[
+  static Widget _numeroGrande(int n, Color cor) =>
+      Text('$n', style: TextStyle(fontSize: 34, fontWeight: FontWeight.w700, color: cor, height: 1.1));
+
+  static Widget _linhaCartao(String rotulo, String valor, {Color cor = Tokens.texto}) => Container(
+        padding: const EdgeInsets.symmetric(vertical: Tokens.e4),
+        decoration: const BoxDecoration(border: Border(top: BorderSide(color: Tokens.bordaVidro))),
+        child: Row(children: [
+          Expanded(
+            child: Text(rotulo,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: Tokens.texto, fontSize: 14, fontWeight: FontWeight.w500)),
+          ),
           const SizedBox(width: Tokens.e8),
-          SizedBox(width: 64, child: canais),
-          const SizedBox(width: Tokens.e8),
-          SizedBox(width: 96, child: validade),
-        ],
-      ]);
+          Text(valor, style: TextStyle(color: cor, fontSize: 14, fontWeight: FontWeight.w700)),
+        ]),
+      );
 
-  /// A largura da caixa de cada linha (para o cabeçalho ficar alinhado com as colunas).
-  static const _larguraCaixa = 40.0;
-
-  Widget _cabecalhoTabela(bool largo) {
-    Text t(String s) => Text(s,
-        style: const TextStyle(color: Tokens.texto2, fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: .8));
-    return Padding(
-      // o vidro da tabela (8) + o ListTile (16 à esquerda, 24 à direita) + a caixa + o espaço do ListTile (16)
-      padding: const EdgeInsets.fromLTRB(Tokens.e8 + 16 + _larguraCaixa + 16, Tokens.e4, Tokens.e8 + 24, Tokens.e8),
-      child: _colunas(largo, t('LISTA'), t('ESTADO'), t('CANAIS'), t('VALIDADE')),
-    );
-  }
-
-  /// Os canais de teste que abriram na última verificação ("2/3"); "—" sem o saber.
-  static String _canais(UltimaVerificacao? u) {
-    if (u == null) return '—';
-    if (u.canais.isEmpty) return u.estado == 'funciona' ? '1/1' : '—';
-    return '${u.canais.where((c) => c['estado'] == 'funciona').length}/${u.canais.length}';
-  }
-
-  static String _validade(UltimaVerificacao? u) {
-    final v = textoValidade(u?.validade ?? '');
-    if (v.isEmpty) return '—';
-    return v.startsWith('até ') ? v.substring(4) : v;
-  }
-
-  Widget _linha(Lista l, bool largo) {
-    final passo = _s.passos[l.id];
-    final u = l.ultima;
-    final motivo = u?.motivo ?? '';
-    final Widget estado = passo == null
-        ? Align(alignment: Alignment.centerLeft, child: PilulaEstado(estadoDe(l)))
-        : Text(passo == 'na fila' ? 'Na fila' : 'A verificar · $passo',
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(color: Tokens.anelFoco, fontWeight: FontWeight.w600));
-    const pequeno = TextStyle(color: Tokens.texto2, fontSize: 13);
-    return RealceFoco(
-      construir: (_, aoMudarFoco) => CheckboxListTile(
-        focusNode: _focoLinha(l.id),
-        onFocusChange: (f) {
-          aoMudarFoco(f);
-          if (f) {
-            _linhaFocada = l.id;
-            _ordemVista = [for (final x in _visiveis()) x.id];
-          }
-        },
-        value: _selecao.contains(l.id),
-        onChanged: (v) => setState(() => v == true ? _selecao.add(l.id) : _selecao.remove(l.id)),
-        title: _colunas(
-          largo,
-          Text(l.nomeMostrado, maxLines: 1, overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontWeight: FontWeight.w600)),
-          estado,
-          Text(_canais(u), style: pequeno),
-          Text(_validade(u), style: pequeno),
+  /// A barra do progresso no resumo: "A verificar 2/5", a barra e "faltam cerca de 40 s" (só
+  /// quando há estimativa). OK nela abre o progresso.
+  Widget _barraAtividade() {
+    final estimativa = _s.estimativaRestante;
+    final fracao = _s.total == 0 ? 0.0 : (_s.feitas / _s.total).clamp(0.0, 1.0);
+    return Semantics(
+      liveRegion: true,
+      child: RealceFoco(
+        raio: Tokens.raioBotao,
+        construir: (_, aoMudarFoco) => Material(
+          color: Tokens.superficie,
+          borderRadius: BorderRadius.circular(Tokens.raioBotao),
+          child: InkWell(
+            key: const ValueKey('barraAtividade'),
+            focusNode: _focoBarraAtividade,
+            onFocusChange: aoMudarFoco,
+            borderRadius: BorderRadius.circular(Tokens.raioBotao),
+            onTap: () => _abrir(EcraGestor.verificacao),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: Tokens.e16, vertical: Tokens.e12),
+              child: Row(children: [
+                Text('A verificar ${_s.feitas}/${_s.total}',
+                    style: const TextStyle(color: Tokens.texto, fontSize: 14, fontWeight: FontWeight.w600)),
+                const SizedBox(width: Tokens.e12),
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                        value: fracao, minHeight: 8, color: Tokens.acento, backgroundColor: Tokens.fundoNeutro),
+                  ),
+                ),
+                if (estimativa != null) ...[
+                  const SizedBox(width: Tokens.e12),
+                  Text(TelaVerificacao.textoEstimativa(estimativa), style: _mut),
+                ],
+              ]),
+            ),
+          ),
         ),
-        subtitle: motivo.isEmpty
-            ? null
-            : Text(motivo, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Tokens.texto2)),
-        controlAffinity: ListTileControlAffinity.leading,
-        dense: true,
       ),
     );
   }

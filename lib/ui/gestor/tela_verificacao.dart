@@ -12,7 +12,7 @@ import '../realce_foco.dart';
 /// O sub-ecrã "Verificação" do Gestor: o que está a decorrer (barra por cor, contagens, o tempo
 /// que falta) e uma linha por lista com o motivo do resultado.
 ///
-/// Só mostra: quem decide o que verificar é o ecrã principal ("Verificar mais (fila)" leva-o lá com
+/// Só mostra: quem decide o que verificar é o passo 2 ("Verificar mais (fila)" leva-o lá com
 /// o filtro "Por verificar"). Sem verificação a decorrer, resume as listas do Gestor.
 class TelaVerificacao extends StatelessWidget {
   const TelaVerificacao({
@@ -37,7 +37,7 @@ class TelaVerificacao extends StatelessWidget {
   /// O bloco para CIMA/BAIXO (ver [moverEntreBlocos]).
   final FocusNode bloco;
 
-  /// "Verificar mais (fila)": vai ao ecrã principal, filtrado pelas "Por verificar".
+  /// "Verificar mais (fila)": vai ao passo 2, filtrado pelas "Por verificar".
   final VoidCallback aoVerificarMais;
 
   /// "Verificar todas": todas as listas do Gestor entram na fila (não mexe na seleção).

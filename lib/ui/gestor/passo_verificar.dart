@@ -47,10 +47,11 @@ class PassoVerificar extends StatefulWidget {
   final DateTime Function()? agora;
 
   @override
-  State<PassoVerificar> createState() => _PassoVerificarState();
+  State<PassoVerificar> createState() => PassoVerificarState();
 }
 
-class _PassoVerificarState extends State<PassoVerificar> {
+/// O estado do passo 2 ([filtrar] serve a quem o abre com um filtro já escolhido).
+class PassoVerificarState extends State<PassoVerificar> {
   static const _filtros = <(EstadoLista?, String)>[
     (null, 'Todas'),
     (EstadoLista.funciona, 'Funcionam'),
@@ -62,6 +63,8 @@ class _PassoVerificarState extends State<PassoVerificar> {
   final _pesquisa = TextEditingController();
   EstadoLista? _filtro;
   final _selecao = <String>{};
+
+  final _focosFiltros = [for (final (_, t) in _filtros) FocusNode(debugLabel: 'Filtro $t')];
 
   final _focosLinhas = <String, FocusNode>{};
   String? _linhaFocada;
@@ -96,9 +99,21 @@ class _PassoVerificarState extends State<PassoVerificar> {
     });
   }
 
+  /// Mostra só as listas com o estado `e` (sem pesquisa) e põe o foco nesse filtro.
+  void filtrar(EstadoLista? e) {
+    _pesquisa.clear();
+    setState(() => _filtro = e);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _focosFiltros[_filtros.indexWhere((f) => f.$1 == e)].requestFocus();
+    });
+  }
+
   @override
   void dispose() {
     _pesquisa.dispose();
+    for (final f in _focosFiltros) {
+      f.dispose();
+    }
     for (final f in _focosLinhas.values) {
       f.dispose();
     }
@@ -144,7 +159,7 @@ class _PassoVerificarState extends State<PassoVerificar> {
   }
 
   /// A linha com o foco saiu da tabela (filtro, pesquisa, remoção): o foco passa à que ficou no
-  /// lugar dela ou, sem linhas, à pesquisa.
+  /// lugar dela ou, sem linhas, ao filtro escolhido (senão perdia-se e deixava de se ver).
   void _vigiarLinhaFocada(List<Lista> visiveis) {
     final id = _linhaFocada;
     if (id == null || visiveis.any((l) => l.id == id)) return;
@@ -155,7 +170,11 @@ class _PassoVerificarState extends State<PassoVerificar> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final vis = _visiveis();
-      if (vis.isNotEmpty) _focoLinha(vis[antes.clamp(0, vis.length - 1)].id).requestFocus();
+      if (vis.isEmpty) {
+        _focosFiltros[_filtros.indexWhere((f) => f.$1 == _filtro)].requestFocus();
+      } else {
+        _focoLinha(vis[antes.clamp(0, vis.length - 1)].id).requestFocus();
+      }
     });
   }
 
@@ -195,7 +214,9 @@ class _PassoVerificarState extends State<PassoVerificar> {
           final largo = caixa.maxWidth >= 560;
           final agora = _agora;
           final ultimaId = visiveis.isEmpty ? null : visiveis.last.id;
-          return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          // na TV (540 de altura) não cabe tudo: só a barra de ações fica fixa; o resto desliza
+          // (as linhas continuam preguiçosas)
+          final topo = [
             Padding(
               padding: const EdgeInsets.fromLTRB(Tokens.e16, Tokens.e12, Tokens.e16, 0),
               child: Wrap(spacing: Tokens.e8, runSpacing: Tokens.e8, crossAxisAlignment: WrapCrossAlignment.center, children: [
@@ -211,8 +232,9 @@ class _PassoVerificarState extends State<PassoVerificar> {
                     ),
                   ),
                 ),
-                for (final (e, t) in _filtros)
+                for (final (i, (e, t)) in _filtros.indexed)
                   ChoiceChip(
+                    focusNode: _focosFiltros[i],
                     label: Text('$t · ${e == null ? listas.length : contagens[e] ?? 0}'),
                     selected: _filtro == e,
                     onSelected: (_) => setState(() => _filtro = e),
@@ -238,30 +260,32 @@ class _PassoVerificarState extends State<PassoVerificar> {
               )
             else ...[
               _cabecalho(largo),
-              Expanded(
-                child: visiveis.isEmpty
-                    ? const Padding(
-                        padding: EdgeInsets.all(Tokens.e16),
-                        child: Text('Nenhuma lista com este filtro.', style: TextStyle(color: Tokens.texto2)),
-                      )
-                    : CustomScrollView(slivers: [
-                        SliverPadding(
-                          padding: const EdgeInsets.fromLTRB(Tokens.e16, 0, Tokens.e16, Tokens.e8),
-                          sliver: SliverList.builder(
-                            itemCount: visiveis.length,
-                            itemBuilder: (_, i) => Padding(
-                              padding: const EdgeInsets.only(bottom: Tokens.e4),
-                              child: Material(
-                                type: MaterialType.transparency,
-                                child: _linha(visiveis[i], largo, agora, visiveis[i].id == ultimaId),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ]),
-              ),
+              if (visiveis.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(Tokens.e16),
+                  child: Text('Nenhuma lista com este filtro.', style: TextStyle(color: Tokens.texto2)),
+                ),
             ],
-            if (listas.isEmpty) const Spacer(),
+          ];
+          return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Expanded(
+              child: CustomScrollView(slivers: [
+                SliverList.list(children: topo),
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(Tokens.e16, 0, Tokens.e16, Tokens.e8),
+                  sliver: SliverList.builder(
+                    itemCount: visiveis.length,
+                    itemBuilder: (_, i) => Padding(
+                      padding: const EdgeInsets.only(bottom: Tokens.e4),
+                      child: Material(
+                        type: MaterialType.transparency,
+                        child: _linha(visiveis[i], largo, agora, visiveis[i].id == ultimaId),
+                      ),
+                    ),
+                  ),
+                ),
+              ]),
+            ),
             _barra(),
           ]);
         }),

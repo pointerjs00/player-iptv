@@ -70,7 +70,7 @@ class TelaPrincipal extends StatefulWidget {
       context.getInheritedWidgetOfExactType<SeccaoAtual>()?.irPara(s);
 
   /// O que faz Voltar quando a secção de `context` está à vista, antes da casca (por exemplo, num
-  /// sub-ecrã do Gestor, voltar ao ecrã principal do Gestor em vez de ir para Ver TV). `tratar`
+  /// passo do Gestor, voltar ao resumo do Gestor em vez de ir para Ver TV). `tratar`
   /// devolve true se tratou. Devolve a função que tira o registo (fora da casca não faz nada).
   static VoidCallback aoVoltar(BuildContext context, bool Function() tratar) {
     final s = context.getInheritedWidgetOfExactType<_SeccaoDoEcra>()?.seccao;

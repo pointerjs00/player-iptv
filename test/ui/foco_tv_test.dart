@@ -166,16 +166,22 @@ void main() {
     area = await AreaGestor.abrir(pasta);
   });
 
-  TelaGestor telaGestor({ServicoVerificacao? s, String? baseStb}) => baseStb == null
-      ? TelaGestor(biblioteca: bib, area: area, servico: s ?? ServicoVerificacao(bib, colecao: area), tarefas: ServicoTarefas())
+  TelaGestor telaGestor({ServicoVerificacao? s, String? baseStb, ValueNotifier<EcraGestor?>? pedido}) => baseStb == null
+      ? TelaGestor(
+          biblioteca: bib,
+          area: area,
+          servico: s ?? ServicoVerificacao(bib, colecao: area),
+          tarefas: ServicoTarefas(),
+          pedido: pedido)
       : TelaGestor(
           biblioteca: bib,
           area: area,
           servico: s ?? ServicoVerificacao(bib, colecao: area),
           tarefas: ServicoTarefas(),
-          baseStb: baseStb);
+          baseStb: baseStb,
+          pedido: pedido);
 
-  /// Abre o sub-ecrã do passo com este nome (com um toque).
+  /// Abre o passo com este nome (com um toque no seu cartão do resumo).
   Future<void> abrirPasso(WidgetTester t, String passo) async {
     await t.tap(find.descendant(of: find.byType(CartaoModerno), matching: find.text(passo)));
     await t.pumpAndSettle();
@@ -366,9 +372,13 @@ void main() {
       await t.runAsync(() => area.adicionar([Importada(contaDeLinha('http://x.com/c/ 00:1A:79:00:00:01')!)]));
       final f = _Lento();
       final s = ServicoVerificacao(bib, colecao: area, verificador: f, ritmo: RitmoHost(intervalo: Duration.zero));
-      await t.pumpWidget(_app(Scaffold(body: telaGestor(s: s))));
+      // o progresso da verificação (como o "Ver resultados" da casca o abre)
+      final pedido = ValueNotifier<EcraGestor?>(null);
+      addTearDown(pedido.dispose);
+      await t.pumpWidget(_app(Scaffold(body: telaGestor(s: s, pedido: pedido))));
       await t.pump();
-      await abrirPasso(t, 'Verificar');
+      pedido.value = EcraGestor.verificacao;
+      await t.pumpAndSettle();
       return (s, f);
     }
 
@@ -654,21 +664,26 @@ void main() {
       // o Player não gere nada
       expect(vistos, isNot(contains('Adicionar listas')));
       expect(vistos.where((v) => v.contains('Verificar')), isEmpty, reason: '$vistos');
-      // o Gestor: os passos e a barra das selecionadas; nos sub-ecrãs, "Adicionar listas" e "Verificar mais (fila)"
+      // o Gestor: os cartões do resumo; nos passos, a faixa, as origens, a barra do passo 2 e o passo 3
       await t.tap(find.text('Gestor'));
       await t.pumpAndSettle();
       final noGestor = <String>{};
-      expect(await _semRealceAoPercorrer(t, 40, vistos: noGestor), isEmpty);
-      expect(noGestor.join(' / '), allOf(contains('Importar'), contains('Enviar ou exportar'),
-          contains('Verificar (entra na fila)'), contains('Enviar para o Player'), contains('Remover')));
+      expect(await _semRealceAoPercorrer(t, 8, vistos: noGestor), isEmpty);
+      expect(noGestor.join(' / '), allOf(contains('1 | Importar'), contains('2 | Verificar'),
+          contains('3 | Enviar ou exportar')));
       await abrirPasso(t, 'Importar');
       expect(await _semRealceAoPercorrer(t, 8, vistos: noGestor), isEmpty);
       await t.tap(find.widgetWithText(TextButton, 'Voltar'));
       await t.pumpAndSettle();
       await abrirPasso(t, 'Verificar');
-      expect(await _semRealceAoPercorrer(t, 4, vistos: noGestor), isEmpty);
+      expect(await _semRealceAoPercorrer(t, 16, vistos: noGestor), isEmpty);
+      await t.tap(find.widgetWithText(TextButton, 'Voltar'));
+      await t.pumpAndSettle();
+      await abrirPasso(t, 'Enviar ou exportar');
+      expect(await _semRealceAoPercorrer(t, 10, vistos: noGestor), isEmpty);
       expect(noGestor.join(' / '), allOf(contains('Ficheiros'), contains('Escolher ficheiros'),
-          contains('Limpar o Gestor'), contains('Verificar mais (fila)')));
+          contains('Limpar o Gestor'), contains('Verificar todas'), contains('1 · Importar | 2 · Verificar'),
+          contains('As que funcionam')));
     });
 
     testWidgets('T1: Conteúdo — grupos, canais, pesquisa e Atualizar com realce (a estrela não é paragem)',
@@ -699,31 +714,56 @@ void main() {
       _realceTv();
       _tamanho(t, 1200, 1600);
       await t.runAsync(() => area.adicionar([Importada(contaDeLinha('http://x.com/c/ 00:1A:79:00:00:01')!)]));
-      await t.pumpWidget(_app(Scaffold(body: telaGestor())));
+      final lento = _Lento();
+      final s = ServicoVerificacao(bib, colecao: area, verificador: lento, ritmo: RitmoHost(intervalo: Duration.zero));
+      await t.pumpWidget(_app(Scaffold(body: telaGestor(s: s))));
       await t.pump();
       final vistos = <String>{};
-      // o principal: passos, marcar, a barra das selecionadas, filtros e as linhas
-      final falhas = await _semRealceAoPercorrer(t, 20, vistos: vistos);
+      // o resumo: os três cartões e, com uma verificação a decorrer, a barra do progresso
+      s.verificar(area.listas.first);
+      await t.pump();
+      final falhas = await _semRealceAoPercorrer(t, 8, vistos: vistos);
       expect(falhas, isEmpty);
-      expect(vistos.join(' / '), allOf(contains('Verificar (entra na fila)'), contains('Todas'), contains('001X'),
-          contains('Enviar para o Player'), contains('Exportar'), contains('Remover')));
-      // os sub-ecrãs
+      expect(vistos.join(' / '), allOf(contains('1 | Importar'), contains('3 | Enviar ou exportar'),
+          contains('A verificar 0/1')));
+      // o passo 2: a faixa, pesquisa, filtros, seleção, as linhas e a barra
+      await abrirPasso(t, 'Verificar');
+      await t.tap(find.widgetWithText(ActionChip, 'Todas as visíveis'));
+      await t.pump();
+      // (até dar a volta: depois de "Voltar" vem a faixa)
+      expect(await _semRealceAoPercorrer(t, 20, vistos: vistos), isEmpty);
+      expect(vistos.join(' / '), allOf(contains('1 · Importar | 2 · Verificar'), contains('Todas · 1'),
+          contains('001X'), contains('Verificar selecionadas'), contains('Remover do gestor')));
+      // o progresso
+      await t.tap(find.textContaining('Ver verificação'));
+      await t.pumpAndSettle();
+      expect(await _semRealceAoPercorrer(t, 4, vistos: vistos), isEmpty);
+      s.parar();
+      lento.soltar.complete();
+      for (var i = 0; i < 10 && s.ocupado; i++) {
+        await t.pump();
+        await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+      }
+      await t.pump();
+      await t.tap(find.widgetWithText(TextButton, 'Voltar'));
+      await t.pumpAndSettle();
+      await t.tap(find.widgetWithText(TextButton, 'Voltar'));
+      await t.pumpAndSettle();
+      // o passo 1
       await abrirPasso(t, 'Importar');
       expect(await _semRealceAoPercorrer(t, 8, vistos: vistos), isEmpty);
       await t.tap(find.widgetWithText(TextButton, 'Voltar'));
       await t.pumpAndSettle();
-      await abrirPasso(t, 'Verificar');
-      expect(await _semRealceAoPercorrer(t, 4, vistos: vistos), isEmpty);
-      await t.tap(find.widgetWithText(TextButton, 'Voltar'));
-      await t.pumpAndSettle();
-      // o formato da exportação (as opções do diálogo)
-      await t.tap(find.widgetWithText(ActionChip, 'Todas'));
+      // o passo 3 e o formato da exportação (as opções do diálogo)
+      await abrirPasso(t, 'Enviar ou exportar');
+      await t.tap(find.textContaining('Todas ('));
       await t.pump();
-      await t.tap(find.widgetWithText(OutlinedButton, 'Exportar'));
+      expect(await _semRealceAoPercorrer(t, 10, vistos: vistos), isEmpty);
+      await t.tap(find.widgetWithText(OutlinedButton, 'Exportar 1 lista'));
       await t.pumpAndSettle();
       expect(await _semRealceAoPercorrer(t, 3, vistos: vistos), isEmpty);
       expect(vistos.join(' / '), allOf(contains('Escolher ficheiros'), contains('Verificar mais (fila)'),
-          contains('Accounts.json'), contains('Ficheiros .ini')));
+          contains('Enviar 1 lista'), contains('Exportar 1 lista'), contains('Accounts.json'), contains('Ficheiros .ini')));
       expect(vistos.join(' / '), allOf(contains('Colar texto'), contains('Limpar o Gestor')));
     });
 
