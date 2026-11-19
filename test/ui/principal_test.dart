@@ -75,6 +75,22 @@ void main() {
     expect(find.text('ECRÃ DEFINIÇÕES').hitTestable(), findsOneWidget);
   });
 
+  testWidgets('largura 800 (tablet ao alto): NavigationBar em baixo, sem barra lateral', (t) async {
+    _tamanho(t, 800, 1000);
+    await t.pumpWidget(appTeste(_casca()));
+    await t.pump();
+    expect(find.byType(BarraSeccoes), findsNothing);
+    expect(find.byType(NavigationBar), findsOneWidget);
+  });
+
+  testWidgets('largura 960 (Android TV): barra lateral', (t) async {
+    ecraTvTeste(t);
+    await t.pumpWidget(appTeste(_casca()));
+    await t.pump();
+    expect(find.byType(BarraSeccoes), findsOneWidget);
+    expect(find.byType(NavigationBar), findsNothing);
+  });
+
   testWidgets('trocar de secção guarda o estado', (t) async {
     _tamanho(t, 1280, 800);
     await t.pumpWidget(appTeste(_casca(inicial: Seccao.gestor)));

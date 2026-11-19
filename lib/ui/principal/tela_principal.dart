@@ -23,7 +23,7 @@ class SeccaoAtual extends InheritedWidget {
   bool updateShouldNotify(SeccaoAtual old) => seccao != old.seccao;
 }
 
-/// A casca da app: Ver TV, Gestor e Definições. Nos ecrãs largos (e na TV) as secções ficam
+/// A casca da app: Ver TV, Gestor e Definições. Nos ecrãs largos (900 px ou mais, e na TV) as secções ficam
 /// numa barra lateral ([BarraSeccoes]); no telemóvel, numa NavigationBar em baixo. As três
 /// vivem num IndexedStack: cada uma guarda o estado (pesquisa, posição, campos) ao trocar.
 ///
@@ -147,7 +147,11 @@ class _TelaPrincipalState extends State<TelaPrincipal> {
     });
   }
 
-  bool _largo(BuildContext context) => MediaQuery.sizeOf(context).width >= 600;
+  /// A partir desta largura (lógica) as secções ficam na barra lateral; abaixo, numa
+  /// NavigationBar em baixo. A Android TV (960) fica com a barra lateral.
+  static const larguraBarraLateral = 900.0;
+
+  bool _largo(BuildContext context) => MediaQuery.sizeOf(context).width >= larguraBarraLateral;
 
   /// ESQUERDA (ou CIMA) no conteúdo sem nada nessa direção na secção: a secção na barra.
   KeyEventResult _teclaConteudo(BuildContext context, KeyEvent e) {
