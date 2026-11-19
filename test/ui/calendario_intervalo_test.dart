@@ -57,6 +57,7 @@ void main() {
     await tecla(t, LogicalKeyboardKey.arrowDown); // 26 > hoje: fica
     await tecla(t, LogicalKeyboardKey.arrowRight); // 20 > hoje: fica
     expect(find.text('novembro 2026'), findsOneWidget);
+    await tecla(t, LogicalKeyboardKey.arrowLeft); // do botão de volta à grelha
     await tecla(t, LogicalKeyboardKey.arrowUp); // 12
     await tecla(t, LogicalKeyboardKey.arrowLeft); // 11
     await tecla(t, LogicalKeyboardKey.enter);
@@ -67,7 +68,7 @@ void main() {
     expect(find.text('outubro 2026'), findsOneWidget);
     await tecla(t, LogicalKeyboardKey.enter);
     expect(find.text('28 out. 2026'), findsOneWidget);
-    await tecla(t, LogicalKeyboardKey.arrowUp); // o 2.º OK levou o foco ao botão: volta à grelha
+    await tecla(t, LogicalKeyboardKey.arrowLeft); // o 2.º OK levou o foco ao botão: volta à grelha
     // para a frente: 28 out. -> 4 nov. (muda de mês); ← de 1 nov. vai para 31 out.
     await tecla(t, LogicalKeyboardKey.arrowDown);
     expect(find.text('novembro 2026'), findsOneWidget);
@@ -95,7 +96,7 @@ void main() {
     expect(procurarLigado(t), isTrue);
     // o foco passou para «Procurar e juntar»; volta à grelha com ↑ e recomeça com o 3.º OK
     expect(textosFocados(), 'Procurar e juntar');
-    await tecla(t, LogicalKeyboardKey.arrowUp);
+    await tecla(t, LogicalKeyboardKey.arrowLeft);
     await tecla(t, LogicalKeyboardKey.select);
     expect(find.text('—'), findsOneWidget);
     expect(procurarLigado(t), isFalse);
@@ -147,6 +148,63 @@ void main() {
     await t.tap(find.bySemanticsLabel('Mês seguinte'));
     await t.pump();
     expect(find.text('novembro 2026'), findsOneWidget);
+  });
+
+  testWidgets('abre com o intervalo preenchido e chega a Procurar e juntar só com setas', (t) async {
+    DateTimeRange? r;
+    await abrir(t, aoFechar: (x) => r = x);
+    await tecla(t, LogicalKeyboardKey.arrowDown); // 26 > hoje: bloqueado, foco no botão
+    expect(textosFocados(), 'Procurar e juntar');
+    await tecla(t, LogicalKeyboardKey.arrowDown);
+    expect(textosFocados(), 'Recomeçar');
+    await tecla(t, LogicalKeyboardKey.arrowUp);
+    expect(textosFocados(), 'Procurar e juntar');
+    await tecla(t, LogicalKeyboardKey.arrowLeft); // volta à grelha
+    await tecla(t, LogicalKeyboardKey.arrowRight); // 20 > hoje
+    expect(textosFocados(), 'Procurar e juntar');
+    await tecla(t, LogicalKeyboardKey.select);
+    await t.pumpAndSettle();
+    expect(r, DateTimeRange(start: DateTime(2026, 11, 10), end: hoje));
+  });
+
+  testWidgets('sem as duas datas, o movimento bloqueado leva a Recomeçar', (t) async {
+    await abrir(t);
+    await t.tap(find.text('Recomeçar'));
+    await t.pump();
+    await t.tap(find.text('19'));
+    await t.pump(); // só «De»: Procurar desativado
+    await tecla(t, LogicalKeyboardKey.arrowRight);
+    expect(textosFocados(), 'Recomeçar');
+  });
+
+  testWidgets('↑ na primeira semana vai aos botões do mês, e ↓ volta à grelha', (t) async {
+    await abrir(t, inicio: DateTime(2026, 11, 3), fim: DateTime(2026, 11, 4));
+    for (var i = 0; i < 3; i++) {
+      await tecla(t, LogicalKeyboardKey.arrowLeft); // 3, 2, 1 nov. (primeira linha visível)
+    }
+    await tecla(t, LogicalKeyboardKey.arrowUp);
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'Mês anterior');
+    await tecla(t, LogicalKeyboardKey.enter);
+    expect(find.text('outubro 2026'), findsOneWidget);
+    await tecla(t, LogicalKeyboardKey.arrowRight);
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'Mês seguinte');
+    await tecla(t, LogicalKeyboardKey.enter);
+    expect(find.text('novembro 2026'), findsOneWidget);
+    await tecla(t, LogicalKeyboardKey.arrowDown);
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'Calendário');
+  });
+
+  testWidgets('3.º OK na grelha recomeça com esse dia como início', (t) async {
+    await abrir(t, inicio: DateTime(2026, 11, 3), fim: DateTime(2026, 11, 4));
+    await tecla(t, LogicalKeyboardKey.select); // De 4
+    await tecla(t, LogicalKeyboardKey.arrowLeft); // 3
+    await tecla(t, LogicalKeyboardKey.select); // Até: foco salta para Procurar
+    expect(textosFocados(), 'Procurar e juntar');
+    await tecla(t, LogicalKeyboardKey.arrowLeft); // volta à grelha, ao dia 3
+    await tecla(t, LogicalKeyboardKey.select); // 3.º OK: recomeça
+    expect(find.text('3 nov. 2026'), findsOneWidget);
+    expect(find.text('—'), findsOneWidget);
+    expect(procurarLigado(t), isFalse);
   });
 
   testWidgets('na TV mostra as dicas de teclas e o dia focado tem o anel', (t) async {

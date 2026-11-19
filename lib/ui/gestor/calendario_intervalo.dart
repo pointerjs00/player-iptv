@@ -56,6 +56,9 @@ class _CalendarioIntervaloState extends State<CalendarioIntervalo> {
   bool _gradeComFoco = false;
   final _noGrade = FocusNode(debugLabel: 'Calendário');
   final _noProcurar = FocusNode(debugLabel: 'Procurar e juntar');
+  final _noRecomecar = FocusNode(debugLabel: 'Recomeçar');
+  final _noAnterior = FocusNode(debugLabel: 'Mês anterior');
+  final _noSeguinte = FocusNode(debugLabel: 'Mês seguinte');
 
   @override
   void initState() {
@@ -69,13 +72,29 @@ class _CalendarioIntervaloState extends State<CalendarioIntervalo> {
   void dispose() {
     _noGrade.dispose();
     _noProcurar.dispose();
+    _noRecomecar.dispose();
+    _noAnterior.dispose();
+    _noSeguinte.dispose();
     super.dispose();
   }
 
   bool _vale(DateTime d) => !d.isAfter(_hoje) && !d.isBefore(_primeiro);
 
+  /// Move o dia focado. Um movimento para depois de hoje (que não há) leva o foco aos botões do
+  /// painel, para o comando lá chegar só com as setas; ↑ na primeira semana visível leva ao mês.
   void _mover(int dias) {
     final d = DateTime(_foco.year, _foco.month, _foco.day + dias);
+    if (d.isAfter(_hoje)) {
+      (_ate != null && _de != null ? _noProcurar : _noRecomecar).requestFocus();
+      return;
+    }
+    if (dias == -7) {
+      final vazios = DateTime(_foco.year, _foco.month, 1).weekday - 1;
+      if (_foco.day + vazios <= 7) {
+        (_haMesAntes ? _noAnterior : _noSeguinte).requestFocus();
+        return;
+      }
+    }
     if (_vale(d)) setState(() => _foco = d);
   }
 
@@ -156,9 +175,50 @@ class _CalendarioIntervaloState extends State<CalendarioIntervalo> {
     return KeyEventResult.handled;
   }
 
+  /// ‹ › do mês: ← → andam entre os dois; ↓ volta à grelha.
+  KeyEventResult _teclaMes(FocusNode no, KeyEvent e) {
+    if (e is KeyUpEvent) return KeyEventResult.ignored;
+    final k = e.logicalKey;
+    if (k == LogicalKeyboardKey.arrowDown) {
+      _noGrade.requestFocus();
+    } else if (_teclasOk.contains(k)) {
+      // o OK do comando muda de mês (não depender do InkWell para isto)
+      if (e is KeyDownEvent) {
+        if (_noAnterior.hasFocus && _haMesAntes) _mudarMes(-1);
+        if (_noSeguinte.hasFocus && _haMesDepois) _mudarMes(1);
+      }
+    } else if (k == LogicalKeyboardKey.arrowRight && _noAnterior.hasFocus && _haMesDepois) {
+      _noSeguinte.requestFocus();
+    } else if (k == LogicalKeyboardKey.arrowLeft && _noSeguinte.hasFocus && _haMesAntes) {
+      _noAnterior.requestFocus();
+    } else {
+      return KeyEventResult.ignored;
+    }
+    return KeyEventResult.handled;
+  }
+
+  /// Botões do painel: ↑ ↓ andam entre «Procurar e juntar» e «Recomeçar»; ← volta à grelha.
+  KeyEventResult _teclaPainel(FocusNode no, KeyEvent e) {
+    if (e is KeyUpEvent) return KeyEventResult.ignored;
+    final k = e.logicalKey;
+    final pronto = _de != null && _ate != null;
+    if (k == LogicalKeyboardKey.arrowLeft) {
+      _noGrade.requestFocus();
+    } else if (k == LogicalKeyboardKey.arrowUp || k == LogicalKeyboardKey.arrowDown) {
+      if (_noProcurar.hasFocus) {
+        _noRecomecar.requestFocus();
+      } else if (pronto) {
+        _noProcurar.requestFocus();
+      }
+    } else {
+      return KeyEventResult.ignored;
+    }
+    return KeyEventResult.handled;
+  }
+
   // ---------------------------------------------------------------- construção
 
-  Widget _seta(String texto, String rotulo, VoidCallback? aoTocar) => Semantics(
+  Widget _seta(String texto, String rotulo, FocusNode no, VoidCallback? aoTocar) => Semantics(
         button: true,
         label: rotulo,
         enabled: aoTocar != null,
@@ -168,7 +228,8 @@ class _CalendarioIntervaloState extends State<CalendarioIntervalo> {
           borderRadius: BorderRadius.circular(10),
           child: InkWell(
             borderRadius: BorderRadius.circular(10),
-            canRequestFocus: false,
+            focusNode: no,
+            canRequestFocus: aoTocar != null,
             onTap: aoTocar,
             child: SizedBox(
               width: 44,
@@ -232,12 +293,16 @@ class _CalendarioIntervaloState extends State<CalendarioIntervalo> {
       padding: const EdgeInsets.all(Tokens.e16 + 4),
       decoration: BoxDecoration(color: Tokens.superficie2, borderRadius: BorderRadius.circular(Tokens.raioCartao)),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          _seta('‹', 'Mês anterior', _haMesAntes ? () => _mudarMes(-1) : null),
+        Focus(
+          canRequestFocus: false,
+          skipTraversal: true,
+          onKeyEvent: _teclaMes,
+          child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          _seta('‹', 'Mês anterior', _noAnterior, _haMesAntes ? () => _mudarMes(-1) : null),
           Text('${_mesesLongos[_foco.month - 1]} ${_foco.year}',
               style: const TextStyle(color: Tokens.texto, fontSize: 20, fontWeight: FontWeight.w700)),
-          _seta('›', 'Mês seguinte', _haMesDepois ? () => _mudarMes(1) : null),
-        ]),
+          _seta('›', 'Mês seguinte', _noSeguinte, _haMesDepois ? () => _mudarMes(1) : null),
+        ])),
         const SizedBox(height: Tokens.e8),
         Row(children: [
           for (final s in const ['S', 'T', 'Q', 'Q', 'S', 'S', 'D'])
@@ -299,10 +364,15 @@ class _CalendarioIntervaloState extends State<CalendarioIntervalo> {
       const Text('1.º OK marca o início, 2.º OK marca o fim. Os dias depois de hoje não se escolhem.',
           style: TextStyle(color: Tokens.texto2, fontSize: 15, fontWeight: FontWeight.w500)),
       const SizedBox(height: Tokens.e24),
-      Wrap(spacing: Tokens.e12, runSpacing: Tokens.e12, children: [
-        FilledButton(focusNode: _noProcurar, onPressed: pronto ? _procurar : null, child: const Text('Procurar e juntar')),
-        OutlinedButton(onPressed: _recomecar, child: const Text('Recomeçar')),
-      ]),
+      Focus(
+        canRequestFocus: false,
+        skipTraversal: true,
+        onKeyEvent: _teclaPainel,
+        child: Wrap(spacing: Tokens.e12, runSpacing: Tokens.e12, children: [
+          FilledButton(focusNode: _noProcurar, onPressed: pronto ? _procurar : null, child: const Text('Procurar e juntar')),
+          OutlinedButton(focusNode: _noRecomecar, onPressed: _recomecar, child: const Text('Recomeçar')),
+        ]),
+      ),
     ]);
   }
 
