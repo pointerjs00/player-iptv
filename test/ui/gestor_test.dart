@@ -413,6 +413,52 @@ void main() {
       expect(player(), ['nova.com'], reason: 'só a que funciona vai; as outras saem do Player');
     });
 
+    for (final (rotulo, descricao, esperado) in [
+      ('nenhuma', 'O Player fica só com estas. Os favoritos das que saem perdem-se.',
+          ['nova.com']),
+      ('as que funcionam', 'O Player fica com estas e com as que já lá funcionam.',
+          ['boa.com', 'nova.com']),
+      ('as que funcionam e as inconclusivas',
+          'O Player fica com estas e com as que já lá funcionam ou são inconclusivas.',
+          ['boa.com', 'talvez.com', 'nova.com']),
+    ]) {
+      testWidgets('Enviar: substituir mantendo "$rotulo" (descrição e resultado)', (t) async {
+        await preparar(t);
+        await t.runAsync(() => bib.adicionar([Importada(contaDeLinha('http://talvez.com/l.m3u')!, _u('inconclusivo'))]));
+        await t.tap(find.widgetWithText(ActionChip, 'Funcionam'));
+        await t.pump();
+        await abrirEnvio(t);
+        expect(find.text('Das listas que já estão no Player, manter:'), findsNothing);
+        await t.tap(find.text('Substituir as listas do Player'));
+        await t.pump();
+        expect(find.text('Das listas que já estão no Player, manter:'), findsOneWidget);
+        await t.tap(find.text(rotulo));
+        await t.pump();
+        expect(find.text(descricao), findsOneWidget);
+        await t.tap(find.text('Enviar 1 lista'));
+        final tarefa = await acabada(t);
+        expect(tarefa.estado, EstadoTarefa.terminada);
+        expect(player(), esperado);
+      });
+    }
+
+    testWidgets('Substituir: as opções de manter alcançam-se com as setas e o foco não fica preso', (t) async {
+      await preparar(t);
+      await t.tap(find.widgetWithText(ActionChip, 'Funcionam'));
+      await t.pump();
+      await abrirEnvio(t);
+      await _tecla(t, LogicalKeyboardKey.arrowDown);
+      await _tecla(t, LogicalKeyboardKey.select); // Substituir
+      await _irPara(t, 'nenhuma', exato: true);
+      await _tecla(t, LogicalKeyboardKey.arrowDown);
+      expect(_focado(), contains('as que funcionam'));
+      await _tecla(t, LogicalKeyboardKey.select);
+      await _irPara(t, 'Enviar 1 lista');
+      await _tecla(t, LogicalKeyboardKey.select);
+      await acabada(t);
+      expect(player(), ['boa.com', 'nova.com']);
+    });
+
     testWidgets('Enviar com o comando: setas, OK e Voltar', (t) async {
       await preparar(t);
       await _irPara(t, 'Todas', exato: true);

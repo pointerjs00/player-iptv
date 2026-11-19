@@ -143,6 +143,7 @@ class _DialogoEnvio extends StatefulWidget {
 
 class _DialogoEnvioState extends State<_DialogoEnvio> {
   var _substituir = false;
+  var _manter = ModoEnvio.esmagarTodas;
   late var _incluirInc = widget.funcionam == 0;
 
   @override
@@ -178,10 +179,33 @@ class _DialogoEnvioState extends State<_DialogoEnvio> {
               compacto: baixo,
               icone: Icons.delete_sweep_outlined,
               titulo: 'Substituir as listas do Player',
-              descricao: 'O Player fica só com estas. Os favoritos das que saem perdem-se.',
+              descricao: switch (_manter) {
+                ModoEnvio.esmagarMantendoFuncionais => 'O Player fica com estas e com as que já lá funcionam.',
+                ModoEnvio.esmagarMantendoFuncionaisEInc =>
+                  'O Player fica com estas e com as que já lá funcionam ou são inconclusivas.',
+                _ => 'O Player fica só com estas. Os favoritos das que saem perdem-se.',
+              },
               escolhido: _substituir,
               aoEscolher: () => setState(() => _substituir = true),
             ),
+            if (_substituir) ...[
+              SizedBox(height: baixo ? Tokens.e8 : Tokens.e12),
+              const Text('Das listas que já estão no Player, manter:', style: TextStyle(fontWeight: FontWeight.w600)),
+              const SizedBox(height: Tokens.e8),
+              for (final (modo, rotulo) in [
+                (ModoEnvio.esmagarTodas, 'nenhuma'),
+                (ModoEnvio.esmagarMantendoFuncionais, 'as que funcionam'),
+                (ModoEnvio.esmagarMantendoFuncionaisEInc, 'as que funcionam e as inconclusivas'),
+              ]) ...[
+                _CartaoEscolha(
+                  compacto: true,
+                  titulo: rotulo,
+                  escolhido: _manter == modo,
+                  aoEscolher: () => setState(() => _manter = modo),
+                ),
+                const SizedBox(height: Tokens.e8),
+              ],
+            ],
             SizedBox(height: baixo ? Tokens.e12 : Tokens.e16),
             const Text('Que listas enviar?', style: TextStyle(fontWeight: FontWeight.w600)),
             espaco,
@@ -207,7 +231,7 @@ class _DialogoEnvioState extends State<_DialogoEnvio> {
           onPressed: n == 0
               ? null
               : () => Navigator.pop(
-                  context, (_substituir ? ModoEnvio.esmagarTodas : ModoEnvio.adicionar, _incluirInc)),
+                  context, (_substituir ? _manter : ModoEnvio.adicionar, _incluirInc)),
           child: Text('Enviar ${_listas(n)}'),
         ),
       ],
