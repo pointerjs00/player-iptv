@@ -105,7 +105,7 @@ void main() {
     }
     final opcoes = {
       'Imagem e som': ['Desentrelaçamento', 'Descodificação por hardware', 'Formato da imagem', 'Volume ao abrir'],
-      'Verificação': ['Canais de teste', 'Tempo limite'],
+      'Verificação': ['Listas ao mesmo tempo', 'Tempo limite por lista', 'Tempo por canal', 'Canais de teste'],
       'Ligação': ['User-agent'],
       'Cópia de segurança': ['Exportar cópia', 'Importar cópia'],
       'Sobre e licenças': ['Ver licenças'],
@@ -186,12 +186,12 @@ void main() {
     expect(find.text('Desentrelaçamento'), findsNothing);
     await t.tap(find.text('Verificação'));
     await t.pump();
-    expect(find.text('Canais de teste'), findsOneWidget);
+    expect(find.text('Listas ao mesmo tempo'), findsOneWidget);
     expect(find.text('Verificação'), findsOneWidget, reason: 'o título da página');
     expect(find.text('Imagem e som'), findsNothing);
     await t.tap(find.byTooltip('Voltar'));
     await t.pump();
-    expect(find.text('Canais de teste'), findsNothing);
+    expect(find.text('Listas ao mesmo tempo'), findsNothing);
     expect(find.text('Imagem e som'), findsOneWidget);
   });
 
@@ -223,10 +223,10 @@ void main() {
     await abrir(t);
     await categoria(t, 'Verificação');
     expect(find.text('8 s'), findsOneWidget);
-    await t.tap(find.byType(Slider).first);
+    await t.tap(find.text('+').last);
     await t.pump();
     final v = prefs.timeoutVerificacao;
-    expect(v, inInclusiveRange(5, 30));
+    expect(v, 9);
     // a gravação é IO real com continuações na zona do teste: alterna-se entre as duas
     for (var i = 0; i < 25; i++) {
       await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 60)));
@@ -248,17 +248,15 @@ void main() {
     await t.pump(const Duration(milliseconds: 400));
     await t.tap(find.text('Verificação'));
     await t.pump();
-    expect(find.text('Vale para as próximas listas.'), findsNothing);
     // com a verificação a decorrer (o verificador fica preso: o serviço está ocupado)
     s.verificar(area.listas.first);
     await t.pump();
-    expect(find.text('Vale para as próximas listas.'), findsNWidgets(2));
     expect(find.textContaining('Não se mudam'), findsNothing);
     await t.tap(find.text('DAZN 1'));
     await t.pump();
     expect(bib.canaisTeste, contains('dazn1'));
     final antes = prefs.timeoutVerificacao;
-    await t.tap(find.byType(Slider).first);
+    await t.tap(find.text('+').last);
     await t.pump();
     expect(prefs.timeoutVerificacao, isNot(antes));
   });

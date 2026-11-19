@@ -18,6 +18,7 @@ import '../design/design.dart';
 import '../design/mensagens.dart';
 import '../player/configuracao_mpv.dart';
 import '../principal/tela_principal.dart';
+import 'seletor_numero.dart';
 import '../realce_foco.dart';
 
 /// Escolhe um ficheiro e devolve o seu texto (null = cancelado).
@@ -50,6 +51,8 @@ enum _Categoria {
 
 /// O que se diz ao mudar uma opção: as do player só valem a partir do próximo canal.
 const _guardado = 'Guardado';
+/// A verificação lê as definições ao começar cada lista: o que muda vale para as que ainda não começaram.
+const _guardadoListas = 'Guardado · vale para as próximas listas';
 const _guardadoPlayer = 'Guardado · vale a partir do próximo canal';
 
 /// Definições por categorias (a lista à esquerda, as opções da categoria à direita; no telemóvel,
@@ -154,10 +157,10 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
   }
 
   /// Muda uma opção, grava e confirma ("Guardado"). Não mexe no foco.
-  void _mudou(VoidCallback f, {bool player = false}) {
+  void _mudou(VoidCallback f, {bool player = false, String? mensagem}) {
     f();
     _p.guardar().catchError((Object _) {}); // as chaves ficam por gravar e voltam a tentar-se
-    if (mounted) mostrarMensagem(context, player ? _guardadoPlayer : _guardado, tipo: MensagemTipo.sucesso);
+    if (mounted) mostrarMensagem(context, mensagem ?? (player ? _guardadoPlayer : _guardado), tipo: MensagemTipo.sucesso);
   }
 
   Future<void> _exportar() async {
@@ -376,37 +379,54 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
         ];
       case _Categoria.verificacao:
         return [
+          SeletorNumero(
+              titulo: 'Listas ao mesmo tempo',
+              descricao: 'Quantas listas se verificam em simultâneo (1 a 20). Mais é mais rápido, mas pesa na rede.',
+              valor: _p.listasEmSimultaneo,
+              min: Preferencias.minListasEmSimultaneo,
+              max: Preferencias.maxListasEmSimultaneo,
+              aoMudar: (v) => _mudou(() => _p.listasEmSimultaneo = v, mensagem: _guardadoListas)),
+          SeletorNumero(
+              titulo: 'Tempo limite por lista',
+              descricao: 'Se uma lista não acabar neste tempo, fica inconclusiva e passa à seguinte.',
+              valor: _p.tempoLimiteLista,
+              min: Preferencias.minTempoLimiteLista,
+              max: Preferencias.maxTempoLimiteLista,
+              passo: 10,
+              formatar: (v) => '$v s',
+              aoMudar: (v) => _mudou(() => _p.tempoLimiteLista = v, mensagem: _guardadoListas)),
+          SeletorNumero(
+              titulo: 'Tempo por canal',
+              descricao: 'Quanto se espera por cada canal de teste.',
+              valor: _p.timeoutVerificacao,
+              min: Preferencias.minTimeoutVerificacao,
+              max: Preferencias.maxTimeoutVerificacao,
+              formatar: (v) => '$v s',
+              aoMudar: (v) => _mudou(() => _p.timeoutVerificacao = v, mensagem: _guardadoListas)),
           _opcao('Canais de teste', 'A lista funciona se um deles abrir.',
               empilhar: true,
-              controlo: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Wrap(spacing: Tokens.e8, runSpacing: Tokens.e8, children: [
-                  for (final p in perfisCanais.values)
-                    FilterChip(
-                      label: Text(p.nome),
-                      selected: b.canaisTeste.contains(p.id),
-                      onSelected: (on) {
-                        final novo = [
-                          for (final id in perfisCanais.keys)
-                            if (id == p.id ? on : b.canaisTeste.contains(id)) id
-                        ];
-                        if (novo.isEmpty) return _aviso('Escolha pelo menos um canal.');
-                        _mudou(() => b.definirCanaisTeste(novo));
-                      },
-                    ),
-                ]),
-                if (ocupado) const _ValeParaAsProximas(),
+              controlo: Wrap(spacing: Tokens.e8, runSpacing: Tokens.e8, children: [
+                for (final p in perfisCanais.values)
+                  FilterChip(
+                    label: Text(p.nome),
+                    selected: b.canaisTeste.contains(p.id),
+                    onSelected: (on) {
+                      final novo = [
+                        for (final id in perfisCanais.keys)
+                          if (id == p.id ? on : b.canaisTeste.contains(id)) id
+                      ];
+                      if (novo.isEmpty) return _aviso('Escolha pelo menos um canal.');
+                      _mudou(() => b.definirCanaisTeste(novo));
+                    },
+                  ),
               ])),
-          _opcao('Tempo limite', 'Entre 5 e 30 segundos por canal. As inconclusivas voltam a ser testadas com o dobro.',
-              controlo: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                _deslizador(
-                    min: Preferencias.minTimeoutVerificacao.toDouble(),
-                    max: Preferencias.maxTimeoutVerificacao.toDouble(),
-                    divisions: Preferencias.maxTimeoutVerificacao - Preferencias.minTimeoutVerificacao,
-                    value: _p.timeoutVerificacao.toDouble(),
-                    texto: '${_p.timeoutVerificacao} s',
-                    aoMudar: (v) => _mudou(() => _p.timeoutVerificacao = v.round())),
-                if (ocupado) const _ValeParaAsProximas(),
-              ])),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: Tokens.e4),
+            child: Text(
+                'Com uma verificação a decorrer, as mudanças valem para as próximas listas. '
+                '← → mudam o valor; ↑ ↓ mudam de opção.',
+                style: TextStyle(fontSize: 13, color: Tokens.texto2)),
+          ),
         ];
       case _Categoria.ligacao:
         return [
@@ -579,17 +599,5 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
             });
           },
         ),
-      );
-}
-
-/// Com uma verificação a decorrer os canais de teste e o tempo limite mudam-se na mesma: valem para
-/// as listas que ainda não começaram (a volta em curso acaba como começou).
-class _ValeParaAsProximas extends StatelessWidget {
-  const _ValeParaAsProximas();
-
-  @override
-  Widget build(BuildContext context) => const Padding(
-        padding: EdgeInsets.only(top: Tokens.e8),
-        child: Text('Vale para as próximas listas.', style: TextStyle(color: Tokens.texto2)),
       );
 }

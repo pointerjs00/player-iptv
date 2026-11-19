@@ -269,11 +269,28 @@ void main() {
       final (prefs, _) = await abrirTv(t);
       await teclaDpad(t, LogicalKeyboardKey.arrowDown); // a categoria Verificação
       expect(id(), 'Verificação');
-      final timeout = prefs.timeoutVerificacao;
-      final descer = await descerEsubir(t, prefs);
-      // CIMA chega aos canais de teste (os chips)
-      expect(find.ancestor(of: find.text(descer.first.split(' | ').first), matching: find.byType(FilterChip)),
-          findsOneWidget, reason: 'o topo são os canais de teste: $descer');
+      await teclaDpad(t, LogicalKeyboardKey.arrowRight);
+      final descer = <String>[id()];
+      final (listas, limite, timeout) = (prefs.listasEmSimultaneo, prefs.tempoLimiteLista, prefs.timeoutVerificacao);
+      for (var i = 0; i < 3; i++) {
+        await teclaDpad(t, LogicalKeyboardKey.arrowDown);
+        descer.add(id());
+        expect(descer[descer.length - 1], isNot(descer[descer.length - 2]), reason: 'BAIXO preso: $descer');
+      }
+      expect(descer.take(3).map((d) => d.split(' | ').first),
+          ['Listas ao mesmo tempo', 'Tempo limite por lista', 'Tempo por canal'],
+          reason: 'BAIXO passa pelos seletores: $descer');
+      // e chega aos canais de teste (os chips)
+      expect(find.ancestor(of: find.text(descer.last.split(' | ').first), matching: find.byType(FilterChip)),
+          findsOneWidget, reason: 'o fim são os canais de teste: $descer');
+      expect((prefs.listasEmSimultaneo, prefs.tempoLimiteLista, prefs.timeoutVerificacao), (listas, limite, timeout),
+          reason: 'CIMA/BAIXO não mudam os valores');
+      for (var i = 0; i < 3; i++) {
+        await teclaDpad(t, LogicalKeyboardKey.arrowUp);
+      }
+      expect(id(), descer.first, reason: 'CIMA volta ao topo');
+      await teclaDpad(t, LogicalKeyboardKey.arrowDown);
+      await teclaDpad(t, LogicalKeyboardKey.arrowDown);
       await teclaDpad(t, LogicalKeyboardKey.arrowRight);
       expect(prefs.timeoutVerificacao, timeout + 1);
       await teclaDpad(t, LogicalKeyboardKey.arrowLeft);
