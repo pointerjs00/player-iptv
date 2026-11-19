@@ -682,7 +682,7 @@ void main() {
       await abrirPasso(t, 'Enviar ou exportar');
       expect(await _semRealceAoPercorrer(t, 10, vistos: noGestor), isEmpty);
       expect(noGestor.join(' / '), allOf(contains('Ficheiros'), contains('Escolher ficheiros'),
-          contains('Limpar o Gestor'), contains('Verificar todas'), contains('1 · Importar | 2 · Verificar'),
+          contains('Limpar o Gestor'), contains('Ações (0)'), contains('1 · Importar | 2 · Verificar'),
           contains('As que funcionam')));
     });
 
@@ -726,16 +726,24 @@ void main() {
       expect(falhas, isEmpty);
       expect(vistos.join(' / '), allOf(contains('1 | Importar'), contains('3 | Enviar ou exportar'),
           contains('A verificar 0/1')));
-      // o passo 2: a faixa, pesquisa, filtros, seleção, as linhas e a barra
+      // o passo 2: a faixa, o indicador, pesquisa, estados, Ações, a ☐ do cabeçalho e as linhas
       await abrirPasso(t, 'Verificar');
-      await t.tap(find.widgetWithText(ActionChip, 'Todas as visíveis'));
+      await t.tap(find.byKey(const ValueKey('caixaCabecalho')));
       await t.pump();
       // (até dar a volta: depois de "Voltar" vem a faixa)
       expect(await _semRealceAoPercorrer(t, 20, vistos: vistos), isEmpty);
-      expect(vistos.join(' / '), allOf(contains('1 · Importar | 2 · Verificar'), contains('Todas · 1'),
-          contains('001X'), contains('Verificar selecionadas'), contains('Remover do gestor')));
-      // o progresso
-      await t.tap(find.textContaining('Ver verificação'));
+      expect(vistos.join(' / '), allOf(contains('1 · Importar | 2 · Verificar'), contains('Funcionam · 0'),
+          contains('001X'), contains('Ações (1)'), contains('A verificar 0/1')));
+      // o menu Ações: os itens com realce
+      await t.tap(find.byKey(const ValueKey('botaoAcoes')));
+      await t.pumpAndSettle();
+      final noMenu = <String>{};
+      expect(await _semRealceAoPercorrer(t, 3, vistos: noMenu), isEmpty);
+      expect(noMenu, containsAll(['Verificar selecionadas', 'Verificar todas', 'Remover do gestor']), reason: '$noMenu');
+      await t.binding.handlePopRoute();
+      await t.pumpAndSettle();
+      // o progresso (pelo indicador do topo)
+      await t.tap(find.text('A verificar 0/1'));
       await t.pumpAndSettle();
       expect(await _semRealceAoPercorrer(t, 4, vistos: vistos), isEmpty);
       s.parar();

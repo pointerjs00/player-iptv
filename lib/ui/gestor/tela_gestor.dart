@@ -244,6 +244,9 @@ class _TelaGestorState extends State<TelaGestor> {
     if (mounted && !mudouDeEcra) _focoIndicador.requestFocus();
   }
 
+  /// Abre o progresso da verificação (o indicador do topo no passo 2).
+  void _verVerificacao() => _abrir(EcraGestor.verificacao);
+
   /// Voltar (do comando ou o botão): num passo regressa ao resumo; no progresso, ao passo 2.
   /// false = não tratou (no resumo, a casca vai para Ver TV).
   bool _voltar() {
@@ -285,7 +288,7 @@ class _TelaGestorState extends State<TelaGestor> {
   void _verificarMais() {
     _abrir(EcraGestor.verificar);
     // depois de _abrir (que põe o foco no passo): o foco vai ao filtro escolhido
-    _passoVerificar.currentState?.filtrar(EstadoLista.porVerificar);
+    _passoVerificar.currentState?.filtrar({EstadoLista.porVerificar});
   }
 
   /// "Verificar todas": as que ainda não estão na fila juntam-se a ela; a seleção fica.
@@ -457,7 +460,7 @@ class _TelaGestorState extends State<TelaGestor> {
               servico: _s,
               aoVerificar: _verificarSelecionadas,
               aoVerificarTodas: _verificarTodas,
-              aoVerVerificacao: () => _abrir(EcraGestor.verificacao),
+              aoVerVerificacao: _verVerificacao,
               aoRemover: _removerSelecionadas,
               focoInicial: _focoPesquisa,
             ),
@@ -486,6 +489,12 @@ class _TelaGestorState extends State<TelaGestor> {
       BarraTeclas(switch (_ecra) {
         EcraGestor.resumo => const [('OK', 'abrir o passo'), ('←', 'menu')],
         EcraGestor.verificacao => const [('Voltar', 'passo 2 · Verificar'), ('OK', 'escolher')],
+        EcraGestor.verificar => const [
+            ('Voltar', 'resumo do Gestor'),
+            ('← →', 'mudar de passo na faixa'),
+            ('OK', 'escolher'),
+            ('Menu', 'ações'),
+          ],
         _ => const [('Voltar', 'resumo do Gestor'), ('← →', 'mudar de passo na faixa'), ('OK', 'escolher')],
       }),
     ]);
@@ -518,9 +527,18 @@ class _TelaGestorState extends State<TelaGestor> {
               style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Tokens.texto)),
         ),
         const SizedBox(width: Tokens.e12),
+        // no passo 2 é o indicador da verificação (OK abre o progresso, se houve uma); nos outros
+        // ecrãs, o de toda a atividade (OK abre o painel)
         Flexible(
-            child: IndicadorAtividade(
-                servico: _s, tarefas: widget.tarefas, foco: _focoIndicador, aoAbrir: _abrirAtividade)),
+            child: _ecra == EcraGestor.verificar
+                ? IndicadorAtividade(
+                    servico: _s,
+                    tarefas: widget.tarefas,
+                    foco: _focoIndicador,
+                    soVerificacao: true,
+                    aoAbrir: _verVerificacao)
+                : IndicadorAtividade(
+                    servico: _s, tarefas: widget.tarefas, foco: _focoIndicador, aoAbrir: _abrirAtividade)),
       ]),
     );
   }
@@ -586,7 +604,7 @@ class _TelaGestorState extends State<TelaGestor> {
           onTap: () => _abrir(_passos[i], naFaixa: true),
           child: Container(
             key: ValueKey('faixa ${i + 1}'),
-            height: 46,
+            height: 36,
             padding: const EdgeInsets.symmetric(horizontal: 14),
             alignment: Alignment.centerLeft,
             decoration: BoxDecoration(

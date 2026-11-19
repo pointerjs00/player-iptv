@@ -108,7 +108,10 @@ List<String> _desligados() {
       ButtonStyleButton() => w.onPressed != null,
       IconButton() => w.onPressed != null,
       ChoiceChip() => w.onSelected != null,
+      FilterChip() => w.onSelected != null,
       ActionChip() => w.onPressed != null,
+      Checkbox() => w.onChanged != null,
+      PopupMenuItem() => w.enabled,
       CheckboxListTile() => w.onChanged != null,
       CartaoModerno() => w.onTap != null,
       _ => null,
@@ -200,6 +203,29 @@ void main() {
   Future<void> marcarChip(WidgetTester t, String rotulo) async {
     await t.tap(find.ancestor(of: find.textContaining(rotulo), matching: find.byType(ActionChip)).first);
     await t.pump();
+  }
+
+  /// No passo 2: liga / desliga o estado com este rótulo (primeiro à vista: com a letra dos
+  /// testes, larga, os da direita deslizam).
+  Future<void> estado(WidgetTester t, String rotulo) async {
+    final chip = find.ancestor(of: find.textContaining(rotulo), matching: find.byType(FilterChip)).first;
+    await t.ensureVisible(chip);
+    await t.pump();
+    await t.tap(chip);
+    await t.pump();
+  }
+
+  /// No passo 2: abre o menu Ações.
+  Future<void> abrirAcoes(WidgetTester t) async {
+    await t.tap(find.byKey(const ValueKey('botaoAcoes')));
+    await t.pumpAndSettle();
+  }
+
+  /// No passo 2: escolhe `acao` no menu Ações.
+  Future<void> acao(WidgetTester t, String acao) async {
+    await abrirAcoes(t);
+    await t.tap(find.descendant(of: find.byWidgetPredicate((w) => w is PopupMenuItem), matching: find.text(acao)));
+    await t.pumpAndSettle();
   }
 
   /// O botão do diálogo (o passo 3 tem um botão com o mesmo texto).
@@ -675,18 +701,15 @@ void main() {
     testWidgets('Remover e Limpar o Gestor pedem confirmação', (t) async {
       await preparar(t);
       await abrirPasso(t, 'Verificar');
-      await t.tap(find.widgetWithText(ChoiceChip, 'Funcionam · 1'));
+      await estado(t, 'Funcionam · 1');
+      await t.tap(find.byKey(const ValueKey('caixaCabecalho')));
       await t.pump();
-      await t.tap(find.widgetWithText(ActionChip, 'Todas as visíveis'));
-      await t.pump();
-      await t.tap(find.widgetWithText(OutlinedButton, 'Remover do gestor'));
-      await t.pumpAndSettle();
+      await acao(t, 'Remover do gestor');
       expect(find.text('Remover do Gestor?'), findsOneWidget);
       await t.tap(find.text('Cancelar'));
       await t.pumpAndSettle();
       expect(area.listas, hasLength(2));
-      await t.tap(find.widgetWithText(OutlinedButton, 'Remover do gestor'));
-      await t.pumpAndSettle();
+      await acao(t, 'Remover do gestor');
       await t.runAsync(() async {
         await t.tap(find.widgetWithText(FilledButton, 'Remover'));
         await Future<void>.delayed(const Duration(milliseconds: 100));
@@ -739,12 +762,22 @@ void main() {
       expect(find.text('Colar texto').hitTestable(), findsOneWidget);
       expect(_desligados(), isEmpty);
       await voltar(t);
-      // nos passos 2 e 3 só ficam desligados os botões que pedem listas escolhidas
+      // nos passos 2 e 3 só ficam desligadas as ações que pedem listas escolhidas (no passo 2,
+      // dentro do menu Ações)
       await abrirPasso(t, 'Verificar');
-      expect(_desligados(), unorderedEquals(['FilledButton: Verificar selecionadas', 'OutlinedButton: Remover do gestor']));
+      expect(_desligados(), isEmpty);
+      await abrirAcoes(t);
+      expect(_desligados(), unorderedEquals(['PopupMenuItem<_Acao>: Verificar selecionadas', 'PopupMenuItem<_Acao>: Remover do gestor']));
+      await t.binding.handlePopRoute();
+      await t.pumpAndSettle();
       await marcar(t, '001BOA');
       expect(_desligados(), isEmpty, reason: 'com uma selecionada (mesmo a ser verificada) tudo fica ligado');
-      await t.tap(find.textContaining('Ver verificação'));
+      await abrirAcoes(t);
+      expect(_desligados(), isEmpty);
+      await t.binding.handlePopRoute();
+      await t.pumpAndSettle();
+      // o progresso: pelo indicador do topo
+      await t.tap(find.text('A verificar 0/1'));
       await t.pumpAndSettle();
       expect(find.text('Parar').hitTestable(), findsOneWidget);
       expect(_desligados(), isEmpty);
@@ -765,15 +798,13 @@ void main() {
       await abrirPasso(t, 'Verificar');
       await marcar(t, '002MEIA');
       await marcar(t, '003MORTA');
-      expect(find.text('2 selecionadas'), findsOneWidget);
-      await t.tap(find.text('Verificar selecionadas'));
-      await t.pump();
+      expect(find.text('Ações (2)'), findsOneWidget);
+      await acao(t, 'Verificar selecionadas');
       expect([s.aVerificar(boa.id), s.aVerificar(meia.id), s.aVerificar(morta.id)], [true, true, true]);
       expect(s.total, 3, reason: 'juntaram-se à fila (não foi ignorado)');
       expect(find.text('2 listas entraram na fila.'), findsOneWidget);
       // outra vez: já lá estão
-      await t.tap(find.text('Verificar selecionadas'));
-      await t.pumpAndSettle();
+      await acao(t, 'Verificar selecionadas');
       expect(find.text('As listas selecionadas já estão na fila.'), findsOneWidget);
       expect(s.total, 3);
     });
@@ -787,7 +818,8 @@ void main() {
       // o indicador de atividade e a barra do resumo
       expect(find.text('A verificar 0/2'), findsNWidgets(2));
       await abrirPasso(t, 'Verificar');
-      expect(find.text('Ver verificação · 0/2'), findsOneWidget);
+      // no passo 2, o indicador do topo é o da verificação
+      expect(find.text('A verificar 0/2'), findsOneWidget);
       expect(find.descendant(of: linha('001BOA'), matching: find.text('A verificar · canal 2/3')), findsOneWidget);
       expect(find.descendant(of: linha('002MEIA'), matching: find.text('Na fila')), findsOneWidget);
       expect(find.descendant(of: linha('003MORTA'), matching: find.text('Não funciona')), findsOneWidget);
@@ -802,16 +834,14 @@ void main() {
       await abrirPasso(t, 'Verificar');
       await marcar(t, '001BOA');
       await marcar(t, '002MEIA');
-      await t.tap(find.widgetWithText(OutlinedButton, 'Remover do gestor'));
-      await t.pumpAndSettle();
+      await acao(t, 'Remover do gestor');
       expect(find.textContaining('Uma delas está a ser verificada: essa verificação é cancelada.'), findsOneWidget);
       // cancelar não muda nada
       await t.tap(find.text('Cancelar'));
       await t.pumpAndSettle();
       expect([s.aVerificar(boa.id), s.aVerificar(morta.id)], [true, true]);
       expect(area.listas, hasLength(3));
-      await t.tap(find.widgetWithText(OutlinedButton, 'Remover do gestor'));
-      await t.pumpAndSettle();
+      await acao(t, 'Remover do gestor');
       await t.runAsync(() async {
         await t.tap(find.widgetWithText(FilledButton, 'Remover'));
         await Future<void>.delayed(const Duration(milliseconds: 100));
@@ -838,8 +868,9 @@ void main() {
       await marcarChip(t, 'As que funcionam');
       await t.tap(find.text('2 · Verificar'));
       await t.pumpAndSettle();
-      await t.tap(find.widgetWithText(ChoiceChip, 'Funcionam · 2'));
-      await t.pump();
+      await estado(t, 'Funcionam · 2');
+      await estado(t, 'Não funcionam · 1');
+      await estado(t, 'Não funcionam · 1');
       await marcar(t, '002OUTRA');
       expect(find.textContaining('003MORTA'), findsNothing);
       await t.tap(find.text('1 · Importar'));
@@ -856,12 +887,13 @@ void main() {
       // pelo resumo, de volta ao passo 2
       await voltar(t);
       await abrirPasso(t, 'Verificar');
-      final filtro = t.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Funcionam · 2'));
+      final filtro = t.widget<FilterChip>(find.widgetWithText(FilterChip, 'Funcionam · 2'));
       expect(filtro.selected, isTrue, reason: 'o filtro fica');
+      expect(t.widget<FilterChip>(find.widgetWithText(FilterChip, 'Não funcionam · 1')).selected, isFalse);
       expect(find.textContaining('003MORTA'), findsNothing);
       expect(t.widget<CheckboxListTile>(linha('002OUTRA')).value, isTrue, reason: 'a seleção fica');
       expect(t.widget<CheckboxListTile>(linha('001BOA')).value, isFalse);
-      expect(find.text('1 selecionada'), findsOneWidget);
+      expect(find.text('Ações (1)'), findsOneWidget);
       await t.tap(find.text('3 · Enviar ou exportar'));
       await t.pumpAndSettle();
       expect(find.text('2 marcadas · OK marca/desmarca uma lista'), findsOneWidget, reason: 'as marcadas ficam');
@@ -887,7 +919,7 @@ void main() {
       expect(find.text('Gestor de listas'), findsNothing, reason: 'agora sim, Ver TV');
     });
 
-    testWidgets('na TV (960 com a barra lateral) a barra do passo 2 cabe e tudo se alcança com as setas',
+    testWidgets('na TV (960 com a barra lateral) a linha de cima do passo 2 cabe e tudo se alcança com as setas',
         (t) async {
       ecraTvTeste(t);
       await t.runAsync(() => area.adicionar([
@@ -897,12 +929,10 @@ void main() {
       await t.pumpWidget(_app(inicio(inicial: Seccao.gestor)));
       await t.pump();
       await abrirPasso(t, 'Verificar');
-      // com uma selecionada, só "Ver verificação" fica desligado (ainda não houve nenhuma)
       await marcar(t, '001BOA');
-      const acoes = ['Verificar selecionadas', 'Verificar todas', 'Remover do gestor'];
-      for (final c in acoes) {
-        final r = t.getRect(find.ancestor(of: find.text(c), matching: find.bySubtype<ButtonStyleButton>()).first);
-        expect(r.left >= BarraSeccoes.largura && r.right <= 960, isTrue, reason: '$c em $r');
+      for (final f in [find.byKey(const ValueKey('botaoAcoes')), find.byType(TextField)]) {
+        final r = t.getRect(f);
+        expect(r.left >= BarraSeccoes.largura && r.right <= 960, isTrue, reason: '$f em $r');
       }
       // (o toque não deixa o foco no comando: volta-se à linha com Tab) e CIMA até à faixa
       await _irPara(t, '001BOA');
@@ -919,6 +949,7 @@ void main() {
       // daí, tudo o que se alcança só com setas (sem sair do passo): de cada controlo, as quatro
       // setas; cada um que é novo também é explorado
       final vistos = <String>{};
+      final rotulos = <String?>{};
       final porVer = [FocusManager.instance.primaryFocus!];
       final explorados = <FocusNode>{};
       while (porVer.isNotEmpty && explorados.length < 40) {
@@ -936,17 +967,31 @@ void main() {
           final novo = FocusManager.instance.primaryFocus;
           if (novo == null || !noPasso()) continue;
           vistos.add(textosFocados());
+          rotulos.add(novo.debugLabel);
           if (!explorados.contains(novo)) porVer.add(novo);
         }
       }
       final caminho = vistos.join(' / ');
       for (final v in [
-        'Todas · 2', 'Funcionam · 1', 'Inconclusivas · 0', 'Não funcionam · 0', 'Por verificar · 1',
-        'Todas as visíveis', 'Nenhuma', ...acoes, '001BOA', '002MEIA',
+        'Funcionam · 1', 'Inconclusivas · 0', 'Não funcionam · 0', 'Por verificar · 1', 'Ações (1)', '001BOA', '002MEIA',
       ]) {
         expect(caminho, contains(v), reason: caminho);
       }
-      expect(vistos, contains('Por verificar'), reason: caminho);
+      expect(rotulos, containsAll(['Pesquisar listas', 'Selecionar as visíveis']), reason: '$rotulos');
+      // e as ações: a tecla Menu numa linha abre o menu, com o foco no 1.º item; BAIXO percorre-o
+      await _irPara(t, '002MEIA');
+      await teclaDpad(t, LogicalKeyboardKey.contextMenu);
+      await t.pumpAndSettle();
+      final menu = [textosFocados()];
+      for (var i = 0; i < 2; i++) {
+        await teclaDpad(t, LogicalKeyboardKey.arrowDown);
+        menu.add(textosFocados());
+      }
+      expect(menu, ['Verificar selecionadas', 'Verificar todas', 'Remover do gestor']);
+      // Voltar fecha o menu e o foco volta à linha
+      await t.binding.handlePopRoute();
+      await t.pumpAndSettle();
+      expect(textosFocados(), contains('002MEIA'));
     });
   });
 }

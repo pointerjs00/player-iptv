@@ -121,9 +121,10 @@ void main() {
     await t.pumpWidget(appTeste(gestor()));
     await t.pump();
     await abrir(t, 'Verificar');
-    for (final c in ['Todas · 5', 'Funcionam · 2', 'Inconclusivas · 1', 'Não funcionam · 1', 'Por verificar · 1']) {
-      expect(find.widgetWithText(ChoiceChip, c), findsOneWidget, reason: c);
+    for (final c in ['Funcionam · 2', 'Inconclusivas · 1', 'Não funcionam · 1', 'Por verificar · 1']) {
+      expect(find.widgetWithText(FilterChip, c), findsOneWidget, reason: c);
     }
+    expect(find.textContaining('Todas · '), findsNothing, reason: 'nenhum estado ligado = todas');
     expect(find.textContaining('003MEIA'), findsOneWidget);
     // Tab até ao filtro "Não funcionam" e OK
     for (var i = 0; i < 60 && !textosFocados().startsWith('Não funcionam · '); i++) {
@@ -133,7 +134,16 @@ void main() {
     expect(find.textContaining('004MORTA'), findsOneWidget);
     expect(find.textContaining('003MEIA'), findsNothing);
     expect(find.textContaining('001BOA'), findsNothing);
-    // BAIXO chega à linha que ficou (os filtros e "Selecionar:" estão por cima)
+    // com o comando liga-se outro estado: as duas juntas
+    await teclaDpad(t, LogicalKeyboardKey.arrowRight);
+    expect(textosFocados(), startsWith('Por verificar · '));
+    await teclaDpad(t, LogicalKeyboardKey.select);
+    expect(find.textContaining('004MORTA'), findsOneWidget);
+    expect(find.textContaining('005NOVA'), findsOneWidget);
+    expect(find.textContaining('001BOA'), findsNothing);
+    await teclaDpad(t, LogicalKeyboardKey.select);
+    expect(find.textContaining('005NOVA'), findsNothing);
+    // BAIXO chega à linha que ficou (os estados e a ☐ do cabeçalho estão por cima)
     for (var i = 0; i < 4 && !textosFocados().contains('004MORTA'); i++) {
       await teclaDpad(t, LogicalKeyboardKey.arrowDown);
     }
@@ -154,23 +164,29 @@ void main() {
     expect(textosFocados(), startsWith('2 | Verificar'));
     await teclaDpad(t, LogicalKeyboardKey.select);
     await t.pumpAndSettle();
-    // no passo 2: BAIXO desce pelos filtros, "Selecionar:" e as linhas
+    // no passo 2: BAIXO desce da linha de cima pela ☐ do cabeçalho e pelas linhas
     final descer = <String>[textosFocados()];
+    final nos = <FocusNode?>[FocusManager.instance.primaryFocus];
     for (var i = 0; i < 40 && !descer.any((d) => d.contains('005NOVA')); i++) {
       await teclaDpad(t, LogicalKeyboardKey.arrowDown);
       descer.add(textosFocados());
-      expect(descer.last, isNot(descer[descer.length - 2]), reason: 'BAIXO preso: $descer');
+      nos.add(FocusManager.instance.primaryFocus);
+      expect(nos.last, isNot(nos[nos.length - 2]), reason: 'BAIXO preso: $descer');
     }
     final caminho = descer.join(' / ');
-    for (final v in ['Todas as visíveis', '001BOA', '005NOVA']) {
+    for (final v in ['001BOA', '005NOVA']) {
       expect(caminho, contains(v), reason: 'BAIXO: $caminho');
     }
+    expect(nos.map((n) => n?.debugLabel), contains('Selecionar as visíveis'), reason: 'BAIXO: $caminho');
     // e CIMA sobe tudo: as linhas, a faixa, "Voltar" e a barra das secções
+    // (a pesquisa e a ☐ do cabeçalho não têm texto: compara-se o nó com o foco)
     final subir = <String>[descer.last];
+    final nosCima = <FocusNode?>[FocusManager.instance.primaryFocus];
     for (var i = 0; i < 40 && subir.last != 'Gestor'; i++) {
       await teclaDpad(t, LogicalKeyboardKey.arrowUp);
       subir.add(textosFocados());
-      expect(subir.last, isNot(subir[subir.length - 2]), reason: 'CIMA preso: $subir');
+      nosCima.add(FocusManager.instance.primaryFocus);
+      expect(nosCima.last, isNot(nosCima[nosCima.length - 2]), reason: 'CIMA preso: $subir');
     }
     expect(subir.last, 'Gestor', reason: 'CIMA: $subir');
     expect(subir, contains('1 · Importar | 2 · Verificar | 3 · Enviar ou exportar'), reason: 'CIMA: $subir');
@@ -277,11 +293,11 @@ void main() {
     await t.pump();
     expect(find.textContaining('001BOA'), findsNothing);
     expect(textosFocados(), contains('002OUTRA'), reason: 'o foco não se perde');
-    // e sem nenhuma linha no filtro, o foco fica no filtro
+    // e sem nenhuma linha com esse estado, o foco vai a Ações
     await t.runAsync(() => area.registarVerificacao(area.listas[1].id, _u('nao_funciona')));
     await t.pump();
     await t.pump();
-    expect(textosFocados(), startsWith('Funcionam · 0'));
+    expect(textosFocados(), startsWith('Ações (0)'));
   });
 
   testWidgets('tirar linhas (a focada, por filtro, Remover e Limpar) não dá exceções nem asserções',
@@ -306,19 +322,25 @@ void main() {
     await t.pump();
     expect(t.takeException(), isNull);
     expect(textosFocados(), contains('002OUTRA'), reason: 'o foco passa à linha seguinte');
-    // filtros que escondem e mostram linhas
-    for (final c in ['Não funcionam · 1', 'Por verificar · 1', 'Todas · 4']) {
-      await t.tap(find.widgetWithText(ChoiceChip, c));
+    // estados que escondem e mostram linhas (ligar e desligar)
+    for (final c in ['Não funcionam · 1', 'Por verificar · 1', 'Não funcionam · 1', 'Por verificar · 1']) {
+      await t.ensureVisible(find.widgetWithText(FilterChip, c));
+      await t.pump();
+      await t.tap(find.widgetWithText(FilterChip, c));
       await t.pump();
       await t.pump();
       expect(t.takeException(), isNull, reason: c);
     }
     // Remover do gestor (as que funcionam) e Limpar
-    await t.tap(find.widgetWithText(ChoiceChip, 'Funcionam · 1'));
+    await t.ensureVisible(find.widgetWithText(FilterChip, 'Funcionam · 1'));
     await t.pump();
-    await t.tap(find.widgetWithText(ActionChip, 'Todas as visíveis'));
+    await t.tap(find.widgetWithText(FilterChip, 'Funcionam · 1'));
     await t.pump();
-    await t.tap(find.widgetWithText(OutlinedButton, 'Remover do gestor'));
+    await t.tap(find.byKey(const ValueKey('caixaCabecalho')));
+    await t.pump();
+    await t.tap(find.byKey(const ValueKey('botaoAcoes')));
+    await t.pumpAndSettle();
+    await t.tap(find.text('Remover do gestor'));
     await t.pumpAndSettle();
     await t.runAsync(() async {
       await t.tap(find.widgetWithText(FilledButton, 'Remover'));

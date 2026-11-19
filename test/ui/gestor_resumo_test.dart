@@ -14,13 +14,17 @@ import 'package:player_iptv/tarefas/servico_tarefas.dart';
 import 'package:player_iptv/ui/campo_tv.dart';
 import 'package:player_iptv/ui/design/barra_teclas.dart';
 import 'package:player_iptv/ui/design/componentes.dart';
+import 'package:player_iptv/ui/design/escala_interface.dart';
 import 'package:player_iptv/ui/design/tokens.dart';
+import 'package:player_iptv/ui/gestor/indicador_atividade.dart';
 import 'package:player_iptv/ui/gestor/passo_enviar.dart';
 import 'package:player_iptv/ui/gestor/passo_verificar.dart';
 import 'package:player_iptv/ui/gestor/tela_gestor.dart';
 import 'package:player_iptv/ui/gestor/tela_verificacao.dart';
 import 'package:player_iptv/ui/inicio/tela_inicio.dart';
 import 'package:player_iptv/ui/principal/tela_principal.dart';
+import 'package:player_iptv/ui/realce_foco.dart';
+import 'package:player_iptv/ui/tema.dart';
 import 'package:player_iptv/verificar/estado.dart';
 import 'package:player_iptv/verificar/servico.dart';
 import 'package:player_iptv/verificar/verificador.dart';
@@ -277,9 +281,9 @@ void main() {
     expect(corFaixa(t, 2), Tokens.acento);
     expect(corFaixa(t, 1), Tokens.superficie2);
     expect(corFaixa(t, 3), Tokens.superficie2);
-    // a faixa fica no topo, acima do passo
+    // a faixa fica no topo, acima do passo (e da sua linha de cima, com Ações)
     expect(t.getRect(find.text('2 · Verificar')).bottom,
-        lessThan(t.getRect(find.byKey(const ValueKey('barraAcoes'))).top));
+        lessThan(t.getRect(find.byKey(const ValueKey('botaoAcoes'))).top));
     // CIMA a partir do passo chega à faixa (no passo aberto)
     expect(naPesquisa(), isTrue, reason: 'o passo abre no 1.º controlo (a pesquisa)');
     await teclaDpad(t, LogicalKeyboardKey.arrowUp);
@@ -300,7 +304,7 @@ void main() {
     expect(naPesquisa(), isTrue);
   });
 
-  testWidgets('Voltar no passo 2 → resumo (foco no cartão 2); "Ver verificação" → progresso; '
+  testWidgets('Voltar no passo 2 → resumo (foco no cartão 2); o indicador do topo → progresso; '
       'Voltar no progresso → passo 2, com o foco onde estava', (t) async {
     ecraTvTeste(t);
     await t.runAsync(() => area.adicionar([Importada(contaDeLinha('http://presa.com/l.m3u')!)]));
@@ -321,14 +325,14 @@ void main() {
     await t.pumpAndSettle();
     s.verificar(area.listas.first);
     await t.pump();
-    await irPara(t, 'Ver verificação');
+    await irPara(t, 'A verificar 0/1');
     await teclaDpad(t, LogicalKeyboardKey.select);
     await t.pumpAndSettle();
     expect(find.byType(TelaVerificacao).hitTestable(), findsOneWidget);
     await t.binding.handlePopRoute();
     await t.pumpAndSettle();
     expect(find.byType(PassoVerificar).hitTestable(), findsOneWidget, reason: 'Voltar no progresso vai ao passo 2');
-    expect(textosFocados(), startsWith('Ver verificação'), reason: 'o foco não se perde');
+    expect(textosFocados(), startsWith('A verificar 0/1'), reason: 'o foco não se perde');
     // e daí ao resumo, com a barra da verificação (sem estimativa: nenhuma acabou)
     await t.binding.handlePopRoute();
     await t.pumpAndSettle();
@@ -371,6 +375,120 @@ void main() {
     }
     expect([for (final l in bib.listas) hostDe(l.conta.endereco)], ['a.com', 'b.com', 'c.com']);
     expect(tarefas.recentes.first.resultado, '3 listas enviadas para o Player · 3 novas');
+  });
+
+  /// O indicador de atividade do topo (com o texto `texto`).
+  Finder indicador(String texto) =>
+      find.descendant(of: find.byType(IndicadorAtividade), matching: find.text(texto));
+  bool indicadorEBotao() =>
+      find.descendant(of: find.byType(IndicadorAtividade), matching: find.byType(TextButton)).evaluate().isNotEmpty;
+
+  testWidgets('no passo 2 o indicador é o da verificação: «nada a decorrer» (sem parar o foco); a correr '
+      '«A verificar 2/5» e OK abre o progresso; fora do passo 2 continua a abrir o painel', (t) async {
+    ecraTvTeste(t, altura: 900);
+    await t.runAsync(() => area.adicionar([
+          for (final h in ['ok1', 'ok2', 'presa1', 'presa2', 'presa3']) Importada(contaDeLinha('http://$h.com/l.m3u')!),
+        ]));
+    final roteiro = _Roteiro();
+    final s = ServicoVerificacao(bib,
+        colecao: area, verificador: roteiro, workers: 4, ritmo: RitmoHost(intervalo: Duration.zero));
+    await t.pumpWidget(casca(s));
+    await t.pump();
+    expect(indicador('Nada a decorrer'), findsOneWidget, reason: 'no resumo, o de sempre');
+    await t.tap(em(cartao('Verificar'), 'Verificar'));
+    await t.pumpAndSettle();
+    expect(indicador('nada a decorrer'), findsOneWidget);
+    expect(indicadorEBotao(), isFalse, reason: 'sem verificação não abre nada (nem pára o foco)');
+    expect(find.textContaining('Ver verificação'), findsNothing);
+    // no topo, à direita do título
+    expect(t.getRect(indicador('nada a decorrer')).left, greaterThan(t.getRect(find.text('Verificar listas')).left));
+    expect(t.getRect(indicador('nada a decorrer')).bottom, lessThan(t.getRect(find.text('2 · Verificar')).top));
+    s.verificarVarias(area.listas);
+    for (var i = 0; i < 100 && s.feitas < 2; i++) {
+      await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+      await t.pump();
+    }
+    await t.pump();
+    expect(indicador('A verificar 2/5'), findsOneWidget);
+    expect(indicadorEBotao(), isTrue);
+    await irPara(t, 'A verificar 2/5');
+    await teclaDpad(t, LogicalKeyboardKey.select);
+    await t.pumpAndSettle();
+    expect(find.byType(TelaVerificacao).hitTestable(), findsOneWidget, reason: 'OK abre o progresso');
+    expect(find.text('Atividade'), findsNothing, reason: 'e não o painel');
+    // no resumo, o mesmo indicador abre o painel de atividade
+    await t.binding.handlePopRoute();
+    await t.pumpAndSettle();
+    await t.binding.handlePopRoute();
+    await t.pumpAndSettle();
+    expect(find.text('Gestor de listas').hitTestable(), findsOneWidget);
+    await t.tap(find.descendant(of: find.byType(IndicadorAtividade), matching: find.byType(TextButton)));
+    await t.pumpAndSettle();
+    expect(find.text('Atividade'), findsOneWidget);
+    s.parar();
+    roteiro.soltar();
+  });
+
+  testWidgets('no passo 2, depois de uma ronda acabar: «nada a decorrer» e OK abre o progresso', (t) async {
+    ecraTvTeste(t, altura: 900);
+    await t.runAsync(() => area.adicionar([Importada(contaDeLinha('http://ok.com/l.m3u')!)]));
+    final s = ServicoVerificacao(bib, colecao: area, verificador: _Roteiro(), ritmo: RitmoHost(intervalo: Duration.zero));
+    await t.pumpWidget(gestor(s));
+    await t.pump();
+    await t.tap(em(cartao('Verificar'), 'Verificar'));
+    await t.pumpAndSettle();
+    s.verificar(area.listas.first);
+    for (var i = 0; i < 100 && (s.ocupado || s.fimRonda == null); i++) {
+      await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+      await t.pump();
+    }
+    await t.pump();
+    expect(s.fimRonda, isNotNull);
+    expect(indicador('nada a decorrer'), findsOneWidget);
+    expect(indicadorEBotao(), isTrue, reason: 'houve uma verificação nesta sessão');
+    await t.tap(indicador('nada a decorrer'));
+    await t.pumpAndSettle();
+    expect(find.byType(TelaVerificacao).hitTestable(), findsOneWidget);
+  });
+
+  testWidgets('na TV (960×540, a 80 %) o passo 2 mostra pelo menos 12 linhas, sem barra em baixo', (t) async {
+    ecraTvTeste(t);
+    await t.runAsync(() => area.adicionar([
+          for (var i = 0; i < 30; i++) Importada(contaDeLinha('http://h$i.com/l.m3u')!, i.isEven ? _u('funciona') : null),
+        ]));
+    await t.pumpWidget(MaterialApp(
+        theme: temaApp(),
+        builder: (_, c) => TemaConformeRealce(child: EscalaInterface(escala: escalaCompacto, child: c!)),
+        home: TelaPrincipal(
+            inicial: Seccao.gestor,
+            verTv: TelaInicio(biblioteca: bib, area: area),
+            gestor: telaGestor(),
+            definicoes: const SizedBox())));
+    await t.pump();
+    await t.tap(em(cartao('Verificar'), 'Verificar'));
+    await t.pumpAndSettle();
+    expect(t.takeException(), isNull);
+    final passo = find.byType(PassoVerificar);
+    final janela = t.getRect(find.descendant(of: passo, matching: find.byType(Scrollable)).first);
+    final linhas = find.descendant(of: passo, matching: find.byType(CheckboxListTile));
+    final alturas = <double>{};
+    var inteiras = 0;
+    for (var i = 0; i < linhas.evaluate().length; i++) {
+      final r = t.getRect(linhas.at(i));
+      alturas.add((r.height * 10).roundToDouble() / 10);
+      if (r.top >= janela.top && r.bottom <= janela.bottom && r.bottom <= 540) inteiras++;
+    }
+    expect(inteiras, greaterThanOrEqualTo(12), reason: 'linhas inteiras à vista em $janela');
+    expect(alturas, hasLength(1), reason: 'altura fixa: $alturas');
+    // a 80 %: 32 lógicos são 25,6 no ecrã
+    expect(alturas.single, lessThanOrEqualTo(32 * escalaCompacto));
+    expect(find.byKey(const ValueKey('barraAcoes')), findsNothing);
+    // Ações no topo, à direita, na linha da pesquisa
+    final acoes = t.getRect(find.byKey(const ValueKey('botaoAcoes')));
+    expect(acoes.bottom, lessThan(t.getRect(linhas.first).top));
+    expect(acoes.right, lessThanOrEqualTo(960));
+    expect(acoes.center.dy, moreOrLessEquals(t.getCenter(find.descendant(of: passo, matching: find.byType(TextField))).dy,
+        epsilon: 1));
   });
 
   testWidgets('a barra de teclas: no resumo "OK abrir o passo"; num passo "Voltar resumo do Gestor"', (t) async {

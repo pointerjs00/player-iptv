@@ -75,7 +75,7 @@ void main() {
     t.view.physicalSize = const Size(1200, 2400);
     t.view.devicePixelRatio = 1;
     addTearDown(t.view.reset);
-    // o progresso abre do passo 2 ("Ver verificação") ou da casca ("Ver resultados"): aqui pela casca
+    // o progresso abre do passo 2 (o indicador do topo) ou da casca ("Ver resultados"): aqui pela casca
     final pedido = ValueNotifier<EcraGestor?>(null);
     addTearDown(pedido.dispose);
     await t.pumpWidget(_app(Scaffold(
@@ -179,12 +179,15 @@ void main() {
     await t.tap(find.text('Verificar mais (fila)'));
     await t.pumpAndSettle();
     expect(find.byType(PassoVerificar).hitTestable(), findsOneWidget);
-    final chip = find.widgetWithText(ChoiceChip, 'Por verificar · 1');
-    expect(t.widget<ChoiceChip>(chip).selected, isTrue);
+    final chip = find.widgetWithText(FilterChip, 'Por verificar · 1');
+    expect(t.widget<FilterChip>(chip).selected, isTrue);
+    for (final c in ['Funcionam · 1', 'Inconclusivas · 0', 'Não funcionam · 0']) {
+      expect(t.widget<FilterChip>(find.widgetWithText(FilterChip, c)).selected, isFalse, reason: c);
+    }
     expect(find.textContaining('NOVA'), findsWidgets);
     expect(find.textContaining('BOA'), findsNothing);
-    expect(find.text('Verificar selecionadas'), findsOneWidget);
-    expect(FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<ChoiceChip>()?.label,
+    expect(find.text('Ações (0)'), findsOneWidget);
+    expect(FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<FilterChip>()?.label,
         isA<Text>().having((t) => t.data, 'texto', 'Por verificar · 1'),
         reason: 'o foco vai ao filtro escolhido');
   });
@@ -255,7 +258,7 @@ void main() {
       expect(area.listas.every((l) => s.aVerificar(l.id)), isTrue);
       await t.tap(find.widgetWithText(TextButton, 'Voltar'));
       await t.pumpAndSettle();
-      expect(find.text('Nenhuma selecionada'), findsOneWidget);
+      expect(find.text('Ações (0)'), findsOneWidget);
     });
   });
 }

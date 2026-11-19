@@ -12,6 +12,8 @@ import 'package:player_iptv/modelo/conta.dart';
 import 'package:player_iptv/tarefas/servico_tarefas.dart';
 import 'package:player_iptv/ui/conteudo/tela_conteudo.dart';
 import 'package:player_iptv/ui/design/design.dart';
+import 'package:player_iptv/ui/gestor/passo_enviar.dart';
+import 'package:player_iptv/ui/gestor/passo_verificar.dart';
 import 'package:player_iptv/ui/gestor/tela_gestor.dart';
 import 'package:player_iptv/ui/inicio/tela_inicio.dart';
 import 'package:player_iptv/ui/player/player_canais.dart';
@@ -110,9 +112,14 @@ void main() {
         body: TelaGestor(
             biblioteca: bib, area: area, servico: ServicoVerificacao(bib, colecao: area), tarefas: ServicoTarefas()))));
     await t.pump();
-    final construidas = find.byType(CheckboxListTile, skipOffstage: false).evaluate().length;
-    expect(construidas, greaterThan(0));
-    expect(construidas, lessThan(60), reason: '$construidas linhas construídas');
+    // em cada passo (o 2 e o 3 ficam construídos, escondidos atrás do resumo), só as que cabem em 1600
+    for (final passo in [find.byType(PassoVerificar, skipOffstage: false), find.byType(PassoEnviar, skipOffstage: false)]) {
+      final linhas = find.descendant(
+          of: passo, matching: find.byType(CheckboxListTile, skipOffstage: false), skipOffstage: false);
+      final construidas = linhas.evaluate().length;
+      expect(construidas, greaterThan(0));
+      expect(construidas, lessThan(60), reason: '$construidas linhas construídas');
+    }
   });
 
   group('Conteúdo', () {
