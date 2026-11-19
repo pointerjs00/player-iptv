@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:player_iptv/dados/biblioteca.dart';
 import 'package:player_iptv/importar/importar.dart';
@@ -191,32 +192,72 @@ void main() {
     expect(daBib(ls[1])!.ultima?.estado, 'funciona');
   });
 
-  test('estimativaRestante: null antes da 1.ª; 2 feitas de 10 s e 3 por fazer dão 30 s', () async {
-    final ls = await juntar(5);
+  test('estimativaRestante é o ritmo real da ronda: 2 de 4 feitas aos 10 s, a 2 de cada vez, faltam 10 s',
+      () async {
+    final ls = await juntar(4);
     var agora = DateTime(2026, 11, 19, 10);
     final f = _Falso();
-    final s = servico(f, workers: 5, agora: () => agora);
+    final s = servico(f, workers: 2, agora: () => agora);
     expect(s.estimativaRestante, isNull);
     final todas = s.verificarVarias(ls);
     await _dar();
-    expect(s.estimativaRestante, isNull);
+    expect(f.comecadas, hasLength(2));
+    expect(s.estimativaRestante, isNull, reason: 'nenhuma terminou');
     agora = agora.add(const Duration(seconds: 10));
     f.soltar(ls[0].conta.endereco);
     f.soltar(ls[1].conta.endereco);
     await _dar();
-    expect((s.feitas, s.total), (2, 5));
-    expect(s.estimativaRestante, const Duration(seconds: 30));
-    // cancelar tira uma das por fazer
-    s.cancelar(ls[4].id);
-    expect(s.estimativaRestante, const Duration(seconds: 20));
-    for (final l in ls) {
-      f.soltar(l.conta.endereco);
-    }
+    expect((s.feitas, s.total), (2, 4));
+    expect(f.comecadas, hasLength(4));
+    // 10 s ÷ 2 terminadas × 2 por fazer
+    expect(s.estimativaRestante, const Duration(seconds: 10));
+    s.cancelar(ls[3].id); // cancelar tira uma das por fazer
+    expect(s.estimativaRestante, const Duration(seconds: 5));
+    f.soltar(ls[2].conta.endereco);
     await todas.timeout(const Duration(seconds: 5));
     expect(s.estimativaRestante, isNull, reason: 'acabou: começa do zero na próxima');
   });
 
-  test('estimativaRestante não conta o tempo das 2.as voltas', () async {
+  test('gravar não se cancela: cancelar durante a gravação da 1.ª volta é ignorado', () async {
+    final ls = await juntar(1);
+    final g = _Gravacao(bib);
+    final s = ServicoVerificacao(bib,
+        colecao: g,
+        verificador: _Funcao((c, v, can) async => const ResultadoVerificacao(EstadoV.inconclusivo, 'sem canais')),
+        ritmo: RitmoHost(intervalo: Duration.zero));
+    g.prender = true;
+    final fim = s.verificar(ls[0]);
+    await _dar();
+    expect(g.aGravar, 1);
+    s.cancelar(ls[0].id);
+    expect((s.aVerificar(ls[0].id), s.total), (true, 1), reason: 'já está a gravar');
+    g.prender = false;
+    g.soltar();
+    await fim.timeout(const Duration(seconds: 5));
+    expect(daBib(ls[0])!.ultima?.estado, 'inconclusivo');
+  });
+
+  test('gravar não se cancela: cancelar durante a gravação da 2.ª volta é ignorado', () async {
+    final ls = await juntar(1);
+    final g = _Gravacao(bib);
+    final s = ServicoVerificacao(bib,
+        colecao: g,
+        verificador: _Funcao((c, volta, can) async => volta == 1
+            ? const ResultadoVerificacao(EstadoV.inconclusivo, 'tempo esgotado')
+            : const ResultadoVerificacao(EstadoV.funciona, 'abriu na 2.ª volta')),
+        ritmo: RitmoHost(intervalo: Duration.zero));
+    g.prenderA = 2; // só a gravação da 2.ª volta fica presa
+    final fim = s.verificar(ls[0]);
+    await _dar();
+    expect(g.aGravar, 2);
+    s.cancelar(ls[0].id);
+    expect((s.aVerificar(ls[0].id), s.total), (true, 1), reason: 'já está a gravar');
+    g.soltar();
+    await fim.timeout(const Duration(seconds: 5));
+    expect(daBib(ls[0])!.ultima?.estado, 'funciona');
+  });
+
+  test('estimativaRestante só conta as 1.as voltas como terminadas', () async {
     final ls = await juntar(2);
     var agora = DateTime(2026, 11, 19, 10);
     late ServicoVerificacao s;
@@ -235,7 +276,8 @@ void main() {
     });
     s = servico(f, workers: 1, agora: () => agora);
     await s.verificarVarias(ls).timeout(const Duration(seconds: 5));
-    expect(vista, const Duration(seconds: 10), reason: 'média das 1.as voltas (10 s) × 1 por fazer');
+    // 20 s das 1.as voltas + 5 min do reteste = 320 s, ÷ 2 terminadas (o reteste não conta) × 1
+    expect(vista, const Duration(seconds: 160));
   });
 
   test('dois serviços com o mesmo RitmoHost: cancelar num não liberta a vez que o outro tem', () async {
@@ -263,6 +305,36 @@ void main() {
     expect(daBib(x)!.ultima, isNull);
     expect(daBib(y)!.ultima?.estado, 'funciona');
   });
+}
+
+/// Coleção que grava na biblioteca, mas pode prender a gravação até `soltar`.
+class _Gravacao implements ColecaoListas {
+  _Gravacao(this.bib);
+  final Biblioteca bib;
+  bool prender = false;
+  int? prenderA; // prende só a n.ª gravação
+  int aGravar = 0;
+  final _porta = Completer<void>();
+
+  void soltar() {
+    if (!_porta.isCompleted) _porta.complete();
+  }
+
+  @override
+  Future<void> registarVerificacao(String id, UltimaVerificacao v) async {
+    aGravar++;
+    if (prender || prenderA == aGravar) await _porta.future;
+    await bib.registarVerificacao(id, v);
+  }
+
+  @override
+  List<Lista> get listas => bib.listas;
+  @override
+  Lista? porId(String id) => bib.porId(id);
+  @override
+  void addListener(VoidCallback l) => bib.addListener(l);
+  @override
+  void removeListener(VoidCallback l) => bib.removeListener(l);
 }
 
 typedef _Comportamento = Future<ResultadoVerificacao> Function(Conta conta, int volta, Cancelamento? can);

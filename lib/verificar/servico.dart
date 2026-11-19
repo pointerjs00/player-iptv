@@ -58,24 +58,27 @@ class ServicoVerificacao extends ChangeNotifier {
   Cancelamento _cancelamento = Cancelamento();
   int feitas = 0, total = 0;
 
-  /// A soma e o número das 1.as voltas terminadas nesta ronda (para a estimativa).
-  Duration _somaTerminadas = Duration.zero;
+  /// Quando começou esta ronda e quantas 1.as voltas já terminaram nela (para a estimativa).
+  DateTime? _inicioRonda;
   int _nTerminadas = 0;
 
   bool aVerificar(String id) => passos.containsKey(id);
   bool get ocupado => passos.isNotEmpty;
 
-  /// O tempo que falta: a média das 1.as voltas terminadas nesta ronda × as que faltam
-  /// acabar (`null` antes da primeira). As 2.as voltas não entram na média.
+  /// O tempo que falta, ao ritmo real da ronda: (tempo desde que a ronda começou ÷ 1.as
+  /// voltas terminadas nela) × as que faltam acabar (`null` antes da primeira). Assim conta o
+  /// paralelismo dos `workers`; as 2.as voltas não contam como terminadas.
   Duration? get estimativaRestante {
-    if (_nTerminadas == 0) return null;
+    final inicio = _inicioRonda;
+    if (inicio == null || _nTerminadas == 0) return null;
     final porFazer = total - feitas;
-    return _somaTerminadas ~/ _nTerminadas * (porFazer < 0 ? 0 : porFazer);
+    return _agora().difference(inicio) ~/ _nTerminadas * (porFazer < 0 ? 0 : porFazer);
   }
 
   Future<void> verificar(Lista l) {
     if (passos.containsKey(l.id)) return Future.value();
     final t = _Tarefa(l);
+    if (passos.isEmpty) _inicioRonda = _agora();
     passos[l.id] = 'na fila';
     total++;
     _fila.add(t);
@@ -108,7 +111,8 @@ class ServicoVerificacao extends ChangeNotifier {
 
   /// Cancela só esta lista: sai da fila (ou da espera da 2.ª volta) ou, se está a correr, os
   /// pedidos dela param, o MAC e o servidor ficam logo livres para as outras e o resultado
-  /// não é gravado (fica o que tinha). Sai de `total`; as outras continuam.
+  /// não é gravado (fica o que tinha). Sai de `total`; as outras continuam. Uma que já está a
+  /// gravar o resultado já não se cancela (acaba normalmente).
   void cancelar(String id) {
     _Tarefa? t;
     final i = _fila.indexWhere((t) => t.id == id);
@@ -120,7 +124,7 @@ class ServicoVerificacao extends ChangeNotifier {
         _reteste.remove(t);
       } else {
         t = _emCurso.where((t) => t.id == id && !t.cancelada).firstOrNull;
-        if (t == null) return;
+        if (t == null || t.aGravar) return;
         t.cancelada = true;
         t.cancelamento?.cancelar();
         _largar(t);
@@ -137,7 +141,7 @@ class ServicoVerificacao extends ChangeNotifier {
 
   void _recomecarContas() {
     feitas = total = 0;
-    _somaTerminadas = Duration.zero;
+    _inicioRonda = null;
     _nTerminadas = 0;
   }
 
@@ -158,6 +162,7 @@ class ServicoVerificacao extends ChangeNotifier {
     t
       ..segunda = segunda
       ..largada = false
+      ..aGravar = false
       ..cancelamento = _cancelamento.filho();
     _emCurso.add(t);
   }
@@ -251,28 +256,24 @@ class ServicoVerificacao extends ChangeNotifier {
           timeout: timeout, cancelamento: t.cancelamento, aviso: _aviso(t)),
       zoneValues: {ritmoZona: ritmo});
 
-  void _terminou(DateTime inicio) {
-    _somaTerminadas += _agora().difference(inicio);
-    _nTerminadas++;
-  }
-
   /// O resultado da 1.ª volta (já guardado), ou null se foi parada ou cancelada.
   Future<ResultadoVerificacao?> _primeiraVolta(_Tarefa t) async {
     final can = t.cancelamento!;
     passos[t.id] = 'a começar';
     notifyListeners();
-    final inicio = _agora();
     try {
       final r = await _umaVolta(t, _timeout);
       if (can.cancelado) return null; // parada ou cancelada: fica o resultado anterior
-      _terminou(inicio);
+      _nTerminadas++;
+      t.aGravar = true; // daqui em diante já não se cancela
       await colecao.registarVerificacao(t.id, paraUltima(r));
       return r;
     } on Cancelado {
       return null; // parada: fica o resultado anterior
     } catch (e) {
       if (can.cancelado) return null;
-      _terminou(inicio);
+      _nTerminadas++;
+      t.aGravar = true;
       await colecao.registarVerificacao(
           t.id, paraUltima(ResultadoVerificacao(EstadoV.inconclusivo, 'falha: ${descreverErro(e)}')));
       return null;
@@ -290,6 +291,7 @@ class ServicoVerificacao extends ChangeNotifier {
       if (can.cancelado) return; // parada ou cancelada: fica o resultado da 1.ª volta
       // o reteste pode não chegar à data
       final r = r2.validade.isEmpty && r1.validade.isNotEmpty ? r2.com(validade: r1.validade) : r2;
+      t.aGravar = true; // daqui em diante já não se cancela
       await colecao.registarVerificacao(t.id, paraUltima(r));
     } on Cancelado {
       // parada: fica o resultado da 1.ª volta
@@ -309,6 +311,9 @@ class _Tarefa {
   Cancelamento? cancelamento;
   ResultadoVerificacao? r1;
   bool segunda = false, largada = true, cancelada = false;
+
+  /// A gravar o resultado da volta: `cancelar` ignora-a (o resultado seria gravado na mesma).
+  bool aGravar = false;
 
   String get id => lista.id;
 
