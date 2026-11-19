@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:player_iptv/dados/area_gestor.dart';
 import 'package:player_iptv/dados/biblioteca.dart';
+import 'package:player_iptv/dados/guardar_ficheiro.dart';
 import 'package:player_iptv/importar/importar.dart';
 import 'package:player_iptv/modelo/conta.dart';
 import 'package:player_iptv/protocolos/protocolo.dart';
@@ -77,8 +78,6 @@ Future<void> _esperar(WidgetTester t, bool Function() feito) async {
   await t.pumpAndSettle();
 }
 
-bool _ha(String texto) => find.textContaining(texto).evaluate().isNotEmpty;
-
 UltimaVerificacao _u(String estado, {String motivo = ''}) =>
     UltimaVerificacao(estado: estado, data: DateTime(2026, 3, 1), validade: '2027-10-16', motivo: motivo);
 
@@ -138,8 +137,28 @@ void main() {
     } on FileSystemException {/* Windows */}
   });
 
+  late ServicoTarefas tarefas;
+  final guardados = <String>[];
+  var falharGuardar = false;
+  setUp(() {
+    tarefas = ServicoTarefas();
+    guardados.clear();
+    falharGuardar = false;
+  });
+  tearDown(() => tarefas.dispose());
+
+  Future<ResultadoGuardar> guardarFalso(String nome, Uint8List bytes, String mime) async {
+    guardados.add(nome);
+    if (falharGuardar) throw const ErroGuardar('Sem espaço');
+    return ResultadoGuardar('Pasta/$nome');
+  }
+
   Widget telaGestor([ServicoVerificacao? s]) => TelaGestor(
-      biblioteca: bib, area: area, servico: s ?? ServicoVerificacao(bib, colecao: area), tarefas: ServicoTarefas());
+      biblioteca: bib,
+      area: area,
+      servico: s ?? ServicoVerificacao(bib, colecao: area),
+      tarefas: tarefas,
+      guardar: guardarFalso);
 
   Widget inicio({ServicoVerificacao? s, Seccao inicial = Seccao.verTv}) => TelaPrincipal(
         verTv: TelaInicio(biblioteca: bib, area: area),
@@ -304,7 +323,7 @@ void main() {
       expect(find.text('Verificar as 2 novas'), findsOneWidget);
     });
 
-    Future<void> preparar(WidgetTester t) async {
+    Future<void> preparar(WidgetTester t, {Widget? ecra}) async {
       await t.runAsync(() async {
         await bib.adicionar([
           Importada(contaDeLinha('http://velha.com/c/ 00:1A:79:00:00:01')!, _u('nao_funciona')),
@@ -316,50 +335,85 @@ void main() {
         ]);
       });
       _tamanho(t, 1200, 1800);
-      await t.pumpWidget(_app(gestor()));
+      await t.pumpWidget(_app(ecra ?? gestor()));
       await t.pump();
     }
 
     List<String> player() => [for (final l in bib.listas) hostDe(l.conta.endereco)];
 
-    testWidgets('Enviar para o Player pede sempre confirmação: cancelar não muda nada', (t) async {
+    Future<void> abrirEnvio(WidgetTester t) async {
+      await t.tap(find.textContaining('Enviar para o Player'));
+      await t.pumpAndSettle();
+    }
+
+    /// A tarefa mais recente a ter acabado (espera pelo disco).
+    Future<Tarefa> acabada(WidgetTester t) async {
+      await _esperar(t, () => tarefas.recentes.isNotEmpty);
+      return tarefas.recentes.first;
+    }
+
+    testWidgets('Enviar para o Player mostra as escolhas explicadas; cancelar não muda nada', (t) async {
       await preparar(t);
+      await t.runAsync(() => area.adicionar([Importada(contaDeLinha('http://talvez.com/l.m3u')!, _u('inconclusivo'))]));
+      await t.pump();
       await t.tap(find.widgetWithText(ActionChip, 'Todas'));
       await t.pump();
-      await t.tap(find.textContaining('Enviar para o Player'));
-      await t.pumpAndSettle();
-      expect(find.text('Adicionar às listas do Player'), findsOneWidget);
-      expect(find.text('Esmagar as listas do Player'), findsOneWidget);
+      await abrirEnvio(t);
+      for (final texto in [
+        'Enviar 2 listas para o Player',
+        '1 funciona e 1 é inconclusiva',
+        'Adicionar às listas do Player',
+        'As que já lá estão ficam. Repetidas não se duplicam.',
+        'Substituir as listas do Player',
+        'O Player fica só com estas. Os favoritos das que saem perdem-se.',
+        'Que listas enviar?',
+        'Só as que funcionam (1)',
+        'Funcionam + inconclusivas (2)',
+        'Cancelar',
+        'Enviar 1 lista',
+      ]) {
+        expect(find.text(texto), findsOneWidget, reason: texto);
+      }
+      // o botão acompanha a escolha das listas
+      await t.tap(find.text('Funcionam + inconclusivas (2)'));
+      await t.pump();
+      expect(find.text('Enviar 2 listas'), findsOneWidget);
       await t.tap(find.text('Cancelar'));
       await t.pumpAndSettle();
-      expect(player(), ['velha.com', 'boa.com']);
-      // cancelar na segunda pergunta também não muda nada
-      await t.tap(find.textContaining('Enviar para o Player'));
-      await t.pumpAndSettle();
-      await t.tap(find.text('Esmagar as listas do Player'));
-      await t.pumpAndSettle();
-      expect(find.text('Manter as que funcionam'), findsOneWidget);
-      expect(find.text('Manter as que funcionam e as inconclusivas'), findsOneWidget);
-      expect(find.text('Esmagar todas'), findsOneWidget);
-      await t.tap(find.text('Cancelar'));
-      await t.pumpAndSettle();
-      expect(player(), ['velha.com', 'boa.com']);
       expect(find.byType(AlertDialog), findsNothing);
+      expect(player(), ['velha.com', 'boa.com']);
+      expect(tarefas.emCurso, isEmpty);
+      expect(tarefas.recentes, isEmpty);
     });
 
-    testWidgets('Enviar: adicionar às listas do Player e o resumo', (t) async {
+    testWidgets('Enviar: adicionar corre como tarefa e o resultado diz quantas foram', (t) async {
       await preparar(t);
       await t.tap(find.widgetWithText(ActionChip, 'Funcionam'));
       await t.pump();
-      await t.tap(find.textContaining('Enviar para o Player'));
-      await t.pumpAndSettle();
-      await t.tap(find.text('Adicionar às listas do Player'));
-      await _esperar(t, () => _ha('Enviadas para o Player'));
+      await abrirEnvio(t);
+      await t.tap(find.text('Enviar 1 lista'));
+      final tarefa = await acabada(t);
       expect(player(), ['velha.com', 'boa.com', 'nova.com']);
-      expect(find.text('Enviadas para o Player: 1 adicionada, 0 atualizadas, 0 removidas.'), findsOneWidget);
+      expect(tarefa.estado, EstadoTarefa.terminada);
+      expect(tarefa.resultado, '1 lista enviada para o Player');
+      expect(tarefa.rotuloAcao, 'Ir para Ver TV');
+      expect(tarefa.aoAcao, isNotNull);
     });
 
-    testWidgets('Enviar com o comando: esmagar mantendo as que funcionam (setas, OK e Voltar)', (t) async {
+    testWidgets('Enviar: substituir deixa o Player só com as enviadas', (t) async {
+      await preparar(t);
+      await t.tap(find.widgetWithText(ActionChip, 'Todas'));
+      await t.pump();
+      await abrirEnvio(t);
+      await t.tap(find.text('Substituir as listas do Player'));
+      await t.pump();
+      await t.tap(find.text('Enviar 1 lista'));
+      final tarefa = await acabada(t);
+      expect(tarefa.estado, EstadoTarefa.terminada);
+      expect(player(), ['nova.com'], reason: 'só a que funciona vai; as outras saem do Player');
+    });
+
+    testWidgets('Enviar com o comando: setas, OK e Voltar', (t) async {
       await preparar(t);
       await _irPara(t, 'Todas', exato: true);
       await _tecla(t, LogicalKeyboardKey.select);
@@ -368,70 +422,77 @@ void main() {
       await t.pumpAndSettle();
       expect(_focado(), contains('Adicionar às listas do Player'));
       await _tecla(t, LogicalKeyboardKey.arrowDown);
-      expect(_focado(), contains('Esmagar as listas do Player'));
-      await _tecla(t, LogicalKeyboardKey.select);
-      await t.pumpAndSettle();
-      // a 2.ª pergunta: Voltar cancela tudo
-      expect(_focado(), contains('Manter as que funcionam'));
+      expect(_focado(), contains('Substituir as listas do Player'));
       await t.binding.handlePopRoute();
       await t.pumpAndSettle();
       expect(find.byType(AlertDialog), findsNothing);
       expect(player(), ['velha.com', 'boa.com']);
       expect(_focado(), startsWith('Enviar para o Player'), reason: 'o foco volta ao botão');
-      // de novo, até ao fim
       await _tecla(t, LogicalKeyboardKey.select);
       await t.pumpAndSettle();
-      await _tecla(t, LogicalKeyboardKey.arrowDown);
+      await _tecla(t, LogicalKeyboardKey.select); // "Adicionar"
+      await _irPara(t, 'Enviar 1 lista');
       await _tecla(t, LogicalKeyboardKey.select);
-      await t.pumpAndSettle();
-      await _tecla(t, LogicalKeyboardKey.select); // "Manter as que funcionam"
-      await _esperar(t, () => _ha('Enviadas para o Player'));
-      expect(player(), ['boa.com', 'nova.com', 'outra.com']);
-      expect(find.text('Enviadas para o Player: 2 adicionadas, 0 atualizadas, 1 removida.'), findsOneWidget);
-      expect(_focado(), startsWith('Enviar para o Player'));
+      await acabada(t);
+      expect(player(), ['velha.com', 'boa.com', 'nova.com']);
     });
 
-    testWidgets('Enviar com o comando: esmagar todas', (t) async {
-      await preparar(t);
-      await _irPara(t, 'Todas', exato: true);
-      await _tecla(t, LogicalKeyboardKey.select);
-      await _irPara(t, 'Enviar para o Player');
-      await _tecla(t, LogicalKeyboardKey.select);
+    testWidgets('"Ir para Ver TV" troca de secção', (t) async {
+      await preparar(t, ecra: inicio(inicial: Seccao.gestor));
+      await t.tap(find.widgetWithText(ActionChip, 'Funcionam'));
+      await t.pump();
+      await abrirEnvio(t);
+      await t.tap(find.text('Enviar 1 lista'));
+      final tarefa = await acabada(t);
+      expect(find.text('Selecionadas: 1'), findsOneWidget, reason: 'ainda no Gestor');
+      tarefa.aoAcao!();
       await t.pumpAndSettle();
-      await _tecla(t, LogicalKeyboardKey.arrowDown);
-      await _tecla(t, LogicalKeyboardKey.select);
-      await t.pumpAndSettle();
-      await _tecla(t, LogicalKeyboardKey.arrowDown);
-      await _tecla(t, LogicalKeyboardKey.arrowDown);
-      expect(_focado(), contains('Esmagar todas'));
-      await _tecla(t, LogicalKeyboardKey.select);
-      await _esperar(t, () => _ha('Enviadas para o Player'));
-      expect(player(), ['nova.com', 'outra.com']);
+      expect(find.text('Selecionadas: 1').hitTestable(), findsNothing, reason: 'o Gestor já não está à vista');
     });
 
-    testWidgets('na TV (960×540) as três opções da 2.ª pergunta cabem sem deslizar', (t) async {
+    testWidgets('na TV (960×540) o diálogo de enviar cabe sem deslizar', (t) async {
       await preparar(t);
       await t.tap(find.widgetWithText(ActionChip, 'Todas'));
       await t.pump();
-      await t.tap(find.textContaining('Enviar para o Player'));
-      await t.pumpAndSettle();
-      await t.tap(find.text('Esmagar as listas do Player'));
-      await t.pumpAndSettle();
+      await abrirEnvio(t);
       _tamanho(t, 960, 540);
       await t.pumpAndSettle();
       final ecra = Offset.zero & const Size(960, 540);
-      for (final o in ['Manter as que funcionam', 'Manter as que funcionam e as inconclusivas', 'Esmagar todas',
-        'O Player fica só com as enviadas.', 'Cancelar']) {
+      for (final o in ['Adicionar às listas do Player', 'Substituir as listas do Player',
+        'Funcionam + inconclusivas (1)', 'Cancelar', 'Enviar 1 lista']) {
         final r = t.getRect(find.text(o));
         expect(ecra.contains(r.topLeft) && ecra.contains(r.bottomRight), isTrue, reason: '$o em $r');
-        // e não fica escondido por baixo do fim da área que desliza
         expect(find.text(o).hitTestable(), findsOneWidget, reason: o);
       }
-      final pos = Scrollable.of(t.element(find.text('Esmagar todas'))).position;
+      final pos = Scrollable.of(t.element(find.text('Substituir as listas do Player'))).position;
       expect(pos.maxScrollExtent, 0, reason: 'sem nada escondido');
     });
 
-    testWidgets('Exportar pergunta o formato (Accounts.json ou .ini); sem seleção avisa', (t) async {
+    testWidgets('Enviar a meio de uma verificação envia só as que já têm resultado e diz quantas faltam',
+        (t) async {
+      await t.runAsync(() => area.adicionar([
+            Importada(contaDeLinha('http://a.com/c/ 00:1A:79:00:00:01')!, _u('funciona')),
+            Importada(contaDeLinha('http://b.com/c/ 00:1A:79:00:00:02')!, _u('funciona')),
+            Importada(contaDeLinha('http://c.com/c/ 00:1A:79:00:00:03')!, _u('funciona')),
+          ]));
+      final s = ServicoVerificacao(bib, colecao: area, verificador: _Preso());
+      _tamanho(t, 1200, 1800);
+      await t.pumpWidget(_app(gestor(s)));
+      await t.pump();
+      s.verificar(area.listas.last);
+      await t.pump();
+      await t.tap(find.widgetWithText(ActionChip, 'Todas'));
+      await t.pump();
+      await abrirEnvio(t);
+      expect(find.text('Enviar 2 listas para o Player'), findsOneWidget, reason: 'a que está a ser verificada não conta');
+      await t.tap(find.text('Enviar 2 listas'));
+      final tarefa = await acabada(t);
+      expect(tarefa.resultado, '2 listas enviadas para o Player · 1 ainda a verificar');
+      expect(player(), ['a.com', 'b.com']);
+      s.parar();
+    });
+
+    testWidgets('Exportar mostra as duas opções e o aviso; sem seleção avisa', (t) async {
       await preparar(t);
       await t.tap(find.widgetWithText(OutlinedButton, 'Exportar'));
       await t.pump();
@@ -441,11 +502,57 @@ void main() {
       await t.pump();
       await t.tap(find.widgetWithText(OutlinedButton, 'Exportar'));
       await t.pumpAndSettle();
-      expect(find.text('Accounts.json (sfvip player)'), findsOneWidget);
-      expect(find.text('Ficheiros .ini (Stalker Portal Player)'), findsOneWidget);
+      for (final texto in [
+        'Exportar 2 listas',
+        'Accounts.json',
+        'Para o sfvip player',
+        'Ficheiros .ini num zip',
+        'Para o Stalker Portal Player',
+        'O ficheiro leva os dados de acesso das listas. Guarda-o num sítio seguro.',
+        'Cancelar',
+        'Escolher onde guardar',
+      ]) {
+        expect(find.text(texto), findsOneWidget, reason: texto);
+      }
       await t.tap(find.text('Cancelar'));
       await t.pumpAndSettle();
       expect(find.byType(AlertDialog), findsNothing);
+      expect(guardados, isEmpty);
+      expect(tarefas.recentes, isEmpty);
+    });
+
+    testWidgets('Exportar Accounts.json corre como tarefa e guarda o ficheiro', (t) async {
+      await preparar(t);
+      await t.tap(find.widgetWithText(ActionChip, 'Todas'));
+      await t.pump();
+      await t.tap(find.widgetWithText(OutlinedButton, 'Exportar'));
+      await t.pumpAndSettle();
+      await t.tap(find.text('Escolher onde guardar'));
+      final tarefa = await acabada(t);
+      expect(guardados, ['Accounts.json']);
+      expect(tarefa.estado, EstadoTarefa.terminada);
+      expect(tarefa.resultado, '2 listas exportadas. Guardado em Pasta/Accounts.json');
+    });
+
+    testWidgets('Exportar com erro de escrita falha e "repetir" volta a guardar com a mesma escolha', (t) async {
+      await preparar(t);
+      falharGuardar = true;
+      await t.tap(find.widgetWithText(ActionChip, 'Todas'));
+      await t.pump();
+      await t.tap(find.widgetWithText(OutlinedButton, 'Exportar'));
+      await t.pumpAndSettle();
+      await t.tap(find.text('Ficheiros .ini num zip'));
+      await t.pump();
+      await t.tap(find.text('Escolher onde guardar'));
+      final tarefa = await acabada(t);
+      expect(tarefa.estado, EstadoTarefa.falhou);
+      expect(tarefa.resultado, 'Sem espaço');
+      expect(tarefa.repetir, isNotNull);
+      falharGuardar = false;
+      await t.runAsync(() => tarefa.repetir!());
+      await _esperar(t, () => tarefas.recentes.length == 2);
+      expect(guardados, ['listas_stalker.zip', 'listas_stalker.zip']);
+      expect(tarefas.recentes.first.estado, EstadoTarefa.terminada);
     });
 
     testWidgets('Remover e Limpar o Gestor pedem confirmação', (t) async {

@@ -66,45 +66,218 @@ Future<T?> escolherOpcao<T>(BuildContext context,
   );
 }
 
-/// "Enviar para o Player": pergunta sempre como (adicionar ou esmagar) e, ao esmagar, o que fica.
-/// null = cancelado (em qualquer das perguntas).
-Future<ModoEnvio?> perguntarModoEnvio(BuildContext context, int n) async {
-  final passo = await escolherOpcao<String>(
-    context,
-    icone: Icons.send_rounded,
-    titulo: 'Enviar para o Player',
-    texto: n == 1 ? 'A lista selecionada vai para o Player.' : 'As $n listas selecionadas vão para o Player.',
-    opcoes: const [
-      OpcaoDialogo('adicionar', Icons.playlist_add_rounded, 'Adicionar às listas do Player',
-          'Junta sem duplicar e atualiza o resultado das que já lá estão.'),
-      OpcaoDialogo('esmagar', Icons.delete_sweep_outlined, 'Esmagar as listas do Player',
-          'Substitui as listas do Player pelas enviadas.'),
-    ],
-  );
-  if (passo == null) return null;
-  if (passo == 'adicionar') return ModoEnvio.adicionar;
-  if (!context.mounted) return null;
-  return escolherOpcao<ModoEnvio>(
-    context,
-    icone: Icons.delete_sweep_outlined,
-    titulo: 'O que fica no Player?',
-    texto: 'Além das enviadas. As que saem perdem os favoritos e a cache de canais.',
-    opcoes: const [
-      OpcaoDialogo(ModoEnvio.esmagarMantendoFuncionais, Icons.check_circle_outline, 'Manter as que funcionam',
-          'Do Player ficam só as que funcionam.'),
-      OpcaoDialogo(ModoEnvio.esmagarMantendoFuncionaisEInc, Icons.help_outline,
-          'Manter as que funcionam e as inconclusivas', 'Do Player ficam as que funcionam e as INC.'),
-      OpcaoDialogo(ModoEnvio.esmagarTodas, Icons.delete_forever_outlined, 'Esmagar todas',
-          'O Player fica só com as enviadas.'),
-    ],
+/// Um cartão de escolha única (como um botão de rádio): o título, a descrição e a marca de escolhido.
+class _CartaoEscolha extends StatelessWidget {
+  const _CartaoEscolha({
+    required this.titulo,
+    required this.escolhido,
+    required this.aoEscolher,
+    this.descricao,
+    this.icone,
+    this.autofocus = false,
+    this.compacto = false,
+  });
+  final String titulo;
+  final String? descricao;
+  final bool escolhido;
+  final VoidCallback aoEscolher;
+  final IconData? icone;
+  final bool autofocus;
+  final bool compacto;
+
+  @override
+  Widget build(BuildContext context) {
+    final tv = ecraTv(context);
+    return Semantics(
+      inMutuallyExclusiveGroup: true,
+      checked: escolhido,
+      child: CartaoModerno(
+        autofocus: autofocus,
+        escalaFoco: 1.02,
+        raio: Tokens.raioBotao,
+        padding: EdgeInsets.symmetric(horizontal: Tokens.e16, vertical: compacto ? 8 : Tokens.e12),
+        onTap: aoEscolher,
+        child: Row(children: [
+          Icon(escolhido ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+              color: escolhido ? Tokens.acento2 : Tokens.texto2, size: tv ? 26 : 22),
+          if (icone != null) ...[
+            const SizedBox(width: Tokens.e12),
+            Icon(icone, color: Tokens.acento2, size: tv ? 28 : 24),
+          ],
+          const SizedBox(width: Tokens.e12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(titulo, style: TextStyle(fontSize: tv && !compacto ? 17 : 15, fontWeight: FontWeight.w600)),
+              if (descricao != null) ...[
+                const SizedBox(height: 2),
+                Text(descricao!, style: TextStyle(color: Tokens.texto2, fontSize: tv && !compacto ? 14 : 12.5)),
+              ],
+            ]),
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
+String _listas(int n) => n == 1 ? '1 lista' : '$n listas';
+
+/// "Enviar n listas para o Player": como (adicionar ou substituir) e que listas (só as que funcionam,
+/// ou também as inconclusivas). `funcionam` e `inconclusivas` contam só as selecionadas com resultado.
+/// Devolve o modo e se as inconclusivas vão também; null = cancelado. "Substituir" deixa o Player só
+/// com as enviadas ([ModoEnvio.esmagarTodas]).
+Future<(ModoEnvio, bool)?> perguntarEnvio(BuildContext context, {required int funcionam, required int inconclusivas}) {
+  return showDialog<(ModoEnvio, bool)>(
+    context: context,
+    builder: (_) => _DialogoEnvio(funcionam: funcionam, inconclusivas: inconclusivas),
   );
 }
 
-/// O texto do fim de um envio para o Player.
-String textoResumoEnvio(ResumoEnvio r) {
-  String n(int v, String um, String varios) => '$v ${v == 1 ? um : varios}';
-  return 'Enviadas para o Player: ${n(r.adicionadas, 'adicionada', 'adicionadas')}, '
-      '${n(r.atualizadas, 'atualizada', 'atualizadas')}, ${n(r.removidas, 'removida', 'removidas')}.';
+class _DialogoEnvio extends StatefulWidget {
+  const _DialogoEnvio({required this.funcionam, required this.inconclusivas});
+  final int funcionam, inconclusivas;
+
+  @override
+  State<_DialogoEnvio> createState() => _DialogoEnvioState();
+}
+
+class _DialogoEnvioState extends State<_DialogoEnvio> {
+  var _substituir = false;
+  late var _incluirInc = widget.funcionam == 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final f = widget.funcionam, i = widget.inconclusivas;
+    final baixo = MediaQuery.sizeOf(context).height < 640;
+    final n = _incluirInc ? f + i : f;
+    final espaco = SizedBox(height: baixo ? Tokens.e8 : Tokens.e12);
+    return AlertDialog(
+      insetPadding: EdgeInsets.symmetric(horizontal: 40, vertical: baixo ? 8 : 24),
+      title: Text('Enviar ${_listas(f + i)} para o Player'),
+      content: SizedBox(
+        width: ecraTv(context) ? 560 : 480,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: Tokens.e8, vertical: Tokens.e4),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Text(
+                '${f == 1 ? '1 funciona' : '$f funcionam'} e '
+                '${i == 1 ? '1 é inconclusiva' : '$i são inconclusivas'}',
+                style: const TextStyle(color: Tokens.texto2)),
+            SizedBox(height: baixo ? Tokens.e8 : Tokens.e16),
+            _CartaoEscolha(
+              autofocus: true,
+              compacto: baixo,
+              icone: Icons.playlist_add_rounded,
+              titulo: 'Adicionar às listas do Player',
+              descricao: 'As que já lá estão ficam. Repetidas não se duplicam.',
+              escolhido: !_substituir,
+              aoEscolher: () => setState(() => _substituir = false),
+            ),
+            espaco,
+            _CartaoEscolha(
+              compacto: baixo,
+              icone: Icons.delete_sweep_outlined,
+              titulo: 'Substituir as listas do Player',
+              descricao: 'O Player fica só com estas. Os favoritos das que saem perdem-se.',
+              escolhido: _substituir,
+              aoEscolher: () => setState(() => _substituir = true),
+            ),
+            SizedBox(height: baixo ? Tokens.e12 : Tokens.e16),
+            const Text('Que listas enviar?', style: TextStyle(fontWeight: FontWeight.w600)),
+            espaco,
+            _CartaoEscolha(
+              compacto: true,
+              titulo: 'Só as que funcionam ($f)',
+              escolhido: !_incluirInc,
+              aoEscolher: () => setState(() => _incluirInc = false),
+            ),
+            const SizedBox(height: Tokens.e8),
+            _CartaoEscolha(
+              compacto: true,
+              titulo: 'Funcionam + inconclusivas (${f + i})',
+              escolhido: _incluirInc,
+              aoEscolher: () => setState(() => _incluirInc = true),
+            ),
+          ]),
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+        FilledButton(
+          onPressed: n == 0
+              ? null
+              : () => Navigator.pop(
+                  context, (_substituir ? ModoEnvio.esmagarTodas : ModoEnvio.adicionar, _incluirInc)),
+          child: Text('Enviar ${_listas(n)}'),
+        ),
+      ],
+    );
+  }
+}
+
+/// "Exportar n listas": o formato. Devolve `'json'` (Accounts.json) ou `'ini'` (zip de .ini); null = cancelado.
+Future<String?> perguntarExportacao(BuildContext context, int n) {
+  return showDialog<String>(context: context, builder: (_) => _DialogoExportacao(n: n));
+}
+
+class _DialogoExportacao extends StatefulWidget {
+  const _DialogoExportacao({required this.n});
+  final int n;
+
+  @override
+  State<_DialogoExportacao> createState() => _DialogoExportacaoState();
+}
+
+class _DialogoExportacaoState extends State<_DialogoExportacao> {
+  var _formato = 'json';
+
+  @override
+  Widget build(BuildContext context) {
+    final baixo = MediaQuery.sizeOf(context).height < 640;
+    return AlertDialog(
+      insetPadding: EdgeInsets.symmetric(horizontal: 40, vertical: baixo ? 8 : 24),
+      title: Text('Exportar ${_listas(widget.n)}'),
+      content: SizedBox(
+        width: ecraTv(context) ? 560 : 480,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: Tokens.e8, vertical: Tokens.e4),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            _CartaoEscolha(
+              autofocus: true,
+              compacto: baixo,
+              icone: Icons.description_outlined,
+              titulo: 'Accounts.json',
+              descricao: 'Para o sfvip player',
+              escolhido: _formato == 'json',
+              aoEscolher: () => setState(() => _formato = 'json'),
+            ),
+            SizedBox(height: baixo ? Tokens.e8 : Tokens.e12),
+            _CartaoEscolha(
+              compacto: baixo,
+              icone: Icons.folder_zip_outlined,
+              titulo: 'Ficheiros .ini num zip',
+              descricao: 'Para o Stalker Portal Player',
+              escolhido: _formato == 'ini',
+              aoEscolher: () => setState(() => _formato = 'ini'),
+            ),
+            SizedBox(height: baixo ? Tokens.e8 : Tokens.e16),
+            const Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Icon(Icons.warning_amber_rounded, color: Tokens.aviso, size: 20),
+              SizedBox(width: Tokens.e8),
+              Expanded(
+                child: Text('O ficheiro leva os dados de acesso das listas. Guarda-o num sítio seguro.',
+                    style: TextStyle(color: Tokens.texto2)),
+              ),
+            ]),
+          ]),
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+        FilledButton(onPressed: () => Navigator.pop(context, _formato), child: const Text('Escolher onde guardar')),
+      ],
+    );
+  }
 }
 
 /// Uma confirmação simples (o foco começa em "Cancelar"). true = confirmado.

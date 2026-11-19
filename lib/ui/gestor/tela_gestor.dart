@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:material_ui/material_ui.dart';
 
 import '../../dados/area_gestor.dart';
@@ -37,7 +39,7 @@ enum EcraGestor { principal, importar, verificacao }
 /// Voltar num sub-ecrã regressa ao principal, com o foco no passo de onde se veio.
 class TelaGestor extends StatefulWidget {
   const TelaGestor({super.key, required this.biblioteca, required this.area, required this.servico,
-      required this.tarefas, this.baseStb = stbBase});
+      required this.tarefas, this.baseStb = stbBase, this.guardar = guardarFicheiro});
 
   /// As listas do Player (recebem os envios) e os canais de teste.
   final Biblioteca biblioteca;
@@ -51,6 +53,9 @@ class TelaGestor extends StatefulWidget {
 
   /// O blog a pesquisar (injetável para os testes).
   final String baseStb;
+
+  /// Guarda o ficheiro exportado (injetável para os testes; por omissão, a janela do sistema).
+  final Future<ResultadoGuardar> Function(String nome, Uint8List bytes, String mimeType) guardar;
 
   @override
   State<TelaGestor> createState() => _TelaGestorState();
@@ -279,55 +284,98 @@ class _TelaGestorState extends State<TelaGestor> {
     if (tinhaFoco) _focoVerificarMais.requestFocus();
   }
 
-  /// "Enviar para o Player": pede sempre confirmação (como, e o que fica ao esmagar).
+  /// "Enviar para o Player": só vão as selecionadas que já têm resultado (as que ainda estão a ser
+  /// verificadas ficam de fora e a mensagem final diz quantas são). A escolha faz-se antes; depois o
+  /// envio corre como tarefa, sem esperar por ninguém.
   Future<void> _enviar() async {
-    final listas = _selecionadas;
-    if (listas.isEmpty) return _aviso('Selecione as listas a enviar.');
-    final modo = await perguntarModoEnvio(context, listas.length);
-    if (modo == null || !mounted) return;
-    try {
-      _aviso(textoResumoEnvio(await _b.receber(listas, modo)));
-    } catch (e) {
-      _aviso('Não foi possível enviar (${descreverErro(e)}). As listas do Player não mudaram.');
+    if (_selecionadas.isEmpty) return _aviso('Selecione as listas a enviar.');
+    ({List<Lista> prontas, int aDecorrer}) ponto() {
+      final sel = _selecionadas;
+      return (prontas: [for (final l in sel) if (!_s.aVerificar(l.id)) l], aDecorrer: sel.where((l) => _s.aVerificar(l.id)).length);
     }
+
+    int conta(List<Lista> ls, EstadoLista e) => ls.where((l) => estadoDe(l) == e).length;
+    final antes = ponto();
+    final f = conta(antes.prontas, EstadoLista.funciona), i = conta(antes.prontas, EstadoLista.inconclusiva);
+    if (f + i == 0) {
+      return _aviso(antes.aDecorrer > 0
+          ? 'As listas selecionadas ainda estão a ser verificadas.'
+          : 'Nenhuma das listas selecionadas funciona nem é inconclusiva. Verifique-as primeiro.');
+    }
+    final escolha = await perguntarEnvio(context, funcionam: f, inconclusivas: i);
+    if (escolha == null || !mounted) return;
+    final (modo, incluirInc) = escolha;
+    // o estado pode ter mudado com o diálogo aberto: conta-se de novo
+    final agora = ponto();
+    final enviar = [
+      for (final l in agora.prontas)
+        if (estadoDe(l) == EstadoLista.funciona || (incluirInc && estadoDe(l) == EstadoLista.inconclusiva)) l,
+    ];
+    if (enviar.isEmpty) return _aviso('Já não há listas com resultado para enviar.');
+    // o que a tarefa precisa, antes de qualquer await
+    final b = _b;
+    final ctx = context;
+    final aDecorrer = agora.aDecorrer;
+    final n = enviar.length;
+    widget.tarefas.iniciar(
+      'Enviar ${n == 1 ? '1 lista' : '$n listas'} para o Player',
+      (p) async {
+        try {
+          await b.receber(enviar, modo);
+        } catch (e) {
+          throw _ErroTarefa('Não foi possível enviar (${descreverErro(e)}). As listas do Player não mudaram.');
+        }
+        return '${n == 1 ? '1 lista enviada' : '$n listas enviadas'} para o Player'
+            '${aDecorrer > 0 ? ' · $aDecorrer ainda a verificar' : ''}';
+      },
+      rotuloAcao: 'Ir para Ver TV',
+      aoAcao: () {
+        if (ctx.mounted) TelaPrincipal.irPara(ctx, Seccao.verTv);
+      },
+    );
   }
 
-  /// "Exportar": pergunta o formato e guarda o ficheiro.
+  /// "Exportar": a escolha do formato faz-se antes; depois o ficheiro é guardado numa tarefa (a
+  /// janela "Guardar como" do sistema é a única espera). Se falhar, "Tentar de novo" repete tudo
+  /// com a mesma escolha e volta a perguntar onde guardar.
   Future<void> _exportar() async {
     final listas = _selecionadas;
     if (listas.isEmpty) return _aviso('Selecione as listas a exportar.');
     final n = listas.length;
-    final formato = await escolherOpcao<String>(
-      context,
-      icone: Icons.download,
-      titulo: 'Exportar',
-      texto: n == 1 ? 'A lista selecionada vai para um ficheiro.' : 'As $n listas selecionadas vão para um ficheiro.',
-      opcoes: const [
-        OpcaoDialogo('json', Icons.description_outlined, 'Accounts.json (sfvip player)',
-            'Um só ficheiro com as listas.'),
-        OpcaoDialogo('ini', Icons.folder_zip_outlined, 'Ficheiros .ini (Stalker Portal Player)',
-            'Um .ini por lista Stalker (portal + MAC), num zip.'),
-      ],
-    );
+    final formato = await perguntarExportacao(context, n);
     if (formato == null || !mounted) return;
-    try {
-      if (formato == 'json') {
-        final r = await guardarFicheiro('Accounts.json', exportarAccountsJson(listas), 'application/json');
-        if (!r.cancelado) _aviso('$n listas exportadas. Guardado em ${r.destino}');
-        return;
-      }
+    final String nome, mime, texto;
+    final Uint8List bytes;
+    if (formato == 'json') {
+      (nome, mime, texto) = ('Accounts.json', 'application/json', '$n listas exportadas.');
+      bytes = exportarAccountsJson(listas);
+    } else {
       final (zip, ignoradas) = exportarZipIni(listas);
       if (zip == null) return _aviso('Nenhuma das listas selecionadas é Stalker (portal + MAC).');
-      final r = await guardarFicheiro('listas_stalker.zip', zip, 'application/zip');
-      if (!r.cancelado) {
-        _aviso('Listas exportadas. Guardado em ${r.destino}.'
-            '${ignoradas > 0 ? ' $ignoradas sem MAC (Xtream/M3U) ficaram de fora.' : ''}');
-      }
-    } on ErroGuardar catch (e) {
-      _aviso(e.mensagem);
-    } catch (e) {
-      _aviso(mensagemErroGuardar(e));
+      (nome, mime, bytes) = ('listas_stalker.zip', 'application/zip', zip);
+      texto = 'Listas exportadas.${ignoradas > 0 ? ' $ignoradas sem MAC (Xtream/M3U) ficaram de fora.' : ''}';
     }
+    final guardar = widget.guardar;
+    final tarefas = widget.tarefas;
+    void lancar() {
+      tarefas.iniciar(
+        'Exportar ${n == 1 ? '1 lista' : '$n listas'}',
+        (p) async {
+          final ResultadoGuardar r;
+          try {
+            r = await guardar(nome, bytes, mime);
+          } on ErroGuardar catch (e) {
+            throw _ErroTarefa(e.mensagem);
+          } catch (e) {
+            throw _ErroTarefa(mensagemErroGuardar(e));
+          }
+          return r.cancelado ? 'Exportação cancelada.' : '$texto Guardado em ${r.destino}';
+        },
+        repetir: () async => lancar(),
+      );
+    }
+
+    lancar();
   }
 
   /// "Remover": pede confirmação; as que estão a ser verificadas têm a verificação cancelada (só
@@ -737,4 +785,12 @@ class _TelaGestorState extends State<TelaGestor> {
       ),
     );
   }
+}
+
+/// Uma falha de uma tarefa, com a mensagem já pronta para mostrar.
+class _ErroTarefa implements Exception {
+  const _ErroTarefa(this.mensagem);
+  final String mensagem;
+  @override
+  String toString() => mensagem;
 }
