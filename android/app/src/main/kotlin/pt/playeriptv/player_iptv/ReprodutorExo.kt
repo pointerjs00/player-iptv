@@ -90,6 +90,10 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
     private var pausadoEm = 0L
 
     init {
+        // Os logs do próprio Media3 (ex.: "Playback error" com o stack trace e as causas) podem
+        // levar o URL, linhas da playlist e tokens: desligados por completo.
+        androidx.media3.common.util.Log.setLogLevel(androidx.media3.common.util.Log.LOG_LEVEL_OFF)
+        androidx.media3.common.util.Log.setLogStackTraces(false)
         canal.setMethodCallHandler(this)
         canalEventos.setStreamHandler(this)
     }
@@ -124,10 +128,15 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
                         result.error("argumentos", "Falta o endereço", null)
                         return
                     }
+                    val cabecalhos = cabecalhosDe(call.argument<Any>("cabecalhos"))
+                    if (cabecalhos == null) {
+                        result.error("argumentos", "Cabeçalhos inválidos", null) // sem URL nem valores
+                        return
+                    }
                     abrir(
                         p,
                         url,
-                        call.argument<Map<String, String>>("cabecalhos") ?: emptyMap(),
+                        cabecalhos,
                         (call.argument<Any>("inicioMs") as? Number)?.toLong(),
                         call.argument<String>("mime"),
                     )
@@ -219,7 +228,13 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
         p.addAnalyticsListener(analise)
         idAtual += 1
         player = p
-        videoDesligado = false
+        // o vídeo escondido (mostrar(false) ou ainda nunca mostrado) começa com a faixa de vídeo
+        // desligada: sem MediaCodec até ao mostrar(true)
+        videoDesligado = !visivel
+        if (videoDesligado) {
+            p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
+                .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, true).build()
+        }
         prepararSuperficie()
         superficie?.let { p.setVideoSurfaceHolder(it.holder) }
         principal.removeCallbacks(relogio)
@@ -234,6 +249,12 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
         ultimaPosicao = -1L
         tamanhoVideo = VideoSize.UNKNOWN
         pausadoPeloSistema = false
+        // zapping: o mesmo player (mesmo id) abre o canal seguinte; as faixas escolhidas no canal
+        // anterior não se aplicam a este (a legenda desligada e o vídeo escondido mantêm-se)
+        p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
+            .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+            .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+            .build()
         val agente = cabecalhos.entries.firstOrNull { it.key.equals("User-Agent", ignoreCase = true) }?.value
         val resto = cabecalhos.filterKeys { !it.equals("User-Agent", ignoreCase = true) }
         val http = DefaultHttpDataSource.Factory()
@@ -264,6 +285,18 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
         p.prepare()
         p.playWhenReady = true
         definirACarregar(true)
+    }
+
+    /** Os cabeçalhos têm de ser um mapa de texto para texto; `null` se vierem noutro formato. */
+    private fun cabecalhosDe(valor: Any?): Map<String, String>? {
+        if (valor == null) return emptyMap()
+        if (valor !is Map<*, *>) return null
+        val mapa = LinkedHashMap<String, String>()
+        for ((k, v) in valor) {
+            if (k !is String || v !is String) return null
+            mapa[k] = v
+        }
+        return mapa
     }
 
     private fun eHls(url: String, uri: Uri, mime: String?): Boolean {
