@@ -9,6 +9,7 @@ import 'design/tokens.dart';
 import '../importar/importar.dart';
 import '../rede/http.dart';
 import '../modelo/conta.dart';
+import 'design/mensagens.dart';
 
 /// Importa ficheiros (Accounts.json, .ini, .m3u, .txt, historico.json) para o Gestor.
 Future<String> importarFicheiros(AreaGestor b) async {
@@ -100,7 +101,7 @@ Future<void> mostrarAdicionar(BuildContext context, AreaGestor b) async {
     ),
   );
   if (mensagem != null && mensagem.isNotEmpty && context.mounted) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(mensagem)));
+    mostrarMensagem(context, mensagem);
   }
 }
 

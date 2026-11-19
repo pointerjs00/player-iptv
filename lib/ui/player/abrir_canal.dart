@@ -8,6 +8,7 @@ import '../../janelas/janela_player.dart';
 import '../../modelo/canal.dart';
 import '../../protocolos/protocolo.dart';
 import 'player_canais.dart';
+import '../design/mensagens.dart';
 
 /// Abre o canal: no Windows numa janela separada; no Android em ecrã inteiro. No Android
 /// devolve, ao sair do player, o índice do canal que estava a tocar (pode ter mudado).
@@ -15,8 +16,8 @@ import 'player_canais.dart';
 Future<int?> abrirCanal(BuildContext context, Lista lista, List<Canal> canais, int i,
     {ValueChanged<Canal>? aoVer}) async {
   if (Platform.isWindows) {
-    final avisos = ScaffoldMessenger.maybeOf(context);
-    void avisar(String m) => avisos?.showSnackBar(SnackBar(content: Text(m)));
+    final dizer = mensageiroDe(context);
+    void avisar(String m) => dizer(m);
     try {
       await JanelaPlayer.instancia.mostrar(lista, canais, i, aoFalhar: avisar, aoVer: aoVer);
     } on ErroLista catch (e) {

@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../design/mensagens.dart';
 import 'barra_seccoes.dart';
 
 /// As três secções fixas da app.
@@ -72,6 +73,9 @@ class _TelaPrincipalState extends State<TelaPrincipal> {
   static const _tempoSair = Duration(seconds: 2);
   Timer? _podeSair;
 
+  /// As mensagens no canto superior direito (ver [mostrarMensagem]).
+  final _mensagens = ControladorMensagens();
+
   /// Android/TV: Voltar em Ver TV não fecha logo a app. No Windows a janela fecha-se pelo
   /// botão de fechar, como sempre.
   bool get _confirmarSaida => defaultTargetPlatform == TargetPlatform.android;
@@ -86,6 +90,7 @@ class _TelaPrincipalState extends State<TelaPrincipal> {
   void dispose() {
     FocusManager.instance.removeListener(_focoMudou);
     _podeSair?.cancel();
+    _mensagens.dispose();
     for (final f in [..._focosSeccao, ..._focosBarra]) {
       f.dispose();
     }
@@ -206,9 +211,7 @@ class _TelaPrincipalState extends State<TelaPrincipal> {
       return;
     }
     _podeSair = Timer(_tempoSair, () {});
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(const SnackBar(content: Text('Carregue outra vez em Voltar para sair'), duration: _tempoSair));
+    _mensagens.mostrar('Carregue outra vez em Voltar para sair', duracao: _tempoSair);
   }
 
   @override
@@ -232,7 +235,18 @@ class _TelaPrincipalState extends State<TelaPrincipal> {
     return SeccaoAtual(
       seccao: _atual,
       irPara: (s) => _mudar(s, focar: true),
-      child: PopScope(
+      child: MensagensHost(
+        controlador: _mensagens,
+        child: Stack(children: [
+          Positioned.fill(child: _casca(context, largo, conteudo)),
+          SobreposicaoMensagens(controlador: _mensagens),
+        ]),
+      ),
+    );
+  }
+
+  Widget _casca(BuildContext context, bool largo, Widget conteudo) {
+    return PopScope(
         // Voltar: fora de Ver TV vai para Ver TV; em Ver TV (Android) pede confirmação
         canPop: _atual == Seccao.verTv && !_confirmarSaida,
         onPopInvokedWithResult: (saiu, _) {
@@ -269,7 +283,6 @@ class _TelaPrincipalState extends State<TelaPrincipal> {
                   ],
                 ),
         ),
-      ),
     );
   }
 }

@@ -15,6 +15,7 @@ import '../design/design.dart';
 import '../navegacao_blocos.dart';
 import '../realce_foco.dart';
 import 'dialogos_gestor.dart';
+import '../design/mensagens.dart';
 
 /// Separador "Gestor": a área de trabalho com as suas próprias listas ([AreaGestor]), em três
 /// passos de cima para baixo (cada um diz no cabeçalho como está):
@@ -332,7 +333,7 @@ class _TelaVerificarState extends State<TelaVerificar> {
   }
 
   void _aviso(String t) {
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(t)));
+    if (mounted) mostrarMensagem(context, t);
   }
 
   /// Os filtros dos resultados.

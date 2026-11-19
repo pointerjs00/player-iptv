@@ -16,6 +16,7 @@ import '../campo_tv.dart';
 import '../design/design.dart';
 import '../player/configuracao_mpv.dart';
 import '../player/desentrelacamento.dart' show textoDefinicaoDesentrelacamento;
+import '../design/mensagens.dart';
 
 /// Escolhe um ficheiro e devolve o seu texto (null = cancelado).
 typedef EscolherCopia = Future<String?> Function();
@@ -79,9 +80,7 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
 
   void _aviso(String texto) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(texto)));
+    mostrarMensagem(context, texto);
   }
 
   void _mudou(VoidCallback f) {

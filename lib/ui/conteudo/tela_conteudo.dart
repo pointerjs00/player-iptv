@@ -17,6 +17,7 @@ import 'opcoes_conteudo.dart';
 import '../tema.dart';
 import '../../verificar/estado.dart';
 import '../../verificar/verificador.dart';
+import '../design/mensagens.dart';
 
 const grupoFavoritos = '★ Favoritos';
 
@@ -175,8 +176,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
   void _continuarA(String id) {
     final canal = _conteudo?.canais.where((c) => c.id == id).firstOrNull;
     if (canal == null) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('O último canal visto já não está nesta lista.')));
+      mostrarMensagem(context, 'O último canal visto já não está nesta lista.');
       return;
     }
     setState(() {
@@ -202,8 +202,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
     if (o == null || !mounted) return;
     Future<void> gravar(Future<void> f) => f.catchError((Object e) {
           if (mounted) {
-            ScaffoldMessenger.of(context)
-                .showSnackBar(SnackBar(content: Text('Não foi possível guardar (${descreverErro(e)}).')));
+            mostrarMensagem(context, 'Não foi possível guardar (${descreverErro(e)}).', tipo: MensagemTipo.erro);
           }
         });
     switch (o) {
@@ -283,7 +282,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
           setState(() => _erro = texto);
         } else {
           // os canais da cache continuam à vista
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Não foi possível atualizar: $texto')));
+          mostrarMensagem(context, 'Não foi possível atualizar: $texto', tipo: MensagemTipo.erro);
         }
       }
       unawaited(_marcarSeMorta(e));
@@ -832,9 +831,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
     widget.biblioteca.alternarFavorito(widget.lista.id, c.id);
     final noGrupoFav = _grupo == grupoFavoritos && _qCanais.trim().isEmpty;
     setState(() => _versaoFavoritos++);
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(agora ? '${c.nome} está nos favoritos' : '${c.nome} saiu dos favoritos')));
+    mostrarMensagem(context, agora ? '${c.nome} está nos favoritos' : '${c.nome} saiu dos favoritos');
     if (!noGrupoFav || agora) return;
     final restantes = _canaisVisiveis();
     if (restantes.isEmpty) {

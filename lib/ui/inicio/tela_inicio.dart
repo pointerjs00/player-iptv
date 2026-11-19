@@ -14,6 +14,7 @@ import '../principal/tela_principal.dart';
 import 'acoes_lista.dart';
 import 'cartao_continuar.dart';
 import 'cartao_lista.dart';
+import '../design/mensagens.dart';
 
 /// Ver TV: as listas do Player em cartões (com o estado da última verificação, pesquisa e filtro
 /// por estado). Não gere nada: adicionar, verificar, exportar e enviar listas para o Player
@@ -76,9 +77,7 @@ class _TelaInicioState extends State<TelaInicio> {
 
   void _avisar(String texto) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(texto)));
+    mostrarMensagem(context, texto);
   }
 
   Future<void> _eliminar(Lista l) async {
