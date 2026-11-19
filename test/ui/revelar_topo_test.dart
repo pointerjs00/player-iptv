@@ -105,4 +105,50 @@ void main() {
     await t.pumpAndSettle();
     expect(t.state<ScrollableState>(find.byType(Scrollable).at(1)).position.pixels, greaterThan(0));
   });
+
+  testWidgets('lista longa virtualizada: subir a meio não vai ao topo', (t) async {
+    t.view.physicalSize = const Size(800, 600);
+    t.view.devicePixelRatio = 1;
+    addTearDown(t.view.reset);
+    await t.pumpWidget(appTeste(Scaffold(
+      body: ListView.builder(
+        itemCount: 2000,
+        itemBuilder: (_, i) => ListTile(key: Key('l$i'), title: Text('Linha $i'), onTap: () {}, autofocus: i == 0),
+      ),
+    )));
+    await t.pumpAndSettle();
+    await descer(t, 500);
+    final antes = _offset(t);
+    expect(antes, greaterThan(1000));
+    await teclaDpad(t, LogicalKeyboardKey.arrowUp);
+    await t.pumpAndSettle();
+    expect(_offset(t), greaterThan(antes - 200));
+  });
+
+  testWidgets('lista vertical encaixada: subir dentro dela não puxa a exterior ao topo', (t) async {
+    t.view.physicalSize = const Size(800, 600);
+    t.view.devicePixelRatio = 1;
+    addTearDown(t.view.reset);
+    await t.pumpWidget(appTeste(Scaffold(
+      body: ListView(children: [
+        const SizedBox(height: 300, child: Text('Título')),
+        SizedBox(
+          height: 400,
+          child: ListView(children: [
+            for (var i = 0; i < 10; i++) ListTile(title: Text('Interna $i'), onTap: () {}, autofocus: i == 0),
+          ]),
+        ),
+        for (var i = 0; i < 30; i++) ListTile(title: Text('Externa $i'), onTap: () {}),
+      ]),
+    )));
+    await t.pumpAndSettle();
+    // desce pela lista interior até ao primeiro controlo da exterior: os de cima (Interna) estão
+    // dentro de um scroll encaixado e contam; a exterior não volta ao topo (o título não tem controlos)
+    for (var i = 0; i < 14 && !textosFocados().contains('Externa 0'); i++) {
+      await teclaDpad(t, LogicalKeyboardKey.arrowDown);
+    }
+    await t.pumpAndSettle();
+    expect(textosFocados(), contains('Externa 0'));
+    expect(t.state<ScrollableState>(find.byType(Scrollable).first).position.pixels, greaterThan(0));
+  });
 }

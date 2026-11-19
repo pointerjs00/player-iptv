@@ -57,11 +57,24 @@ class RevelarTopo {
       if (n == foco || !n.canRequestFocus || n.skipTraversal || n is FocusScopeNode) continue;
       final c = n.context;
       if (c == null || !c.mounted) continue;
-      if (Scrollable.maybeOf(c, axis: Axis.vertical) != scrollable) continue;
+      if (!_dentroDe(c, scrollable.context)) continue; // inclui listas verticais encaixadas
       if (n.rect.top < topo - 1) return; // ainda há controlos por cima
     }
     pos.animateTo(pos.minScrollExtent, duration: Tokens.duracaoRapida, curve: Curves.easeOut);
   }
+}
+
+/// Se [c] é descendente de [area] (mesmo dentro de outro scroll encaixado).
+bool _dentroDe(BuildContext c, BuildContext area) {
+  var dentro = false;
+  c.visitAncestorElements((e) {
+    if (e == area) {
+      dentro = true;
+      return false;
+    }
+    return true;
+  });
+  return dentro;
 }
 
 /// Liga o [RevelarTopo] (uma vez, na janela principal).
