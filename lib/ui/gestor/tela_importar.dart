@@ -15,6 +15,7 @@ import '../design/design.dart';
 import '../design/mensagens.dart';
 import '../navegacao_blocos.dart';
 import '../verificar/dialogos_gestor.dart';
+import 'calendario_intervalo.dart';
 import 'indicador_atividade.dart';
 
 /// As origens de onde se importa.
@@ -208,24 +209,16 @@ class _TelaImportarState extends State<TelaImportar> {
     await _g.limpar();
   }
 
-  Future<void> _escolherData(bool inicio) async {
-    final hoje = _hoje();
-    final atual = inicio ? _inicio : _fim;
-    final d = await showDatePicker(
-      context: context,
-      initialDate: atual,
-      firstDate: inicio ? DateTime(2015) : _inicio,
-      lastDate: inicio ? _fim : hoje,
-      helpText: inicio ? 'Data de início' : 'Data de fim',
-    );
-    if (d == null || !mounted) return;
+  /// O calendário no próprio ecrã (o seletor do sistema não deixava o OK do comando confirmar o dia).
+  /// Ao voltar com um intervalo, guarda-o e inicia a pesquisa.
+  Future<void> _escolherDatas() async {
+    final r = await escolherIntervalo(context, inicio: _inicio, fim: _fim, hoje: _hoje());
+    if (r == null || !mounted) return;
     setState(() {
-      if (inicio) {
-        _inicio = d;
-      } else {
-        _fim = d;
-      }
+      _inicio = r.start;
+      _fim = r.end;
     });
+    _procurarStb();
   }
 
   // ---------------------------------------------------------------- construção
@@ -280,20 +273,6 @@ class _TelaImportarState extends State<TelaImportar> {
         ]);
       });
 
-  Widget _campoData(String rotulo, DateTime d, VoidCallback aoTocar) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(rotulo, style: const TextStyle(color: Tokens.texto2, fontSize: 12)),
-          const SizedBox(height: 4),
-          OutlinedButton.icon(
-            onPressed: aoTocar,
-            icon: const Icon(Icons.calendar_today, size: 16),
-            label: Text(_dd(d)),
-          ),
-        ],
-      );
-
   static Widget _titulo(String t) => Padding(
         padding: const EdgeInsets.only(bottom: Tokens.e8),
         child: Text(t, style: const TextStyle(fontWeight: FontWeight.w600)),
@@ -345,8 +324,11 @@ class _TelaImportarState extends State<TelaImportar> {
           _titulo('Listas do stbstalker'),
           _explicacao('Junta as listas publicadas no blog entre duas datas, sem duplicar.'),
           Wrap(spacing: Tokens.e8, runSpacing: Tokens.e8, crossAxisAlignment: WrapCrossAlignment.end, children: [
-            _campoData('Data de início', _inicio, () => _escolherData(true)),
-            _campoData('Data de fim', _fim, () => _escolherData(false)),
+            OutlinedButton.icon(
+              onPressed: _escolherDatas,
+              icon: const Icon(Icons.calendar_today, size: 16),
+              label: Text('Escolher datas · ${dataCurta(_inicio)} – ${dataCurta(_fim)}'),
+            ),
             // fica sempre ligado: carregar durante uma pesquisa inicia outra tarefa
             FilledButton.icon(
               onPressed: _procurarStb,

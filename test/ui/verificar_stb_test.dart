@@ -12,9 +12,6 @@ import 'package:player_iptv/verificar/servico.dart';
 
 import '../apoio/servidor_falso.dart';
 
-String _dd(DateTime d) =>
-    '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
-
 /// O stbstalker está no sub-ecrã de importar (passo 1).
 Future<void> abrirImportar(WidgetTester t) async {
   await t.tap(find.descendant(of: find.byType(CartaoModerno), matching: find.text('Importar')));
@@ -60,7 +57,7 @@ void main() {
     expect(find.text('Listas do stbstalker'), findsOneWidget);
     await t.tap(find.text('Listas do stbstalker'));
     await t.pump();
-    expect(find.text(_dd(hoje)), findsNWidgets(2));
+    expect(find.textContaining('Escolher datas · '), findsOneWidget);
     await t.runAsync(() async {
       await t.tap(find.text('Procurar e juntar'));
       await Future<void>.delayed(const Duration(milliseconds: 800));
@@ -116,7 +113,7 @@ void main() {
     expect(find.textContaining('http'), findsNothing);
   });
 
-  testWidgets('o seletor de datas aparece em português', (t) async {
+  testWidgets('o calendário do stbstalker abre no ecrã, em português', (t) async {
     t.view.physicalSize = const Size(1200, 1600);
     t.view.devicePixelRatio = 1;
     addTearDown(t.view.reset);
@@ -143,8 +140,9 @@ void main() {
     await abrirImportar(t);
     await t.tap(find.text('Listas do stbstalker'));
     await t.pump();
-    await t.tap(find.widgetWithIcon(OutlinedButton, Icons.calendar_today).first);
+    await t.tap(find.widgetWithIcon(OutlinedButton, Icons.calendar_today));
     await t.pumpAndSettle();
-    expect(find.text('Cancelar'), findsOneWidget);
+    expect(find.text('Escolhe o início e o fim'), findsOneWidget);
+    expect(find.textContaining(RegExp(r'^(janeiro|fevereiro|março|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro) \d{4}$')), findsOneWidget);
   });
 }
