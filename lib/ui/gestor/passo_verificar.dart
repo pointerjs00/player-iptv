@@ -6,6 +6,7 @@ import '../../dados/biblioteca.dart';
 import '../../modelo/canal.dart';
 import '../../verificar/servico.dart';
 import '../design/design.dart';
+import '../campo_tv.dart';
 import '../realce_foco.dart';
 
 /// O passo 2 do Gestor, "Verificar": a pesquisa, os filtros pelo estado, a seleção rápida, a tabela
@@ -75,6 +76,25 @@ class _PassoVerificarState extends State<PassoVerificar> {
 
   AreaGestor get _g => widget.area;
   ServicoVerificacao get _s => widget.servico;
+
+  @override
+  void initState() {
+    super.initState();
+    _focoVerSel.addListener(() => _seDesligou(_focoVerSel));
+    _focoRemover.addListener(() => _seDesligou(_focoRemover));
+  }
+
+  /// O botão com o foco ficou desativado (a seleção esvaziou-se): o foco passa a "Verificar
+  /// todas", que está sempre ativo (senão perdia-se e deixava de se ver).
+  void _seDesligou(FocusNode no) {
+    if (no.hasFocus || no.canRequestFocus) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final atual = FocusManager.instance.primaryFocus;
+      if (mounted && _focoVerTodas.canRequestFocus && (atual == null || atual is FocusScopeNode)) {
+        _focoVerTodas.requestFocus();
+      }
+    });
+  }
 
   @override
   void dispose() {
@@ -181,10 +201,9 @@ class _PassoVerificarState extends State<PassoVerificar> {
               child: Wrap(spacing: Tokens.e8, runSpacing: Tokens.e8, crossAxisAlignment: WrapCrossAlignment.center, children: [
                 SizedBox(
                   width: 300,
-                  child: TextField(
+                  child: CampoTv(
                     controller: _pesquisa,
                     focusNode: widget.focoInicial,
-                    textInputAction: TextInputAction.search,
                     decoration: const InputDecoration(
                       hintText: 'Pesquisar listas…',
                       prefixIcon: Icon(Icons.search),

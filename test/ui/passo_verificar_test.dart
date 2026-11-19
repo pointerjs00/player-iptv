@@ -106,6 +106,8 @@ void main() {
 
   testWidgets('pesquisa e filtro limitam as linhas; Todas as visíveis só marca essas', (t) async {
     await abrir(t);
+    await t.tap(find.byType(TextField));
+    await t.pump();
     await t.enterText(find.byType(TextField), 'delta');
     await t.pump();
     expect(linha('018DELTA 181027'), findsOneWidget);
@@ -225,6 +227,21 @@ void main() {
     await t.runAsync(() => area.remover([id]));
     await t.pump();
     expect(find.text('1 selecionada'), findsOneWidget);
+  });
+
+  testWidgets('a seleção esvazia-se com o foco em Remover do gestor: o foco passa a Verificar todas', (t) async {
+    await abrir(t);
+    await t.tap(linha('018DELTA 181027'));
+    await t.pump();
+    final remover = focoDe(t.widget(botao('Remover do gestor')))!;
+    remover.requestFocus();
+    await t.pump();
+    expect(remover.hasPrimaryFocus, isTrue);
+    await t.runAsync(() => area.remover([area.listas.first.id]));
+    await t.pump();
+    await t.pump();
+    expect(find.text('Nenhuma selecionada'), findsOneWidget);
+    expect(focoDe(t.widget(botao('Verificar todas')))!.hasPrimaryFocus, isTrue);
   });
 
   testWidgets('TESTE mostra nunca, há 2 h e ontem; MOTIVO o motivo', (t) async {
