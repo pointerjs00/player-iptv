@@ -11,6 +11,7 @@ import '../../rede/http.dart';
 import '../../tarefas/servico_tarefas.dart';
 import '../../verificar/exportar.dart';
 import '../../verificar/servico.dart';
+import '../campo_tv.dart';
 import '../design/barra_teclas.dart';
 import '../design/design.dart';
 import '../design/mensagens.dart';
@@ -247,16 +248,27 @@ class _TelaGestorState extends State<TelaGestor> {
   /// Abre o progresso da verificação (o indicador do topo no passo 2).
   void _verVerificacao() => _abrir(EcraGestor.verificacao);
 
+  /// No passo 2, a tecla Menu abre as ações de qualquer sítio (também do "Voltar", da faixa e do
+  /// indicador, como diz a barra de teclas); a escrever num campo, a tecla fica para o campo.
+  KeyEventResult _teclaMenu(KeyEvent e) {
+    if (_ecra != EcraGestor.verificar ||
+        e is! KeyDownEvent ||
+        e.logicalKey != LogicalKeyboardKey.contextMenu ||
+        focoAEscrever()) {
+      return KeyEventResult.ignored;
+    }
+    final passo = _passoVerificar.currentState;
+    if (passo == null) return KeyEventResult.ignored;
+    passo.abrirAcoes();
+    return KeyEventResult.handled;
+  }
+
   /// Voltar (do comando ou o botão): num passo regressa ao resumo; no progresso, ao passo 2.
   /// false = não tratou (no resumo, a casca vai para Ver TV).
   bool _voltar() {
     if (_ecra == EcraGestor.resumo) return false;
     // a escrever num campo (colar texto): o Voltar só fecha o teclado (é o CampoTv que o trata)
-    final contexto = FocusManager.instance.primaryFocus?.context;
-    final campo = contexto?.widget is EditableText
-        ? contexto!.widget as EditableText
-        : contexto?.findAncestorWidgetOfExactType<EditableText>();
-    if (campo != null && !campo.readOnly) return true;
+    if (focoAEscrever()) return true;
     _abrir(_ecra == EcraGestor.verificacao ? EcraGestor.verificar : EcraGestor.resumo);
     return true;
   }
@@ -432,7 +444,12 @@ class _TelaGestorState extends State<TelaGestor> {
   @override
   Widget build(BuildContext context) {
     final noPasso = _passos.contains(_ecra);
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+    return Focus(
+      canRequestFocus: false,
+      skipTraversal: true,
+      includeSemantics: false,
+      onKeyEvent: (_, e) => _teclaMenu(e),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       _barraTopo(),
       if (noPasso) _faixa(),
       Expanded(
@@ -460,7 +477,6 @@ class _TelaGestorState extends State<TelaGestor> {
               servico: _s,
               aoVerificar: _verificarSelecionadas,
               aoVerificarTodas: _verificarTodas,
-              aoVerVerificacao: _verVerificacao,
               aoRemover: _removerSelecionadas,
               focoInicial: _focoPesquisa,
             ),
@@ -497,7 +513,8 @@ class _TelaGestorState extends State<TelaGestor> {
           ],
         _ => const [('Voltar', 'resumo do Gestor'), ('← →', 'mudar de passo na faixa'), ('OK', 'escolher')],
       }),
-    ]);
+    ]),
+    );
   }
 
   Widget _barraTopo() {
@@ -596,6 +613,14 @@ class _TelaGestorState extends State<TelaGestor> {
     return KeyEventResult.handled;
   }
 
+  /// A faixa baixa (36) na TV e no computador; no telemóvel, 48 (o alvo de toque).
+  static bool _faixaCompacta(BuildContext context) =>
+      ecraTv(context) ||
+      switch (defaultTargetPlatform) {
+        TargetPlatform.windows || TargetPlatform.linux || TargetPlatform.macOS => true,
+        _ => false,
+      };
+
   Widget _itemFaixa(int i, String nome, {required bool aberto, required bool focado}) => Semantics(
         button: true,
         selected: aberto,
@@ -604,7 +629,8 @@ class _TelaGestorState extends State<TelaGestor> {
           onTap: () => _abrir(_passos[i], naFaixa: true),
           child: Container(
             key: ValueKey('faixa ${i + 1}'),
-            height: 36,
+            // compacta na TV e no Windows (a 80 %); no telemóvel, o alvo de toque de 48
+            height: _faixaCompacta(context) ? 36 : 48,
             padding: const EdgeInsets.symmetric(horizontal: 14),
             alignment: Alignment.centerLeft,
             decoration: BoxDecoration(

@@ -11,9 +11,9 @@ const tituloTarefaStb = 'Pesquisa no stbstalker';
 /// Sem nada a decorrer diz "Nada a decorrer". Com [aoAbrir] é um botão (abre o painel de
 /// atividade); sem ele só mostra o texto e o comando não pára nele.
 ///
-/// Com [soVerificacao] (no passo 2 do Gestor) só fala da verificação: "A verificar 2/5" ou
-/// "nada a decorrer"; e só é botão (o [aoAbrir] abre o progresso) se houve uma verificação nesta
-/// sessão (a decorrer, ou acabou uma ronda).
+/// Com [soVerificacao] (no passo 2 do Gestor) só fala da verificação: "A verificar 2/5" a
+/// decorrer; "nada a decorrer · ver última" depois de uma ronda (o [aoAbrir] abre o progresso);
+/// "nada a decorrer" antes de qualquer verificação (e aí não é botão).
 class IndicadorAtividade extends StatelessWidget {
   const IndicadorAtividade(
       {super.key, required this.servico, required this.tarefas, this.aoAbrir, this.foco, this.soVerificacao = false});
@@ -48,7 +48,12 @@ class IndicadorAtividade extends StatelessWidget {
               ? (servico.ocupado ? 'A verificar ${servico.feitas}/${servico.total}' : '')
               : texto(servico, tarefas);
           final ativo = t.isNotEmpty;
-          final vazio = soVerificacao ? 'nada a decorrer' : 'Nada a decorrer';
+          final houve = servico.ocupado || servico.fimRonda != null;
+          final vazio = !soVerificacao
+              ? 'Nada a decorrer'
+              : houve
+                  ? 'nada a decorrer · ver última'
+                  : 'nada a decorrer';
           final conteudo = Row(mainAxisSize: MainAxisSize.min, children: [
             // um ícone parado (uma roda a girar sempre à vista não deixava o ecrã sossegar)
             Icon(ativo ? Icons.autorenew : Icons.check_circle_outline,
@@ -70,11 +75,11 @@ class IndicadorAtividade extends StatelessWidget {
             ),
             child: conteudo,
           );
-          final houve = servico.ocupado || servico.fimRonda != null;
           final abrir = soVerificacao && !houve ? null : aoAbrir;
           return Semantics(
             liveRegion: true,
             label: ativo ? t : vazio,
+            hint: soVerificacao && abrir != null ? 'abre o progresso da verificação' : null,
             excludeSemantics: abrir == null,
             child: abrir == null
                 ? caixa

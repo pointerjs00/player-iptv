@@ -14,6 +14,7 @@ import 'package:player_iptv/tarefas/servico_tarefas.dart';
 import 'package:player_iptv/ui/campo_tv.dart';
 import 'package:player_iptv/ui/design/barra_teclas.dart';
 import 'package:player_iptv/ui/design/componentes.dart';
+import 'package:player_iptv/ui/design/ecra.dart';
 import 'package:player_iptv/ui/design/escala_interface.dart';
 import 'package:player_iptv/ui/design/tokens.dart';
 import 'package:player_iptv/ui/gestor/indicador_atividade.dart';
@@ -429,7 +430,8 @@ void main() {
     roteiro.soltar();
   });
 
-  testWidgets('no passo 2, depois de uma ronda acabar: «nada a decorrer» e OK abre o progresso', (t) async {
+  testWidgets('no passo 2, depois de uma ronda acabar: «nada a decorrer · ver última» (com a dica) e OK abre o '
+      'progresso', (t) async {
     ecraTvTeste(t, altura: 900);
     await t.runAsync(() => area.adicionar([Importada(contaDeLinha('http://ok.com/l.m3u')!)]));
     final s = ServicoVerificacao(bib, colecao: area, verificador: _Roteiro(), ritmo: RitmoHost(intervalo: Duration.zero));
@@ -444,9 +446,15 @@ void main() {
     }
     await t.pump();
     expect(s.fimRonda, isNotNull);
-    expect(indicador('nada a decorrer'), findsOneWidget);
+    expect(indicador('nada a decorrer · ver última'), findsOneWidget);
     expect(indicadorEBotao(), isTrue, reason: 'houve uma verificação nesta sessão');
-    await t.tap(indicador('nada a decorrer'));
+    final semanticaLigada = t.ensureSemantics();
+    await t.pump();
+    final nos = find.bySemanticsLabel(RegExp('nada a decorrer · ver última'));
+    final dicas = [for (var i = 0; i < nos.evaluate().length; i++) t.getSemantics(nos.at(i)).hint];
+    expect(dicas, contains('abre o progresso da verificação'), reason: '$dicas');
+    semanticaLigada.dispose();
+    await t.tap(indicador('nada a decorrer · ver última'));
     await t.pumpAndSettle();
     expect(find.byType(TelaVerificacao).hitTestable(), findsOneWidget);
   });
@@ -469,7 +477,8 @@ void main() {
     await t.pumpAndSettle();
     expect(t.takeException(), isNull);
     final passo = find.byType(PassoVerificar);
-    final janela = t.getRect(find.descendant(of: passo, matching: find.byType(Scrollable)).first);
+    final janela = t.getRect(find.descendant(
+        of: passo, matching: find.byWidgetPredicate((w) => w is Scrollable && w.axisDirection == AxisDirection.down)));
     final linhas = find.descendant(of: passo, matching: find.byType(CheckboxListTile));
     final alturas = <double>{};
     var inteiras = 0;
@@ -489,6 +498,48 @@ void main() {
     expect(acoes.right, lessThanOrEqualTo(960));
     expect(acoes.center.dy, moreOrLessEquals(t.getCenter(find.descendant(of: passo, matching: find.byType(TextField))).dy,
         epsilon: 1));
+  });
+
+  testWidgets('no passo 2 a tecla Menu abre as ações também do «Voltar», da faixa e do indicador', (t) async {
+    ecraTvTeste(t, altura: 900);
+    await vinteQuatro(t);
+    final s = ServicoVerificacao(bib, colecao: area, verificador: _Roteiro(), ritmo: RitmoHost(intervalo: Duration.zero));
+    await t.runAsync(() => area.adicionar([Importada(contaDeLinha('http://presa.com/l.m3u')!)]));
+    await t.pumpWidget(gestor(s));
+    await t.pump();
+    await t.tap(em(cartao('Verificar'), 'Verificar'));
+    await t.pumpAndSettle();
+    s.verificar(area.listas.last);
+    await t.pump();
+    final menu = find.ancestor(of: find.text('Verificar todas'), matching: find.byWidgetPredicate((w) => w is PopupMenuItem));
+    for (final onde in ['Voltar', '1 · Importar | 2 · Verificar | 3 · Enviar ou exportar', 'A verificar 0/1']) {
+      await irPara(t, onde);
+      await teclaDpad(t, LogicalKeyboardKey.contextMenu);
+      await t.pumpAndSettle();
+      expect(menu, findsOneWidget, reason: onde);
+      await t.binding.handlePopRoute();
+      await t.pumpAndSettle();
+      expect(menu, findsNothing);
+      expect(textosFocados(), startsWith(onde), reason: 'o foco volta a $onde');
+    }
+    s.parar();
+  });
+
+  testWidgets('a faixa dos passos: 36 na TV, 48 no telemóvel (o alvo de toque)', (t) async {
+    await vinteQuatro(t);
+    ecraTvTeste(t, altura: 900);
+    await t.pumpWidget(gestor());
+    await t.pump();
+    await t.tap(em(cartao('Verificar'), 'Verificar'));
+    await t.pumpAndSettle();
+    expect(t.getSize(find.byKey(const ValueKey('faixa 2'))).height, 36);
+    EcraTv.nativo = false;
+    await t.pumpWidget(const SizedBox());
+    await t.pumpWidget(gestor());
+    await t.pump();
+    await t.tap(em(cartao('Verificar'), 'Verificar'));
+    await t.pumpAndSettle();
+    expect(t.getSize(find.byKey(const ValueKey('faixa 2'))).height, 48);
   });
 
   testWidgets('a barra de teclas: no resumo "OK abrir o passo"; num passo "Voltar resumo do Gestor"', (t) async {

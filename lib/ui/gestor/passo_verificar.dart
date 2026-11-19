@@ -18,11 +18,14 @@ enum _Acao { verificarSelecionadas, verificarTodas, remover }
 /// visíveis.
 ///
 /// `Ações (N)` (ou a tecla Menu do comando, de qualquer sítio do passo, menos a escrever num
-/// campo) abre o menu `Verificar selecionadas` · `Verificar todas` · `Remover do gestor`. O
-/// progresso da verificação abre-se no indicador do topo (na `TelaGestor`).
+/// campo: [abrirAcoes]) abre o menu `Verificar selecionadas` · `Verificar todas` · `Remover do
+/// gestor`. O progresso da verificação abre-se no indicador do topo (na `TelaGestor`).
 ///
-/// Guarda a pesquisa, os estados e a seleção (ids; os que saem do Gestor saem da seleção). As
-/// linhas são preguiçosas (`SliverList.builder`).
+/// A linha de cima e o cabeçalho ficam fixos (sempre à vista, mesmo no fundo de uma lista longa);
+/// só a tabela desliza, com as linhas preguiçosas (`SliverList.builder`). ESQUERDA numa linha
+/// sobe logo à pesquisa (daí, DIREITA percorre os estados até `Ações`).
+///
+/// Guarda a pesquisa, os estados e a seleção (ids; os que saem do Gestor saem da seleção).
 class PassoVerificar extends StatefulWidget {
   const PassoVerificar({
     super.key,
@@ -30,7 +33,6 @@ class PassoVerificar extends StatefulWidget {
     required this.servico,
     required this.aoVerificar,
     required this.aoVerificarTodas,
-    required this.aoVerVerificacao,
     required this.aoRemover,
     this.focoInicial,
     this.agora,
@@ -42,9 +44,6 @@ class PassoVerificar extends StatefulWidget {
   /// "Verificar selecionadas": as listas marcadas (pela ordem do Gestor).
   final ValueChanged<List<Lista>> aoVerificar;
   final VoidCallback aoVerificarTodas;
-
-  /// Abre o progresso da verificação (o indicador do topo, na `TelaGestor`, faz o mesmo).
-  final VoidCallback aoVerVerificacao;
 
   /// "Remover do gestor": quem chama confirma e remove.
   final Future<void> Function(List<Lista>) aoRemover;
@@ -80,7 +79,6 @@ class PassoVerificarState extends State<PassoVerificar> {
   final _focosEstados = [for (final (_, t) in _estados) FocusNode(debugLabel: 'Filtro $t')];
   final _focoCabecalho = FocusNode(debugLabel: 'Selecionar as visíveis');
   final _focoAcoes = FocusNode(debugLabel: 'Ações');
-  final _chaveAcoes = GlobalKey(debugLabel: 'Ações');
 
   final _focosLinhas = <String, FocusNode>{};
   String? _linhaFocada;
@@ -95,6 +93,24 @@ class PassoVerificarState extends State<PassoVerificar> {
     for (final f in _focosEstados) {
       f.addListener(() => _estadoAVista(f));
     }
+    _focoCabecalho.addListener(_cabecalhoSemFoco);
+  }
+
+  /// A ☐ do cabeçalho com o foco ficou desligada (não há visíveis) ou saiu: o foco passa a
+  /// `Ações` (senão perdia-se e deixava de se ver).
+  void _cabecalhoSemFoco() {
+    final f = _focoCabecalho;
+    if (f.hasFocus || (f.canRequestFocus && f.context != null)) return;
+    _focoAAcoesSePerdido();
+  }
+
+  /// Depois do frame: se o foco se perdeu (nenhum, ou só o âmbito), vai a `Ações`.
+  void _focoAAcoesSePerdido() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final atual = FocusManager.instance.primaryFocus;
+      if (!mounted || (atual != null && atual is! FocusScopeNode)) return;
+      if (_focoAcoes.context != null) _focoAcoes.requestFocus();
+    });
   }
 
   /// Um estado com o foco fica todo à vista na sua linha (que desliza para o lado quando não
@@ -207,19 +223,26 @@ class PassoVerificarState extends State<PassoVerificar> {
 
   /// A tecla Menu do comando abre as ações (a escrever num campo, a tecla fica para o campo).
   KeyEventResult _tecla(KeyEvent e) {
-    if (e is! KeyDownEvent || e.logicalKey != LogicalKeyboardKey.contextMenu) return KeyEventResult.ignored;
-    final contexto = FocusManager.instance.primaryFocus?.context;
-    final campo = contexto?.widget is EditableText
-        ? contexto!.widget as EditableText
-        : contexto?.findAncestorWidgetOfExactType<EditableText>();
-    if (campo != null && !campo.readOnly) return KeyEventResult.ignored;
-    _abrirAcoes();
+    if (e is! KeyDownEvent || e.logicalKey != LogicalKeyboardKey.contextMenu || focoAEscrever()) {
+      return KeyEventResult.ignored;
+    }
+    abrirAcoes();
     return KeyEventResult.handled;
   }
 
-  /// O menu das ações, por baixo do botão `Ações`. Voltar fecha-o e o foco volta a quem o tinha.
-  Future<void> _abrirAcoes() async {
-    final botao = _chaveAcoes.currentContext?.findRenderObject() as RenderBox?;
+  /// ESQUERDA numa linha sobe logo à linha de cima (à pesquisa): não é preciso subir a tabela toda.
+  KeyEventResult _teclaLinha(KeyEvent e) {
+    if (e is KeyUpEvent || e.logicalKey != LogicalKeyboardKey.arrowLeft) return KeyEventResult.ignored;
+    final alvo = widget.focoInicial ?? _focosEstados.first;
+    if (alvo.context == null || !alvo.canRequestFocus) return KeyEventResult.ignored;
+    alvo.requestFocus();
+    return KeyEventResult.handled;
+  }
+
+  /// O menu das ações, por baixo do botão `Ações` (a tecla Menu, também de fora do passo: a
+  /// `TelaGestor` chama-o). Voltar fecha-o e o foco volta a quem o tinha.
+  Future<void> abrirAcoes() async {
+    final botao = _focoAcoes.context?.findRenderObject() as RenderBox?;
     final overlay = Navigator.of(context).overlay?.context.findRenderObject() as RenderBox?;
     if (botao == null || overlay == null || !botao.attached) return;
     final caixa = Rect.fromPoints(
@@ -269,6 +292,8 @@ class PassoVerificarState extends State<PassoVerificar> {
       case _Acao.remover:
         if (sel.isNotEmpty) await widget.aoRemover(sel);
     }
+    // o foco voltou a quem o tinha; se esse desapareceu ou ficou desligado, vai a Ações
+    if (mounted) _focoAAcoesSePerdido();
   }
 
   @override
@@ -290,8 +315,9 @@ class PassoVerificarState extends State<PassoVerificar> {
             _vigiarLinhaFocada(visiveis);
             final largo = caixa.maxWidth >= 560;
             final agora = _agora;
-            // a linha de cima e o cabeçalho deslizam com as linhas (que continuam preguiçosas)
-            final topo = [
+            // a linha de cima e o cabeçalho ficam fixos (Ações sempre à vista e montado); só a
+            // tabela desliza, e as linhas continuam preguiçosas
+            return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               _linhaDeCima(caixa.maxWidth, contagens),
               if (listas.isEmpty)
                 const Padding(
@@ -307,21 +333,22 @@ class PassoVerificarState extends State<PassoVerificar> {
                     child: Text('Nenhuma lista com estes estados.', style: TextStyle(color: Tokens.texto2)),
                   ),
               ],
-            ];
-            return CustomScrollView(slivers: [
-              SliverList.list(children: topo),
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(Tokens.e16, 0, Tokens.e16, Tokens.e8),
-                sliver: SliverList.builder(
-                  itemCount: visiveis.length,
-                  itemBuilder: (_, i) => Padding(
-                    padding: const EdgeInsets.only(bottom: 2),
-                    child: Material(
-                      type: MaterialType.transparency,
-                      child: _linha(visiveis[i], largo, agora),
+              Expanded(
+                child: CustomScrollView(slivers: [
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(Tokens.e16, 0, Tokens.e16, Tokens.e8),
+                    sliver: SliverList.builder(
+                      itemCount: visiveis.length,
+                      itemBuilder: (_, i) => Padding(
+                        padding: const EdgeInsets.only(bottom: 2),
+                        child: Material(
+                          type: MaterialType.transparency,
+                          child: _linha(visiveis[i], largo, agora),
+                        ),
+                      ),
                     ),
                   ),
-                ),
+                ]),
               ),
             ]);
           }),
@@ -349,7 +376,7 @@ class PassoVerificarState extends State<PassoVerificar> {
           focusNode: _focosEstados[i],
           label: Text('$t · ${contagens[e] ?? 0}'),
           selected: _filtro.contains(e),
-          showCheckmark: false,
+          showCheckmark: true,
           visualDensity: VisualDensity.compact,
           onSelected: (v) => setState(() => v ? _filtro.add(e) : _filtro.remove(e)),
         ),
@@ -363,8 +390,8 @@ class PassoVerificarState extends State<PassoVerificar> {
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         padding: const EdgeInsets.symmetric(horizontal: Tokens.e16, vertical: Tokens.e8),
       ),
-      onPressed: _abrirAcoes,
-      child: Row(key: _chaveAcoes, mainAxisSize: MainAxisSize.min, children: [
+      onPressed: abrirAcoes,
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
         Text('Ações ($n)'),
         const SizedBox(width: Tokens.e4),
         const Icon(Icons.arrow_drop_down, size: 20),
@@ -470,36 +497,42 @@ class PassoVerificarState extends State<PassoVerificar> {
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(color: Tokens.anelFoco, fontWeight: FontWeight.w600));
     const pequeno = TextStyle(color: Tokens.texto2, fontSize: 13);
-    return SizedBox(
-      height: alturaLinha,
-      child: RealceFoco(
-        raio: 8,
-        construir: (_, aoMudarFoco) => CheckboxListTile(
-          focusNode: _focoLinha(l.id),
-          onFocusChange: (f) {
-            aoMudarFoco(f);
-            if (f) {
-              _linhaFocada = l.id;
-              _ordemVista = [for (final x in _visiveis()) x.id];
-            }
-          },
-          value: _selecao.contains(l.id),
-          onChanged: (v) => setState(() => v == true ? _selecao.add(l.id) : _selecao.remove(l.id)),
-          title: _colunas(
-            largo,
-            Text(l.nomeMostrado, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
-            estado,
-            Text(motivo.isEmpty ? '—' : motivo, maxLines: 1, overflow: TextOverflow.ellipsis, style: pequeno),
-            Text(_teste(u?.data, agora), maxLines: 1, style: pequeno),
+    return Focus(
+      canRequestFocus: false,
+      skipTraversal: true,
+      includeSemantics: false,
+      onKeyEvent: (_, e) => _teclaLinha(e),
+      child: SizedBox(
+        height: alturaLinha,
+        child: RealceFoco(
+          raio: 8,
+          construir: (_, aoMudarFoco) => CheckboxListTile(
+            focusNode: _focoLinha(l.id),
+            onFocusChange: (f) {
+              aoMudarFoco(f);
+              if (f) {
+                _linhaFocada = l.id;
+                _ordemVista = [for (final x in _visiveis()) x.id];
+              }
+            },
+            value: _selecao.contains(l.id),
+            onChanged: (v) => setState(() => v == true ? _selecao.add(l.id) : _selecao.remove(l.id)),
+            title: _colunas(
+              largo,
+              Text(l.nomeMostrado, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
+              estado,
+              Text(motivo.isEmpty ? '—' : motivo, maxLines: 1, overflow: TextOverflow.ellipsis, style: pequeno),
+              Text(_teste(u?.data, agora), maxLines: 1, style: pequeno),
+            ),
+            contentPadding: const EdgeInsets.symmetric(horizontal: _recuoTile),
+            horizontalTitleGap: _espacoTitulo,
+            minVerticalPadding: 0,
+            minTileHeight: alturaLinha,
+            visualDensity: _densidade,
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            controlAffinity: ListTileControlAffinity.leading,
+            dense: true,
           ),
-          contentPadding: const EdgeInsets.symmetric(horizontal: _recuoTile),
-          horizontalTitleGap: _espacoTitulo,
-          minVerticalPadding: 0,
-          minTileHeight: alturaLinha,
-          visualDensity: _densidade,
-          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          controlAffinity: ListTileControlAffinity.leading,
-          dense: true,
         ),
       ),
     );

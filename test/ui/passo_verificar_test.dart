@@ -8,6 +8,7 @@ import 'package:player_iptv/dados/biblioteca.dart';
 import 'package:player_iptv/importar/importar.dart';
 import 'package:player_iptv/modelo/conta.dart';
 import 'package:player_iptv/ui/design/estado_lista.dart';
+import 'package:player_iptv/ui/design/revelar_topo.dart';
 import 'package:player_iptv/ui/design/tokens.dart';
 import 'package:player_iptv/ui/gestor/passo_verificar.dart';
 import 'package:player_iptv/verificar/servico.dart';
@@ -60,11 +61,22 @@ void main() {
   var todas = 0;
   var removidas = <List<Lista>>[];
 
-  Future<void> abrir(WidgetTester t, {FocusNode? focoInicial}) async {
+  /// O passo com as 5 listas (ou, com `mais`, mais essas listas por verificar no fim).
+  /// `remover`: o que faz "Remover do gestor" (por omissão só regista).
+  Future<void> abrir(WidgetTester t,
+      {FocusNode? focoInicial, int mais = 0, Future<void> Function(List<Lista>)? remover}) async {
     verificadas = [];
     removidas = [];
     todas = 0;
     await t.runAsync(() => _povoar(area));
+    if (mais > 0) {
+      await t.runAsync(() => area.adicionar([
+            for (var i = 0; i < mais; i++) Importada(contaDeLinha('http://extra$i.exemplo.pt/l.m3u')!),
+          ]));
+      for (final (i, l) in area.listas.skip(_nomes.length).indexed) {
+        l.nomeProprio = 'EXTRA${(i + 1).toString().padLeft(2, '0')}';
+      }
+    }
     t.view.physicalSize = const Size(1200, 900);
     t.view.devicePixelRatio = 1;
     addTearDown(t.view.reset);
@@ -75,8 +87,7 @@ void main() {
       agora: () => _agora,
       aoVerificar: verificadas.add,
       aoVerificarTodas: () => todas++,
-      aoVerVerificacao: () {},
-      aoRemover: (ls) async => removidas.add(ls),
+      aoRemover: remover ?? (ls) async => removidas.add(ls),
       focoInicial: focoInicial,
     ))));
     await t.pump();
@@ -115,6 +126,7 @@ void main() {
     for (final f in ['Funcionam · 1', 'Inconclusivas · 1', 'Não funcionam · 1', 'Por verificar · 2']) {
       expect(chip(f), findsOneWidget, reason: f);
       expect(t.widget<FilterChip>(chip(f)).selected, isFalse, reason: f);
+      expect(t.widget<FilterChip>(chip(f)).showCheckmark, isTrue, reason: '$f: o ✓ quando ligado');
     }
     expect(find.text('Selecionar:'), findsNothing);
     expect(find.textContaining('Todas'), findsNothing);
@@ -383,5 +395,71 @@ void main() {
     await teclaDpad(t, LogicalKeyboardKey.arrowDown);
     expect(FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<PassoVerificar>(), isNotNull);
     expect(focoAcoes(t).hasPrimaryFocus, isFalse);
+  });
+
+  testWidgets('lista longa: a linha de cima e o cabeçalho ficam fixos; da linha 35, Menu abre as ações, '
+      'ESQUERDA sobe à pesquisa num passo e CIMA chega à ☐ em 35 passos', (t) async {
+    RevelarTopo.instalar(); // o vigia do topo (Task 2) não pode lutar com isto
+    addTearDown(RevelarTopo.retirar);
+    FocusManager.instance.highlightStrategy = FocusHighlightStrategy.alwaysTraditional;
+    addTearDown(() => FocusManager.instance.highlightStrategy = FocusHighlightStrategy.automatic);
+    final pesquisa = FocusNode(debugLabel: 'Pesquisar listas');
+    addTearDown(pesquisa.dispose);
+    await abrir(t, focoInicial: pesquisa, mais: 35);
+    expect(area.listas, hasLength(40));
+    final cimaAcoes = t.getRect(botaoAcoes);
+    // da 1.ª linha, BAIXO até à 35.ª
+    focoLinha(t, '018DELTA 181027').requestFocus();
+    await t.pump();
+    for (var i = 0; i < 34; i++) {
+      await teclaDpad(t, LogicalKeyboardKey.arrowDown);
+    }
+    expect(textosFocados(), startsWith('EXTRA30'));
+    final linha35 = FocusManager.instance.primaryFocus!;
+    // Ações e a ☐ continuam no mesmo sítio, à vista
+    expect(t.getRect(botaoAcoes), cimaAcoes);
+    expect(botaoAcoes.hitTestable(), findsOneWidget);
+    expect(caixaCabecalho.hitTestable(), findsOneWidget);
+    // a tecla Menu abre as ações; Voltar devolve o foco à linha 35
+    await t.sendKeyEvent(LogicalKeyboardKey.contextMenu);
+    await t.pumpAndSettle();
+    expect(itemMenu('Verificar todas'), findsOneWidget);
+    await t.binding.handlePopRoute();
+    await t.pumpAndSettle();
+    expect(linha35.hasPrimaryFocus, isTrue);
+    // ESQUERDA: a pesquisa, num passo (daí DIREITA percorre os estados até Ações)
+    await teclaDpad(t, LogicalKeyboardKey.arrowLeft);
+    expect(pesquisa.hasPrimaryFocus, isTrue);
+    // CIMA: linha a linha até à ☐ (35 passos), sem ficar preso nem saltar o topo da tabela
+    linha35.requestFocus();
+    await t.pump();
+    var passos = 0;
+    while (passos < 35 && FocusManager.instance.primaryFocus?.debugLabel != 'Selecionar as visíveis') {
+      await teclaDpad(t, LogicalKeyboardKey.arrowUp);
+      passos++;
+    }
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'Selecionar as visíveis', reason: '$passos passos');
+    expect(passos, lessThanOrEqualTo(35));
+    expect(linha('018DELTA 181027').hitTestable(), findsOneWidget, reason: 'a tabela voltou ao início');
+  });
+
+  testWidgets('a ☐ com o foco fica desligada (Remover deixa a tabela vazia): o foco vai a Ações', (t) async {
+    await abrir(t, remover: (ls) => area.remover([for (final l in ls) l.id]));
+    await t.tap(chip('Não funcionam · 1'));
+    await t.pump();
+    await t.tap(caixaCabecalho);
+    await t.pump();
+    t.widget<Checkbox>(caixaCabecalho).focusNode!.requestFocus();
+    await t.pump();
+    await t.sendKeyEvent(LogicalKeyboardKey.contextMenu);
+    await t.pumpAndSettle();
+    await t.runAsync(() async {
+      await t.tap(itemMenu('Remover do gestor'));
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    });
+    await t.pumpAndSettle();
+    expect(area.listas, hasLength(4));
+    expect(t.widget<Checkbox>(caixaCabecalho).onChanged, isNull, reason: 'sem visíveis, desligada');
+    expect(focoAcoes(t).hasPrimaryFocus, isTrue, reason: '${FocusManager.instance.primaryFocus}');
   });
 }

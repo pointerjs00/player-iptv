@@ -139,3 +139,13 @@ class _CampoTvState extends State<CampoTv> {
     );
   }
 }
+
+/// O foco está num campo de texto a escrever (não só de leitura): as teclas do comando (Voltar,
+/// Menu) ficam para o campo.
+bool focoAEscrever() {
+  final contexto = FocusManager.instance.primaryFocus?.context;
+  final campo = contexto?.widget is EditableText
+      ? contexto!.widget as EditableText
+      : contexto?.findAncestorWidgetOfExactType<EditableText>();
+  return campo != null && !campo.readOnly;
+}
