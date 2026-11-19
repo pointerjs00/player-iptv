@@ -357,13 +357,13 @@ class _TelaGestorState extends State<TelaGestor> {
     widget.tarefas.iniciar(
       'Enviar ${n == 1 ? '1 lista' : '$n listas'} para o Player',
       (p) async {
+        final ResumoEnvio r;
         try {
-          await b.receber(enviar, modo);
+          r = await b.receber(enviar, modo);
         } catch (e) {
           throw _ErroTarefa('Não foi possível enviar (${descreverErro(e)}). As listas do Player não mudaram.');
         }
-        return '${n == 1 ? '1 lista enviada' : '$n listas enviadas'} para o Player'
-            '${aDecorrer > 0 ? ' · $aDecorrer ainda a verificar' : ''}';
+        return textoResultadoEnvio(n, r, aDecorrer: aDecorrer);
       },
       rotuloAcao: 'Ir para Ver TV',
       aoAcao: () {

@@ -122,6 +122,21 @@ class _CartaoEscolha extends StatelessWidget {
 
 String _listas(int n) => n == 1 ? '1 lista' : '$n listas';
 
+/// O resultado de um envio, com o que mudou no Player ([ResumoEnvio]):
+/// "8 listas enviadas para o Player · 5 novas, 3 atualizadas, 2 removidas · 1 ainda a verificar".
+/// As contagens a zero não aparecem.
+String textoResultadoEnvio(int n, ResumoEnvio r, {int aDecorrer = 0}) {
+  String c(int v, String um, String varios) => '$v ${v == 1 ? um : varios}';
+  final partes = [
+    if (r.adicionadas > 0) c(r.adicionadas, 'nova', 'novas'),
+    if (r.atualizadas > 0) c(r.atualizadas, 'atualizada', 'atualizadas'),
+    if (r.removidas > 0) c(r.removidas, 'removida', 'removidas'),
+  ];
+  return '${n == 1 ? '1 lista enviada' : '$n listas enviadas'} para o Player'
+      ' · ${partes.isEmpty ? 'já lá estavam iguais' : partes.join(', ')}'
+      '${aDecorrer > 0 ? ' · $aDecorrer ainda a verificar' : ''}';
+}
+
 /// "Enviar n listas para o Player": como (adicionar ou substituir) e que listas (só as que funcionam,
 /// ou também as inconclusivas). `funcionam` e `inconclusivas` contam só as selecionadas com resultado.
 /// Devolve o modo e se as inconclusivas vão também; null = cancelado. "Substituir" deixa o Player só

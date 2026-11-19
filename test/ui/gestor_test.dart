@@ -20,6 +20,7 @@ import 'package:player_iptv/ui/principal/barra_seccoes.dart';
 import 'package:player_iptv/ui/principal/tela_principal.dart';
 import 'package:player_iptv/ui/realce_foco.dart';
 import 'package:player_iptv/ui/tema.dart';
+import 'package:player_iptv/ui/verificar/dialogos_gestor.dart';
 import 'package:player_iptv/verificar/estado.dart';
 import 'package:player_iptv/verificar/servico.dart';
 import 'package:player_iptv/verificar/verificador.dart';
@@ -295,6 +296,17 @@ void main() {
   });
 
   group('Gestor', () {
+    test('textoResultadoEnvio: contagens do ResumoEnvio, com singular e plural', () {
+      expect(textoResultadoEnvio(8, const ResumoEnvio(adicionadas: 5, atualizadas: 3, removidas: 2)),
+          '8 listas enviadas para o Player · 5 novas, 3 atualizadas, 2 removidas');
+      expect(textoResultadoEnvio(1, const ResumoEnvio(adicionadas: 1, removidas: 1), aDecorrer: 1),
+          '1 lista enviada para o Player · 1 nova, 1 removida · 1 ainda a verificar');
+      expect(textoResultadoEnvio(2, const ResumoEnvio(atualizadas: 1)),
+          '2 listas enviadas para o Player · 1 atualizada');
+      expect(textoResultadoEnvio(2, const ResumoEnvio(), aDecorrer: 3),
+          '2 listas enviadas para o Player · já lá estavam iguais · 3 ainda a verificar');
+    });
+
     test('ficheiros/colar entram no Gestor e não no Player', () async {
       expect((await importarTexto(area, 'http://x.com/l.m3u\nhttp://y.com/l.m3u')).texto, '2 listas novas.');
       expect(area.listas, hasLength(2));
@@ -395,7 +407,7 @@ void main() {
       final tarefa = await acabada(t);
       expect(player(), ['velha.com', 'boa.com', 'nova.com']);
       expect(tarefa.estado, EstadoTarefa.terminada);
-      expect(tarefa.resultado, '1 lista enviada para o Player');
+      expect(tarefa.resultado, '1 lista enviada para o Player · 1 nova');
       expect(tarefa.rotuloAcao, 'Ir para Ver TV');
       expect(tarefa.aoAcao, isNotNull);
     });
@@ -411,6 +423,21 @@ void main() {
       final tarefa = await acabada(t);
       expect(tarefa.estado, EstadoTarefa.terminada);
       expect(player(), ['nova.com'], reason: 'só a que funciona vai; as outras saem do Player');
+      expect(tarefa.resultado, '1 lista enviada para o Player · 1 nova, 2 removidas');
+    });
+
+    testWidgets('Enviar: o resultado conta as novas e as atualizadas', (t) async {
+      await preparar(t);
+      // a boa.com já está no Player, mas com outro resultado: fica atualizada
+      await t.runAsync(() => area.adicionar(
+          [Importada(contaDeLinha('http://boa.com/c/ 00:1A:79:00:00:01')!, _u('funciona', motivo: 'canal 1/3'))]));
+      await t.pump();
+      await t.tap(find.widgetWithText(ActionChip, 'Funcionam'));
+      await t.pump();
+      await abrirEnvio(t);
+      await t.tap(find.text('Enviar 2 listas'));
+      final tarefa = await acabada(t);
+      expect(tarefa.resultado, '2 listas enviadas para o Player · 1 nova, 1 atualizada');
     });
 
     for (final (rotulo, descricao, esperado) in [
@@ -533,7 +560,7 @@ void main() {
       expect(find.text('Enviar 2 listas para o Player'), findsOneWidget, reason: 'a que está a ser verificada não conta');
       await t.tap(find.text('Enviar 2 listas'));
       final tarefa = await acabada(t);
-      expect(tarefa.resultado, '2 listas enviadas para o Player · 1 ainda a verificar');
+      expect(tarefa.resultado, '2 listas enviadas para o Player · 2 novas · 1 ainda a verificar');
       expect(player(), ['a.com', 'b.com']);
       s.parar();
     });
