@@ -12,6 +12,7 @@ import 'dados/preferencias.dart';
 import 'janelas/janela_player.dart';
 import 'modelo/canal.dart';
 import 'rede/http.dart';
+import 'tarefas/servico_tarefas.dart';
 import 'ui/definicoes/tela_definicoes.dart';
 import 'ui/design/componentes.dart';
 import 'ui/design/ecra.dart';
@@ -106,11 +107,14 @@ class _AppPlayerIptvState extends State<AppPlayerIptv> {
   final _ritmo = RitmoHost();
   late final _servico = ServicoVerificacao(widget.biblioteca, colecao: widget.area, ritmo: _ritmo);
   late final _servicoPlayer = ServicoVerificacao(widget.biblioteca, ritmo: _ritmo);
+  // trabalho longo fora dos ecrãs; os ecrãs só observam (ligado nas tarefas 11 a 15)
+  final _tarefas = ServicoTarefas();
 
   @override
   void dispose() {
     _servico.parar();
     _servicoPlayer.parar();
+    _tarefas.dispose();
     super.dispose();
   }
 
