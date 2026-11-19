@@ -245,7 +245,7 @@ class _TelaInicioState extends State<TelaInicio> {
       child: Align(
         alignment: Alignment.centerLeft,
         child: SizedBox(
-          height: CartaoContinuar.altura(tv),
+          height: CartaoContinuar.altura(tv, fatorTexto(context)),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 760),
             child: entradaEmCascata(0, CartaoContinuar(
@@ -267,7 +267,8 @@ class _TelaInicioState extends State<TelaInicio> {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       _titulo('Favoritos · ${f.length}', tv),
       SizedBox(
-        height: (tv ? 96 : 80) + 16, // com margem para o cartão focado crescer
+        // com margem para o cartão focado crescer; cresce com a letra do sistema
+        height: (tv ? 96 : 80) * fatorTexto(context) + 16,
         child: ListView.separated(
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.symmetric(horizontal: Tokens.e24, vertical: Tokens.e8),
@@ -275,7 +276,7 @@ class _TelaInicioState extends State<TelaInicio> {
           separatorBuilder: (_, _) => const SizedBox(width: Tokens.e12),
           itemBuilder: (_, i) => SizedBox(
             width: tv ? 250 : 210,
-            child: CartaoModerno(
+            child: letraPresa(CartaoModerno(
               onTap: () => _abrir(f[i].lista, continuar: f[i].canal.id),
               padding: EdgeInsets.symmetric(horizontal: Tokens.e16, vertical: tv ? 14 : 10),
               child: Column(
@@ -291,7 +292,7 @@ class _TelaInicioState extends State<TelaInicio> {
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(color: Tokens.texto2, fontSize: tv ? 14 : 12.5)),
                   ]),
-            ),
+            )),
           ),
         ),
       ),
@@ -338,6 +339,17 @@ class _TelaInicioState extends State<TelaInicio> {
           if (todas.isEmpty) return _vazio(context);
           final vis = _visiveis();
           final tv = ecraTv(context);
+          // só os primeiros entram em cascata (entradaEmCascata ignora índices > 30)
+          Widget cartao(int i, {bool emGrelha = true}) => entradaEmCascata(i, CartaoLista(
+                lista: vis[i],
+                resumo: _resumos[vis[i].id],
+                emGrelha: emGrelha,
+                // com "Continuar a ver" o foco começa nele
+                autofocus: i == 0 && widget.biblioteca.ultimoVisto == null,
+                aoAbrir: () => _abrir(vis[i]),
+                focusNode: _focoCartao(vis[i].id),
+                aoMenu: () => _menu(vis[i]),
+              ));
           return CustomScrollView(slivers: [
             SliverToBoxAdapter(child: _continuar(tv)),
             SliverToBoxAdapter(child: _filaFavoritos(tv)),
@@ -359,28 +371,23 @@ class _TelaInicioState extends State<TelaInicio> {
               SliverPadding(
                 // margem para o cartão focado crescer (1.04) e brilhar sem ser cortado
                 padding: const EdgeInsets.all(Tokens.e24),
-                sliver: SliverGrid(
-                  // no telemóvel, um cartão por linha (com o nome inteiro)
-                  gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-                    maxCrossAxisExtent: MediaQuery.sizeOf(context).width < 600 ? 600 : (tv ? 340 : 320),
-                    mainAxisExtent: CartaoLista.altura(tv),
-                    crossAxisSpacing: Tokens.e12,
-                    mainAxisSpacing: Tokens.e12,
-                  ),
-                  delegate: SliverChildBuilderDelegate(
-                    childCount: vis.length,
-                    // só os primeiros entram em cascata (entradaEmCascata ignora índices > 30)
-                    (_, i) => entradaEmCascata(i, CartaoLista(
-                      lista: vis[i],
-                      resumo: _resumos[vis[i].id],
-                      // com "Continuar a ver" o foco começa nele
-                      autofocus: i == 0 && widget.biblioteca.ultimoVisto == null,
-                      aoAbrir: () => _abrir(vis[i]),
-                      focusNode: _focoCartao(vis[i].id),
-                      aoMenu: () => _menu(vis[i]),
-                    )),
-                  ),
-                ),
+                // no telemóvel, um cartão por linha (com o nome inteiro), cada um com a altura do
+                // que mostra; na grelha, todos com a mesma altura (que cresce com a letra)
+                sliver: MediaQuery.sizeOf(context).width < 600
+                    ? SliverList.separated(
+                        itemCount: vis.length,
+                        separatorBuilder: (_, _) => const SizedBox(height: Tokens.e12),
+                        itemBuilder: (_, i) => cartao(i, emGrelha: false),
+                      )
+                    : SliverGrid(
+                        gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                          maxCrossAxisExtent: tv ? 340 : 320,
+                          mainAxisExtent: CartaoLista.altura(tv, fatorTexto(context)),
+                          crossAxisSpacing: Tokens.e12,
+                          mainAxisSpacing: Tokens.e12,
+                        ),
+                        delegate: SliverChildBuilderDelegate(childCount: vis.length, (_, i) => cartao(i)),
+                      ),
               ),
           ]);
         },

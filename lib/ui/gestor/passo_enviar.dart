@@ -44,6 +44,9 @@ class _PassoEnviarState extends State<PassoEnviar> {
   final _focoEnviar = FocusNode(debugLabel: 'Enviar');
   final _focoExportar = FocusNode(debugLabel: 'Exportar');
   final _focosLinhas = <String, FocusNode>{};
+
+  /// O deslocamento da fila dos chips de marcar (com a barra, para o rato).
+  final _rolChips = ScrollController();
   String? _linhaFocada;
 
   AreaGestor get _g => widget.area;
@@ -71,6 +74,7 @@ class _PassoEnviarState extends State<PassoEnviar> {
     _focoFuncionam.dispose();
     _focoEnviar.dispose();
     _focoExportar.dispose();
+    _rolChips.dispose();
     for (final f in _focosLinhas.values) {
       f.dispose();
     }
@@ -195,16 +199,24 @@ class _PassoEnviarState extends State<PassoEnviar> {
       chip('Todas (${listas.length})', () => _marcar((_) => true)),
       chip('Nenhuma', () => _marcar((_) => false)),
     ];
-    // numa só linha: se não couberem, deslizam para o lado (o foco leva-os à vista)
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      // margem para o anel do foco não ser cortado
-      padding: const EdgeInsets.all(Tokens.e4),
-      child: Row(children: [
-        const Text('Marcar:', style: TextStyle(color: Tokens.texto2, fontWeight: FontWeight.w500)),
-        for (final c in chips) ...[const SizedBox(width: Tokens.e8), c],
-      ]),
-    );
+    // numa só linha, com «Marcar:» fixo: se os chips não couberem, deslizam para o lado (o foco
+    // leva-os à vista; com o rato há a barra)
+    return Row(children: [
+      const Text('Marcar:', style: TextStyle(color: Tokens.texto2, fontWeight: FontWeight.w500)),
+      const SizedBox(width: Tokens.e8),
+      Expanded(
+        child: Scrollbar(
+          controller: _rolChips,
+          child: SingleChildScrollView(
+            controller: _rolChips,
+            scrollDirection: Axis.horizontal,
+            child: Row(children: [
+              for (final (i, c) in chips.indexed) ...[if (i > 0) const SizedBox(width: Tokens.e8), c],
+            ]),
+          ),
+        ),
+      ),
+    ]);
   }
 
   /// Linhas baixas, como as do passo 2 (a mesma altura, [Tokens.alturaLinhaTabela]).
@@ -231,7 +243,8 @@ class _PassoEnviarState extends State<PassoEnviar> {
                     child: Text(l.nomeMostrado,
                         maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600))),
                 const SizedBox(width: Tokens.e12),
-                PilulaEstado(estadoDe(l)),
+                // compacta: não passa a altura da linha, nem com a letra do sistema maior
+                PilulaEstado(estadoDe(l), compacta: true),
               ]),
               contentPadding: const EdgeInsets.symmetric(horizontal: Tokens.e12),
               horizontalTitleGap: Tokens.e12,

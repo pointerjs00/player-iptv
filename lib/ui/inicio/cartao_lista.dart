@@ -10,9 +10,11 @@ import 'favoritos_inicio.dart';
 /// validade e motivo (a verificação faz-se no Gestor). Com o foco do comando cresce e brilha
 /// (ver [CartaoModerno]). O menu de ações ([aoMenu]) abre com a pressão longa (toque longo,
 /// clique direito, OK mantido). O cartão não tem botões de dentro: é uma só paragem do foco.
+/// Na grelha ([emGrelha]) tem a altura fixa [altura]; fora dela (o telemóvel, uma lista por
+/// linha) tem a altura do que mostra e o detalhe da pílula nunca se corta.
 class CartaoLista extends StatelessWidget {
   const CartaoLista({super.key, required this.lista, required this.aoAbrir, this.aoMenu, this.autofocus = false,
-      this.focusNode, this.resumo});
+      this.focusNode, this.resumo, this.emGrelha = true});
 
   final Lista lista;
   final VoidCallback aoAbrir;
@@ -23,6 +25,9 @@ class CartaoLista extends StatelessWidget {
   /// As contagens da cache de canais (null = a lista não tem cache: não se mostram).
   final ResumoLista? resumo;
 
+  /// Numa grelha de altura fixa (senão, com a altura do conteúdo).
+  final bool emGrelha;
+
   static const _tipos = {Tipo.stalker: 'Stalker', Tipo.xtream: 'Xtream', Tipo.m3u: 'M3U'};
   static const _icones = {
     Tipo.stalker: Icons.settings_input_antenna,
@@ -31,9 +36,10 @@ class CartaoLista extends StatelessWidget {
   };
 
   /// A altura do cartão na grelha (maior na TV); sem botões em baixo (verificar é no Gestor).
-  /// Baixo: o nome e "tipo · servidor · contagens" ao lado do ícone, a pílula e a validade numa
-  /// só linha e, quando a lista não funciona, o motivo.
-  static double altura(bool tv) => tv ? 128 : 116;
+  /// Baixo: o nome e "tipo · servidor · contagens" ao lado do ícone, a pílula e a validade (na
+  /// mesma linha quando cabem; senão a validade passa para baixo) e, quando a lista não
+  /// funciona, o motivo. Cresce com a letra do sistema ([fator], de [fatorTexto]).
+  static double altura(bool tv, [double fator = 1]) => (tv ? 154 : 140) * fator;
 
   @override
   Widget build(BuildContext context) {
@@ -41,13 +47,14 @@ class CartaoLista extends StatelessWidget {
     final u = lista.ultima;
     final validade = textoValidade(u?.validade ?? '');
     final secundario = TextStyle(color: Tokens.texto2, fontSize: tv ? 13 : 12);
-    return CartaoModerno(
+    return letraPresa(CartaoModerno(
       autofocus: autofocus,
       focusNode: focusNode,
       onTap: aoAbrir,
       onLongPress: aoMenu,
       padding: EdgeInsets.symmetric(horizontal: tv ? 14 : Tokens.e12, vertical: Tokens.e12),
       child: Column(
+        mainAxisSize: emGrelha ? MainAxisSize.max : MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(children: [
@@ -65,45 +72,44 @@ class CartaoLista extends StatelessWidget {
                       child: Text('${_tipos[lista.conta.tipo]} · ${hostDe(lista.conta.endereco)}',
                           maxLines: 1, overflow: TextOverflow.ellipsis, style: secundario),
                     ),
-                    if (resumo != null) ...[
-                      Text(' · ', style: secundario),
+                    if (resumo != null)
                       ConstrainedBox(
                         constraints: BoxConstraints(maxWidth: c.maxWidth * 2 / 3),
-                        child: Text('${resumo!.canais} canais · ${resumo!.grupos} grupos',
-                            maxLines: 1, overflow: TextOverflow.ellipsis, style: secundario),
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                          Text(' · ', style: secundario),
+                          Flexible(
+                            child: Text('${resumo!.canais} canais · ${resumo!.grupos} grupos',
+                                maxLines: 1, overflow: TextOverflow.ellipsis, style: secundario),
+                          ),
+                        ]),
                       ),
-                    ],
                   ]),
                 ),
               ]),
             ),
           ]),
-          const Spacer(),
-          // a pílula e a validade na mesma linha: a validade fica com até 40 % da largura
-          LayoutBuilder(
-            builder: (_, c) => Row(children: [
-              Flexible(child: PilulaEstado(estadoDe(lista), detalhe: u == null ? null : verificadaHa(u.data))),
-              if (validade.isNotEmpty) ...[
-                const SizedBox(width: Tokens.e8),
-                Container(
-                  constraints: BoxConstraints(maxWidth: c.maxWidth * .4),
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: Tokens.vidroForte,
-                    borderRadius: BorderRadius.circular(Tokens.raioPilula),
-                  ),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(Icons.event_outlined, size: tv ? 15 : 13, color: Tokens.texto2),
-                    const SizedBox(width: 4),
-                    Flexible(
-                      child: Text(validade,
-                          maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: tv ? 13 : 12)),
-                    ),
-                  ]),
+          if (emGrelha) const Spacer() else const SizedBox(height: Tokens.e8),
+          // a pílula e a validade na mesma linha quando cabem; senão a validade vai para baixo
+          Wrap(spacing: Tokens.e8, runSpacing: Tokens.e4, crossAxisAlignment: WrapCrossAlignment.center, children: [
+            PilulaEstado(estadoDe(lista),
+                detalhe: u == null ? null : verificadaHa(u.data), linhasDetalhe: emGrelha ? 1 : null),
+            if (validade.isNotEmpty)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: Tokens.vidroForte,
+                  borderRadius: BorderRadius.circular(Tokens.raioPilula),
                 ),
-              ],
-            ]),
-          ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.event_outlined, size: tv ? 15 : 13, color: Tokens.texto2),
+                  const SizedBox(width: 4),
+                  Flexible(
+                    child: Text(validade,
+                        maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: tv ? 13 : 12)),
+                  ),
+                ]),
+              ),
+          ]),
           if (u != null && u.motivo.isNotEmpty && u.estado != 'funciona')
             Padding(
               padding: const EdgeInsets.only(top: Tokens.e4),
@@ -111,7 +117,7 @@ class CartaoLista extends StatelessWidget {
             ),
         ],
       ),
-    );
+    ));
   }
 }
 

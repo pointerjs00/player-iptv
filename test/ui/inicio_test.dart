@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:player_iptv/dados/biblioteca.dart';
@@ -139,7 +140,8 @@ void main() {
       await abrir(t);
       expect(find.byType(PilulaEstado), findsNWidgets(3));
       expect(find.text('3 canais · 2 grupos'), findsNWidgets(2));
-      expect(find.text('Funciona · verificada há 2 h'), findsOneWidget);
+      expect(find.text(' · verificada há 2 h'), findsOneWidget);
+      expect(find.text('Funciona'), findsOneWidget);
       // a lista C não tem cache: nenhuma contagem no cartão dela
       final c = find.ancestor(
           of: find.textContaining(bib.listas[2].nomeMostrado), matching: find.byType(CartaoModerno));
@@ -253,11 +255,9 @@ void main() {
     });
   });
 
-  group('compacto na TV (960×540, a 80 %, na casca)', () {
-    testWidgets('«Continuar a ver» baixo, pesquisa e filtros numa linha e pelo menos 3 cartões por linha',
-        (t) async {
-      ecraTvTeste(t);
-      await t.runAsync(() async {
+  /// Nove listas Stalker (as pares verificadas, com validade; a 2 não funciona, com motivo), a
+  /// primeira com cache, um favorito e um canal visto.
+  Future<void> povoarCompacto(WidgetTester t) => t.runAsync(() async {
         await bib.adicionar([
           for (var i = 0; i < 9; i++)
             Importada(
@@ -271,19 +271,32 @@ void main() {
                     : null),
         ]);
         await bib.guardarCanais(bib.listas.first.id, _conteudo('A'));
+        await bib.alternarFavorito(bib.listas.first.id, 'A1');
         await bib.registarVisto(bib.listas.first.id, _conteudo('A').canais[2]);
       });
-      await t.pumpWidget(MaterialApp(
-          theme: temaApp(),
-          builder: (_, c) => TemaConformeRealce(child: EscalaInterface(escala: escalaCompacto, child: c!)),
-          home: TelaPrincipal(
-              verTv: TelaInicio(biblioteca: bib), gestor: const SizedBox(), definicoes: const SizedBox())));
-      // os resumos (contagens, número do canal visto) leem-se das caches fora do build
-      for (var i = 0; i < 50 && find.text('3 canais · 2 grupos').evaluate().isEmpty; i++) {
-        await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 40)));
-        await t.pump();
-      }
-      await t.pumpAndSettle();
+
+  /// Espera pelos resumos (contagens, número do canal visto), lidos das caches fora do build.
+  Future<void> esperarResumos(WidgetTester t) async {
+    for (var i = 0; i < 50 && find.text('3 canais · 2 grupos').evaluate().isEmpty; i++) {
+      await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 40)));
+      await t.pump();
+    }
+    await t.pumpAndSettle();
+  }
+
+  /// A casca no Início, a 80 % (como na TV no Compacto).
+  Widget cascaCompacta() => MaterialApp(
+      theme: temaApp(),
+      builder: (_, c) => TemaConformeRealce(child: EscalaInterface(escala: escalaCompacto, child: c!)),
+      home: TelaPrincipal(verTv: TelaInicio(biblioteca: bib), gestor: const SizedBox(), definicoes: const SizedBox()));
+
+  group('compacto na TV (960×540, a 80 %, na casca)', () {
+    testWidgets('«Continuar a ver» baixo, pesquisa e filtros numa linha e pelo menos 3 cartões por linha',
+        (t) async {
+      ecraTvTeste(t);
+      await povoarCompacto(t);
+      await t.pumpWidget(cascaCompacta());
+      await esperarResumos(t);
       expect(t.takeException(), isNull);
 
       // «Continuar a ver»: uma faixa baixa (≤ 72 lógicos), com o canal, a lista e o botão Ver
@@ -308,16 +321,95 @@ void main() {
       }
       expect(naLinha, greaterThanOrEqualTo(3));
 
-      // cada cartão: «tipo · host» e as contagens numa linha; a pílula e a validade na mesma linha
+      // cada cartão: «tipo · host» e as contagens numa linha; a validade ao lado da pílula ou,
+      // quando não cabe (com a letra larga dos testes nunca cabe), logo por baixo
       final c = find.byWidget(t.widget<CartaoLista>(cartoes.first));
       final tipo = t.getCenter(find.descendant(of: c, matching: find.textContaining('Stalker · ')));
       expect(t.getCenter(find.descendant(of: c, matching: find.text('3 canais · 2 grupos'))).dy,
           moreOrLessEquals(tipo.dy, epsilon: 1));
-      final pilula = t.getCenter(find.descendant(of: c, matching: find.byType(PilulaEstado)));
-      expect(t.getCenter(find.descendant(of: c, matching: find.text('até 16/10/2027'))).dy,
-          moreOrLessEquals(pilula.dy, epsilon: 1));
+      final pilula = t.getRect(find.descendant(of: c, matching: find.byType(PilulaEstado)));
+      final validade = t.getRect(find.descendant(of: c, matching: find.text('até 16/10/2027')));
+      expect(validade.top >= pilula.bottom || (validade.center.dy - pilula.center.dy).abs() < 1, isTrue,
+          reason: 'pílula $pilula, validade $validade');
+      expect(validade.bottom, lessThanOrEqualTo(t.getRect(c).bottom), reason: 'cabe no cartão');
+      // o estado nunca se corta
+      expect(t.renderObject<RenderParagraph>(find.descendant(of: c, matching: find.text('Funciona'))).didExceedMaxLines,
+          isFalse);
       // o motivo continua no cartão que não funciona
       expect(find.text('sem resposta'), findsOneWidget);
     });
+
+    for (final f in [1.5, 2.0]) {
+      testWidgets('com a letra do sistema a ${f}x, as alturas crescem e nada transborda', (t) async {
+        ecraTvTeste(t);
+        t.platformDispatcher.textScaleFactorTestValue = f;
+        addTearDown(t.platformDispatcher.clearTextScaleFactorTestValue);
+        await povoarCompacto(t);
+        await t.pumpWidget(cascaCompacta());
+        await esperarResumos(t);
+        expect(t.takeException(), isNull, reason: 'sem overflow');
+        expect(find.textContaining('Canal 3 · Desporto'), findsOneWidget);
+        // desce até aos cartões (com a letra grande ficam por baixo da dobra) e ao que tem motivo
+        final rolo = find.descendant(
+            of: find.byType(TelaInicio),
+            matching: find.byWidgetPredicate((w) => w is Scrollable && w.axisDirection == AxisDirection.down));
+        await t.scrollUntilVisible(find.text('sem resposta'), 120, scrollable: rolo.first);
+        await t.pumpAndSettle();
+        expect(t.takeException(), isNull, reason: 'sem overflow nos cartões');
+        expect(find.byType(CartaoLista), findsWidgets);
+      });
+    }
+  });
+
+  group('no telemóvel (360)', () {
+    void telemovel(WidgetTester t) {
+      t.view.physicalSize = const Size(360, 800);
+      t.view.devicePixelRatio = 1;
+      addTearDown(t.view.reset);
+    }
+
+    testWidgets('a pílula mostra «Funciona · verificada há 3 dias» completo; a validade passa para baixo',
+        (t) async {
+      telemovel(t);
+      await t.runAsync(() => bib.adicionar([
+            Importada(
+                contaDeLinha('http://servidor.exemplo.pt/c/ 00:1A:79:00:00:01')!,
+                UltimaVerificacao(
+                    estado: 'funciona',
+                    validade: '2027-10-16',
+                    data: DateTime.now().subtract(const Duration(days: 3, minutes: 5)))),
+          ]));
+      await t.pumpWidget(_app(TelaInicio(biblioteca: bib)));
+      await t.pump();
+      await t.pumpAndSettle();
+      expect(t.takeException(), isNull);
+      final estado = find.text('Funciona'), detalhe = find.text(' · verificada há 3 dias');
+      expect(estado, findsOneWidget);
+      expect(detalhe, findsOneWidget);
+      expect(t.renderObject<RenderParagraph>(estado).didExceedMaxLines, isFalse, reason: 'o estado inteiro');
+      expect(t.renderObject<RenderParagraph>(detalhe).didExceedMaxLines, isFalse, reason: 'o detalhe inteiro');
+      final pilula = t.getRect(find.byType(PilulaEstado));
+      final validade = t.getRect(find.text('até 16/10/2027'));
+      expect(validade.top, greaterThanOrEqualTo(pilula.bottom), reason: 'não cabe ao lado: vai para baixo');
+      expect(validade.bottom, lessThanOrEqualTo(t.getRect(find.byType(CartaoLista)).bottom));
+    });
+
+    for (final f in [1.5, 2.0]) {
+      testWidgets('com a letra do sistema a ${f}x, nada transborda', (t) async {
+        telemovel(t);
+        t.platformDispatcher.textScaleFactorTestValue = f;
+        addTearDown(t.platformDispatcher.clearTextScaleFactorTestValue);
+        await povoarCompacto(t);
+        await t.pumpWidget(_app(TelaInicio(biblioteca: bib)));
+        await esperarResumos(t);
+        expect(t.takeException(), isNull, reason: 'sem overflow');
+        expect(find.byKey(const Key('continuar-a-ver')), findsOneWidget);
+        expect(find.text('Favoritos · 1'), findsOneWidget);
+        await t.scrollUntilVisible(find.text('sem resposta'), 120,
+            scrollable: find.byWidgetPredicate((w) => w is Scrollable && w.axisDirection == AxisDirection.down).first);
+        await t.pumpAndSettle();
+        expect(t.takeException(), isNull, reason: 'sem overflow nos cartões');
+      });
+    }
   });
 }

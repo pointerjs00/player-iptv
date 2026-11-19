@@ -14,3 +14,17 @@ bool ecraTv(BuildContext context) {
   return MediaQuery.navigationModeOf(context) == NavigationMode.directional &&
       MediaQuery.sizeOf(context).width >= 1200;
 }
+
+/// O maior fator da letra do sistema que as alturas fixas acompanham: acima dele, a letra
+/// dessas peças fica presa ([letraPresa]).
+const limiteEscalaTexto = 2.0;
+
+/// O fator da letra do sistema (1 = normal), preso a [limiteEscalaTexto]. As peças de altura
+/// fixa (os cartões do Início, por exemplo) multiplicam a altura por ele.
+double fatorTexto(BuildContext context) =>
+    MediaQuery.textScalerOf(context).clamp(maxScaleFactor: limiteEscalaTexto).scale(1);
+
+/// [child] com a letra do sistema presa a [limiteEscalaTexto], para caber nas alturas que
+/// crescem com [fatorTexto].
+Widget letraPresa(Widget child) =>
+    MediaQuery.withClampedTextScaling(maxScaleFactor: limiteEscalaTexto, child: child);

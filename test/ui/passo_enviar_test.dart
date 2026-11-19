@@ -7,6 +7,7 @@ import 'package:player_iptv/dados/area_gestor.dart';
 import 'package:player_iptv/dados/biblioteca.dart';
 import 'package:player_iptv/importar/importar.dart';
 import 'package:player_iptv/modelo/conta.dart';
+import 'package:player_iptv/ui/design/design.dart';
 import 'package:player_iptv/ui/gestor/passo_enviar.dart';
 
 import 'ajuda_dpad.dart';
@@ -235,6 +236,32 @@ void main() {
     await t.pump();
     expect(area.listas, isEmpty);
     expect(textosFocados(), 'As que funcionam (0)');
+  });
+
+  testWidgets('a pílula das linhas é compacta: não passa a altura da linha, nem com a letra a 2x', (t) async {
+    t.platformDispatcher.textScaleFactorTestValue = 2;
+    addTearDown(t.platformDispatcher.clearTextScaleFactorTestValue);
+    await abrir(t);
+    final l = linha('001ALFA 070927');
+    final pilula = find.descendant(of: l, matching: find.byType(PilulaEstado));
+    expect(t.getRect(l).height, Tokens.alturaLinhaTabela);
+    expect(t.getRect(pilula).height, lessThanOrEqualTo(Tokens.alturaLinhaTabela));
+    expect(t.getRect(pilula).top, greaterThanOrEqualTo(t.getRect(l).top));
+    expect(t.getRect(pilula).bottom, lessThanOrEqualTo(t.getRect(l).bottom));
+  });
+
+  testWidgets('a fila dos chips tem barra de deslocamento e «Marcar:» fica fixo fora dela', (t) async {
+    await abrir(t, largura: 760);
+    final barra = find.byType(Scrollbar);
+    expect(find.ancestor(of: find.text('Nenhuma'), matching: barra), findsOneWidget);
+    expect(find.ancestor(of: find.text('Marcar:'), matching: barra), findsNothing);
+    final marcar = t.getRect(find.text('Marcar:'));
+    final antes = t.getRect(find.text('As que funcionam (2)'));
+    expect(antes.left, greaterThan(marcar.right), reason: 'os chips à direita de «Marcar:»');
+    await t.ensureVisible(find.text('Nenhuma'));
+    await t.pumpAndSettle();
+    expect(t.getRect(find.text('Marcar:')), marcar, reason: '«Marcar:» não desliza');
+    expect(t.getRect(find.text('As que funcionam (2)')).left, lessThan(antes.left), reason: 'os chips deslizaram');
   });
 
   testWidgets('ecrã estreito: os cartões ficam por baixo da lista', (t) async {

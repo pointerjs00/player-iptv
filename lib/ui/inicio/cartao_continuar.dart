@@ -18,8 +18,9 @@ class CartaoContinuar extends StatelessWidget {
   final int? numero;
 
   /// Uma faixa baixa: o logótipo pequeno, "CONTINUAR A VER · lista" por cima do canal (com o
-  /// número e o grupo ao lado) e o botão "Ver".
-  static double altura(bool tv) => tv ? 68 : 60;
+  /// número e o grupo ao lado) e o botão "Ver". Cresce com a letra do sistema ([fator], de
+  /// [fatorTexto]).
+  static double altura(bool tv, [double fator = 1]) => (tv ? 68 : 60) * fator;
 
   @override
   Widget build(BuildContext context) {
@@ -28,7 +29,7 @@ class CartaoContinuar extends StatelessWidget {
     final vazio = Text(_iniciais(visto.nome),
         style: TextStyle(color: Colors.white, fontSize: logo * .36, fontWeight: FontWeight.w800));
     final detalhe = [if (numero != null) 'Canal $numero', if (visto.grupo.isNotEmpty) visto.grupo].join(' · ');
-    return Semantics(
+    return letraPresa(Semantics(
       button: true,
       label: 'Continuar a ver ${visto.nome}, ${lista.nomeMostrado}',
       excludeSemantics: true,
@@ -95,7 +96,7 @@ class CartaoContinuar extends StatelessWidget {
           ),
         ]),
       ),
-    );
+    ));
   }
 }
 
