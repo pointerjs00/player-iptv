@@ -67,7 +67,15 @@ class MotorExo implements MotorReproducao {
   int? _idConhecido;
   bool _descartado = false;
 
-  /// O último `abrir` pedido: um mais antigo que ainda espera pelo `criar` já não vai.
+  /// O motor com o player nativo agora: um `criar` novo (outro ecrã) tira-o ao anterior.
+  static MotorExo? _vivo;
+
+  /// Outro motor criou o seu player: o nativo ignora os pedidos deste (id antigo).
+  bool _substituido = false;
+
+  /// O último `abrir` pedido: um mais antigo que ainda espera pelo `criar` já não vai. É também a
+  /// `sessao` do carregamento: o nativo põe-na em todos os eventos e os de outra sessão (atrasados
+  /// do canal anterior, no zapping, com o mesmo id) não contam.
   int _pedidoAbrir = 0;
   String? _url;
 
@@ -127,6 +135,11 @@ class MotorExo implements MotorReproducao {
     try {
       final id = await canal.invokeMethod<int>('criar', {'tunel': tunel});
       _idConhecido = id;
+      // o player aberto duas vezes (toque duplo): o anterior perdeu o seu player no nativo; sem
+      // aviso ficava "a carregar" para sempre
+      final anterior = _vivo;
+      _vivo = this;
+      if (anterior != null && !identical(anterior, this)) anterior._perdeuPlayer();
       return id;
     } catch (e) {
       // sem o lado nativo (outra plataforma, versão antiga): o ecrã pode passar ao mpv
@@ -141,7 +154,7 @@ class MotorExo implements MotorReproducao {
   Future<T?> _pedir<T>(String metodo, [Map<String, Object?> args = const {}, bool Function()? aindaVale]) async {
     if (_descartado) return null;
     final id = await _id;
-    if (id == null || _descartado) return null;
+    if (id == null || _descartado || _substituido) return null;
     if (aindaVale != null && !aindaVale()) return null;
     try {
       return await canal.invokeMethod<T>(metodo, {'id': id, ...args});
@@ -164,7 +177,12 @@ class MotorExo implements MotorReproducao {
     legenda.value = '';
     await _pedir<void>(
       'abrir',
-      {'url': url, 'cabecalhos': cabecalhos, if (inicio != null) 'inicioMs': inicio.inMilliseconds},
+      {
+        'url': url,
+        'cabecalhos': cabecalhos,
+        'sessao': pedido,
+        if (inicio != null) 'inicioMs': inicio.inMilliseconds,
+      },
       () => pedido == _pedidoAbrir,
     );
   }
@@ -274,7 +292,8 @@ class MotorExo implements MotorReproducao {
     final id = await _id;
     if (_descartado) return;
     _descartado = true;
-    if (id != null) {
+    if (identical(_vivo, this)) _vivo = null;
+    if (id != null && !_substituido) {
       try {
         if (_visivelEnviado != false) await canal.invokeMethod<void>('mostrar', {'id': id, 'visivel': false});
         _visivelEnviado = false;
@@ -290,6 +309,14 @@ class MotorExo implements MotorReproducao {
       unawaited(c.close());
     }
     legenda.value = '';
+  }
+
+  /// Outro motor criou o seu player: este já não toca nada (o ecrã mostra o erro e pode tentar de
+  /// novo, com um motor novo, ou sair).
+  void _perdeuPlayer() {
+    if (_descartado || _substituido) return;
+    _substituido = true;
+    _erro('o player foi aberto noutro ecrã');
   }
 
   // ---------------------------------------------------------------- eventos
@@ -308,7 +335,9 @@ class MotorExo implements MotorReproducao {
   void _aoEvento(Object? e) {
     if (_descartado || e is! Map) return;
     final id = _idConhecido;
-    if (id == null || e['id'] != id) return; // outro player (ou o criar ainda não respondeu)
+    if (id == null || e['id'] != id || _substituido) return; // outro player (ou o criar ainda não respondeu)
+    // outro carregamento: um evento atrasado do canal anterior (o nativo põe 0 antes do 1.º abrir)
+    if ((e['sessao'] ?? 0) != _pedidoAbrir) return;
     switch (e['tipo']) {
       case 'aCarregar':
         final valor = e['valor'] == true;

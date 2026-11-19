@@ -65,9 +65,15 @@ class _ExoFalso {
   List<MethodCall> de(String metodo) => [for (final c in chamadas) if (c.method == metodo) c];
   Map<Object?, Object?> args(MethodCall c) => c.arguments as Map<Object?, Object?>;
 
-  /// Um evento do player [deId] (por omissão o atual).
-  void evento(String tipo, [Map<String, Object?> dados = const {}, int? deId]) {
-    final e = {...dados, 'id': deId ?? id, 'tipo': tipo};
+  /// A sessão do último `abrir` que chegou (0 antes do primeiro), como o nativo a guarda.
+  int get sessao {
+    final a = de('abrir');
+    return a.isEmpty ? 0 : args(a.last)['sessao']! as int;
+  }
+
+  /// Um evento do player [deId] (por omissão o atual), da [sessao] dada (por omissão a atual).
+  void evento(String tipo, [Map<String, Object?> dados = const {}, int? deId, int? daSessao]) {
+    final e = {...dados, 'id': deId ?? id, 'sessao': daSessao ?? sessao, 'tipo': tipo};
     if (fonte.hasListener) {
       fonte.add(e);
     } else {
@@ -118,8 +124,10 @@ void main() {
         'id': 7,
         'url': 'http://exemplo.invalid/canal.ts',
         'cabecalhos': {'User-Agent': 'Teste'},
+        'sessao': 1,
       });
       expect(exo.args(abrir[1])['inicioMs'], 90000);
+      expect(exo.args(abrir[1])['sessao'], 2, reason: 'cada abrir é uma sessão nova');
       await m.descartar();
     });
 
@@ -233,6 +241,58 @@ void main() {
       await _esperar();
       expect(tamanhos.whereType<Size>(), [const Size(1280, 720)]);
       await m.descartar();
+    });
+
+    test('zapping: os eventos atrasados do canal anterior (outra sessão) não contam', () async {
+      final exo = _ExoFalso();
+      final m = _motor();
+      final erros = <ErroMotor>[], tamanhos = <Size?>[], posicoes = <Duration>[];
+      var fins = 0;
+      m.erros.listen(erros.add);
+      m.tamanhoVideo.listen(tamanhos.add);
+      m.posicao.listen(posicoes.add);
+      m.fim.listen((_) => fins++);
+      await m.abrir('http://exemplo.invalid/1.ts', const {});
+      await m.abrir('http://exemplo.invalid/2.ts', const {});
+      expect([for (final c in exo.de('abrir')) exo.args(c)['sessao']], [1, 2]);
+      await _esperar();
+      // chegam depois do abrir do canal 2, mas são do carregamento do canal 1
+      exo.evento('erro', {'codigo': 'ERROR_CODE_IO_BAD_HTTP_STATUS', 'numero': 2004, 'mensagem': 'HTTP 404', 'formato': false}, null, 1);
+      exo.evento('tamanho', {'largura': 720, 'altura': 576, 'proporcaoPixel': 1.0}, null, 1);
+      exo.evento('posicao', {'ms': 9000}, null, 1);
+      exo.evento('fim', const {}, null, 1);
+      await _esperar();
+      expect(erros, isEmpty);
+      expect(tamanhos.whereType<Size>(), isEmpty);
+      expect(posicoes, isEmpty);
+      expect(fins, 0);
+      // os da sessão atual contam
+      exo.evento('erro', {'codigo': 'ERROR_CODE_IO_BAD_HTTP_STATUS', 'numero': 2004, 'mensagem': 'HTTP 404', 'formato': false}, null, 2);
+      exo.evento('tamanho', {'largura': 1280, 'altura': 720, 'proporcaoPixel': 1.0}, null, 2);
+      await _esperar();
+      expect(erros.single.mensagem, 'HTTP 404');
+      expect(tamanhos.whereType<Size>(), [const Size(1280, 720)]);
+      await m.descartar();
+    });
+
+    test('o player aberto duas vezes: o 1.º motor recebe um erro e não fica a carregar', () async {
+      final exo = _ExoFalso();
+      final primeiro = _motor();
+      final erros = <ErroMotor>[];
+      primeiro.erros.listen(erros.add);
+      await primeiro.abrir('http://exemplo.invalid/1.ts', const {});
+      final segundo = _motor();
+      await segundo.abrir('http://exemplo.invalid/2.ts', const {});
+      await _esperar();
+      expect(erros.single.mensagem, 'o player foi aberto noutro ecrã');
+      expect(erros.single.formato, isFalse);
+      // o 1.º já não pede nada (nem o descartar: o nativo é do 2.º)
+      final antes = exo.chamadas.length;
+      await primeiro.play();
+      await primeiro.descartar();
+      expect(exo.chamadas.length, antes);
+      await segundo.descartar();
+      expect(exo.metodos.last, 'descartar');
     });
 
     test('descartar manda mostrar(false) e descartar, e larga os eventos', () async {
@@ -486,6 +546,7 @@ void main() {
         'id': 7,
         'url': 'http://exemplo.invalid/1.ts',
         'cabecalhos': {'User-Agent': 'Teste'},
+        'sessao': 1,
       });
       await t.pumpWidget(const SizedBox());
       await t.pump(const Duration(seconds: 1));

@@ -67,6 +67,9 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
 
     private var player: ExoPlayer? = null
     private var idAtual = 0
+    // o carregamento (abrir) atual, dado pelo Dart: vai em todos os eventos, para os atrasados do
+    // canal anterior (mesmo id, no zapping) serem ignorados
+    private var sessaoAtual = 0L
     private var tunel = false
 
     // Superfícies: um FrameLayout preto por baixo da FlutterView, com o SurfaceView do vídeo dentro.
@@ -140,6 +143,7 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
                         cabecalhos,
                         (call.argument<Any>("inicioMs") as? Number)?.toLong(),
                         call.argument<String>("mime"),
+                        (call.argument<Any>("sessao") as? Number)?.toLong() ?: 0L,
                     )
                     result.success(null)
                 }
@@ -228,6 +232,7 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
         p.addListener(ouvinte)
         p.addAnalyticsListener(analise)
         idAtual += 1
+        sessaoAtual = 0L
         player = p
         // o vídeo escondido (mostrar(false) ou ainda nunca mostrado) começa com a faixa de vídeo
         // desligada: sem MediaCodec até ao mostrar(true)
@@ -244,7 +249,16 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
         return idAtual
     }
 
-    private fun abrir(p: ExoPlayer, url: String, cabecalhos: Map<String, String>, inicioMs: Long?, mime: String?) {
+    private fun abrir(
+        p: ExoPlayer,
+        url: String,
+        cabecalhos: Map<String, String>,
+        inicioMs: Long?,
+        mime: String?,
+        sessao: Long,
+    ) {
+        // antes de tudo: os eventos que este abrir já emite (aCarregar) são desta sessão
+        sessaoAtual = sessao
         prontoEnviado = false
         primeiraImagem = false
         jaTocou = false
@@ -385,6 +399,7 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
         val sink = eventos ?: return
         sink.success(HashMap<String, Any?>(dados).apply {
             put("id", idAtual)
+            put("sessao", sessaoAtual)
             put("tipo", tipo)
         })
     }
