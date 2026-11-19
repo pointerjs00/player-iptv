@@ -334,6 +334,31 @@ void main() {
         lessThanOrEqualTo(t.getRect(find.text('Canais · 31')).top));
   });
 
+  testWidgets('largo → estreito com o filtro ativo: o filtro limpa-se e o Voltar sai logo', (t) async {
+    await abrir(t);
+    await filtrar(t, 'desp');
+    await voltar(t); // acaba de escrever
+    expect(t.widget<BarraTeclas>(find.byType(BarraTeclas)).itens, contains(('Voltar', 'limpar')));
+    t.view.physicalSize = const Size(400, 800);
+    await t.pumpAndSettle();
+    expect(_filtro, findsNothing);
+    expect(t.widget<BarraTeclas>(find.byType(BarraTeclas)).itens, isNot(contains(('Voltar', 'limpar'))));
+    await t.binding.handlePopRoute();
+    await t.pumpAndSettle();
+    expect(find.byType(TelaConteudo), findsNothing);
+    expect(find.text('base'), findsOneWidget);
+  });
+
+  testWidgets('← nos canais com o filtro sem resultados vai ao filtro dos grupos', (t) async {
+    await abrir(t);
+    await filtrar(t, 'zzz');
+    await voltar(t);
+    expect(_nomes(t, _grupos), isEmpty);
+    await focar(t, 'Desporto 1');
+    await teclaDpad(t, LogicalKeyboardKey.arrowLeft);
+    expect(_noCampo(t, _filtro), isTrue, reason: '${textosFocados()} ${FocusManager.instance.primaryFocus?.debugLabel}');
+  });
+
   testWidgets('pesquisa numa lista de 100 mil canais (e 5000 grupos)', (t) async {
     // 1 em cada 10 no Desporto; os outros por 4999 grupos "Filmes N"
     final grande = ConteudoLista(['Desporto', for (var g = 0; g < 4999; g++) 'Filmes $g'], [

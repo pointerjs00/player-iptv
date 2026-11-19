@@ -599,9 +599,16 @@ class _TelaConteudoState extends State<TelaConteudo> {
   @override
   Widget build(BuildContext context) {
     final largo = MediaQuery.sizeOf(context).width >= 720;
+    // sem coluna dos grupos o filtro não se vê: limpa-se (depois do frame) e o Voltar não o conta
+    if (!largo && (_comTextoGrupos || _qGrupos.isNotEmpty)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && MediaQuery.sizeOf(context).width < 720) _limparFiltroGrupos();
+      });
+    }
+    final filtroAtivo = largo && _comTextoGrupos;
     // o Voltar com texto num campo limpa-o em vez de sair
     return PopScope(
-      canPop: !(_comTexto || _comTextoGrupos),
+      canPop: !(_comTexto || filtroAtivo),
       onPopInvokedWithResult: _voltar,
       child: Scaffold(
       body: SafeArea(
@@ -621,7 +628,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
                   return KeyEventResult.handled;
                 }
                 // a tecla Voltar com texto num campo limpa-o (a escrever, o campo fica com ela)
-                if ((_comTexto || _comTextoGrupos) &&
+                if ((_comTexto || filtroAtivo) &&
                     (e.logicalKey == LogicalKeyboardKey.goBack || e.logicalKey == LogicalKeyboardKey.escape)) {
                   _limparComVoltar();
                   return KeyEventResult.handled;
@@ -631,7 +638,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
               child: Column(children: [
                 _barraTopo(largo),
                 Expanded(child: _corpo()),
-                BarraTeclas(_comTexto || _comTextoGrupos
+                BarraTeclas(_comTexto || filtroAtivo
                     ? const [('↑', 'pesquisa'), ('OK', 'abrir'), ('Voltar', 'limpar')]
                     : const [
                         ('OK', 'ver'),
@@ -1207,8 +1214,13 @@ class _TelaConteudoState extends State<TelaConteudo> {
     if (_subirParaCampo(e, _indice == 0, _focoPesquisa)) return KeyEventResult.handled;
     if (e.logicalKey == LogicalKeyboardKey.arrowLeft) {
       final g = _focosGrupos[_grupo];
-      if (g != null && g.context != null && g.canRequestFocus) {
+      if (g != null && (g.context?.mounted ?? false) && g.canRequestFocus) {
         g.requestFocus();
+        return KeyEventResult.handled;
+      }
+      // sem grupos à vista (filtro sem resultados): vai ao filtro, que está na coluna dos grupos
+      if (_focoFiltroGrupos.context?.mounted ?? false) {
+        _focoFiltroGrupos.requestFocus();
         return KeyEventResult.handled;
       }
     }
