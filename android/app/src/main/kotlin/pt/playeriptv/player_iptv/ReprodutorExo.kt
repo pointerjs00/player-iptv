@@ -82,6 +82,7 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
 
     // Estado de um canal aberto
     private var prontoEnviado = false
+    private var primeiraImagem = false // a 1.ª imagem deste canal já foi para a Surface
     private var jaTocou = false
     private var aCarregar = false
     private var ultimaPosicao = -1L
@@ -245,6 +246,7 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
 
     private fun abrir(p: ExoPlayer, url: String, cabecalhos: Map<String, String>, inicioMs: Long?, mime: String?) {
         prontoEnviado = false
+        primeiraImagem = false
         jaTocou = false
         ultimaPosicao = -1L
         tamanhoVideo = VideoSize.UNKNOWN
@@ -448,7 +450,14 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
                 return
             }
             definirACarregar(false)
-            val formato = erro.errorCode in CODIGOS_FORMATO
+            // a falhar a descodificar ou no AudioTrack antes de o canal começar (sem `pronto` ou, com
+            // vídeo, sem a 1.ª imagem): é o aparelho que não toca este formato; depois disso é
+            // passageiro (rede, dados estragados)
+            val temVideo = !videoDesligado && p.currentTracks.isTypeSelected(C.TRACK_TYPE_VIDEO)
+            val antesDeComecar = !prontoEnviado || (temVideo && !primeiraImagem)
+            val formato = erro.errorCode in CODIGOS_FORMATO ||
+                (antesDeComecar && (erro.errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED ||
+                    erro.errorCode in CODIGOS_AUDIO_TRACK))
             // só o nome do código (e o código HTTP): a mensagem e a causa podem trazer o endereço
             val http = (erro.cause as? HttpDataSource.InvalidResponseCodeException)?.responseCode
             val mensagem = when {
@@ -462,6 +471,10 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
                 "erro",
                 mapOf("codigo" to erro.errorCodeName, "numero" to erro.errorCode, "mensagem" to mensagem, "formato" to formato),
             )
+        }
+
+        override fun onRenderedFirstFrame() {
+            primeiraImagem = true
         }
 
         override fun onVideoSizeChanged(tamanho: VideoSize) {
@@ -680,7 +693,10 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
         private const val TAG = "ReprodutorExo"
         private const val INTERVALO_POSICAO_MS = 500L
 
-        /** Erros de descodificador/formato: o Dart pode passar ao mpv. O resto (rede, HTTP…) não. */
+        /**
+         * Erros de descodificador/formato: o Dart pode passar ao mpv. O resto (rede, HTTP…) não, exceto
+         * DECODING_FAILED e os do AudioTrack antes de o canal começar (ver onPlayerError).
+         */
         private val CODIGOS_FORMATO = setOf(
             PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
             PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED,
@@ -691,5 +707,8 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
             PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,
             PlaybackException.ERROR_CODE_PARSING_MANIFEST_UNSUPPORTED,
         )
+
+        /** Erros do AudioTrack (5000–5999: abrir, escrever, offload): formato só antes de o canal começar. */
+        private val CODIGOS_AUDIO_TRACK = 5000..5999
     }
 }

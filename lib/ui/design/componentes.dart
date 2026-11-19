@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/rendering.dart' show PipelineOwner, RenderProxyBox;
 import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
@@ -8,23 +9,63 @@ import 'movimento.dart';
 import 'sombra.dart';
 import 'tokens.dart';
 
-/// O fundo de todos os ecrãs: azul-noite com um gradiente radial subtil.
-class FundoCinema extends StatelessWidget {
-  const FundoCinema({super.key, required this.child});
-  final Widget child;
+/// O fundo de todos os ecrãs: azul-noite com um gradiente radial subtil. É sempre opaco (no
+/// Android a `FlutterView` é transparente: o que não se pinta deixa ver o que está por baixo),
+/// exceto enquanto houver um vídeo nativo montado ([videoPorBaixo]).
+class FundoCinema extends SingleChildRenderObjectWidget {
+  const FundoCinema({super.key, required Widget super.child});
+
+  /// Quantas áreas de vídeo nativo (a `SurfaceView` do ExoPlayer, por baixo da interface) estão
+  /// montadas: com alguma, o fundo não se pinta (senão tapava o vídeo). Pode mudar a meio de um
+  /// build (pinta-se de novo no mesmo frame).
+  static final videoPorBaixo = ValueNotifier<int>(0);
+
+  static const decoracao = BoxDecoration(
+    color: Tokens.fundo,
+    gradient: RadialGradient(
+      center: Alignment(-.7, -1),
+      radius: 1.5,
+      colors: [Tokens.fundoBrilho, Tokens.fundo],
+    ),
+  );
 
   @override
-  Widget build(BuildContext context) => DecoratedBox(
-        decoration: const BoxDecoration(
-          color: Tokens.fundo,
-          gradient: RadialGradient(
-            center: Alignment(-.7, -1),
-            radius: 1.5,
-            colors: [Tokens.fundoBrilho, Tokens.fundo],
-          ),
-        ),
-        child: child,
-      );
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderFundoCinema(createLocalImageConfiguration(context));
+
+  @override
+  void updateRenderObject(BuildContext context, RenderObject renderObject) =>
+      (renderObject as _RenderFundoCinema).configuracao = createLocalImageConfiguration(context);
+}
+
+class _RenderFundoCinema extends RenderProxyBox {
+  _RenderFundoCinema(this.configuracao);
+
+  ImageConfiguration configuracao;
+  BoxPainter? _pintor;
+
+  @override
+  void attach(PipelineOwner owner) {
+    super.attach(owner);
+    FundoCinema.videoPorBaixo.addListener(markNeedsPaint);
+  }
+
+  @override
+  void detach() {
+    FundoCinema.videoPorBaixo.removeListener(markNeedsPaint);
+    _pintor?.dispose();
+    _pintor = null;
+    super.detach();
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    if (FundoCinema.videoPorBaixo.value <= 0) {
+      _pintor ??= FundoCinema.decoracao.createBoxPainter(markNeedsPaint);
+      _pintor!.paint(context.canvas, offset, configuracao.copyWith(size: size));
+    }
+    super.paint(context, offset);
+  }
 }
 
 /// Um painel de vidro fosco: fundo translúcido, borda de 1 px translúcida e sombra.

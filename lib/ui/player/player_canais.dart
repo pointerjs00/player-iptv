@@ -24,6 +24,7 @@ import 'faixas.dart';
 import 'filtro_desentrelacamento.dart';
 import 'leitor_partilhado.dart';
 import 'maquina_controlos.dart';
+import 'motor_exo.dart';
 import 'motor_mpv.dart';
 import 'motor_reproducao.dart';
 import 'mpv_fora_da_ui.dart';
@@ -1041,7 +1042,9 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   @override
   Widget build(BuildContext context) {
     final canal = _canais[_i];
-    final ajuste = ajusteVideo(_prefs.formato);
+    // o ExoPlayer ajusta a SurfaceView no nativo (sem aumento no Flutter: o zoom fica preencher)
+    final exo = _motor is MotorExo;
+    final ajuste = exo ? ajusteVideoExo(_prefs.formato) : ajusteVideo(_prefs.formato);
     final mk = _mk;
     Widget video = mk == null
         ? _motor.video(ajuste: ajuste.fit, proporcao: ajuste.aspecto)
@@ -1079,7 +1082,9 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     video = _ultima.envolver(video);
 
     return ColoredBox(
-      color: Colors.black,
+      // o vídeo do ExoPlayer está por baixo da interface: nada opaco por cima dele (as barras são a
+      // caixa preta do nativo)
+      color: exo ? Colors.transparent : Colors.black,
       child: ControlosPlayer(
         key: _controlos,
         estado: EstadoControlos(

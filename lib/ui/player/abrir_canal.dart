@@ -29,6 +29,8 @@ Future<int?> abrirCanal(BuildContext context, Lista lista, List<Canal> canais, i
   await Navigator.of(context).push(PageRouteBuilder(
     pageBuilder: (_, _, _) => _PaginaPlayer(lista: lista, canais: canais, i: i, atual: atual, aoVer: aoVer),
     transitionDuration: Duration.zero,
+    // sem animação ao sair: durante ela a rota de baixo via-se pelo vídeo transparente do ExoPlayer
+    reverseTransitionDuration: Duration.zero,
   ));
   return atual.value;
 }
@@ -64,8 +66,9 @@ class _PaginaPlayerState extends State<_PaginaPlayer> {
   @override
   Widget build(BuildContext context) {
     final conta = widget.lista.conta;
+    // o fundo preto é o do PlayerCanais (transparente com o ExoPlayer, que está por baixo da interface)
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: Colors.transparent,
       body: PlayerCanais(
         canais: widget.canais,
         indice: widget.i,
