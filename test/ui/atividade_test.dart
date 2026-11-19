@@ -113,6 +113,24 @@ void main() {
     await t.pump();
   });
 
+  testWidgets('uma tarefa de envio (nao cancelavel) nao mostra "Parar"', (t) async {
+    tamanho(t);
+    final s = ServicoVerificacao(bib, colecao: area, verificador: _Preso());
+    await t.pumpWidget(casca(s, inicial: Seccao.gestor));
+    final envio = Completer<String>(), pesquisa = Completer<String>();
+    tarefas.iniciar('Enviar 2 listas para o Player', (p) => envio.future, cancelavel: false);
+    tarefas.iniciar('Pesquisa no stbstalker · hoje', (p) => pesquisa.future);
+    await t.pump();
+    await abrirPainel(t);
+    expect(find.text('Enviar 2 listas para o Player'), findsOneWidget);
+    expect(find.text('Parar'), findsOneWidget, reason: 'só a pesquisa se pode parar');
+    final cartaoEnvio = find.ancestor(of: find.text('Enviar 2 listas para o Player'), matching: find.byType(Column)).first;
+    expect(find.descendant(of: cartaoEnvio, matching: find.text('Parar')), findsNothing);
+    envio.complete('ok');
+    pesquisa.complete('ok');
+    await t.pump();
+  });
+
   testWidgets('uma tarefa que falhou mostra "Tentar de novo" e chama repetir', (t) async {
     tamanho(t);
     final s = ServicoVerificacao(bib, colecao: area, verificador: _Preso());

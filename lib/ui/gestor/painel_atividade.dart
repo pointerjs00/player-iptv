@@ -208,7 +208,8 @@ class _PainelAtividadeState extends State<PainelAtividade> {
         onPressed: () => setState(() => aberta ? _abertas.remove(t.id) : _abertas.add(t.id)),
         child: const Text('Ver detalhe'),
       ),
-      if (aDecorrer) TextButton(onPressed: () => widget.tarefas.cancelar(t.id), child: const Text('Parar')),
+      if (aDecorrer && t.cancelavel)
+        TextButton(onPressed: () => widget.tarefas.cancelar(t.id), child: const Text('Parar')),
       if (t.estado == EstadoTarefa.falhou && t.repetir != null)
         TextButton(onPressed: () => t.repetir!(), child: const Text('Tentar de novo')),
     ]);

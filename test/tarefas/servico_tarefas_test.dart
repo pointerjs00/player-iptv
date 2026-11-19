@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:player_iptv/rede/http.dart';
 import 'package:player_iptv/tarefas/segredos.dart';
 import 'package:player_iptv/tarefas/servico_tarefas.dart';
 
@@ -80,6 +81,60 @@ void main() {
     await Future<void>.delayed(Duration.zero);
     expect(t.estado, EstadoTarefa.cancelada);
     expect(s.recentes, [t]);
+    s.dispose();
+  });
+
+  test('uma tarefa nao cancelavel ignora o cancelar e acaba terminada', () async {
+    final s = ServicoTarefas();
+    late Progresso prog;
+    final c = Completer<String>();
+    final t = s.iniciar('Enviar', (p) {
+      prog = p;
+      return c.future;
+    }, cancelavel: false);
+    expect(t.cancelavel, isFalse);
+    s.cancelar(t.id);
+    expect(prog.cancelado, isFalse);
+    c.complete('feito');
+    await Future<void>.delayed(Duration.zero);
+    expect(t.estado, EstadoTarefa.terminada);
+    s.dispose();
+  });
+
+  test('naoCancelavel a meio: o cancelar deixa de ter efeito', () async {
+    final s = ServicoTarefas();
+    late Progresso prog;
+    final c = Completer<String>();
+    final t = s.iniciar('Exportar', (p) {
+      prog = p;
+      return c.future;
+    });
+    expect(t.cancelavel, isTrue);
+    var avisos = 0;
+    s.addListener(() => avisos++);
+    prog.naoCancelavel();
+    expect(t.cancelavel, isFalse);
+    expect(avisos, 1, reason: 'o painel esconde o Parar');
+    s.cancelar(t.id);
+    c.complete('guardado');
+    await Future<void>.delayed(Duration.zero);
+    expect(t.estado, EstadoTarefa.terminada);
+    s.dispose();
+  });
+
+  test('o trabalho que para com Cancelado acaba cancelada, com um resultado claro', () async {
+    final s = ServicoTarefas();
+    final c = Completer<void>();
+    final t = s.iniciar('X', (p) async {
+      await c.future;
+      if (p.cancelado) throw Cancelado();
+      return 'feito';
+    });
+    s.cancelar(t.id);
+    c.complete();
+    await Future<void>.delayed(Duration.zero);
+    expect(t.estado, EstadoTarefa.cancelada);
+    expect(t.resultado, 'Parada antes de acabar.');
     s.dispose();
   });
 

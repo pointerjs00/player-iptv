@@ -270,6 +270,43 @@ void main() {
       expect(find.text('stbstalker: a procurar os posts · 2 tarefas a decorrer'), findsOneWidget);
     });
 
+    testWidgets('Parar a meio da pesquisa: não junta mais listas e a tarefa acaba cancelada', (t) async {
+      // o blog tem 2 posts; o 1.º só responde quando o teste deixar
+      final pedidos = <String>[];
+      final porta = Completer<void>();
+      late HttpServer blog;
+      await t.runAsync(() async {
+        blog = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+        blog.listen((p) async {
+          pedidos.add(p.uri.path);
+          if (p.uri.path == '/') {
+            p.response.write('<a href="/${hoje.year}/01/a-$slug.html">a</a> <a href="/${hoje.year}/01/b-$slug.html">b</a>');
+          } else {
+            if (p.uri.path.contains('/a-')) await porta.future;
+            p.response.write('<p>http://portal.exemplo/c/</p><p>00:1A:79:00:00:0${p.uri.path.contains('/a-') ? 1 : 2}</p>');
+          }
+          await p.response.close();
+        });
+      });
+      addTearDown(() => blog.close(force: true));
+      await abrir(t, base: () => 'http://127.0.0.1:${blog.port}/');
+      await escolherStb(t);
+      await procurar(t);
+      for (var i = 0; i < 50 && pedidos.length < 2; i++) {
+        await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+      }
+      expect(pedidos, hasLength(2), reason: 'a página e o 1.º post');
+      final tarefa = tarefas.emCurso.single;
+      expect(tarefa.cancelavel, isTrue);
+      tarefas.cancelar(tarefa.id); // o "Parar" do painel
+      await t.runAsync(() async => porta.complete());
+      await esperar(t);
+      expect(tarefa.estado, EstadoTarefa.cancelada);
+      expect(area.listas, isEmpty, reason: 'nenhuma lista entrou no Gestor');
+      expect(pedidos, hasLength(2), reason: 'o 2.º post já não foi lido');
+      expect(tarefa.resultado, 'Pesquisa parada. Nenhuma lista foi junta ao Gestor.');
+    });
+
     testWidgets('blog que corta a ligação: a tarefa falha e o painel diz o motivo em português, sem o link',
         (t) async {
       await t.runAsync(() async {

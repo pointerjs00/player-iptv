@@ -22,7 +22,7 @@ enum OrigemImportacao { ficheiros, colar, stbstalker, doPlayer }
 
 /// Uma pesquisa/importação que falhou: a mensagem é a que se mostra (sem "Exception:").
 class _Falha implements Exception {
-  _Falha(this.mensagem);
+  const _Falha(this.mensagem);
   final String mensagem;
   @override
   String toString() => mensagem;
@@ -150,13 +150,21 @@ class _TelaImportarState extends State<TelaImportar> {
     final periodo = inicio == fim ? _dd(inicio) : '${_dd(inicio)} a ${_dd(fim)}';
     widget.registo.iniciar(widget.tarefas, '$tituloTarefaStb · $periodo', (p) async {
       p(null, 'a procurar os posts');
+      const parada = _Falha('Pesquisa parada. Nenhuma lista foi junta ao Gestor.');
       final ResultadoStb r;
       try {
         r = await importarEntre(inicio, fim,
-            base: base, aoProgresso: (lidos, posts, linhas) => p(lidos / posts, '$linhas encontradas'));
+            base: base,
+            aoProgresso: (lidos, posts, linhas) => p(lidos / posts, '$linhas encontradas'),
+            cancelado: () => p.cancelado);
+      } on Cancelado {
+        throw parada;
       } catch (e) {
+        if (p.cancelado) throw parada;
         throw _Falha('Não foi possível pesquisar: ${descreverErro(e)}');
       }
+      // o "Parar" pode chegar com o último post: nada entra no Gestor depois dele
+      if (p.cancelado) throw parada;
       if (r.erro != null) return ResumoImportacao(erros: [r.erro!]);
       final contas = [
         for (final l in r.linhas)

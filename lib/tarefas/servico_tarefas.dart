@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../rede/http.dart' show Cancelado;
 import 'segredos.dart';
 
 enum EstadoTarefa { aDecorrer, terminada, falhou, cancelada }
@@ -18,6 +19,10 @@ class Tarefa {
   DateTime? fim;
   final Future<void> Function()? repetir;
 
+  /// Se o "Parar" tem efeito. Falso no trabalho que não se pode interromper (enviar para o Player,
+  /// gravar um ficheiro): o painel não mostra "Parar" e o [ServicoTarefas.cancelar] é ignorado.
+  bool cancelavel;
+
   /// Ação oferecida na mensagem de fim (ex.: "Ir para Ver TV").
   final String? rotuloAcao;
   final VoidCallback? aoAcao;
@@ -29,17 +34,23 @@ class Tarefa {
     this.repetir,
     this.rotuloAcao,
     this.aoAcao,
+    this.cancelavel = true,
   });
 }
 
-/// Passado ao trabalho: reporta o progresso e deixa ver se foi cancelado.
+/// Passado ao trabalho: reporta o progresso e deixa ver se foi cancelado. O trabalho que pára a
+/// meio lança [Cancelado] (a tarefa acaba `cancelada`).
 class Progresso {
   final void Function(double? fracao, String detalhe) _aoReportar;
+  final VoidCallback? _aoFixar;
   bool _cancelado = false;
-  Progresso(this._aoReportar);
+  Progresso(this._aoReportar, [this._aoFixar]);
 
   void call(double? fracao, String detalhe) => _aoReportar(fracao, detalhe);
   bool get cancelado => _cancelado;
+
+  /// Daqui em diante o trabalho já não se pode parar (ex.: começou a gravar): o "Parar" sai.
+  void naoCancelavel() => _aoFixar?.call();
 }
 
 /// Corre o trabalho longo sem prender nenhum ecrã: a UI só observa.
@@ -64,6 +75,7 @@ class ServicoTarefas extends ChangeNotifier {
     Future<void> Function()? repetir,
     String? rotuloAcao,
     VoidCallback? aoAcao,
+    bool cancelavel = true,
   }) {
     final t = Tarefa(
       id: '${++_contador}',
@@ -72,11 +84,16 @@ class ServicoTarefas extends ChangeNotifier {
       repetir: repetir,
       rotuloAcao: rotuloAcao,
       aoAcao: aoAcao,
+      cancelavel: cancelavel,
     );
     final p = Progresso((fracao, detalhe) {
       if (t.estado != EstadoTarefa.aDecorrer) return;
       t.progresso = fracao;
       t.detalhe = mascararSegredos(detalhe);
+      _avisar();
+    }, () {
+      if (!t.cancelavel || t.estado != EstadoTarefa.aDecorrer) return;
+      t.cancelavel = false;
       _avisar();
     });
     _progressos[t.id] = p;
@@ -92,6 +109,9 @@ class ServicoTarefas extends ChangeNotifier {
     try {
       resultado = await trabalho(p);
       fim = EstadoTarefa.terminada;
+    } on Cancelado {
+      resultado = 'Parada antes de acabar.';
+      fim = EstadoTarefa.cancelada;
     } catch (e) {
       resultado = '$e';
       fim = EstadoTarefa.falhou;
@@ -112,6 +132,7 @@ class ServicoTarefas extends ChangeNotifier {
   void cancelar(String id) {
     final p = _progressos[id];
     if (p == null || p._cancelado) return;
+    if (!_emCurso.any((t) => t.id == id && t.cancelavel)) return;
     p._cancelado = true;
     _avisar();
   }

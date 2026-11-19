@@ -371,6 +371,8 @@ class _TelaGestorState extends State<TelaGestor> {
       aoAcao: () {
         if (ctx.mounted) TelaPrincipal.irPara(ctx, Seccao.verTv);
       },
+      // o Player muda de uma vez: não há meio envio para parar
+      cancelavel: false,
     );
   }
 
@@ -401,6 +403,8 @@ class _TelaGestorState extends State<TelaGestor> {
         'Exportar ${n == 1 ? '1 lista' : '$n listas'}',
         (p) async {
           final ResultadoGuardar r;
+          // a partir daqui o ficheiro está a ser gravado: já não se pode parar
+          p.naoCancelavel();
           try {
             r = await guardar(nome, bytes, mime);
           } on ErroGuardar catch (e) {

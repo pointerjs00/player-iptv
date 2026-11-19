@@ -410,6 +410,7 @@ void main() {
       expect(player(), ['velha.com', 'boa.com', 'nova.com']);
       expect(tarefa.estado, EstadoTarefa.terminada);
       expect(tarefa.resultado, '1 lista enviada para o Player · 1 nova');
+      expect(tarefa.cancelavel, isFalse, reason: 'o envio não se pode parar: o painel não mostra "Parar"');
       expect(tarefa.rotuloAcao, 'Ir para Ver TV');
       expect(tarefa.aoAcao, isNotNull);
     });
