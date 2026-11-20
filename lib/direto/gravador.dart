@@ -1,7 +1,7 @@
 /// Gravar um direto no armazenamento, para se poder recuar nele.
 ///
 /// O stream (MPEG-TS por HTTP) é escrito em blocos de [GravadorDireto.tamanhoBloco] bytes numa
-/// pasta da sessão. No máximo `reserva ÷ tamanhoBloco` blocos: antes de abrir um bloco novo fecha-se
+/// pasta da sessão ([ArmazemDisco]) ou em memória ([ArmazemMemoria], o recuo em Memória). No máximo `reserva ÷ tamanhoBloco` blocos: antes de abrir um bloco novo fecha-se
 /// o que estava em escrita e apaga-se o mais antigo, por isso o espaço em disco **nunca** passa da
 /// reserva, contando o bloco em escrita. As posições são absolutas (bytes desde o início da sessão):
 /// o bloco `n` guarda `[n × tamanhoBloco, (n + 1) × tamanhoBloco)`.
@@ -9,9 +9,10 @@
 /// Quando a ligação à origem cai, volta a ligar e continua no mesmo ponto (o `fim` não salta), com a
 /// regra de desistência do [ContinuarDireto]. [GravadorDireto.parar] apaga a pasta.
 ///
-/// Com [GravadorDireto.espacoLivre], a cada bloco novo vê-se o espaço livre do aparelho: abaixo de
-/// [margemEspaco] apagam-se os blocos mais antigos até voltar a ela (ou até restar um); se nem
-/// assim chegar, deixa de gravar e larga a origem ([ErroGravador.semEspaco]).
+/// Com [GravadorDireto.espacoLivre] (só no disco), antes de cada bloco novo vê-se o espaço livre do
+/// aparelho: sem [margemEspaco] mais um bloco, apagam-se os blocos mais antigos (medindo outra vez
+/// depois de cada um) até chegar (ou até restar um); se nem assim chegar, deixa de gravar e larga a
+/// origem ([ErroGravador.semEspaco]).
 ///
 /// Nunca se regista o URL nem os cabeçalhos (levam utilizador, password, MAC ou token).
 library;
@@ -27,6 +28,7 @@ import '../protocolos/protocolo.dart' show uaListas;
 import '../rede/http.dart';
 import '../ui/player/continuar_direto.dart';
 import '../verificar/video.dart' show syncTs;
+import 'armazem.dart';
 import 'espaco.dart' show margemEspaco;
 
 /// Um problema do gravador, para o player. A mensagem já é para o utilizador e não tem o URL.
@@ -62,7 +64,8 @@ class GravadorDireto {
     required this.origem,
     required this.cabecalhos,
     this.obterOrigem,
-    required this.pasta,
+    Directory? pasta,
+    ArmazemBlocos? armazem,
     required this.reservaBytes,
     this.tamanhoBloco = 16 << 20,
     DateTime Function()? agora,
@@ -71,7 +74,8 @@ class GravadorDireto {
     this.espacoLivre,
   })  : maximoBlocos = tamanhoBloco > 0 ? reservaBytes ~/ tamanhoBloco : 0,
         _agora = agora ?? DateTime.now,
-        _esperar = esperar ?? Future<void>.delayed {
+        _esperar = esperar ?? Future<void>.delayed,
+        armazem = armazem ?? ArmazemDisco(pasta ?? (throw ArgumentError('falta a pasta ou o armazém'))) {
     if (tamanhoBloco <= 0 || maximoBlocos < 1) {
       throw ArgumentError('a reserva tem de levar pelo menos um bloco');
     }
@@ -85,7 +89,9 @@ class GravadorDireto {
   /// [origem] e [cabecalhos]: os links do Stalker só servem uma vez. Uma falha conta como uma
   /// ligação falhada.
   final Future<(Uri, Map<String, String>)> Function()? obterOrigem;
-  final Directory pasta;
+
+  /// Onde ficam os blocos (a pasta da sessão, por omissão).
+  final ArmazemBlocos armazem;
   final int reservaBytes;
   final int tamanhoBloco;
 
@@ -110,7 +116,8 @@ class GravadorDireto {
 
   /// Os números dos blocos que estão no disco, do mais antigo ao que está em escrita.
   final _blocos = <int>[];
-  RandomAccessFile? _aberto;
+  /// Há um bloco em escrita no [armazem].
+  bool _aberto = false;
   int _noBloco = 0;
   int _fim = 0;
 
@@ -137,7 +144,7 @@ class GravadorDireto {
   bool _iniciado = false;
   bool _parado = false;
 
-  /// A criação da pasta em [iniciar]: o [parar] espera por ela antes de apagar.
+  /// A preparação do armazém (a pasta) em [iniciar]: o [parar] espera por ela antes de apagar.
   Future<void> _criacao = Future<void>.value();
   HttpClient? _cliente;
   StreamSubscription<List<int>>? _leitura;
@@ -164,7 +171,7 @@ class GravadorDireto {
     if (_iniciado) throw StateError('o gravador já foi iniciado');
     _iniciado = true;
     if (_parado) return; // parado antes de começar: nem se cria a pasta
-    final criacao = pasta.create(recursive: true);
+    final criacao = armazem.preparar();
     _criacao = criacao.then((_) {}, onError: (_) {});
     await criacao;
     if (_parado) return; // o parar() espera pela criação e apaga a pasta
@@ -189,39 +196,16 @@ class GravadorDireto {
     await _criacao; // um iniciar() a meio: a pasta pode ainda estar a ser criada
     try {
       await _exclusivo(() async {
-        final f = _aberto;
-        _aberto = null;
-        try {
-          await f?.close();
-        } catch (_) {}
+        _aberto = false;
         if (apagar) {
           _blocos.clear();
           _indice.clear();
-          await _apagarPasta();
         }
+        await armazem.fechar(apagar: apagar);
       });
     } finally {
       if (!_crescimento.isClosed) await _crescimento.close();
       if (!_erros.isClosed) await _erros.close();
-    }
-  }
-
-  /// Apaga a pasta da sessão. Se não der (no Windows, um ficheiro ainda aberto por outro), tenta
-  /// outra vez; se mesmo assim falhar, regista-o sem o caminho e a limpeza no arranque da app apanha
-  /// o que ficou.
-  Future<void> _apagarPasta() async {
-    for (var tentativa = 0;; tentativa++) {
-      try {
-        if (await pasta.exists()) await pasta.delete(recursive: true);
-        return;
-      } on FileSystemException catch (e) {
-        if (tentativa >= 1) {
-          debugPrint('gravador do direto: a pasta da sessão não foi apagada '
-              '(código ${e.osError?.errorCode ?? '?'}); fica para a limpeza no arranque');
-          return;
-        }
-        await Future<void>.delayed(const Duration(milliseconds: 100));
-      }
     }
   }
 
@@ -236,16 +220,10 @@ class GravadorDireto {
           final n = p ~/ tamanhoBloco;
           final noBloco = p - n * tamanhoBloco;
           final quanto = math.min(ate - p, tamanhoBloco - noBloco);
-          final f = await _ficheiro(n).open();
-          try {
-            await f.setPosition(noBloco);
-            final lido = await f.read(quanto);
-            if (lido.isEmpty) break;
-            saida.add(lido);
-            p += lido.length;
-          } finally {
-            await f.close();
-          }
+          final lido = await armazem.ler(n, noBloco, quanto);
+          if (lido.isEmpty) break;
+          saida.add(lido);
+          p += lido.length;
         }
         return saida.takeBytes();
       });
@@ -396,8 +374,6 @@ class GravadorDireto {
 
   // ---- escrita ----
 
-  File _ficheiro(int n) => File('${pasta.path}${Platform.pathSeparator}bloco_$n.ts');
-
   Future<void> _escrever(List<int> dados) async {
     final instante = _agora();
     _sincronizar(dados);
@@ -410,7 +386,7 @@ class GravadorDireto {
     }
     var i = 0;
     while (i < dados.length && !_parado) {
-      if (_aberto == null || _noBloco >= tamanhoBloco) {
+      if (!_aberto || _noBloco >= tamanhoBloco) {
         await _novoBloco();
         if (_parado) return;
         _marcar(instante, _fim); // a cada bloco
@@ -423,7 +399,7 @@ class GravadorDireto {
         marcou = true;
       }
       final cabe = math.min(tamanhoBloco - _noBloco, dados.length - i);
-      await _aberto!.writeFrom(dados, i, i + cabe);
+      await armazem.escrever(dados, i, i + cabe);
       i += cabe;
       _noBloco += cabe;
       _fim += cabe;
@@ -462,9 +438,9 @@ class GravadorDireto {
   /// em nenhum momento há mais de [maximoBlocos] blocos no disco. Com pouco espaço livre no
   /// aparelho apaga mais ([_guardarMargem]); lança [_SemEspaco] se nem assim chegar.
   Future<void> _novoBloco() => _exclusivo(() async {
-        final anterior = _aberto;
-        _aberto = null;
-        await anterior?.close();
+        final havia = _aberto;
+        _aberto = false;
+        if (havia) await armazem.fecharAberto();
         if (_parado) return;
         while (_blocos.length >= maximoBlocos) {
           await _apagarMaisAntigo();
@@ -475,39 +451,40 @@ class GravadorDireto {
           _podarIndice();
         }
         final n = _fim ~/ tamanhoBloco;
-        _aberto = await _ficheiro(n).open(mode: FileMode.writeOnly);
+        await armazem.abrir(n);
+        _aberto = true;
         _blocos.add(n);
         _noBloco = _fim - n * tamanhoBloco;
       });
 
-  /// Apaga o bloco mais antigo; devolve quanto ocupava.
-  Future<int> _apagarMaisAntigo() async {
-    final n = _blocos.removeAt(0); // o início avança antes de o ficheiro desaparecer
-    final f = _ficheiro(n);
-    if (!await f.exists()) return 0;
-    final tamanho = await f.length();
-    await f.delete();
-    return tamanho;
-  }
+  /// Apaga o bloco mais antigo (o início avança antes de ele desaparecer).
+  Future<void> _apagarMaisAntigo() => armazem.apagar(_blocos.removeAt(0));
 
-  /// Abaixo de [margemEspaco] livres no aparelho, apaga os blocos mais antigos até voltar a ela
-  /// ou até restar um (o que o motor está a ler, perto do direto); se nem assim chegar, lança
-  /// [_SemEspaco]. Sem saber o espaço, não faz nada.
+  /// Antes de abrir um bloco: o aparelho tem de ficar com [margemEspaco] livres mesmo depois de o
+  /// bloco novo encher, ou seja `margem + tamanhoBloco`. Se não tiver, apagam-se os blocos mais
+  /// antigos, um de cada vez e medindo outra vez depois de cada um (nada de estimar), até chegar ou
+  /// até restar um (o que está antes do direto); se nem assim, lança [_SemEspaco]. Nenhum bloco
+  /// está aberto por um leitor ao apagar: o servidor lê por [ler], que abre e fecha o ficheiro e
+  /// exclui a rotação, por isso apagar liberta logo o espaço. Sem saber o espaço, não faz nada.
   Future<void> _guardarMargem() async {
     final medir = espacoLivre;
     if (medir == null) return;
-    int? livre;
-    try {
-      livre = await medir();
-    } catch (e) {
-      debugPrint('gravador do direto: o espaço livre não se soube (${e.runtimeType})');
+    final precisa = margemEspaco + tamanhoBloco;
+    Future<int?> medida() async {
+      try {
+        return await medir();
+      } catch (e) {
+        debugPrint('gravador do direto: o espaço livre não se soube (${e.runtimeType})');
+        return null;
+      }
     }
-    if (livre == null || livre >= margemEspaco) return;
-    var l = livre;
-    while (l < margemEspaco && _blocos.length > 1) {
-      l += await _apagarMaisAntigo();
+
+    var livre = await medida();
+    while (livre != null && livre < precisa && _blocos.length > 1) {
+      await _apagarMaisAntigo();
+      livre = await medida();
     }
-    if (l < margemEspaco) {
+    if (livre != null && livre < precisa) {
       debugPrint('gravador do direto: sem espaço no armazenamento; deixa de gravar');
       throw _SemEspaco();
     }

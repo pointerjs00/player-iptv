@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:player_iptv/direto/armazem.dart';
 import 'package:player_iptv/direto/espaco.dart';
 import 'package:player_iptv/direto/sessao_direto.dart';
 
@@ -83,6 +84,43 @@ void main() {
       expect(Directory('${cache.path}/direto').existsSync(), isFalse);
       expect(outro.existsSync(), isTrue);
     });
+
+    test('salta a sessão viva de outro processo (o bloqueio dela não se consegue) e apaga as outras',
+        () async {
+      final cache = Directory.systemTemp.createTempSync('cache_');
+      addTearDown(() => cache.deleteSync(recursive: true));
+      // a outra janela do player a gravar: a pasta dela com o bloqueio tomado (outro handle; no
+      // Windows o bloqueio é por handle, como seria noutro processo)
+      final viva = Directory('${cache.path}/direto/s_viva')..createSync(recursive: true);
+      File('${viva.path}/bloco_0.ts').writeAsBytesSync(List.filled(100, 0x47));
+      final bloqueio = File('${viva.path}/${ArmazemDisco.nomeBloqueio}').openSync(mode: FileMode.write)
+        ..lockSync(FileLock.exclusive);
+      // uma sobra com o bloqueio largado (o processo morreu) e outra sem bloqueio nenhum
+      final morta = Directory('${cache.path}/direto/s_morta')..createSync();
+      File('${morta.path}/${ArmazemDisco.nomeBloqueio}').writeAsStringSync('');
+      final antiga = Directory('${cache.path}/direto/s_antiga')..createSync();
+      await limparDireto(cache: cache);
+      expect(viva.existsSync(), isTrue);
+      expect(File('${viva.path}/bloco_0.ts').existsSync(), isTrue);
+      expect(morta.existsSync(), isFalse);
+      expect(antiga.existsSync(), isFalse);
+      bloqueio.closeSync();
+    }, skip: Platform.isWindows ? false : 'o bloqueio de ficheiros é por processo fora do Windows');
+
+    test('uma sessão gravada viva (o seu bloqueio) não é apagada pela limpeza', () async {
+      final cache = Directory.systemTemp.createTempSync('cache_');
+      addTearDown(() => cache.deleteSync(recursive: true));
+      final pasta = Directory('${cache.path}/direto/s1');
+      final a = ArmazemDisco(pasta);
+      await a.preparar();
+      await a.abrir(0);
+      await a.escrever([1, 2, 3], 0, 3);
+      await limparDireto(cache: cache);
+      expect(pasta.existsSync(), isTrue);
+      await a.fechar(apagar: false);
+      await limparDireto(cache: cache);
+      expect(pasta.existsSync(), isFalse, reason: 'o bloqueio largado: é uma sobra');
+    }, skip: Platform.isWindows ? false : 'o bloqueio de ficheiros é por processo fora do Windows');
 
     test('sem a pasta direto/ não faz nada (e nunca lança)', () async {
       final cache = Directory.systemTemp.createTempSync('cache_');

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:player_iptv/direto/armazem.dart';
 import 'package:player_iptv/direto/gravador.dart';
 import 'package:player_iptv/ui/player/continuar_direto.dart';
 
@@ -23,6 +24,10 @@ List<int> _ts(int desde, int n) => List<int>.generate(n, (i) {
       final r = (desde + i) % 188;
       return r == 0 ? 0x47 : 1 + r % 50;
     });
+
+/// Os blocos na pasta (sem o ficheiro de bloqueio da sessão).
+List<File> _blocosNoDisco(Directory d) =>
+    d.listSync().whereType<File>().where((f) => f.uri.pathSegments.last.startsWith('bloco_')).toList();
 
 int _alinharAcima(int p) => (p + 187) ~/ 188 * 188;
 
@@ -79,7 +84,7 @@ void main() {
       final o = _ocupado(pasta);
       if (o > maximo) maximo = o;
       expect(o, lessThanOrEqualTo(_reserva));
-      expect(pasta.listSync().length, lessThanOrEqualTo(_reserva ~/ _bloco));
+      expect(_blocosNoDisco(pasta).length, lessThanOrEqualTo(_reserva ~/ _bloco));
       expect(g.inicio, greaterThanOrEqualTo(inicioAntes));
       if (g.inicio > inicioAntes) avancou++;
       inicioAntes = g.inicio;
@@ -169,7 +174,7 @@ void main() {
     expect(ligacoes, 2);
     expect(g.fim, 90000);
     expect(await g.ler(0, 90000), _bytes(0, 90000));
-    expect(pasta.listSync().length, 2); // 90000 bytes = um bloco cheio e outro a meio
+    expect(_blocosNoDisco(pasta).length, 2); // 90000 bytes = um bloco cheio e outro a meio
     expect(erros.where((e) => e.desistiu), isEmpty);
     await g.parar();
   });
@@ -413,22 +418,24 @@ void main() {
       return (g: g, origem: c, medicoes: medicoes);
     }
 
-    test('abaixo de 1 GB livre, a cada bloco novo apagam-se os mais antigos até voltar a 1 GB', () async {
+    test('sem 1 GB + um bloco livres, apagam-se os mais antigos (medindo depois de cada um) antes do novo',
+        () async {
       var livre = gb + 100 * _bloco;
       final (:g, :origem, :medicoes) = comEspaco(() => livre);
       await g.iniciar();
       await enviar(g, origem, _bytes(0, 8 * _bloco)); // 8 blocos (o 8.º ainda aberto, cheio)
       expect(medicoes, hasLength(8), reason: 'mede-se a cada bloco novo');
       expect(g.inicio, 0, reason: 'com espaço não se apaga nada');
-      // outra app ocupou espaço: agora faltam 3 blocos e meio para a margem de 1 GB
+      // outra app ocupou espaço: agora há 1 GB − 3,5 blocos livres
       livre = gb + 8 * _bloco - (3 * _bloco + _bloco ~/ 2);
       await enviar(g, origem, _bytes(g.fim, 100));
-      // o 8.º fechou (8 no disco): apagam-se os 4 mais antigos (3,5 blocos arredondados para cima)
-      expect(g.inicio, 4 * _bloco);
-      expect(pasta.listSync().whereType<File>(), hasLength(5), reason: '4 antigos + o novo');
-      expect(livre - _ocupado(pasta), greaterThanOrEqualTo(gb - _bloco),
-          reason: 'só o bloco novo (ainda a encher) fica abaixo da margem');
-      expect(await g.ler(4 * _bloco, 10), _bytes(4 * _bloco, 10));
+      // o 8.º fechou (8 no disco): para ter 1 GB + 1 bloco apagam-se os 5 mais antigos, um a um
+      expect(g.inicio, 5 * _bloco);
+      expect(_blocosNoDisco(pasta), hasLength(4), reason: '3 antigos + o novo');
+      expect(medicoes, hasLength(8 + 1 + 5), reason: 'mede-se outra vez depois de cada bloco apagado');
+      expect(livre - _ocupado(pasta) - (_bloco - 100), greaterThanOrEqualTo(gb),
+          reason: 'a margem de 1 GB fica mesmo com o bloco novo cheio');
+      expect(await g.ler(5 * _bloco, 10), _bytes(5 * _bloco, 10));
       expect(await g.ler(0, 10), isNull, reason: 'apagado');
       // continua a gravar
       await enviar(g, origem, _bytes(g.fim, 2 * _bloco));
@@ -455,9 +462,39 @@ void main() {
       expect(erros.single.mensagem, isNot(contains('exemplo.invalid')));
       expect(cancelada, isTrue, reason: 'a ligação à origem fecha: o canal pode reabrir na origem');
       expect(g.fim, 6 * _bloco, reason: 'nada mais se grava');
-      expect(pasta.listSync().whereType<File>(), hasLength(1), reason: 'apagou até restar 1 bloco');
+      expect(_blocosNoDisco(pasta), hasLength(1), reason: 'apagou até restar 1 bloco');
       await g.parar();
       expect(pasta.existsSync(), isFalse);
+    });
+
+    test('em memória: a soma dos blocos nunca passa da reserva e nada vai para o disco', () async {
+      final c = StreamController<List<int>>();
+      final armazem = ArmazemMemoria(_bloco);
+      final g = GravadorDireto(
+          origem: _origem, cabecalhos: const {}, armazem: armazem, reservaBytes: _reserva, tamanhoBloco: _bloco,
+          agora: agora, esperar: nada, abrir: (_, _) async => c.stream);
+      await g.iniciar();
+      var maximo = 0;
+      final vigia = g.crescimento.listen((_) {
+        expect(armazem.bytesEmUso, lessThanOrEqualTo(_reserva));
+        if (armazem.bytesEmUso > maximo) maximo = armazem.bytesEmUso;
+      });
+      const total = 3200 * 1024; // 12,5 vezes a reserva
+      while (g.fim < total) {
+        expect(armazem.bytesEmUso, lessThanOrEqualTo(_reserva));
+        final n = total - g.fim < 50000 ? total - g.fim : 50000;
+        await enviar(g, c, _bytes(g.fim, n));
+      }
+      expect(maximo, _reserva, reason: 'a reserva enche-se toda');
+      expect(g.inicio, greaterThanOrEqualTo(total - _reserva));
+      expect(await g.ler(g.inicio, 70000), _bytes(g.inicio, 70000), reason: 'atravessa blocos em memória');
+      expect(await g.ler(g.fim - 1000, 5000), _bytes(g.fim - 1000, 1000));
+      expect(await g.ler(0, 10), isNull, reason: 'já saiu da memória');
+      expect(pasta.existsSync(), isFalse, reason: 'nada no disco');
+      await vigia.cancel();
+      await g.parar();
+      expect(armazem.bytesEmUso, 0, reason: 'parar larga a memória');
+      expect(await g.ler(g.fim - 10, 10), isNull);
     });
 
     test('sem saber o espaço (null) não se apaga nada além da reserva', () async {

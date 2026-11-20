@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:player_iptv/direto/armazem.dart';
 import 'package:player_iptv/direto/gravador.dart';
 import 'package:player_iptv/direto/sessao_direto.dart';
 import 'package:player_iptv/modelo/canal.dart';
@@ -248,12 +249,69 @@ void main() {
       await s.fechar();
     });
 
-    test('sem espaço nem para 256 MiB: não grava nem liga à origem (o recuo fica em memória)', () async {
-      final s = comLivre(gb + 200 * mb);
-      expect(await s.abrir(const FonteVideo(_origem)), isNull);
-      expect(s.aviso, 'Sem espaço para gravar o direto: o recuo fica em memória');
-      expect(s.ligouOrigem, isFalse, reason: 'o link ainda serve para o player');
-      expect(origem.pedidos, isEmpty);
+    test('sem espaço nem para 256 MiB: grava em memória (128 MiB), avisa e não cria pasta nenhuma', () async {
+      final base = Directory('${tmp.path}/direto');
+      final s = SessaoGravada(
+        pastaBase: () async => base,
+        reservaBytes: 2 * gb,
+        tamanhoBloco: 64 * 1024,
+        tamanhoBlocoMemoria: 64 * 1024,
+        abrirOrigem: origem.abrir,
+        esperar: (_) async {},
+        espacoLivre: (_) async => gb + 200 * mb,
+      );
+      final aberta = s.abrir(const FonteVideo(_origem));
+      (await origem.proxima()).add(_ts(188 * 4));
+      final url = await aberta;
+      expect(url, isNotNull, reason: 'o recuo continua, pelo mesmo servidor local');
+      expect(s.aviso, 'Pouco espaço: o recuo fica em memória (cerca de 2 min em HD)');
+      expect(s.emMemoria, isTrue);
+      expect(s.reservaEfetiva, 128 * mb);
+      expect(s.armazem, isA<ArmazemMemoria>());
+      expect(base.existsSync(), isFalse, reason: 'nem a pasta base se cria');
+      expect(tmp.listSync(), isEmpty);
+      // o motor lê o direto em memória pelo servidor local
+      final c = HttpClient();
+      final r = await (await c.getUrl(s.urlDesde(0))).close();
+      expect((await r.first).first, 0x47);
+      c.close(force: true);
+      await s.fechar();
+      expect((s.armazem as ArmazemMemoria?)?.bytesEmUso ?? 0, 0);
+    });
+
+    test('o recuo em Memória: anel em RAM desde o começo, sem medir o espaço nem tocar no disco', () async {
+      var medidas = 0;
+      var pedidaPasta = false;
+      final s = SessaoGravada(
+        pastaBase: () async {
+          pedidaPasta = true;
+          return tmp;
+        },
+        reservaBytes: 256 * 1024,
+        memoria: true,
+        tamanhoBlocoMemoria: 64 * 1024,
+        abrirOrigem: origem.abrir,
+        esperar: (_) async {},
+        espacoLivre: (_) async {
+          medidas++;
+          return 0;
+        },
+      );
+      final aberta = s.abrir(const FonteVideo(_origem));
+      final l = await origem.proxima();
+      l.add(_ts(188 * 4));
+      expect(await aberta, isNotNull);
+      expect((s.emMemoria, s.aviso, s.reservaEfetiva), (true, null, 256 * 1024));
+      final memoria = s.armazem! as ArmazemMemoria;
+      // muito mais do que a reserva: nunca passa dela
+      for (var i = 0; i < 20; i++) {
+        final cresceu = s.crescimento.first;
+        l.add(_ts(64 * 1024));
+        await cresceu;
+        expect(memoria.bytesEmUso, lessThanOrEqualTo(256 * 1024));
+      }
+      expect(medidas, 0);
+      expect(pedidaPasta, isFalse);
       expect(tmp.listSync(), isEmpty);
       await s.fechar();
     });

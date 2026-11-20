@@ -392,7 +392,8 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
                   value: _p.volume,
                   texto: '${_p.volume.round()} %',
                   aoMudar: (v) => _mudou(() => _p.volume = v, player: true))),
-          _opcao('Recuar no direto', 'Grava o canal para poderes recuar e pausar. Apagado ao mudar de canal.',
+          // a explicação é a da escolha atual
+          _opcao('Recuar no direto', _p.recuoDireto.descricao,
               controlo: _escolhas(RecuoDireto.values, (r) => r.rotulo, _p.recuoDireto,
                   (r) => _mudou(() => _p.recuoDireto = r, player: true))),
           // só o Armazenamento grava

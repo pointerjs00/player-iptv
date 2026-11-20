@@ -431,6 +431,7 @@ void main() {
 
     test('nomes e rótulos; a cópia de segurança leva-os e aplicar repõe-nos', () async {
       expect(RecuoDireto.values.map((r) => r.rotulo), ['Armazenamento', 'Memória', 'Desligado']);
+      expect(RecuoDireto.desligado.descricao, 'Sem recuo no direto.');
       final p = await Preferencias.abrir(pasta);
       expect(p.paraJson(), containsPair('recuoDireto', 'armazenamento'));
       expect(p.paraJson(), containsPair('reservaDiretoGb', 2));

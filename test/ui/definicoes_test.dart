@@ -190,7 +190,9 @@ void main() {
   testWidgets('Imagem e som: «Recuar no direto» e «Espaço reservado» (só com Armazenamento), em linhas', (t) async {
     await abrir(t);
     expect(find.widgetWithText(LinhaOpcao, 'Recuar no direto'), findsOneWidget);
-    expect(find.text('Grava o canal para poderes recuar e pausar. Apagado ao mudar de canal.'), findsOneWidget);
+    const armazenamento =
+        'Grava o canal no armazenamento interno para poderes recuar e pausar. Apagado ao mudar de canal.';
+    expect(find.text(armazenamento), findsOneWidget, reason: 'a explicação é a da escolha');
     expect(find.widgetWithText(LinhaOpcao, 'Espaço reservado'), findsOneWidget);
     expect(find.text('Quanto do armazenamento interno se usa, no máximo.'), findsOneWidget);
     for (final r in ['Armazenamento', 'Memória', 'Desligado']) {
@@ -210,10 +212,13 @@ void main() {
     await t.pump();
     expect(prefs.recuoDireto, RecuoDireto.memoria);
     expect(find.text('Espaço reservado'), findsNothing);
+    expect(find.text('Guarda os últimos minutos em memória (menos tempo, sem usar o armazenamento).'), findsOneWidget);
+    expect(find.text(armazenamento), findsNothing);
     await t.tap(_chip('Recuar no direto', 'Desligado'));
     await t.pump();
     expect(prefs.recuoDireto, RecuoDireto.desligado);
     expect(find.text('Espaço reservado'), findsNothing);
+    expect(find.text('Sem recuo no direto.'), findsOneWidget);
     await t.tap(_chip('Recuar no direto', 'Armazenamento'));
     await t.pump();
     expect(find.text('Espaço reservado'), findsOneWidget);
@@ -247,6 +252,27 @@ void main() {
     await t.pump();
     expect(_focoEm(t, find.widgetWithText(ChoiceChip, 'Automático')), isTrue);
   }
+
+  testWidgets('D-pad: escolher «Memória» tira «Espaço reservado» e o foco fica no chip', (t) async {
+    await abrir(t);
+    await entrarNasOpcoes(t);
+    // desce (BAIXO) até à linha «Recuar no direto»
+    final vistos = <String>[];
+    for (var i = 0; i < 20 && !_focoEm(t, find.widgetWithText(LinhaOpcao, 'Recuar no direto')); i++) {
+      await t.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await t.pump();
+      vistos.add(_focado());
+    }
+    expect(_focoEm(t, _chip('Recuar no direto', 'Armazenamento')), isTrue, reason: vistos.join(' / '));
+    await t.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await t.pump();
+    expect(_focoEm(t, _chip('Recuar no direto', 'Memória')), isTrue);
+    await t.sendKeyEvent(LogicalKeyboardKey.select);
+    await t.pump();
+    expect(prefs.recuoDireto, RecuoDireto.memoria);
+    expect(find.text('Espaço reservado'), findsNothing);
+    expect(_focoEm(t, _chip('Recuar no direto', 'Memória')), isTrue, reason: 'o foco não se perde');
+  });
 
   testWidgets('mudar uma opção não tira o foco do sítio', (t) async {
     await abrir(t);

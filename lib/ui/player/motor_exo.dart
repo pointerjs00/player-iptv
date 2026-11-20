@@ -10,7 +10,7 @@ import '../design/ecra.dart';
 import 'motor_reproducao.dart';
 
 /// A fábrica do [MotorExo] do ecrã do player (o `CriarMotorExo` dele).
-MotorReproducao novoMotorExo({required bool tunel, required bool memoria}) => MotorExo(tunel: tunel, memoria: memoria);
+MotorReproducao novoMotorExo({required bool tunel}) => MotorExo(tunel: tunel);
 
 /// Como o vídeo do ExoPlayer mostra cada formato de imagem: o ajuste vai para o nativo (a
 /// `SurfaceView` fica com o tamanho certo dentro da caixa), por isso não há aumento no Flutter. O
@@ -36,7 +36,6 @@ class MotorExo implements MotorReproducao, MotorComProcura {
   /// widgets (no lugar do [EventChannel], cujo `cancel` lá nunca acaba).
   MotorExo(
       {this.tunel = false,
-      this.memoria = false,
       this.canal = canalPadrao,
       EventChannel eventos = eventosPadrao,
       @visibleForTesting Stream<Object?>? fonteEventos}) {
@@ -57,10 +56,6 @@ class MotorExo implements MotorReproducao, MotorComProcura {
 
   /// Túnel de vídeo (decidido ao criar o player).
   final bool tunel;
-
-  /// O modo Memória do recuo: o nativo guarda um back buffer (~128 MiB) para recuar sem
-  /// gravar (decidido ao criar o player).
-  final bool memoria;
   /// O canal dos métodos (nos testes, um falso).
   final MethodChannel canal;
   late final StreamSubscription<Object?> _subEventos;
@@ -153,7 +148,7 @@ class MotorExo implements MotorReproducao, MotorComProcura {
 
   Future<int?> _criar() async {
     try {
-      final id = await canal.invokeMethod<int>('criar', {'tunel': tunel, 'memoria': memoria});
+      final id = await canal.invokeMethod<int>('criar', {'tunel': tunel});
       _idConhecido = id;
       // o player aberto duas vezes (toque duplo): o anterior perdeu o seu player no nativo; sem
       // aviso ficava "a carregar" para sempre

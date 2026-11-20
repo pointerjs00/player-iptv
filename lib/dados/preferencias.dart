@@ -99,21 +99,25 @@ enum MotorAndroid {
 enum RecuoDireto {
   /// O canal grava-se no armazenamento (até [Preferencias.reservaDiretoGb]) e apaga-se ao mudar de
   /// canal: recua-se e pausa-se minutos.
-  armazenamento('armazenamento', 'Armazenamento'),
+  armazenamento('armazenamento', 'Armazenamento',
+      'Grava o canal no armazenamento interno para poderes recuar e pausar. Apagado ao mudar de canal.'),
 
-  /// Só o que o motor guarda em memória (o mpv, o seu cache; o ExoPlayer, um back buffer).
-  memoria('memoria', 'Memória'),
+  /// O canal grava-se num anel em RAM (128 MiB no Android, 256 MiB no Windows): menos tempo.
+  memoria('memoria', 'Memória', 'Guarda os últimos minutos em memória (menos tempo, sem usar o armazenamento).'),
 
-  /// Sem gravar e sem back buffer no ExoPlayer (o mpv fica como sempre).
-  desligado('desligado', 'Desligado');
+  /// Sem gravar (o mpv fica com o seu cache, como sempre).
+  desligado('desligado', 'Desligado', 'Sem recuo no direto.');
 
-  const RecuoDireto(this.nome, this.rotulo);
+  const RecuoDireto(this.nome, this.rotulo, this.descricao);
 
   /// O nome guardado nas preferências.
   final String nome;
 
   /// O texto mostrado.
   final String rotulo;
+
+  /// A explicação nas Definições (a da escolha atual).
+  final String descricao;
 
   /// Um nome desconhecido dá Armazenamento (a omissão).
   static RecuoDireto deNome(String? n) => values.firstWhere((r) => r.nome == n, orElse: () => armazenamento);

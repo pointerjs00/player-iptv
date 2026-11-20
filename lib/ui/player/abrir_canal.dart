@@ -82,7 +82,7 @@ class _PaginaPlayerState extends State<_PaginaPlayer> {
         aoSair: () => Navigator.of(context).maybePop(),
         aoMudarCanal: (i) => widget.atual.value = i,
         // o direto gravado (2 GB na cache da app); a preferência vem depois
-        criarSessao: criarSessaoArmazenamento,
+        criarSessao: criarSessaoDireto,
       ),
     );
   }

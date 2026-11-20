@@ -34,12 +34,13 @@ Future<void> main(List<String> args) async {
   registarLicencasLibmpv(); // GPLv3 do libmpv/ffmpeg: Definições -> Licenças
   final i = args.indexOf('--player');
   if (Platform.isWindows && i >= 0 && i + 1 < args.length) {
-    // esta é a janela do player (Windows): antes de tudo, as sobras do direto gravado (um fecho
-    // pelo X não passa pela limpeza da sessão); depois liga-se à janela principal
-    await limparDireto();
+    // esta é a janela do player (Windows): liga-se à janela principal
     final porta = int.parse(args[i + 1]);
     final ligacao =
         await LigacaoPrincipal.ligar(porta, token: Platform.environment[JanelaPlayer.variavelToken] ?? '');
+    // as sobras do direto gravado (um fecho pelo X não passa pela limpeza da sessão), antes de
+    // qualquer canal; as sessões de outra janela do player ainda viva estão bloqueadas e ficam
+    await limparDireto();
     // as mesmas preferências do player que no Android (o ficheiro da janela principal)
     // a abertura que a principal manda já pode chegar durante estas esperas: a ligação
     // guarda-a até a app a escutar (ver LigacaoPrincipal.aberturas)
@@ -216,7 +217,7 @@ class _AppJanelaPlayerState extends State<AppJanelaPlayer> {
                   nomeLista: _lista,
                   resolver: (c, {continuar = false}) => widget.ligacao.fonte(_canais.indexOf(c)),
                   aoSair: () => exit(0),
-                  criarSessao: criarSessaoArmazenamento,
+                  criarSessao: criarSessaoDireto,
                   alternarEcraInteiro: _ecraInteiro,
                 ),
         ),

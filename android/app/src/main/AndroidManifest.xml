@@ -11,8 +11,7 @@
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:banner="@drawable/banner"
-        android:usesCleartextTraffic="true"
-        android:largeHeap="true">
+        android:usesCleartextTraffic="true">
         <!-- O vídeo usa texturas GL (SurfaceTexture, ver MainActivity.onCreate): o Flutter só as garante
              com o Impeller em OpenGL ES. -->
         <meta-data
