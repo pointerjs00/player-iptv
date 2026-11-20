@@ -151,7 +151,7 @@ Future<bool> confirmarEliminar(BuildContext context, Lista l) async =>
       builder: (ctx) => AlertDialog(
         icon: const Icon(Icons.delete_outline_rounded, color: Tokens.mau, size: 32),
         title: const Text('Remover lista?'),
-        content: Text('A lista ${l.nomeMostrado} sai do Player (os favoritos e a cache de canais também).'),
+        content: Text('A lista ${l.nomeMostrado} sai de Ver TV (os favoritos e a cache de canais também).'),
         actions: [
           TextButton(autofocus: true, onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
           FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Remover')),

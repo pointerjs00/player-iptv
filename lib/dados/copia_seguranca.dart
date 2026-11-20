@@ -130,10 +130,10 @@ CopiaLida lerCopia(String texto) {
     return r;
   }
 
-  final player = listasDe(raiz['biblioteca'], 'do Player');
+  final player = listasDe(raiz['biblioteca'], 'de Ver TV');
   final gestor = listasDe(raiz['gestor'], 'do Gestor');
   if (player == null && gestor == null) {
-    throw ErroCopia('A cópia de segurança está vazia: não tem listas nem do Player nem do Gestor.');
+    throw ErroCopia('A cópia de segurança está vazia: não tem listas nem de Ver TV nem do Gestor.');
   }
   final ct = raiz['biblioteca'] is Map ? (raiz['biblioteca'] as Map)['canais_teste'] : null;
   final prefs = raiz['preferencias'];

@@ -195,7 +195,7 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
       if (modo == null) return;
       final r = await restaurarCopia(copia, modo,
           biblioteca: widget.biblioteca, area: widget.area, preferencias: _p);
-      _aviso('Cópia importada: ${r.listasPlayer} no Player, ${r.listasGestor} no Gestor'
+      _aviso('Cópia importada: ${r.listasPlayer} em Ver TV, ${r.listasGestor} no Gestor'
           '${r.atualizadas > 0 ? ', ${r.atualizadas} atualizadas' : ''}'
           '${r.removidas > 0 ? ', ${r.removidas} removidas' : ''}.');
       _ua.text = _p.userAgent;
@@ -213,7 +213,7 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
         builder: (ctx) => AlertDialog(
           icon: const Icon(Icons.settings_backup_restore_rounded, color: Tokens.acento2, size: 32),
           title: const Text('Importar cópia de segurança'),
-          content: Text('A cópia tem ${c.player.length} listas do Player e ${c.gestor.length} do Gestor'
+          content: Text('A cópia tem ${c.player.length} listas de Ver TV e ${c.gestor.length} do Gestor'
               '${c.preferencias != null ? ', mais as definições' : ''}.\n\n'
               'Juntar: acrescenta o que falta, sem duplicar, e une favoritos e resultados.\n'
               'Substituir: apaga as listas atuais e fica só com as da cópia.'),
