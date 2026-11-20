@@ -517,6 +517,35 @@ void main() {
       await _sair(t);
     });
 
+    testWidgets('I4: mostrar um erro pára o motor (nada toca por baixo do cartão, nem ao voltar à app)', (t) async {
+      final m = _Montagem();
+      await m.montar(t);
+      final exo = m.exos.single;
+      await _abrirComImagem(t, exo);
+      exo.pedidos.clear();
+      exo.erro('O servidor respondeu com o código HTTP 403');
+      await t.pump();
+      await t.pump();
+      expect(find.text('RTP 1: o canal não abriu (O servidor respondeu com o código HTTP 403)'), findsOneWidget);
+      expect(exo.pedidos, contains('parar'));
+      await _sair(t);
+    });
+
+    testWidgets('I4: desistir de um canal que o servidor está sempre a cortar também pára o motor', (t) async {
+      final m = _Montagem();
+      await m.montar(t);
+      final exo = m.exos.single;
+      for (var i = 0; i < 4; i++) {
+        await _abrirComImagem(t, exo);
+        exo.pedidos.clear();
+        exo.acabar();
+        await _reabrir(t);
+      }
+      expect(find.text('RTP 1: o servidor está sempre a cortar a ligação a este canal'), findsOneWidget);
+      expect(exo.pedidos, contains('parar'));
+      await _sair(t);
+    });
+
     testWidgets('"Abrir em modo compatível" no cartão de erro abre o canal no mpv', (t) async {
       final m = _Montagem();
       await m.montar(t);

@@ -554,6 +554,9 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
                 return
             }
             definirACarregar(false)
+            // o canal falhou: o aoRetomar já não o volta a tocar (por baixo do cartão de erro); quem
+            // decide agora é o Dart (reabrir ou mostrar o erro)
+            pausadoPeloSistema = false
             // a falhar a descodificar ou no AudioTrack antes de o canal começar (sem `pronto` ou, com
             // vídeo, sem a 1.ª imagem): é o aparelho que não toca este formato; depois disso é
             // passageiro (rede, dados estragados)

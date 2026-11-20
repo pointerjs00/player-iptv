@@ -342,6 +342,8 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
         if (_aRetomar && _tentarContinuarDepois(_pedido)) return;
         _vigia.parar();
         _taxa.repor();
+        // nada toca por baixo do cartão (no ExoPlayer, voltar à app retomava o canal por trás dele)
+        unawaited(_motor.parar());
         setState(() { _erro = mensagemErroPlayer(e); _aAbrir = false; _aRetomar = false; _ultima.largar(); });
       }
     }));
@@ -497,6 +499,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     if (!_continuar.permitir(tocou: tocou)) {
       _vigia.parar();
       _taxa.repor();
+      unawaited(_motor.parar()); // nada toca por baixo do cartão
       setState(() {
         _erro = ContinuarDireto.desistencia;
         _ultima.largar();
@@ -558,6 +561,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     if (!_continuar.permitir(tocou: tocou)) {
       _vigia.parar();
       _taxa.repor();
+      unawaited(_motor.parar()); // nada toca por baixo do cartão
       setState(() {
         _erro = ContinuarDireto.desistencia;
         _ultima.largar();
