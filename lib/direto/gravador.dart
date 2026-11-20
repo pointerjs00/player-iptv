@@ -15,10 +15,14 @@ library;
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:typed_data';
+
+import 'package:flutter/foundation.dart' show debugPrint;
 
 import '../protocolos/protocolo.dart' show uaListas;
 import '../rede/http.dart';
 import '../ui/player/continuar_direto.dart';
+import '../verificar/video.dart' show syncTs;
 
 /// Um problema do gravador, para o player. A mensagem já é para o utilizador e não tem o URL.
 class ErroGravador {
@@ -92,11 +96,27 @@ class GravadorDireto {
   final _indice = <_Marca>[];
 
   /// Onde começou cada ligação: os pacotes TS de uma ligação nova não ficam alinhados com os da
-  /// anterior, por isso o alinhamento a 188 conta a partir do início da ligação.
-  final _ligacoes = <int>[];
+  /// anterior, por isso o alinhamento a 188 conta a partir do primeiro pacote da ligação (`base`,
+  /// o primeiro `0x47` que se repete 188 bytes depois; `inicio` enquanto não se encontra).
+  final _ligacoes = <({int inicio, int base})>[];
+
+  /// O começo da ligação atual, enquanto se procura o primeiro pacote (null: já se sabe).
+  BytesBuilder? _aSincronizar;
+
+  /// O próximo pedaço é o primeiro de uma ligação: marca-se no índice.
+  bool _novaLigacao = false;
+
+  /// Até onde se procura o primeiro pacote de uma ligação.
+  static const _limiteSincronizar = 4 * pacote;
+
+  /// A regra de desistência do player ([ContinuarDireto.permitir]).
+  final _regra = ContinuarDireto();
 
   bool _iniciado = false;
   bool _parado = false;
+
+  /// A criação da pasta em [iniciar]: o [parar] espera por ela antes de apagar.
+  Future<void> _criacao = Future<void>.value();
   HttpClient? _cliente;
   StreamSubscription<List<int>>? _leitura;
   Completer<void>? _ligacao;
@@ -121,7 +141,11 @@ class GravadorDireto {
   Future<void> iniciar() async {
     if (_iniciado) throw StateError('o gravador já foi iniciado');
     _iniciado = true;
-    await pasta.create(recursive: true);
+    if (_parado) return; // parado antes de começar: nem se cria a pasta
+    final criacao = pasta.create(recursive: true);
+    _criacao = criacao.then((_) {}, onError: (_) {});
+    await criacao;
+    if (_parado) return; // o parar() espera pela criação e apaga a pasta
     unawaited(_correr());
   }
 
@@ -140,34 +164,51 @@ class GravadorDireto {
     try {
       await _escrita;
     } catch (_) {}
-    await _exclusivo(() async {
-      final f = _aberto;
-      _aberto = null;
-      try {
-        await f?.close();
-      } catch (_) {}
-      if (apagar) {
-        _blocos.clear();
-        _indice.clear();
+    await _criacao; // um iniciar() a meio: a pasta pode ainda estar a ser criada
+    try {
+      await _exclusivo(() async {
+        final f = _aberto;
+        _aberto = null;
         try {
-          if (await pasta.exists()) await pasta.delete(recursive: true);
-        } on FileSystemException {
-          // num Windows com o ficheiro ainda aberto por outro: tenta outra vez a seguir
-          await Future<void>.delayed(const Duration(milliseconds: 100));
-          if (await pasta.exists()) await pasta.delete(recursive: true);
+          await f?.close();
+        } catch (_) {}
+        if (apagar) {
+          _blocos.clear();
+          _indice.clear();
+          await _apagarPasta();
         }
-      }
-    });
-    if (!_crescimento.isClosed) await _crescimento.close();
-    if (!_erros.isClosed) await _erros.close();
+      });
+    } finally {
+      if (!_crescimento.isClosed) await _crescimento.close();
+      if (!_erros.isClosed) await _erros.close();
+    }
   }
 
-  /// Até `max` bytes a partir de `desde`. Null se `desde` já foi apagado (ou o gravador parou);
-  /// vazio se ainda não chegou.
+  /// Apaga a pasta da sessão. Se não der (no Windows, um ficheiro ainda aberto por outro), tenta
+  /// outra vez; se mesmo assim falhar, regista-o sem o caminho e a limpeza no arranque da app apanha
+  /// o que ficou.
+  Future<void> _apagarPasta() async {
+    for (var tentativa = 0;; tentativa++) {
+      try {
+        if (await pasta.exists()) await pasta.delete(recursive: true);
+        return;
+      } on FileSystemException catch (e) {
+        if (tentativa >= 1) {
+          debugPrint('gravador do direto: a pasta da sessão não foi apagada '
+              '(código ${e.osError?.errorCode ?? '?'}); fica para a limpeza no arranque');
+          return;
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      }
+    }
+  }
+
+  /// Até `max` bytes a partir de `desde` (nunca mais do que isso, nem em memória). Null se `desde`
+  /// já foi apagado (ou o gravador parou e apagou); vazio se ainda não chegou.
   Future<List<int>?> ler(int desde, int max) => _exclusivo(() async {
-        if (desde < inicio || _blocos.isEmpty) return desde >= _fim && !_parado ? const <int>[] : null;
+        if (desde < inicio || _blocos.isEmpty) return desde >= _fim && !_parado ? Uint8List(0) : null;
         final int ate = math.min(_fim, desde + (max < 0 ? 0 : max));
-        final saida = <int>[];
+        final saida = BytesBuilder(copy: false);
         var p = desde;
         while (p < ate) {
           final n = p ~/ tamanhoBloco;
@@ -178,13 +219,13 @@ class GravadorDireto {
             await f.setPosition(noBloco);
             final lido = await f.read(quanto);
             if (lido.isEmpty) break;
-            saida.addAll(lido);
+            saida.add(lido);
             p += lido.length;
           } finally {
             await f.close();
           }
         }
-        return saida;
+        return saida.takeBytes();
       });
 
   /// A posição (numa fronteira de pacote) de há `recuo`, limitada ao [inicio]: a marca do índice
@@ -215,10 +256,9 @@ class GravadorDireto {
   // ---- ligação ----
 
   Future<void> _correr() async {
-    var semProveito = 0;
+    var semProveito = 0; // só para escolher a espera; quem decide desistir é o [_regra]
     while (!_parado) {
-      final comecou = _agora();
-      DateTime? ultimaChegada;
+      DateTime? primeiraChegada, ultimaChegada;
       Object? falha;
       try {
         final stream = await _abrir(origem, cabecalhos);
@@ -226,21 +266,31 @@ class GravadorDireto {
           unawaited(stream.listen(null).cancel().catchError((_) {}));
           break;
         }
-        if (_ligacoes.isEmpty || _ligacoes.last != _fim) _ligacoes.add(_fim);
-        await _consumir(stream, () => ultimaChegada = _agora());
+        if (_ligacoes.isNotEmpty && _ligacoes.last.inicio == _fim) _ligacoes.removeLast();
+        _ligacoes.add((inicio: _fim, base: _fim));
+        _aSincronizar = BytesBuilder();
+        _novaLigacao = true;
+        await _consumir(stream, () {
+          ultimaChegada = _agora();
+          primeiraChegada ??= ultimaChegada;
+        });
       } catch (e) {
         falha = e;
       }
+      _aSincronizar = null;
       if (_parado) break;
       if (falha is _ErroEscrita) {
         _avisar(const ErroGravador(desistiu: true, mensagem: 'não foi possível gravar no armazenamento'));
         break;
       }
-      // o proveito é o tempo em que chegaram dados (uma ligação parada até ao limite não conta)
-      final chegada = ultimaChegada;
-      final deu = chegada == null ? Duration.zero : chegada.difference(comecou);
+      final primeira = primeiraChegada, ultima = ultimaChegada;
+      // o fim desta ligação no índice: o corte até à próxima não se espalha pelos bytes dela
+      if (ultima != null) _marcar(ultima, _fim);
+      // o proveito é o tempo em que chegaram dados (nem a espera pela resposta nem uma ligação
+      // parada até ao limite contam)
+      final deu = primeira == null || ultima == null ? Duration.zero : ultima.difference(primeira);
       semProveito = deu >= ContinuarDireto.proveito ? 0 : semProveito + 1;
-      if (semProveito >= ContinuarDireto.maximoSemProveito) {
+      if (!_regra.permitir(tocou: deu)) {
         _avisar(const ErroGravador(desistiu: true, mensagem: ContinuarDireto.desistencia));
         break;
       }
@@ -318,7 +368,14 @@ class GravadorDireto {
 
   Future<void> _escrever(List<int> dados) async {
     final instante = _agora();
+    _sincronizar(dados);
+    // a cada ligação nova marca-se logo, mesmo dentro do segundo da marca anterior
     var marcou = false;
+    if (_novaLigacao) {
+      _novaLigacao = false;
+      _marcar(instante, _fim);
+      marcou = true;
+    }
     var i = 0;
     while (i < dados.length && !_parado) {
       if (_aberto == null || _noBloco >= tamanhoBloco) {
@@ -342,9 +399,31 @@ class GravadorDireto {
     if (!_parado && !_crescimento.isClosed) _crescimento.add(_fim);
   }
 
+  /// Duas marcas na mesma posição só quando a segunda é mais tarde: o fim de uma ligação e o
+  /// começo da seguinte (o byte nessa posição chegou com a ligação nova).
   void _marcar(DateTime instante, int posicao) {
-    if (_indice.isNotEmpty && _indice.last.posicao == posicao) return;
+    if (_indice.isNotEmpty && _indice.last.posicao == posicao && !instante.isAfter(_indice.last.instante)) {
+      return;
+    }
     _indice.add((instante: instante, posicao: posicao));
+  }
+
+  /// Procura, no começo da ligação atual, o primeiro `0x47` que se repete 188 bytes depois (o
+  /// servidor pode começar a meio de um pacote) e passa a contar o alinhamento daí.
+  void _sincronizar(List<int> dados) {
+    final b = _aSincronizar;
+    if (b == null || _ligacoes.isEmpty) return;
+    final falta = _limiteSincronizar - b.length;
+    b.add(dados.length <= falta ? dados : dados.sublist(0, falta));
+    final visto = b.toBytes();
+    final i = syncTs(visto);
+    if (i != null) {
+      final l = _ligacoes.removeLast();
+      _ligacoes.add((inicio: l.inicio, base: l.inicio + i));
+      _aSincronizar = null;
+    } else if (visto.length >= _limiteSincronizar) {
+      _aSincronizar = null; // não parece TS: fica o começo da ligação
+    }
   }
 
   /// Fecha o bloco em escrita, apaga os mais antigos até haver lugar e só então abre o novo:
@@ -376,7 +455,7 @@ class GravadorDireto {
     }
     if (corte > 0) _indice.removeRange(0, corte);
     var c = 0;
-    while (c + 1 < _ligacoes.length && _ligacoes[c + 1] <= ini) {
+    while (c + 1 < _ligacoes.length && _ligacoes[c + 1].inicio <= ini) {
       c++;
     }
     if (c > 0) _ligacoes.removeRange(0, c);
@@ -391,21 +470,23 @@ class GravadorDireto {
 
   // ---- índice ----
 
-  /// A primeira fronteira de pacote em `p` ou depois, contada a partir do início da ligação a que
-  /// `p` pertence (sem passar para a ligação seguinte nem do [fim]).
+  /// A primeira fronteira de pacote em `p` ou depois, contada a partir do primeiro pacote da
+  /// ligação a que `p` pertence. Os bytes antes dele (um pacote cortado no começo da ligação) dão
+  /// o primeiro pacote; um pacote cortado no fim de uma ligação dá o primeiro da seguinte. Nunca
+  /// passa do [fim].
   int _alinhar(int p) {
-    var base = 0;
-    int? seguinte;
-    for (var i = _ligacoes.length - 1; i >= 0; i--) {
-      if (_ligacoes[i] <= p) {
-        base = _ligacoes[i];
-        if (i + 1 < _ligacoes.length) seguinte = _ligacoes[i + 1];
-        break;
-      }
+    var i = _ligacoes.length - 1;
+    while (i > 0 && _ligacoes[i].inicio > p) {
+      i--;
     }
-    final resto = (p - base) % pacote;
+    if (i < 0) return math.min(p, _fim);
+    final l = _ligacoes[i];
+    final seguinte = i + 1 < _ligacoes.length ? _ligacoes[i + 1] : null;
+    if (p <= l.base) return math.min(l.base, _fim);
+    final resto = (p - l.base) % pacote;
     final alinhado = resto == 0 ? p : p + pacote - resto;
-    return math.min(alinhado, seguinte ?? _fim);
+    if (seguinte != null && alinhado >= seguinte.inicio) return math.min(seguinte.base, _fim);
+    return math.min(alinhado, _fim);
   }
 
   /// Quando chegou o byte em `posicao`, interpolando entre as marcas do índice.

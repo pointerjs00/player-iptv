@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:player_iptv/direto/gravador.dart';
+import 'package:player_iptv/ui/player/continuar_direto.dart';
 
 const _bloco = 64 * 1024;
 const _reserva = 256 * 1024;
@@ -15,6 +16,13 @@ List<int> _bytes(int desde, int n) => List<int>.generate(n, (i) => (desde + i) %
 int _ocupado(Directory d) => d.existsSync()
     ? d.listSync().whereType<File>().fold<int>(0, (s, f) => s + f.lengthSync())
     : 0;
+
+/// Bytes de um MPEG-TS falso a partir de `desde` dentro dele: cada pacote de 188 começa com 0x47 e
+/// nenhum outro byte é 0x47.
+List<int> _ts(int desde, int n) => List<int>.generate(n, (i) {
+      final r = (desde + i) % 188;
+      return r == 0 ? 0x47 : 1 + r % 50;
+    });
 
 int _alinharAcima(int p) => (p + 187) ~/ 188 * 188;
 
@@ -166,7 +174,8 @@ void main() {
     await g.parar();
   });
 
-  test('3 falhas seguidas sem proveito: desiste, sem o URL na mensagem', () async {
+  test('a regra do player: 3 reaberturas sem proveito passam, a 4.ª ligação falhada desiste, sem o URL',
+      () async {
     var ligacoes = 0;
     final esperas = <Duration>[];
     final g = GravadorDireto(
@@ -184,17 +193,16 @@ void main() {
     });
     await g.iniciar();
     await desistiu.future;
-    expect(ligacoes, 3);
-    expect(erros.length, 3);
-    expect(erros.map((e) => e.desistiu), [false, false, true]);
+    expect(ligacoes, 4);
+    expect(erros.map((e) => e.desistiu), [false, false, false, true]);
     for (final e in erros) {
       expect(e.mensagem, isNot(contains('exemplo.invalid')));
       expect(e.mensagem, isNot(contains('://')));
     }
-    expect(esperas, hasLength(2));
+    expect(esperas, ContinuarDireto.esperas);
     // desistiu: não volta a tentar
-    await Future<void>.delayed(Duration.zero);
-    expect(ligacoes, 3);
+    await pumpEventQueue();
+    expect(ligacoes, 4);
     await g.parar();
     expect(pasta.existsSync(), isFalse);
   });
@@ -202,6 +210,7 @@ void main() {
   test('uma ligação com proveito recomeça a conta das falhas', () async {
     var ligacoes = 0;
     final ultima = StreamController<List<int>>();
+    final sexta = Completer<void>();
     final g = GravadorDireto(
         origem: _origem, cabecalhos: const {}, pasta: pasta, reservaBytes: _reserva, tamanhoBloco: _bloco,
         agora: agora, esperar: nada, abrir: (_, _) async {
@@ -213,15 +222,17 @@ void main() {
           return _bytes(i * 100, 100);
         });
       }
-      if (ligacoes == 6) return ultima.stream;
+      if (ligacoes == 6) {
+        sexta.complete();
+        return ultima.stream;
+      }
       throw const SocketException('recusada');
     });
     final erros = <ErroGravador>[];
     g.erros.listen(erros.add);
     await g.iniciar();
-    while (ligacoes < 6) {
-      await Future<void>.delayed(const Duration(milliseconds: 5));
-    }
+    await sexta.future;
+    await pumpEventQueue();
     expect(erros.map((e) => e.desistiu), everyElement(isFalse));
     expect(erros, hasLength(5));
     await g.parar();
@@ -245,17 +256,81 @@ void main() {
     expect(_ocupado(pasta), 1000);
   });
 
-  test('parar() a meio de uma escrita ou com a origem parada também apaga tudo', () async {
-    final c = StreamController<List<int>>();
-    final g = GravadorDireto(
-        origem: _origem, cabecalhos: const {}, pasta: pasta, reservaBytes: _reserva, tamanhoBloco: _bloco,
-        agora: agora, esperar: nada, abrir: (_, _) async => c.stream);
+  test('parar() a meio de uma escrita também apaga tudo, e nada se escreve depois', () async {
+    final (:g, :origem) = comOrigemManual();
     await g.iniciar();
-    c.add(_bytes(0, 200000));
-    c.add(_bytes(200000, 200000));
+    await enviar(g, origem, _bytes(0, 200000)); // 4 blocos no disco, o último em escrita
+    expect(pasta.existsSync(), isTrue);
+    origem.add(_bytes(200000, 200000)); // a escrita deste fica a meio
     await g.parar();
     expect(pasta.existsSync(), isFalse);
-    await Future<void>.delayed(const Duration(milliseconds: 20));
-    expect(pasta.existsSync(), isFalse); // nada a escrever depois de parar
+    origem.add(_bytes(400000, 1000)); // a origem ainda manda: já ninguém ouve
+    await pumpEventQueue();
+    expect(pasta.existsSync(), isFalse);
+    expect(tmp.listSync(), isEmpty);
+  });
+
+  test('parar() durante iniciar() (ou antes) não deixa a pasta no disco', () async {
+    final a = comOrigemManual();
+    final aIniciar = a.g.iniciar(); // a pasta está a ser criada
+    await a.g.parar();
+    expect(pasta.existsSync(), isFalse);
+    await aIniciar;
+    await pumpEventQueue();
+    expect(pasta.existsSync(), isFalse);
+
+    final b = comOrigemManual();
+    await b.g.parar();
+    await b.g.iniciar(); // parado antes de começar: não cria nada
+    await pumpEventQueue();
+    expect(pasta.existsSync(), isFalse);
+  });
+
+  test('ler(desde, max) nunca devolve mais do que max, mesmo a atravessar blocos', () async {
+    final (:g, :origem) = comOrigemManual();
+    await g.iniciar();
+    await enviar(g, origem, _bytes(0, 200000));
+    expect(await g.ler(10, 70000), _bytes(10, 70000)); // atravessa a fronteira de 64 KiB
+    expect((await g.ler(60000, 5000))!.length, 5000);
+    expect(await g.ler(0, 0), isEmpty);
+    expect(await g.ler(0, -5), isEmpty);
+    expect(await g.ler(199990, 1000), _bytes(199990, 10)); // só o que há
+    await g.parar();
+  });
+
+  test('alinhamento TS: uma ligação que começa a meio de um pacote alinha pelo primeiro 0x47', () async {
+    var ligacoes = 0;
+    final segunda = StreamController<List<int>>();
+    final g = GravadorDireto(
+        origem: _origem, cabecalhos: const {}, pasta: pasta, reservaBytes: 1 << 20, tamanhoBloco: _bloco,
+        agora: agora, esperar: nada, abrir: (_, _) async {
+      ligacoes++;
+      // a 1.ª começa a meio de um pacote (50 bytes dentro) e acaba a meio de outro
+      if (ligacoes == 1) return Stream.fromIterable([_ts(50, 1000)]);
+      return segunda.stream;
+    });
+    await g.iniciar();
+    await g.crescimento.firstWhere((f) => f == 1000);
+    relogio = relogio.add(const Duration(seconds: 1));
+    // a 2.ª também começa a meio (outros 50 bytes), em pedaços de 1 s
+    var q = 50;
+    for (var k = 0; k < 6; k++) {
+      await enviar(g, segunda, _ts(q, 20000));
+      q += 20000;
+      relogio = relogio.add(const Duration(seconds: 1));
+    }
+    expect(ligacoes, 2);
+    // o primeiro pacote da 1.ª está em 188 − 50 = 138; o da 2.ª em 1000 + 138
+    expect(g.posicaoHa(const Duration(hours: 1)), 138);
+    // há 7 s a 1.ª ligação já tinha chegado toda: o direto era o começo da 2.ª, no primeiro pacote dela
+    expect(g.posicaoHa(const Duration(seconds: 7)), 1000 + 138);
+    final marcas = {for (var s = 1; s <= 7; s++) g.posicaoHa(Duration(seconds: s))};
+    expect(marcas, contains(1000 + 138));
+    expect(marcas.length, greaterThan(4));
+    for (final p in marcas) {
+      expect((await g.ler(p, 1))!.single, 0x47, reason: 'posição $p');
+      expect(await g.ler(p + 188, 1), anyOf(isEmpty, [0x47]));
+    }
+    await g.parar();
   });
 }
