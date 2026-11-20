@@ -332,7 +332,7 @@ void main() {
       expect(_focado(), 'Ir para o Gestor');
       await _tecla(t, LogicalKeyboardKey.select);
       await t.pumpAndSettle();
-      expect(_focado(), '1 | Importar | Ficheiros, texto, stbstalker ou do Player | OK: abrir →');
+      expect(_focado(), '1 | Importar | Ficheiros, texto, stbstalker ou de Ver TV | OK: abrir →');
       await _tecla(t, LogicalKeyboardKey.select);
       await t.pumpAndSettle();
       expect(find.text('Listas do stbstalker').hitTestable(), findsOneWidget);
@@ -353,13 +353,13 @@ void main() {
   group('Gestor', () {
     test('textoResultadoEnvio: contagens do ResumoEnvio, com singular e plural', () {
       expect(textoResultadoEnvio(8, const ResumoEnvio(adicionadas: 5, atualizadas: 3, removidas: 2)),
-          '8 listas enviadas para o Player · 5 novas, 3 atualizadas, 2 removidas');
+          '8 listas enviadas para Ver TV · 5 novas, 3 atualizadas, 2 removidas');
       expect(textoResultadoEnvio(1, const ResumoEnvio(adicionadas: 1, removidas: 1), aDecorrer: 1),
-          '1 lista enviada para o Player · 1 nova, 1 removida · 1 ainda a verificar');
+          '1 lista enviada para Ver TV · 1 nova, 1 removida · 1 ainda a verificar');
       expect(textoResultadoEnvio(2, const ResumoEnvio(atualizadas: 1)),
-          '2 listas enviadas para o Player · 1 atualizada');
+          '2 listas enviadas para Ver TV · 1 atualizada');
       expect(textoResultadoEnvio(2, const ResumoEnvio(), aDecorrer: 3),
-          '2 listas enviadas para o Player · já lá estavam iguais · 3 ainda a verificar');
+          '2 listas enviadas para Ver TV · já lá estavam iguais · 3 ainda a verificar');
     });
 
     test('ficheiros/colar entram no Gestor e não no Player', () async {
@@ -368,7 +368,7 @@ void main() {
       expect(bib.listas, isEmpty);
     });
 
-    testWidgets('Importar do Player copia as listas do Player', (t) async {
+    testWidgets('Importar de Ver TV copia as listas de Ver TV', (t) async {
       await t.runAsync(() => bib.adicionar([
             Importada(contaDeLinha('http://a.com/c/ 00:1A:79:00:00:01')!, _u('funciona')),
             Importada(contaDeLinha('http://b.com/l.m3u')!),
@@ -377,10 +377,10 @@ void main() {
       await t.pumpWidget(_app(gestor()));
       await t.pump();
       await abrirPasso(t, 'Importar');
-      await t.tap(find.text('Do Player'));
+      await t.tap(find.text('De Ver TV'));
       await t.pump();
       await t.runAsync(() async {
-        await t.tap(find.text('Importar do Player'));
+        await t.tap(find.text('Importar de Ver TV'));
         await Future<void>.delayed(const Duration(milliseconds: 200));
       });
       await t.pump();
@@ -420,7 +420,7 @@ void main() {
       return tarefas.recentes.first;
     }
 
-    testWidgets('Enviar para o Player mostra as escolhas explicadas; cancelar não muda nada', (t) async {
+    testWidgets('Enviar para Ver TV mostra as escolhas explicadas; cancelar não muda nada', (t) async {
       await preparar(t);
       await t.runAsync(() => area.adicionar([Importada(contaDeLinha('http://talvez.com/l.m3u')!, _u('inconclusivo'))]));
       await t.pump();
@@ -428,10 +428,10 @@ void main() {
       await marcarChip(t, 'Todas');
       await abrirEnvio(t);
       for (final texto in [
-        'Enviar 3 listas para o Player',
-        'Adicionar às listas do Player',
+        'Enviar 3 listas para Ver TV',
+        'Adicionar às listas de Ver TV',
         'As que já lá estão ficam. Repetidas não se duplicam.',
-        'Substituir as listas do Player',
+        'Substituir as listas de Ver TV',
         'Ver TV fica com estas e com as favoritas.',
         'Cancelar',
       ]) {
@@ -458,7 +458,7 @@ void main() {
       final tarefa = await acabada(t);
       expect(player(), ['velha.com', 'boa.com', 'nova.com']);
       expect(tarefa.estado, EstadoTarefa.terminada);
-      expect(tarefa.resultado, '1 lista enviada para o Player · 1 nova');
+      expect(tarefa.resultado, '1 lista enviada para Ver TV · 1 nova');
       expect(tarefa.cancelavel, isFalse, reason: 'o envio não se pode parar: o painel não mostra "Parar"');
       expect(tarefa.rotuloAcao, 'Ir para Ver TV');
       expect(tarefa.aoAcao, isNotNull);
@@ -469,13 +469,13 @@ void main() {
       await abrirPasso(t, 'Enviar ou exportar');
       await marcarChip(t, 'Funcionam');
       await abrirEnvio(t);
-      await t.tap(find.text('Substituir as listas do Player'));
+      await t.tap(find.text('Substituir as listas de Ver TV'));
       await t.pump();
       await t.tap(doDialogo('Enviar 1 lista'));
       final tarefa = await acabada(t);
       expect(tarefa.estado, EstadoTarefa.terminada);
       expect(player(), ['nova.com'], reason: 'só a marcada vai; as outras saem do Player');
-      expect(tarefa.resultado, '1 lista enviada para o Player · 1 nova, 2 removidas');
+      expect(tarefa.resultado, '1 lista enviada para Ver TV · 1 nova, 2 removidas');
     });
 
     testWidgets('Enviar: o resultado conta as novas e as atualizadas', (t) async {
@@ -489,7 +489,7 @@ void main() {
       await abrirEnvio(t);
       await t.tap(doDialogo('Enviar 2 listas'));
       final tarefa = await acabada(t);
-      expect(tarefa.resultado, '2 listas enviadas para o Player · 1 nova, 1 atualizada');
+      expect(tarefa.resultado, '2 listas enviadas para Ver TV · 1 nova, 1 atualizada');
     });
 
     /// Os chips de "manter" ligados, por rótulo.
@@ -526,7 +526,7 @@ void main() {
         await marcarChip(t, 'Funcionam');
         await abrirEnvio(t);
         expect(find.text('Das listas que já estão em Ver TV, manter:'), findsNothing);
-        await t.tap(find.text('Substituir as listas do Player'));
+        await t.tap(find.text('Substituir as listas de Ver TV'));
         await t.pump();
         expect(find.text('Das listas que já estão em Ver TV, manter:'), findsOneWidget);
         for (final r in toques) {
@@ -545,7 +545,7 @@ void main() {
       await abrirPasso(t, 'Enviar ou exportar');
       await marcarChip(t, 'Funcionam');
       await abrirEnvio(t);
-      await t.tap(find.text('Substituir as listas do Player'));
+      await t.tap(find.text('Substituir as listas de Ver TV'));
       await t.pump();
       for (final r in ['Nenhuma', 'Favoritas', 'As que funcionam', 'As inconclusivas']) {
         expect(find.widgetWithText(FilterChip, r), findsOneWidget, reason: r);
@@ -570,12 +570,12 @@ void main() {
       await abrirPasso(t, 'Enviar ou exportar');
       await marcarChip(t, 'Funcionam');
       await abrirEnvio(t);
-      await t.tap(find.text('Substituir as listas do Player'));
+      await t.tap(find.text('Substituir as listas de Ver TV'));
       await t.pump();
       await t.tap(doDialogo('Enviar 1 lista'));
       final tarefa = await acabada(t);
       expect(player(), ['velha.com', 'nova.com'], reason: 'a favorita fica; boa.com sai');
-      expect(tarefa.resultado, '1 lista enviada para o Player · 1 nova, 1 removida');
+      expect(tarefa.resultado, '1 lista enviada para Ver TV · 1 nova, 1 removida');
     });
 
     testWidgets('Substituir: os chips de manter alcançam-se com o teclado e o foco não fica preso', (t) async {
@@ -605,9 +605,9 @@ void main() {
       await _irPara(t, 'Enviar 1 lista');
       await _tecla(t, LogicalKeyboardKey.select);
       await t.pumpAndSettle();
-      expect(_focado(), contains('Adicionar às listas do Player'));
+      expect(_focado(), contains('Adicionar às listas de Ver TV'));
       await _tecla(t, LogicalKeyboardKey.arrowDown);
-      expect(_focado(), contains('Substituir as listas do Player'));
+      expect(_focado(), contains('Substituir as listas de Ver TV'));
       await t.binding.handlePopRoute();
       await t.pumpAndSettle();
       expect(find.byType(AlertDialog), findsNothing);
@@ -644,14 +644,14 @@ void main() {
       _tamanho(t, 960, 540);
       await t.pumpAndSettle();
       final ecra = Offset.zero & const Size(960, 540);
-      for (final o in ['Adicionar às listas do Player', 'Substituir as listas do Player', 'Cancelar']) {
+      for (final o in ['Adicionar às listas de Ver TV', 'Substituir as listas de Ver TV', 'Cancelar']) {
         final r = t.getRect(find.text(o));
         expect(ecra.contains(r.topLeft) && ecra.contains(r.bottomRight), isTrue, reason: '$o em $r');
         expect(find.text(o).hitTestable(), findsOneWidget, reason: o);
       }
       final enviar = t.getRect(doDialogo('Enviar 2 listas'));
       expect(ecra.contains(enviar.topLeft) && ecra.contains(enviar.bottomRight), isTrue, reason: 'Enviar em $enviar');
-      final pos = Scrollable.of(t.element(find.text('Substituir as listas do Player'))).position;
+      final pos = Scrollable.of(t.element(find.text('Substituir as listas de Ver TV'))).position;
       expect(pos.maxScrollExtent, 0, reason: 'sem nada escondido');
     });
 
@@ -671,10 +671,10 @@ void main() {
       await abrirPasso(t, 'Enviar ou exportar');
       await marcarChip(t, 'Todas');
       await abrirEnvio(t);
-      expect(find.text('Enviar 2 listas para o Player'), findsOneWidget, reason: 'a que está a ser verificada não conta');
+      expect(find.text('Enviar 2 listas para Ver TV'), findsOneWidget, reason: 'a que está a ser verificada não conta');
       await t.tap(doDialogo('Enviar 2 listas'));
       final tarefa = await acabada(t);
-      expect(tarefa.resultado, '2 listas enviadas para o Player · 2 novas · 1 ainda a verificar');
+      expect(tarefa.resultado, '2 listas enviadas para Ver TV · 2 novas · 1 ainda a verificar');
       expect(player(), ['a.com', 'b.com']);
       s.parar();
     });
@@ -691,12 +691,12 @@ void main() {
       await marcarChip(t, 'Todas');
       await abrirEnvio(t);
       expect(find.byType(AlertDialog), findsOneWidget, reason: 'não fica pelo "Verifique-as primeiro"');
-      expect(find.text('Enviar 2 listas para o Player'), findsOneWidget);
+      expect(find.text('Enviar 2 listas para Ver TV'), findsOneWidget);
       await t.tap(doDialogo('Enviar 2 listas'));
       final tarefa = await acabada(t);
       expect(tarefa.estado, EstadoTarefa.terminada);
       expect(player(), ['porver.com', 'morta.com']);
-      expect(tarefa.resultado, '2 listas enviadas para o Player · 2 novas');
+      expect(tarefa.resultado, '2 listas enviadas para Ver TV · 2 novas');
     });
 
     testWidgets('Exportar mostra as duas opções e o aviso; sem marcadas fica desligado', (t) async {

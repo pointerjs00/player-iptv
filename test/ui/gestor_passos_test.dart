@@ -224,7 +224,7 @@ void main() {
     await teclaDpad(t, LogicalKeyboardKey.arrowRight);
     expect(textosFocados(), startsWith('Listas do stbstalker'));
     await teclaDpad(t, LogicalKeyboardKey.arrowRight);
-    expect(textosFocados(), startsWith('Do Player'));
+    expect(textosFocados(), startsWith('De Ver TV'));
     for (var i = 0; i < 3; i++) {
       await teclaDpad(t, LogicalKeyboardKey.arrowLeft);
     }

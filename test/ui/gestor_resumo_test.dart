@@ -145,7 +145,7 @@ void main() {
       expect(em(c, '$n'), findsOneWidget, reason: 'cartão $n');
       expect(em(c, 'OK: abrir →'), findsOneWidget, reason: 'cartão $n');
     }
-    expect(em(c1, 'Ficheiros, texto, stbstalker ou do Player'), findsOneWidget);
+    expect(em(c1, 'Ficheiros, texto, stbstalker ou de Ver TV'), findsOneWidget);
     expect(em(c1, 'Última importação'), findsNothing, reason: 'só depois de uma importação nesta sessão');
     expect(em(c2, '5'), findsOneWidget);
     expect(em(c2, 'por verificar'), findsOneWidget);
@@ -155,7 +155,7 @@ void main() {
     expect(em(c2, '4'), findsOneWidget);
     expect(em(c3, '12'), findsOneWidget);
     expect(em(c3, 'prontas a enviar'), findsOneWidget);
-    expect(em(c3, 'No Player'), findsOneWidget);
+    expect(em(c3, 'Em Ver TV'), findsOneWidget);
     expect(em(c3, '0 listas'), findsOneWidget);
     expect(find.textContaining('Nenhum passo está aberto'), findsNothing, reason: 'sem o texto de rodapé');
     expect(find.byType(PassoVerificar).hitTestable(), findsNothing, reason: 'nenhum passo aberto');
@@ -190,7 +190,7 @@ void main() {
     expect(em(cartao('Verificar'), 'por verificar'), findsNothing);
   });
 
-  testWidgets('"No Player" conta as listas do Player; depois de importar, o cartão 1 diz quando e quantas',
+  testWidgets('"No Player" conta as listas de Ver TV; depois de importar, o cartão 1 diz quando e quantas',
       (t) async {
     ecraTvTeste(t, largura: 1400, altura: 1400);
     await t.runAsync(() => bib.adicionar([
@@ -203,10 +203,10 @@ void main() {
     expect(em(cartao('Enviar ou exportar'), '3 listas'), findsOneWidget);
     await t.tap(em(cartao('Importar'), 'Importar'));
     await t.pumpAndSettle();
-    await t.tap(find.text('Do Player'));
+    await t.tap(find.text('De Ver TV'));
     await t.pump();
     await t.runAsync(() async {
-      await t.tap(find.text('Importar do Player'));
+      await t.tap(find.text('Importar de Ver TV'));
       await Future<void>.delayed(const Duration(milliseconds: 200));
     });
     for (var i = 0; i < 50 && tarefas.recentes.isEmpty; i++) {
@@ -376,9 +376,9 @@ void main() {
     await t.tap(find.widgetWithText(FilledButton, 'Enviar 3 listas'));
     await t.pumpAndSettle();
     final dialogo = find.byType(AlertDialog);
-    expect(em(dialogo, 'Enviar 3 listas para o Player'), findsOneWidget);
-    expect(em(dialogo, 'Adicionar às listas do Player'), findsOneWidget);
-    expect(em(dialogo, 'Substituir as listas do Player'), findsOneWidget);
+    expect(em(dialogo, 'Enviar 3 listas para Ver TV'), findsOneWidget);
+    expect(em(dialogo, 'Adicionar às listas de Ver TV'), findsOneWidget);
+    expect(em(dialogo, 'Substituir as listas de Ver TV'), findsOneWidget);
     expect(find.text('Que listas enviar?'), findsNothing, reason: 'o «quais» sai do diálogo');
     expect(find.textContaining('Só as que funcionam'), findsNothing);
     await t.tap(find.descendant(of: dialogo, matching: find.widgetWithText(FilledButton, 'Enviar 3 listas')));
@@ -387,7 +387,7 @@ void main() {
       await t.pump();
     }
     expect([for (final l in bib.listas) hostDe(l.conta.endereco)], ['a.com', 'b.com', 'c.com']);
-    expect(tarefas.recentes.first.resultado, '3 listas enviadas para o Player · 3 novas');
+    expect(tarefas.recentes.first.resultado, '3 listas enviadas para Ver TV · 3 novas');
   });
 
   /// O indicador de atividade do topo (com o texto `texto`).
@@ -538,7 +538,7 @@ void main() {
     // a informação fica: o número, o rótulo e as duas linhas
     for (final (c, textos) in [
       (c2, ['5', 'por verificar', 'Funcionam', '12', 'Não funcionam', '4']),
-      (c3, ['12', 'prontas a enviar', 'No Player', '0 listas']),
+      (c3, ['12', 'prontas a enviar', 'Em Ver TV', '0 listas']),
     ]) {
       for (final x in textos) {
         expect(em(c, x), findsOneWidget, reason: x);

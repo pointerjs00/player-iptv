@@ -122,8 +122,8 @@ class _CartaoEscolha extends StatelessWidget {
 
 String _listas(int n) => n == 1 ? '1 lista' : '$n listas';
 
-/// O resultado de um envio, com o que mudou no Player ([ResumoEnvio]):
-/// "8 listas enviadas para o Player · 5 novas, 3 atualizadas, 2 removidas · 1 ainda a verificar".
+/// O resultado de um envio, com o que mudou em Ver TV ([ResumoEnvio]):
+/// "8 listas enviadas para Ver TV · 5 novas, 3 atualizadas, 2 removidas · 1 ainda a verificar".
 /// As contagens a zero não aparecem.
 String textoResultadoEnvio(int n, ResumoEnvio r, {int aDecorrer = 0}) {
   String c(int v, String um, String varios) => '$v ${v == 1 ? um : varios}';
@@ -132,12 +132,12 @@ String textoResultadoEnvio(int n, ResumoEnvio r, {int aDecorrer = 0}) {
     if (r.atualizadas > 0) c(r.atualizadas, 'atualizada', 'atualizadas'),
     if (r.removidas > 0) c(r.removidas, 'removida', 'removidas'),
   ];
-  return '${n == 1 ? '1 lista enviada' : '$n listas enviadas'} para o Player'
+  return '${n == 1 ? '1 lista enviada' : '$n listas enviadas'} para Ver TV'
       ' · ${partes.isEmpty ? 'já lá estavam iguais' : partes.join(', ')}'
       '${aDecorrer > 0 ? ' · $aDecorrer ainda a verificar' : ''}';
 }
 
-/// "Enviar n listas para o Player": como — adicionar, ou substituir (e o que manter das que já lá
+/// "Enviar n listas para Ver TV": como — adicionar, ou substituir (e o que manter das que já lá
 /// estão, com filtros que se ligam e desligam). As listas já vêm escolhidas do passo 3. Devolve o
 /// modo e o que manter (vazio ao adicionar, ou ao substituir sem manter nada); null = cancelado.
 Future<(ModoEnvio, Set<ManterAoSubstituir>)?> perguntarEnvio(BuildContext context, {required int n}) {
@@ -179,7 +179,7 @@ class _DialogoEnvioState extends State<_DialogoEnvio> {
     final espaco = SizedBox(height: baixo ? Tokens.e8 : Tokens.e12);
     return AlertDialog(
       insetPadding: EdgeInsets.symmetric(horizontal: 40, vertical: baixo ? 8 : 24),
-      title: Text('Enviar ${_listas(n)} para o Player'),
+      title: Text('Enviar ${_listas(n)} para Ver TV'),
       content: SizedBox(
         width: ecraTv(context) ? 560 : 480,
         child: SingleChildScrollView(
@@ -189,7 +189,7 @@ class _DialogoEnvioState extends State<_DialogoEnvio> {
               autofocus: true,
               compacto: baixo,
               icone: Icons.playlist_add_rounded,
-              titulo: 'Adicionar às listas do Player',
+              titulo: 'Adicionar às listas de Ver TV',
               descricao: 'As que já lá estão ficam. Repetidas não se duplicam.',
               escolhido: !_substituir,
               aoEscolher: () => setState(() => _substituir = false),
@@ -198,7 +198,7 @@ class _DialogoEnvioState extends State<_DialogoEnvio> {
             _CartaoEscolha(
               compacto: baixo,
               icone: Icons.delete_sweep_outlined,
-              titulo: 'Substituir as listas do Player',
+              titulo: 'Substituir as listas de Ver TV',
               descricao: _descricaoSubstituir,
               escolhido: _substituir,
               aoEscolher: () => setState(() => _substituir = true),

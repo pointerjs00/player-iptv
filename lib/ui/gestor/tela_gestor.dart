@@ -45,7 +45,7 @@ class TelaGestor extends StatefulWidget {
   const TelaGestor({super.key, required this.biblioteca, required this.area, required this.servico,
       required this.tarefas, this.pedido, this.baseStb = stbBase, this.guardar = guardarFicheiro});
 
-  /// As listas do Player (recebem os envios) e os canais de teste.
+  /// As listas de Ver TV (recebem os envios) e os canais de teste.
   final Biblioteca biblioteca;
   final AreaGestor area;
 
@@ -348,13 +348,13 @@ class _TelaGestorState extends State<TelaGestor> {
     final aDecorrer = agora.aDecorrer;
     final n = enviar.length;
     widget.tarefas.iniciar(
-      'Enviar ${n == 1 ? '1 lista' : '$n listas'} para o Player',
+      'Enviar ${n == 1 ? '1 lista' : '$n listas'} para Ver TV',
       (p) async {
         final ResumoEnvio r;
         try {
           r = await b.receber(enviar, modo, manter: manter);
         } catch (e) {
-          throw _ErroTarefa('Não foi possível enviar (${descreverErro(e)}). As listas do Player não mudaram.');
+          throw _ErroTarefa('Não foi possível enviar (${descreverErro(e)}). As listas de Ver TV não mudaram.');
         }
         return textoResultadoEnvio(n, r, aDecorrer: aDecorrer);
       },
@@ -430,7 +430,7 @@ class _TelaGestorState extends State<TelaGestor> {
         icone: Icons.remove_circle_outline,
         titulo: 'Remover do Gestor?',
         texto: '${n == 1 ? 'A lista selecionada sai' : 'As $n listas selecionadas saem'} do Gestor. '
-            '${aVerificar}As listas do Player não mudam.',
+            '${aVerificar}As listas de Ver TV não mudam.',
         acao: 'Remover');
     if (!ok) return;
     // o estado pode ter mudado enquanto o diálogo estava aberto
@@ -677,7 +677,7 @@ class _TelaGestorState extends State<TelaGestor> {
           final largo = caixa.maxWidth >= 560;
           final cartoes = [
             _cartao(0, largo, [
-              const Text('Ficheiros, texto, stbstalker ou do Player', style: _mut),
+              const Text('Ficheiros, texto, stbstalker ou de Ver TV', style: _mut),
               if (ultima != null)
                 _linhaCartao('Última importação',
                     ultima.estado == EstadoTarefa.aDecorrer ? 'a decorrer' : _ha(ultima.fim ?? ultima.inicio)),
@@ -698,7 +698,7 @@ class _TelaGestorState extends State<TelaGestor> {
               else ...[
                 _numeroGrande(conta(EstadoLista.funciona), Tokens.texto, 'prontas a enviar'),
               ],
-              _linhaCartao('No Player', _n(_b.listas.length, 'lista', 'listas')),
+              _linhaCartao('Em Ver TV', _n(_b.listas.length, 'lista', 'listas')),
               if (_ultimaExportacao case final quando?) _linhaCartao('Última exportação', _ha(quando)),
             ]),
           ];

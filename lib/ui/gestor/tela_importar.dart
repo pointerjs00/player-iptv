@@ -58,7 +58,7 @@ class RegistoImportacoes extends ChangeNotifier {
 }
 
 /// O sub-ecrã de importar (passo 1): quatro origens (Ficheiros · Colar texto · Listas do stbstalker ·
-/// Do Player), o painel da origem escolhida e o painel "Resultado" da última importação, com
+/// De Ver TV), o painel da origem escolhida e o painel "Resultado" da última importação, com
 /// "Verificar as n novas". Cada importação é uma tarefa em segundo plano: o botão fica logo livre
 /// (carregar outra vez inicia outra) e o ecrã só observa.
 class TelaImportar extends StatefulWidget {
@@ -177,8 +177,8 @@ class _TelaImportarState extends State<TelaImportar> {
 
   void _importarDoPlayer() {
     final n = _b.listas.length;
-    if (n == 0) return _aviso('Ainda não há listas no Player.');
-    widget.registo.iniciar(widget.tarefas, 'Importar do Player', (p) async {
+    if (n == 0) return _aviso('Ainda não há listas em Ver TV.');
+    widget.registo.iniciar(widget.tarefas, 'Importar de Ver TV', (p) async {
       p(null, _n(n, 'lista', 'listas'));
       return juntarAoGestor(_g, () => _g.importarDoPlayer(_b), encontradas: n);
     });
@@ -202,7 +202,7 @@ class _TelaImportarState extends State<TelaImportar> {
     final ok = await confirmar(context,
         icone: Icons.delete_sweep_outlined,
         titulo: 'Limpar o Gestor?',
-        texto: '${n == 1 ? 'A lista do Gestor sai' : 'As $n listas do Gestor saem'}. As listas do Player não mudam.',
+        texto: '${n == 1 ? 'A lista do Gestor sai' : 'As $n listas do Gestor saem'}. As listas de Ver TV não mudam.',
         acao: 'Limpar');
     if (!ok) return;
     if (widget.servico.ocupado) widget.servico.parar();
@@ -243,8 +243,8 @@ class _TelaImportarState extends State<TelaImportar> {
           (OrigemImportacao.colar, Icons.content_paste_rounded, 'Colar texto', 'Uma lista por linha'),
           (OrigemImportacao.stbstalker, Icons.event_note_outlined, 'Listas do stbstalker',
               'Publicadas entre duas datas'),
-          (OrigemImportacao.doPlayer, Icons.download_for_offline_outlined, 'Do Player',
-              nPlayer == 0 ? 'Ainda não há listas no Player' : 'As $nPlayer listas que já tens'),
+          (OrigemImportacao.doPlayer, Icons.download_for_offline_outlined, 'De Ver TV',
+              nPlayer == 0 ? 'Ainda não há listas em Ver TV' : 'As $nPlayer listas que já tens'),
         ];
         final cartoes = [
           for (final (i, (o, icone, titulo, sub)) in origens.indexed)
@@ -340,14 +340,14 @@ class _TelaImportarState extends State<TelaImportar> {
       case OrigemImportacao.doPlayer:
         final n = _b.listas.length;
         return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          _titulo('Do Player'),
+          _titulo('De Ver TV'),
           _explicacao(n == 0
-              ? 'Ainda não há listas no Player.'
-              : 'Copia ${n == 1 ? 'a lista' : 'as $n listas'} do Player para o Gestor, sem duplicar.'),
+              ? 'Ainda não há listas em Ver TV.'
+              : 'Copia ${n == 1 ? 'a lista' : 'as $n listas'} de Ver TV para o Gestor, sem duplicar.'),
           FilledButton.icon(
             onPressed: _importarDoPlayer,
             icon: const Icon(Icons.download_for_offline_outlined),
-            label: const Text('Importar do Player'),
+            label: const Text('Importar de Ver TV'),
           ),
         ]);
     }

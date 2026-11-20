@@ -118,13 +118,13 @@ void main() {
     final s = ServicoVerificacao(bib, colecao: area, verificador: _Preso());
     await t.pumpWidget(casca(s, inicial: Seccao.gestor));
     final envio = Completer<String>(), pesquisa = Completer<String>();
-    tarefas.iniciar('Enviar 2 listas para o Player', (p) => envio.future, cancelavel: false);
+    tarefas.iniciar('Enviar 2 listas para Ver TV', (p) => envio.future, cancelavel: false);
     tarefas.iniciar('Pesquisa no stbstalker · hoje', (p) => pesquisa.future);
     await t.pump();
     await abrirPainel(t);
-    expect(find.text('Enviar 2 listas para o Player'), findsOneWidget);
+    expect(find.text('Enviar 2 listas para Ver TV'), findsOneWidget);
     expect(find.text('Parar'), findsOneWidget, reason: 'só a pesquisa se pode parar');
-    final cartaoEnvio = find.ancestor(of: find.text('Enviar 2 listas para o Player'), matching: find.byType(Column)).first;
+    final cartaoEnvio = find.ancestor(of: find.text('Enviar 2 listas para Ver TV'), matching: find.byType(Column)).first;
     expect(find.descendant(of: cartaoEnvio, matching: find.text('Parar')), findsNothing);
     envio.complete('ok');
     pesquisa.complete('ok');
@@ -150,11 +150,11 @@ void main() {
     final s = ServicoVerificacao(bib, colecao: area, verificador: _Preso());
     await t.pumpWidget(casca(s));
     var acao = 0;
-    tarefas.iniciar('Enviar 1 lista', (p) async => '1 lista enviada para o Player',
+    tarefas.iniciar('Enviar 1 lista', (p) async => '1 lista enviada para Ver TV',
         rotuloAcao: 'Ir para Ver TV', aoAcao: () => acao++);
     await t.pump();
     await t.pump();
-    expect(find.text('1 lista enviada para o Player'), findsOneWidget);
+    expect(find.text('1 lista enviada para Ver TV'), findsOneWidget);
     expect(find.text('Menu: Ir para Ver TV'), findsOneWidget);
     await t.sendKeyEvent(LogicalKeyboardKey.contextMenu);
     await t.pump();

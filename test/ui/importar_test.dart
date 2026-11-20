@@ -145,7 +145,7 @@ void main() {
         'Uma lista por linha',
         'Listas do stbstalker',
         'Publicadas entre duas datas',
-        'Do Player',
+        'De Ver TV',
         'As 2 listas que já tens',
       ]) {
         // "Ficheiros" também é o título do painel da origem escolhida por omissão
@@ -207,10 +207,10 @@ void main() {
         await area.adicionar([Importada(contaDeLinha('http://a.com/l.m3u')!)]);
       });
       await t.pump();
-      await t.tap(find.text('Do Player'));
+      await t.tap(find.text('De Ver TV'));
       await t.pump();
       await t.runAsync(() async {
-        await t.tap(find.text('Importar do Player'));
+        await t.tap(find.text('Importar de Ver TV'));
         await Future<void>.delayed(const Duration(milliseconds: 200));
       });
       await t.pump();

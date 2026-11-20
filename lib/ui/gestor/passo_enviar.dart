@@ -338,7 +338,7 @@ class _PassoEnviarState extends State<PassoEnviar> {
               ])
             : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           _cartao(
-            titulo: 'Enviar para o Player',
+            titulo: 'Enviar para Ver TV',
             texto: 'Adicionar às que já lá estão, ou substituir (escolhes a seguir).',
             botao: FilledButton(
               focusNode: _focoEnviar,

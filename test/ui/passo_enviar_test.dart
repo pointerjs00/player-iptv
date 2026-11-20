@@ -99,7 +99,7 @@ void main() {
       'Por verificar (1)',
       'Todas (5)',
       'Nenhuma',
-      'Enviar para o Player',
+      'Enviar para Ver TV',
       'Adicionar às que já lá estão, ou substituir (escolhes a seguir).',
       'Exportar para ficheiro',
       'Accounts.json (sfvip) ou .ini num zip (Stalker). O ficheiro leva os dados de acesso.',
