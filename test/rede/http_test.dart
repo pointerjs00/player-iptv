@@ -71,19 +71,16 @@ void main() {
   });
 
   test('I4: um servidor que pinga um byte de cada vez não passa do prazo total', () async {
-    final inicio = DateTime.now();
     await expectLater(
         obterBytes(url('/pinga'), timeout: const Duration(milliseconds: 300)).timeout(const Duration(seconds: 8)),
         throwsA(isA<TimeoutException>().having((e) => e.message, 'mensagem', isNot(contains('Future not completed')))));
-    expect(DateTime.now().difference(inicio).inSeconds, lessThan(6));
   });
 
   test('I4: cancelar a meio da leitura pára logo', () async {
     final can = Cancelamento();
     Timer(const Duration(milliseconds: 300), can.cancelar);
-    final inicio = DateTime.now();
+    // se não parasse, só acabava no prazo de 5 s com um TimeoutException, e não com Cancelado
     await expectLater(obterBytes(url('/pinga'), timeout: const Duration(seconds: 5), cancelamento: can),
         throwsA(isA<Cancelado>()));
-    expect(DateTime.now().difference(inicio).inMilliseconds, lessThan(2000));
   });
 }

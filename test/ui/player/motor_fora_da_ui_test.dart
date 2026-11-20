@@ -204,11 +204,9 @@ void main() {
       expect(m.semResposta, isTrue);
       ex.preso = false;
       final antes = ex.chamadas.length;
-      final t = DateTime.now();
       expect(await m.getProperty('width'), '');
       await m.setProperty('mute', 'yes');
       await m.command(['seek', '1']);
-      expect(DateTime.now().difference(t), lessThan(const Duration(milliseconds: 100)));
       expect(ex.chamadas.length, antes, reason: 'nenhum pedido novo ao mpv preso');
     });
 

@@ -37,12 +37,13 @@ void main() {
     expect(trocou, isTrue);
   });
 
-  test('um zap depois de um bloqueio chega ao open a tempo (stop preso, dispose do antigo preso)', () async {
+  testWidgets('um zap depois de um bloqueio chega ao open a tempo (stop preso, dispose do antigo preso)', (t) async {
     // o stop fica preso (segura o lock do media_kit do player), o dispose desse player nunca
     // acaba: o player novo abre no máximo o limite do stop + o limite da vez do áudio depois
+    // com o relógio de mentira: nada espera tempo real, e vê-se quando o open pode avançar
     final vez = VezDoAudio(limite: limiteVez);
-    final relogio = Stopwatch()..start();
-    await prepararPlayer(
+    var aberto = false;
+    prepararPlayer(
       novo: false,
       zap: true,
       limiteStop: limiteStop,
@@ -52,9 +53,12 @@ void main() {
         vez.largar(destruido.future); // como o _aposentar do PlayerCanais
         return destruido.future;
       },
-    ).timeout(const Duration(seconds: 2));
-    await vez.esperar(); // logo antes do open
-    expect(relogio.elapsed, lessThan(limiteStop + limiteVez + const Duration(milliseconds: 250)));
+    ).then((_) => vez.esperar()).then((_) => aberto = true); // logo antes do open
+    await t.pump();
+    await t.pump(limiteStop - const Duration(milliseconds: 1));
+    expect(aberto, isFalse, reason: 'o stop preso espera pelo seu limite');
+    await t.pump(limiteStop + limiteVez);
+    expect(aberto, isTrue, reason: 'passados os dois limites o open avança, com tudo preso');
   });
 
   test('a aposentação do antigo a falhar não chega a quem abre o canal', () async {

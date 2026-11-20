@@ -3,6 +3,15 @@ import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:player_iptv/ui/player/mpv_fora_da_ui.dart';
 
+/// Se `esperar` acaba sem ficar à espera de nada: dá uma volta ao ciclo de eventos (sem contar
+/// tempo) e vê se já acabou.
+Future<bool> _acabaLogo(VezDoAudio vez) async {
+  var acabou = false;
+  unawaited(vez.esperar().then((_) => acabou = true));
+  await Future<void>.delayed(Duration.zero);
+  return acabou;
+}
+
 void main() {
   test('o player novo só abre depois de o anterior largar o áudio (no máximo o limite)', () async {
     final vez = VezDoAudio(limite: const Duration(milliseconds: 300));
@@ -44,13 +53,9 @@ void main() {
     const limite = Duration(milliseconds: 300);
     final vez = VezDoAudio(limite: limite);
     vez.largar(Completer<void>().future);
-    final relogio = Stopwatch()..start();
-    await vez.esperar();
-    expect(relogio.elapsed, lessThan(limite * 2), reason: 'a primeira espera vai até ao limite');
+    await vez.esperar(); // a primeira espera vai até ao limite
     for (var i = 0; i < 4; i++) {
-      relogio.reset();
-      await vez.esperar();
-      expect(relogio.elapsed, lessThan(limite ~/ 3), reason: 'abertura ${i + 2}: o preso já não conta');
+      expect(await _acabaLogo(vez), isTrue, reason: 'abertura ${i + 2}: o preso já não conta');
     }
   });
 
@@ -77,9 +82,7 @@ void main() {
     final vez = VezDoAudio(limite: limite, maximo: const Duration(milliseconds: 300));
     vez.largar(Completer<void>().future);
     await Future<void>.delayed(const Duration(milliseconds: 400));
-    final relogio = Stopwatch()..start();
-    await vez.esperar();
-    expect(relogio.elapsed, lessThan(limite ~/ 2));
+    expect(await _acabaLogo(vez), isTrue);
   });
 
   test('um preso antigo não encurta a espera por um player largado depois (a ordem do áudio fica)', () async {
