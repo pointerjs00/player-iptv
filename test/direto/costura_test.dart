@@ -207,4 +207,18 @@ void main() {
     expect(d.desde, 20, reason: 'nada a gravar');
     expect(d.modo, isNot(ModoCostura.inteira));
   });
+
+  test('sem PCR legível na ligação nova até ao limite: a cauda já achada vale (não se grava inteira)', () {
+    // o último PCR veio de antes; a cauda (e a ligação nova) já não traz PCR legível
+    final gravado = tsSintetico(0, 4000, comPcr: false);
+    final p = ProcuraCostura(
+        cauda: gravado.sublist(gravado.length - tamanhoCauda), ultimoPcr: pcrSintetico(3999), limite: 400000);
+    DecisaoCostura? d;
+    for (final c in emPedacos(tsSintetico(2000, 6000, comPcr: false), 65536)) {
+      d ??= p.receber(c);
+    }
+    d ??= p.terminar();
+    expect(d.modo, ModoCostura.bytes);
+    expect(d.desde, 2000 * 188, reason: 'logo a seguir à cauda');
+  });
 }

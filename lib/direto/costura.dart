@@ -386,6 +386,10 @@ class ProcuraCostura {
     }
     final comPcr = ultimoPcr != null && _viuPcr;
     if (recebidos >= limite && !comPcr) {
+      // sem PCR com que confirmar: um encontro da cauda já achado vale (gravar a ligação inteira
+      // repetia o que o servidor reenviou)
+      final c = _candidato ?? (_encontros.isNotEmpty ? _encontros.first : null);
+      if (c != null) return _decidir(DecisaoCostura(ModoCostura.bytes, c));
       // sem a cauda até ao limite e sem PCR com que comparar
       return _decidir(DecisaoCostura(ModoCostura.inteira, 0,
           sincronia: _leitor.primeiroPacote,
