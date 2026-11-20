@@ -9,6 +9,7 @@ import 'dados/area_gestor.dart';
 import 'dados/biblioteca.dart';
 import 'dados/licencas.dart';
 import 'dados/preferencias.dart';
+import 'direto/sessao_direto.dart';
 import 'janelas/janela_player.dart';
 import 'modelo/canal.dart';
 import 'rede/http.dart';
@@ -210,6 +211,7 @@ class _AppJanelaPlayerState extends State<AppJanelaPlayer> {
                   nomeLista: _lista,
                   resolver: (c, {continuar = false}) => widget.ligacao.fonte(_canais.indexOf(c)),
                   aoSair: () => exit(0),
+                  criarSessao: criarSessaoArmazenamento,
                   alternarEcraInteiro: _ecraInteiro,
                 ),
         ),

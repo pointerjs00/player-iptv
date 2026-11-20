@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../dados/biblioteca.dart';
+import '../../direto/sessao_direto.dart';
 import '../../janelas/janela_player.dart';
 import '../../modelo/canal.dart';
 import '../../protocolos/protocolo.dart';
@@ -80,6 +81,8 @@ class _PaginaPlayerState extends State<_PaginaPlayer> {
         },
         aoSair: () => Navigator.of(context).maybePop(),
         aoMudarCanal: (i) => widget.atual.value = i,
+        // o direto gravado (2 GB na cache da app); a preferência vem depois
+        criarSessao: criarSessaoArmazenamento,
       ),
     );
   }

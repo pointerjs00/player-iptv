@@ -223,6 +223,16 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
                     result.success(null)
                 }
                 "estatisticas" -> result.success(estatisticas(p))
+                "janela" -> result.success(janela(p))
+                "seekTo" -> {
+                    // HLS na janela do direto ou um ficheiro: um progressivo em direto não procura
+                    if (p.isCurrentMediaItemSeekable) {
+                        val ms = (call.argument<Any>("ms") as? Number)?.toLong() ?: 0L
+                        val d = p.duration
+                        p.seekTo(if (d == C.TIME_UNSET) ms.coerceAtLeast(0L) else ms.coerceIn(0L, d))
+                    }
+                    result.success(null)
+                }
                 "mostrar" -> {
                     mostrar(p, call.argument<Boolean>("visivel") ?: false)
                     result.success(null)
@@ -446,6 +456,18 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
     }
 
     // ---------------------------------------------------------------- eventos
+
+    /** A posição e o comprimento da janela (no HLS em direto, a janela; num ficheiro, ele todo). */
+    private fun janela(p: ExoPlayer): Map<String, Any?> {
+        val d = p.duration
+        return mapOf(
+            "posicaoMs" to p.currentPosition,
+            "duracaoMs" to if (d == C.TIME_UNSET) null else d,
+            "bufferMs" to p.bufferedPosition,
+            "procuravel" to p.isCurrentMediaItemSeekable,
+            "direto" to eDireto(),
+        )
+    }
 
     /** Um direto (sem fim conhecido): HLS em direto ou um progressivo que não se pode procurar. */
     private fun eDireto(): Boolean {

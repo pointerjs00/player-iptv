@@ -181,3 +181,32 @@ abstract interface class MotorReproducao {
   /// Pára e larga o motor (nunca toca por trás depois disto).
   Future<void> descartar();
 }
+
+/// Onde está o motor no que se pode procurar (ExoPlayer: a janela do HLS em direto, ou o ficheiro).
+@immutable
+class JanelaMotor {
+  const JanelaMotor({required this.posicao, this.duracao, this.bufferAte, required this.procuravel, required this.direto});
+
+  /// A posição dentro da janela (no HLS em direto, contada do início da janela).
+  final Duration posicao;
+
+  /// O comprimento da janela (ou do ficheiro); null se não se sabe.
+  final Duration? duracao;
+
+  /// Até onde há dados carregados.
+  final Duration? bufferAte;
+
+  /// Se se pode procurar (um progressivo em direto não deixa).
+  final bool procuravel;
+  final bool direto;
+}
+
+/// Um motor que procura sozinho no que tem (o ExoPlayer: `seekTo` na janela do HLS e nos filmes).
+/// O mpv não: os saltos dele vão pelo cache ([SaltosDireto]).
+abstract interface class MotorComProcura {
+  /// null: sem canal aberto (ou o motor não respondeu).
+  Future<JanelaMotor?> janela();
+
+  /// Vai para `posicao` (na janela de [janela]).
+  Future<void> seekTo(Duration posicao);
+}

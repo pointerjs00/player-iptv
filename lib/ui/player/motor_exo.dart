@@ -31,7 +31,7 @@ MotorReproducao novoMotorExo({required bool tunel}) => MotorExo(tunel: tunel);
 ///
 /// Um player nativo por motor: `criar` uma vez (no construtor); o zapping é `abrir` no mesmo `id`.
 /// Os eventos de outro `id` (um player antigo) não contam.
-class MotorExo implements MotorReproducao {
+class MotorExo implements MotorReproducao, MotorComProcura {
   /// Pede logo o player nativo (`criar`, uma vez por motor). `fonteEventos`: só para testes de
   /// widgets (no lugar do [EventChannel], cujo `cancel` lá nunca acaba).
   MotorExo(
@@ -204,6 +204,26 @@ class MotorExo implements MotorReproducao {
       () => pedido == _pedidoAbrir,
     );
   }
+
+  @override
+  Future<JanelaMotor?> janela() async {
+    final m = await _pedir<Map<Object?, Object?>>('janela');
+    if (m == null) return null;
+    Duration? ms(String k) => switch (m[k]) { final num v when v >= 0 => Duration(milliseconds: v.round()), _ => null };
+    final posicao = ms('posicaoMs');
+    if (posicao == null) return null;
+    return JanelaMotor(
+      posicao: posicao,
+      duracao: ms('duracaoMs'),
+      bufferAte: ms('bufferMs'),
+      procuravel: m['procuravel'] == true,
+      direto: m['direto'] != false,
+    );
+  }
+
+  @override
+  Future<void> seekTo(Duration posicao) =>
+      _pedir<void>('seekTo', {'ms': posicao.isNegative ? 0 : posicao.inMilliseconds});
 
   @override
   Future<void> play() => _pedir<void>('play');

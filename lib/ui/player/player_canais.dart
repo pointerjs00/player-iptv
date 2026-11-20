@@ -5,6 +5,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../dados/preferencias.dart';
+import '../../direto/sessao_direto.dart';
 import '../../modelo/canal.dart';
 import '../../protocolos/protocolo.dart';
 import '../../rede/http.dart';
@@ -82,8 +83,8 @@ const soNoMpv = 'só no motor mpv';
 class PlayerCanais extends StatefulWidget {
   const PlayerCanais({super.key, required this.canais, required this.indice, required this.resolver,
       required this.nomeLista, required this.aoSair, this.alternarEcraInteiro, this.aoMudarCanal,
-      this.criarMotor = criarMotorMpv, this.criarMotorExo = novoMotorExo, @visibleForTesting this.plataforma,
-      @visibleForTesting this.agora});
+      this.criarMotor = criarMotorMpv, this.criarMotorExo = novoMotorExo, this.criarSessao,
+      @visibleForTesting this.plataforma, @visibleForTesting this.agora});
 
   final List<Canal> canais;
   final int indice;
@@ -103,6 +104,10 @@ class PlayerCanais extends StatefulWidget {
 
   /// O ExoPlayer (Android, quando é o motor das preferências: [Preferencias.motorAndroid]).
   final CriarMotorExo criarMotorExo;
+
+  /// O direto gravado (recuar no direto pelo armazenamento): uma sessão por canal em direto
+  /// progressivo ([gravavel]); o motor toca o URL local dela. null: sem gravação (como antes).
+  final CriarSessaoDireto? criarSessao;
 
   /// Só para os testes: a plataforma (por omissão a deste aparelho).
   final PlataformaVideo? plataforma;
@@ -180,6 +185,27 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   double? _percentagemBuffer;
   bool _aTocar = true;
   double _velocidade = 1;
+
+  /// O direto gravado do canal aberto ([PlayerCanais.criarSessao]): no máximo uma; fecha-se antes
+  /// de abrir outra. [_sessaoPronta]: já abriu (o motor toca o URL local dela).
+  SessaoDireto? _sessaoDireto;
+  String? _chaveSessao;
+  bool _sessaoPronta = false;
+  final _subsSessao = <StreamSubscription>[];
+
+  /// O fecho das sessões anteriores (a seguinte só abre depois dele: nunca duas).
+  Future<void> _fechoSessao = Future<void>.value();
+
+  /// Quando chegou ao gravador o byte em que o motor foi aberto (o atraso é o tempo desde então
+  /// menos o que o motor tocou).
+  DateTime? _chegadaGravada;
+
+  /// O último crescimento do gravado: [ContinuarDireto.limiteSemDados] sem ele conta como corte.
+  DateTime? _cresceuEm;
+  Timer? _semCrescimento;
+
+  /// O motor sem mpv procura sozinho no canal aberto (HLS com janela, ficheiro): saltos e barra.
+  bool _exoProcuravel = false;
 
   /// O desentrelaçamento: decide-se com a imagem, depois da primeira e a cada
   /// [_intervaloEntrelacamento] (ver `controlo_desentrelacamento.dart`). [_playerDoDesentrelacamento]:
@@ -277,11 +303,13 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       }
       _vigiarImagem(_pedido);
       _verEntrelacamento(_pedido);
+      if (_mk == null) unawaited(_lerJanelaMotor());
       if (retomou) _reporFaixaAudio(_pedido);
     },
     aoFalhar: (motivo) {
       if (!mounted) return;
       _motor.parar();
+      unawaited(_fecharSessao()); // erro final: o gravado apaga-se
       _taxa.repor();
       setState(() { _erro = motivo; _aAbrir = false; _aRetomar = false; _ultima.largar(); });
     },
@@ -341,7 +369,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       }
       // sem mpv (ExoPlayer): uma falha de rede com o canal já aberto é um corte do servidor, como o
       // fim do buffer no mpv; a reabrir segue a recuperação de baixo
-      if (erro.rede && _mk == null && !_aAbrir && !_aRetomar && _erro == null && _corteSemMpv(retomavel: true)) {
+      if (erro.rede && (_mk == null || _gravado) && !_aAbrir && !_aRetomar && _erro == null && _corteSemMpv(retomavel: true)) {
         return;
       }
       final e = erro.mensagem;
@@ -352,6 +380,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
         _taxa.repor();
         // nada toca por baixo do cartão (no ExoPlayer, voltar à app retomava o canal por trás dele)
         unawaited(_motor.parar());
+        unawaited(_fecharSessao());
         setState(() { _erro = mensagemErroPlayer(e); _aAbrir = false; _aRetomar = false; _ultima.largar(); });
       }
     }));
@@ -490,6 +519,11 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   Future<void> _fimDoBuffer() async {
     final mk = _mk;
     if (!mounted) return;
+    // o direto gravado: o servidor local só acaba se a sessão acabou ([_corteGravado])
+    if (_gravado) {
+      _corteGravado();
+      return;
+    }
     // sem mpv: o que o motor diz do canal ([_corteSemMpv])
     if (mk == null) {
       _corteSemMpv();
@@ -543,7 +577,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   /// [ContinuarDireto.limiteSemDados] é um corte (o ExoPlayer num progressivo fica à espera para
   /// sempre).
   void _vigiarSemDados(bool aCarregar) {
-    if (aCarregar && _mk == null && !_aAbrir && _erro == null && _aTocar && _aVista) {
+    if (aCarregar && _mk == null && !_gravado && !_aAbrir && _erro == null && _aTocar && _aVista) {
       _semDados ??= Timer(ContinuarDireto.limiteSemDados, () {
         _semDados = null;
         if (!mounted) return;
@@ -567,6 +601,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   /// stream), por isso um ficheiro também se reabre, no ponto onde estava. Devolve se tratou o corte.
   bool _corteSemMpv({bool retomavel = false}) {
     _pararVigiaSemDados();
+    if (_gravado) return _corteGravado();
     if (!mounted || _mk != null) return false;
     final direto = _motor.direto ?? true;
     if (!_aVista && !_aAbrir && _erro == null) {
@@ -631,7 +666,11 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   /// Abre o canal `_i`. `continuar`: o mesmo canal outra vez porque o buffer acabou. `mesmoCanal`:
   /// o mesmo canal outra vez noutro motor ou de volta ao direto (não é "visto" de novo nem mostra
   /// o nome).
-  Future<void> _abrir({bool continuar = false, bool mesmoCanal = false}) async {
+  ///
+  /// Com o direto gravado: o canal novo fecha antes a sessão do anterior; o mesmo canal (salto,
+  /// recurso ao mpv, corte) continua a sessão e o motor abre o URL local em `gravado` (por omissão
+  /// onde se está agora).
+  Future<void> _abrir({bool continuar = false, bool mesmoCanal = false, ({Uri url, int desde})? gravado}) async {
     final pedido = ++_pedido;
     final canal = _canais[_i];
     final repetido = continuar || mesmoCanal;
@@ -654,6 +693,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     _mudo.reiniciar();
     _ligacao = LigacaoDireto();
     _vigiaEntrelacamento?.cancel();
+    _exoProcuravel = false;
     setState(() {
       if (!continuar) _ultima.largar();
       _aAbrir = true;
@@ -675,6 +715,11 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     }
     try {
       _vigia.comecar(); // o prazo conta desde o pedido do link
+      // outro canal (ou a sessão acabou): a sessão anterior fecha antes de tudo (o gravado apaga-se)
+      if (!_mesmaSessao(canal)) {
+        await _fecharSessao();
+        if (!mounted || pedido != _pedido) return;
+      }
       // ao mudar de canal, o anterior para já: senão continuava a tocar (e a mandar imagem e
       // posição) enquanto o link novo se resolve
       final modo =
@@ -721,8 +766,8 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       _playerDoDesentrelacamento = _motor;
       final desentrelacamento = _deint.abrir(continuar: continuar, playerNovo: playerNovo);
       if (!mounted || pedido != _pedido) return;
-      final f = await widget.resolver(canal, continuar: repetido);
-      if (!mounted || pedido != _pedido) return;
+      final f = await _fonte(pedido, canal, repetido: repetido, gravado: gravado);
+      if (f == null || !mounted || pedido != _pedido) return;
       final mk = _mk;
       if (mk != null) {
         await mk.configurado;
@@ -745,11 +790,12 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       await VezDoAudio.instancia.esperar();
       if (!mounted || pedido != _pedido) return;
       _chaveDoMotor = _chave(canal);
-      await _motor.abrir(f.url, f.headers, inicio: continuar ? _retomarEm : null);
+      await _motor.abrir(f.url, f.cabecalhos, inicio: continuar && !f.gravado ? _retomarEm : null);
       // o modo de ecrã pede-se já (o fps sabe-se logo que o canal abre): a TV pisca a mudar de
       // modo enquanto o indicador de abertura ainda está à vista, não por cima da imagem
       if (mounted && pedido == _pedido) unawaited(_ajustarTaxa(pedido));
-      final de = continuar ? _continuarDe : null;
+      // no gravado nunca há seek no motor (o URL local já começa onde se quer)
+      final de = continuar && !f.gravado ? _continuarDe : null;
       if (de != null && mounted && pedido == _pedido) {
         _saltoPendente = true;
         _porMudo(_mudo.comecar());
@@ -761,6 +807,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       if (continuar && _tentarContinuarDepois(pedido)) return;
       _vigia.parar();
       _taxa.repor();
+      unawaited(_fecharSessao());
       setState(() {
         _erro = e is ErroLista ? e.mensagem : descreverErro(e);
         _aAbrir = false;
@@ -776,6 +823,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   /// A informação da barra (resolução, imagens/s, débito) num motor sem mpv: das estatísticas
   /// dele, com os nomes do mpv ([textoInfoStream]).
   Future<Map<String, String>> _infoDoMotor() async {
+    unawaited(_lerJanelaMotor()); // os saltos e a barra aparecem quando o motor deixa procurar
     final e = await _motor.estatisticas();
     final r = e.resolucao, fps = e.fps, br = e.bitrate;
     return {
@@ -791,9 +839,18 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   Future<void> _procurar(JanelaProgresso janela, double alvo) async {
     final pedido = _pedido;
     final mpv = _mpv, saltos = _saltos;
-    if (mpv == null || saltos == null) return;
     String? aviso;
-    if (janela.direto) {
+    if (_gravado) {
+      // a barra do gravado vai de −janela a 0 (o direto): reabre-se no ponto ([_irParaGravado])
+      aviso = _irParaGravado(_segundos(-alvo) + atrasoDireto, _atrasoBruto, barra: true);
+    } else if (mpv == null || saltos == null) {
+      // sem mpv: o seek do motor, se ele procura sozinho (HLS, filmes)
+      final m = _motor;
+      if (m is! MotorComProcura) return;
+      final d = _segundos(alvo - janela.posicao);
+      await (m as MotorComProcura).seekTo(_segundos(alvo));
+      if (janela.direto) d.isNegative ? _relogio.recuou(-d) : _relogio.avancou(d);
+    } else if (janela.direto) {
       aviso = await saltos.irPara(alvo);
     } else if (pedido == _pedido) {
       await mpv.command(['seek', alvo.toStringAsFixed(3), 'absolute']);
@@ -802,6 +859,304 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     if (!mounted || pedido != _pedido) return;
     if (aviso != null) _mostrarAviso(aviso);
     setState(() {});
+  }
+
+  // ---------------------------------------------------------------- direto gravado
+
+  static Duration _segundos(double s) => Duration(microseconds: (s * 1e6).round());
+  static double _emSegundos(Duration d) => d.inMicroseconds / 1e6;
+
+  /// O motor toca o direto gravado (o URL local da sessão).
+  bool get _gravado => _sessaoDireto != null && _sessaoPronta;
+
+  /// O canal continua na sessão que está aberta (a do mesmo canal, já pronta).
+  bool _mesmaSessao(Canal canal) => _gravado && _chaveSessao == _chave(canal);
+
+  /// O que o motor abre: o URL local da sessão (sem cabeçalhos: são só da origem, que o gravador
+  /// abre), ou a origem quando não há gravação (HLS, filmes, sem sessão, ou não é MPEG-TS).
+  /// null: o pedido mudou entretanto.
+  Future<({String url, Map<String, String> cabecalhos, bool gravado})?> _fonte(int pedido, Canal canal,
+      {required bool repetido, ({Uri url, int desde})? gravado}) async {
+    bool valido() => mounted && pedido == _pedido;
+    final atual = _sessaoDireto;
+    if (atual != null && _mesmaSessao(canal)) {
+      final g = gravado ?? _aquiNoGravado(atual);
+      _abrirNoGravado(atual, g.desde);
+      return (url: g.url.toString(), cabecalhos: const <String, String>{}, gravado: true);
+    }
+    var f = await widget.resolver(canal, continuar: repetido);
+    if (!valido()) return null;
+    final criar = widget.criarSessao;
+    if (criar == null || !gravavel(f.url)) return (url: f.url, cabecalhos: f.headers, gravado: false);
+    // nunca duas: a anterior acabou de fechar (ou ainda fecha)
+    await _fecharSessao();
+    if (!valido()) return null;
+    final s = criar();
+    _sessaoDireto = s;
+    _chaveSessao = _chave(canal);
+    _sessaoPronta = false;
+    final Uri? local;
+    try {
+      local = await s.abrir(f);
+    } catch (e) {
+      if (identical(_sessaoDireto, s)) unawaited(_fecharSessao());
+      if (!valido()) return null;
+      rethrow;
+    }
+    // outro canal entretanto (quem o abriu já fechou esta sessão) ou a sessão acabou
+    if (!valido() || !identical(_sessaoDireto, s)) return null;
+    if (local == null) {
+      // não é um MPEG-TS (uma playlist, um ficheiro) ou a gravação não começou: a origem, com um link
+      // novo (o gravador já usou este)
+      await _fecharSessao();
+      if (!valido()) return null;
+      f = await widget.resolver(canal, continuar: true);
+      if (!valido()) return null;
+      return (url: f.url, cabecalhos: f.headers, gravado: false);
+    }
+    _sessaoPronta = true;
+    _ouvirSessao(s);
+    final p = s.posicaoDireto;
+    _abrirNoGravado(s, p);
+    return (url: s.urlDesde(p).toString(), cabecalhos: const <String, String>{}, gravado: true);
+  }
+
+  /// Onde se está agora no gravado (para reabrir o motor sem mudar de ponto).
+  ({Uri url, int desde}) _aquiNoGravado(SessaoDireto s) {
+    final p = s.posicaoHa(_atrasoBruto);
+    return (url: s.urlDesde(p), desde: p);
+  }
+
+  /// O motor vai abrir o gravado em `desde`: o atraso conta a partir daí.
+  void _abrirNoGravado(SessaoDireto s, int desde) {
+    _chegadaGravada = _agora().subtract(s.recuoDe(desde));
+    _posicao = Duration.zero;
+  }
+
+  void _ouvirSessao(SessaoDireto s) {
+    _subsSessao.add(s.erros.listen((e) {
+      if (!mounted || !identical(s, _sessaoDireto)) return;
+      // a origem falhou: o gravador volta a ligar sozinho; o player só vê a desistência
+      if (!e.desistiu) {
+        debugPrint('direto gravado: a origem falhou; o gravador volta a ligar');
+        return;
+      }
+      _desistirGravado(semSegredos(e.mensagem));
+    }));
+    _subsSessao.add(s.crescimento.listen((_) => _cresceuEm = _agora()));
+    _cresceuEm = _agora();
+    _armarCrescimento();
+  }
+
+  /// O gravador desistiu: o cartão de erro (nada toca por baixo) e o gravado apaga-se.
+  void _desistirGravado(String mensagem) {
+    _vigia.parar();
+    _taxa.repor();
+    unawaited(_motor.parar());
+    unawaited(_fecharSessao());
+    setState(() {
+      _erro = mensagem;
+      _aAbrir = false;
+      _aRetomar = false;
+      _ultima.largar();
+    });
+  }
+
+  /// Pára o gravador, apaga a pasta e fecha o servidor da sessão aberta. A seguinte espera por isto.
+  Future<void> _fecharSessao() {
+    final s = _sessaoDireto;
+    _sessaoDireto = null;
+    _chaveSessao = null;
+    _sessaoPronta = false;
+    _chegadaGravada = null;
+    _cresceuEm = null;
+    _semCrescimento?.cancel();
+    _semCrescimento = null;
+    for (final x in _subsSessao) {
+      unawaited(x.cancel());
+    }
+    _subsSessao.clear();
+    if (s != null) {
+      final antes = _fechoSessao;
+      final fecho = s.fechar().catchError((Object e) {
+        debugPrint('direto gravado: a sessão não fechou bem (${e.runtimeType})');
+      });
+      _fechoSessao = Future.wait([antes, fecho]).then((_) {});
+    }
+    return _fechoSessao;
+  }
+
+  /// Sair do player: o gravado apaga-se antes (no Windows a janela sai do processo).
+  Future<void> _sair() async {
+    await _fecharSessao();
+    widget.aoSair();
+  }
+
+  /// [ContinuarDireto.limiteSemDados] sem crescimento do gravado (a origem parou e o servidor local
+  /// nunca fecha): conta como corte ([_corteGravado]), para o motor não ficar à espera para sempre.
+  void _armarCrescimento() {
+    _semCrescimento?.cancel();
+    final desde = _cresceuEm ?? _agora();
+    var falta = ContinuarDireto.limiteSemDados - _agora().difference(desde);
+    if (falta.isNegative) falta = Duration.zero;
+    _semCrescimento = Timer(falta, _verCrescimento);
+  }
+
+  void _verCrescimento() {
+    _semCrescimento = null;
+    if (!mounted || !_gravado) return;
+    final c = _cresceuEm;
+    if (c == null || _agora().difference(c) >= ContinuarDireto.limiteSemDados) {
+      _cresceuEm = _agora(); // o próximo conta daqui
+      if (_aVista && _aTocar && !_aAbrir && _erro == null) {
+        debugPrint('player: o gravado não cresce há ${ContinuarDireto.limiteSemDados.inSeconds} s; a reabrir o motor');
+        _corteGravado();
+      }
+    }
+    if (_gravado) _armarCrescimento();
+  }
+
+  /// O motor parou no direto gravado (o fim, um erro de rede, ou o gravado sem crescer): reabre-se
+  /// o motor onde estava, no URL local, com o mesmo limite de reaberturas sem proveito. Com a app
+  /// escondida não se reabre (fica para quando voltar).
+  bool _corteGravado() {
+    _pararVigiaSemDados();
+    if (!mounted || !_gravado) return false;
+    if (!_aVista && !_aAbrir && _erro == null) {
+      _cortePendente = true;
+      debugPrint('player: corte com a app em segundo plano; reabre ao voltar');
+      return true;
+    }
+    if (!ContinuarDireto.deve(fimDoBuffer: true, aAbrir: _aAbrir, erro: _erro != null, aTocar: _aTocar, direto: true)) {
+      return false;
+    }
+    final abriu = _abriuEm;
+    final tocou = _ligacao.proveito(
+        parede: abriu == null ? Duration.zero : _agora().difference(abriu), posicaoNoCorte: _emSegundos(_posicao));
+    if (!_continuar.permitir(tocou: tocou)) {
+      _desistirGravado(ContinuarDireto.desistencia);
+      return true;
+    }
+    _abrir(continuar: true);
+    return true;
+  }
+
+  /// Quanto se está atrás do fim do gravado: o tempo desde que chegou o byte em que o motor abriu,
+  /// menos o que o motor tocou desde então (dentro da janela gravada).
+  Duration get _atrasoBruto {
+    final s = _sessaoDireto, c = _chegadaGravada;
+    if (s == null || c == null) return Duration.zero;
+    var a = _agora().difference(c) - (_posicao.isNegative ? Duration.zero : _posicao);
+    final j = s.janela;
+    if (a > j) a = j;
+    return a.isNegative ? Duration.zero : a;
+  }
+
+  /// O atraso que se mostra: atrás do direto local ([atrasoDireto] antes do fim).
+  Duration get _atrasoGravado {
+    final a = _atrasoBruto - atrasoDireto;
+    return a.isNegative ? Duration.zero : a;
+  }
+
+  /// A barra do gravado: de −(janela) ao direto (0), em segundos; a posição é −atraso.
+  JanelaProgresso? _janelaGravada() {
+    final s = _sessaoDireto;
+    if (!_gravado || s == null) return null;
+    var j = s.janela - atrasoDireto;
+    if (j.isNegative) j = Duration.zero;
+    var a = _atrasoGravado;
+    if (a > j) a = j;
+    return JanelaProgresso(inicio: -_emSegundos(j), fim: 0, posicao: -_emSegundos(a), direto: true, bufferAte: 0);
+  }
+
+  /// Recuar (negativo) ou avançar `d`: no gravado reabre o motor noutro ponto; no mpv pelo cache
+  /// ([SaltosDireto]); sem mpv pelo seek do motor, se ele procura sozinho (HLS, filmes).
+  Future<String?> _saltarDe(Duration d) async {
+    if (_gravado) return _irParaGravado(_atrasoBruto - d, _atrasoBruto);
+    final saltos = _saltos;
+    if (saltos != null) return d.isNegative ? saltos.recuar() : saltos.avancar();
+    return _saltoNativo(d);
+  }
+
+  /// Vai para `recuo` atrás do fim do gravado (estando a `atraso`): reabre o motor em
+  /// `urlDesde(posicaoHa(recuo))`; perto do direto, no [SessaoDireto.urlDireto]. Nunca o seek do
+  /// motor no URL local. `barra`: um alvo da barra (menos de 1 s não faz nada).
+  String? _irParaGravado(Duration recuo, Duration atraso, {bool barra = false}) {
+    final s = _sessaoDireto;
+    if (!_gravado || s == null) return null;
+    final j = s.janela;
+    if (recuo > j) recuo = j;
+    if (recuo.isNegative) recuo = Duration.zero;
+    final passo = recuo - atraso;
+    if (barra && passo.abs() < const Duration(seconds: 1)) return null;
+    final avancar = passo.isNegative;
+    if (!avancar && passo < const Duration(seconds: 1)) return 'Não há mais para recuar';
+    if (recuo - atrasoDireto < RelogioDireto.limiar) {
+      if (avancar && _atrasoGravado < RelogioDireto.limiar) return 'Já está em direto';
+      _voltarAoDiretoGravado();
+      return null;
+    }
+    final p = s.posicaoHa(recuo);
+    _abrir(continuar: true, gravado: (url: s.urlDesde(p), desde: p));
+    return null;
+  }
+
+  /// «Voltar ao direto» no gravado: o motor abre o [SessaoDireto.urlDireto].
+  void _voltarAoDiretoGravado() {
+    final s = _sessaoDireto;
+    if (!_gravado || s == null) return;
+    final p = s.posicaoDireto;
+    _abrir(continuar: true, gravado: (url: s.urlDireto, desde: p));
+  }
+
+  /// Lê a janela do motor que procura sozinho e mostra (ou tira) os saltos e a barra.
+  Future<JanelaMotor?> _lerJanelaMotor() async {
+    final m = _motor;
+    if (m is! MotorComProcura || _mk != null || _gravado) return null;
+    JanelaMotor? j;
+    try {
+      j = await (m as MotorComProcura).janela();
+    } catch (e) {
+      debugPrint('player: a janela do motor não se leu (${e.runtimeType})');
+    }
+    if (!mounted || !identical(m, _motor)) return null;
+    final procuravel = j?.procuravel ?? false;
+    if (procuravel != _exoProcuravel) setState(() => _exoProcuravel = procuravel);
+    return j;
+  }
+
+  /// A barra de progresso de um motor que procura sozinho: a janela dele (HLS) ou o ficheiro.
+  Future<JanelaProgresso?> _janelaDoMotor() async {
+    final j = await _lerJanelaMotor();
+    if (j == null || !j.procuravel) return null;
+    final fim = j.duracao ?? j.bufferAte ?? j.posicao;
+    final buffer = j.bufferAte;
+    return JanelaProgresso(
+      inicio: 0,
+      fim: _emSegundos(fim),
+      posicao: _emSegundos(j.posicao),
+      direto: j.direto,
+      bufferAte: buffer == null ? null : _emSegundos(buffer),
+    );
+  }
+
+  /// Recuar/avançar pelo seek do motor (sem mpv: HLS na janela, filmes), dentro da janela.
+  Future<String?> _saltoNativo(Duration d) async {
+    final m = _motor;
+    if (m is! MotorComProcura) return null;
+    final pedido = _pedido;
+    final j = await _lerJanelaMotor();
+    if (j == null || !j.procuravel || !mounted || pedido != _pedido || !identical(m, _motor)) return null;
+    var alvo = j.posicao + d;
+    if (alvo.isNegative) alvo = Duration.zero;
+    final fim = j.duracao;
+    if (fim != null && alvo > fim) alvo = fim;
+    final andou = alvo - j.posicao;
+    if (d.isNegative && -andou < const Duration(seconds: 1)) return 'Não há mais para recuar';
+    if (!d.isNegative && andou < const Duration(milliseconds: 500)) return 'Já está no fim do buffer';
+    await (m as MotorComProcura).seekTo(alvo);
+    if (j.direto) andou.isNegative ? _relogio.recuou(-andou) : _relogio.avancou(andou);
+    return null;
   }
 
   /// Android TV / Fire TV: pede o modo de ecrã que combina com o fps do canal (50 fps -> 50 Hz),
@@ -1016,14 +1371,16 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
         final anterior = _historico.anterior;
         if (anterior != null) _irPara(anterior);
       case AcaoPlayer.recuar:
-        final saltos = _saltos;
-        if (saltos != null) _saltar(saltos.recuar);
+        _saltar(() => _saltarDe(-SaltosDireto.salto));
       case AcaoPlayer.avancar:
-        final saltos = _saltos;
-        if (saltos != null) _saltar(saltos.avancar);
+        _saltar(() => _saltarDe(SaltosDireto.salto));
       case AcaoPlayer.voltarAoDireto:
         _saltar(() async {
           if (!_aTocar) await _tocar(true);
+          if (_gravado) {
+            _voltarAoDiretoGravado();
+            return null;
+          }
           // longe demais para o buffer: reabre o canal (link novo) — o seek ficava minutos atrás.
           // Se entretanto mudou de canal, não se mexe no canal novo.
           final pedido = _pedido;
@@ -1050,7 +1407,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       case AcaoPlayer.tentarDeNovo:
         _abrir();
       case AcaoPlayer.sair:
-        widget.aoSair();
+        _sair();
       case AcaoPlayer.passar || AcaoPlayer.mostrarControlos || AcaoPlayer.esconderControlos ||
             AcaoPlayer.fecharPainel || AcaoPlayer.algarismo || AcaoPlayer.irParaNumero ||
             AcaoPlayer.cancelarNumero:
@@ -1310,6 +1667,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _continuar.reiniciar(); // nenhuma reabertura marcada depois de sair
+    unawaited(_fecharSessao()); // sair do player apaga o gravado
     _pararVigiaSemDados();
     _esconderAviso?.cancel();
     _vigiaEntrelacamento?.cancel();
@@ -1383,13 +1741,19 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
           podeAlternar: _historico.anterior != null,
         ),
         aoNumero: _irParaNumero,
-        atraso: () => _relogio.atraso,
+        atraso: () => _gravado ? _atrasoGravado : _relogio.atraso,
         // sem mpv: a informação vem das estatísticas do motor e não há barra de progresso nem
         // saltos (só o mpv salta no que já recebeu)
         lerInfoStream: exo ? _infoDoMotor : () => _leitor.ler(propriedadesInfoStream),
-        lerProgresso: exo ? null : () async => janelaDe(await _leitor.ler(propriedadesProgresso)),
+        // o direto gravado: a janela gravada (nos dois motores); sem mpv, a janela do motor quando ele
+        // procura sozinho (HLS, filmes)
+        lerProgresso: _gravado
+            ? () async => _janelaGravada()
+            : exo
+                ? (_exoProcuravel ? _janelaDoMotor : null)
+                : () async => janelaDe(await _leitor.ler(propriedadesProgresso)),
         aoProcurar: _procurar,
-        comSaltos: !exo,
+        comSaltos: _gravado || !exo || _exoProcuravel,
         aoAgir: _agir,
         aoMudarVelocidade: _mudarVelocidade,
         definicoes: _definicoes,
@@ -1447,7 +1811,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
               aoTentar: _abrir,
               aoCompativel: _abrirCompativel,
               aoAnterior: _historico.anterior != null ? () => _agir(AcaoPlayer.alternarCanal) : null,
-              aoVoltar: widget.aoSair,
+              aoVoltar: _sair,
             ),
         ]),
       ),
