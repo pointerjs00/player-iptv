@@ -32,6 +32,10 @@ enum AcaoLista {
   /// O rótulo para esta lista: «Pôr nas favoritas» ou «Tirar das favoritas».
   String rotuloPara(Lista l) => this == favorita && l.favorita ? 'Tirar das favoritas' : rotulo;
 
+  /// A explicação para esta lista: «Fica à mão…» ao pôr, «Deixa de aparecer…» ao tirar.
+  String explicacaoPara(Lista l) =>
+      this == favorita && l.favorita ? 'Deixa de aparecer no filtro «Favoritas»' : explicacao;
+
   IconData iconePara(Lista l) => this == favorita && l.favorita ? Icons.star_rounded : icone;
 }
 
@@ -127,7 +131,7 @@ Future<AcaoLista?> mostrarMenuLista(BuildContext context, Lista lista,
                           leading: Icon(a.iconePara(lista), color: a == AcaoLista.eliminar ? Tokens.mau : Tokens.texto2),
                           title: Text(a.rotuloPara(lista), style: TextStyle(fontSize: tv ? 17 : 15, fontWeight: FontWeight.w500,
                               color: a == AcaoLista.eliminar ? Tokens.mau : null)),
-                          subtitle: Text(a.explicacao,
+                          subtitle: Text(a.explicacaoPara(lista),
                               style: TextStyle(fontSize: tv ? 14 : 12.5, color: Tokens.texto2)),
                           onTap: () => Navigator.pop(ctx, a),
                         ),

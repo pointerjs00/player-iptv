@@ -194,6 +194,14 @@ void main() {
     }
   });
 
+  test('a explicação da favorita corresponde à ação (pôr ou tirar)', () {
+    final l = Lista(id: 'x', ordem: 1, conta: Conta('', Tipo.m3u, 'http://b.com/l.m3u'));
+    expect(AcaoLista.favorita.explicacaoPara(l), 'Fica à mão no filtro «Favoritas»');
+    l.favorita = true;
+    expect(AcaoLista.favorita.explicacaoPara(l), 'Deixa de aparecer no filtro «Favoritas»');
+    expect(AcaoLista.editar.explicacaoPara(l), AcaoLista.editar.explicacao);
+  });
+
   testWidgetsWin('em Android o menu não tem "Copiar link"; em Windows tem', (t) async {
     final lista = Lista(
         id: 'x', ordem: 1, conta: Conta('', Tipo.m3u, 'http://b.com/l.m3u'));
