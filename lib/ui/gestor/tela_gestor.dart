@@ -546,7 +546,10 @@ class _TelaGestorState extends State<TelaGestor> {
         const SizedBox(width: Tokens.e12),
         // no passo 2 é o indicador da verificação (OK abre o progresso, se houve uma); nos outros
         // ecrãs, o de toda a atividade (OK abre o painel)
+        // no canto direito: o indicador só encolhe se não couber
         Flexible(
+          child: Align(
+            alignment: Alignment.centerRight,
             child: _ecra == EcraGestor.verificar
                 ? IndicadorAtividade(
                     servico: _s,
@@ -555,7 +558,9 @@ class _TelaGestorState extends State<TelaGestor> {
                     soVerificacao: true,
                     aoAbrir: _verVerificacao)
                 : IndicadorAtividade(
-                    servico: _s, tarefas: widget.tarefas, foco: _focoIndicador, aoAbrir: _abrirAtividade)),
+                    servico: _s, tarefas: widget.tarefas, foco: _focoIndicador, aoAbrir: _abrirAtividade),
+          ),
+        ),
       ]),
     );
   }

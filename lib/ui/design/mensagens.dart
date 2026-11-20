@@ -100,6 +100,10 @@ class MensagensHost extends InheritedWidget {
   bool updateShouldNotify(MensagensHost old) => controlador != old.controlador;
 }
 
+/// Onde começa o canto das mensagens: por baixo da barra do topo dos ecrãs (título, Voltar e o
+/// indicador de atividade no canto direito), para nunca tapar o indicador.
+const alturaBarraTopo = 64.0;
+
 /// O anfitrião das mensagens da app inteira: vive no `MaterialApp.builder`, por cima do
 /// Navigator, por isso todas as rotas (a casca, a lista aberta, o player do Android) partilham
 /// o mesmo canto superior direito e a mesma tecla Menu.
@@ -195,7 +199,8 @@ class _SobreposicaoMensagensState extends State<SobreposicaoMensagens> {
           final m = controlador.atual;
           if (m == null) return const SizedBox.shrink();
           return Positioned(
-            top: Tokens.e16,
+            // por baixo da barra do topo: o indicador de atividade está no canto e não fica tapado
+            top: alturaBarraTopo,
             right: Tokens.e16,
             child: SafeArea(
               child: ExcludeFocus(

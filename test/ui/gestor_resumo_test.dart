@@ -16,6 +16,7 @@ import 'package:player_iptv/ui/design/barra_teclas.dart';
 import 'package:player_iptv/ui/design/componentes.dart';
 import 'package:player_iptv/ui/design/ecra.dart';
 import 'package:player_iptv/ui/design/escala_interface.dart';
+import 'package:player_iptv/ui/design/mensagens.dart';
 import 'package:player_iptv/ui/design/tokens.dart';
 import 'package:player_iptv/ui/gestor/indicador_atividade.dart';
 import 'package:player_iptv/ui/gestor/passo_enviar.dart';
@@ -165,6 +166,18 @@ void main() {
     expect(t.widget<Text>(em(c2, '4')).style?.color, Tokens.mau);
     // sem nada a decorrer, não há barra de atividade
     expect(find.textContaining('A verificar'), findsNothing);
+  });
+
+  testWidgets('o indicador de atividade fica no canto direito do topo', (t) async {
+    ecraTvTeste(t, largura: 1600, altura: 900);
+    await t.pumpWidget(gestor());
+    await t.pump();
+    final ecra = t.getRect(find.byType(TelaGestor));
+    final indicador = t.getRect(find.byType(IndicadorAtividade));
+    expect(ecra.right - indicador.right, lessThan(Tokens.e16 + 1), reason: 'encostado à margem direita');
+    expect(indicador.left, greaterThan(ecra.center.dx), reason: 'não fica a meio do topo');
+    // e as mensagens do canto aparecem por baixo dele, sem o tapar
+    expect(indicador.bottom, lessThanOrEqualTo(alturaBarraTopo));
   });
 
   testWidgets('Gestor vazio: os cartões 2 e 3 dizem "Importe listas primeiro"', (t) async {
