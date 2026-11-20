@@ -896,6 +896,7 @@ void main() {
       int direto() => direto0 + relogio.difference(t0).inMilliseconds ~/ 10;
       var ligacoes = 0;
       final esperas = <Duration>[];
+      final comecos = <DateTime>[];
       final fim = Completer<void>();
       final ultima = StreamController<List<int>>();
       int? primeiro;
@@ -917,6 +918,7 @@ void main() {
               if (!fim.isCompleted) fim.complete();
               return ultima.stream;
             }
+            comecos.add(relogio);
             final fecho = fechos[ligacoes++ % fechos.length];
             final agoraDireto = direto();
             final inicio = (agoraDireto - 2000) ~/ 1000 * 1000; // 20–30 s atrás, num múltiplo de 10 s
@@ -950,9 +952,13 @@ void main() {
       await pumpEventQueue();
       expect(erros.where((e) => e.desistiu), isEmpty, reason: 'nunca desiste');
       expect(ligacoes, greaterThan(40));
-      // só a ligação dos 20 bytes (sem vídeo novo) espera antes de religar
-      expect(esperas, everyElement(const Duration(seconds: 1)));
-      expect(esperas.length, ligacoes ~/ 4);
+      // só a ligação dos 20 bytes (sem vídeo novo) espera 1 s; as outras só o que falta para 1 s
+      // entre o começo de duas ligações (a de 0,9 s espera 0,1 s)
+      expect(esperas, everyElement(lessThanOrEqualTo(const Duration(seconds: 1))));
+      expect(esperas.where((e) => e == const Duration(seconds: 1)).length, ligacoes ~/ 4);
+      for (var i = 1; i < comecos.length; i++) {
+        expect(comecos[i].difference(comecos[i - 1]), greaterThanOrEqualTo(const Duration(seconds: 1)));
+      }
       expect(g.inicio, 0);
       final gravado = (await g.ler(0, g.fim))!;
       expect(gravado.length, (ultimoEnviado - primeiro!) * 188);
@@ -976,7 +982,10 @@ void main() {
           abrir: (_, _) async {
             ligacoes++;
             // a 1.ª traz 30 s; as seguintes só repetem o que já foi gravado
-            if (ligacoes == 1) return Stream.fromIterable(emPedacos(tsSintetico(0, 3000), 65536));
+            if (ligacoes == 1) {
+              relogio = relogio.add(const Duration(seconds: 30)); // a 1.ª ligação dura 30 s
+              return Stream.fromIterable(emPedacos(tsSintetico(0, 3000), 65536));
+            }
             relogio = relogio.add(const Duration(seconds: 6));
             return Stream.fromIterable(emPedacos(tsSintetico(1000, 3000), 65536));
           });
@@ -1009,9 +1018,15 @@ void main() {
           esperar: (d) async => esperas.add(d),
           abrir: (_, _) async {
             ligacoes++;
-            if (ligacoes == 1) return Stream.fromIterable(emPedacos(tsSintetico(0, 3000), 65536));
-            // 0,9 s: repete 20 s e traz 90 pacotes novos
-            if (ligacoes == 2) return Stream.fromIterable(emPedacos(tsSintetico(1000, 3090), 65536));
+            if (ligacoes == 1) {
+              relogio = relogio.add(const Duration(seconds: 30)); // a 1.ª ligação dura 30 s
+              return Stream.fromIterable(emPedacos(tsSintetico(0, 3000), 65536));
+            }
+            // repete 20 s e traz 90 pacotes novos, em 2 s (mais do que o mínimo entre ligações)
+            if (ligacoes == 2) {
+              relogio = relogio.add(const Duration(seconds: 2));
+              return Stream.fromIterable(emPedacos(tsSintetico(1000, 3090), 65536));
+            }
             terceira.complete();
             return ultima.stream;
           });
@@ -1021,6 +1036,80 @@ void main() {
       expect(esperas, isEmpty);
       expect(g.fim, 3090 * 188);
       await ultima.close();
+      await g.parar();
+    });
+  });
+  group('o portal não é martelado', () {
+    test('um servidor que fecha logo depois de um pouco de vídeo novo: no máximo ~60 ligações por minuto',
+        () async {
+      final t0 = relogio;
+      var ligacoes = 0;
+      var enviado = 3000;
+      final fim = Completer<void>();
+      final ultima = StreamController<List<int>>();
+      final g = GravadorDireto(
+          origem: _origem,
+          cabecalhos: const {},
+          armazem: ArmazemMemoria(_bloco),
+          reservaBytes: 64 * _bloco,
+          tamanhoBloco: _bloco,
+          agora: agora,
+          esperar: (d) async => relogio = relogio.add(d),
+          abrir: (_, _) async {
+            // um teto para o teste acabar mesmo sem a proteção
+            if (relogio.difference(t0) >= const Duration(minutes: 1) || ligacoes >= 200) {
+              if (!fim.isCompleted) fim.complete();
+              return ultima.stream;
+            }
+            ligacoes++;
+            // repete 5 s e traz 10 pacotes novos (0,1 s), sem o relógio andar
+            final de = math.max(0, enviado - 500);
+            final ate = enviado + 10;
+            enviado = ate;
+            return Stream.fromIterable(emPedacos(tsSintetico(ligacoes == 1 ? 0 : de, ate), 65536));
+          });
+      final erros = <ErroGravador>[];
+      g.erros.listen(erros.add);
+      await g.iniciar();
+      await fim.future;
+      await pumpEventQueue();
+      expect(erros.where((e) => e.desistiu), isEmpty, reason: 'cada ligação trouxe vídeo novo');
+      expect(ligacoes, lessThanOrEqualTo(61));
+      expect(ligacoes, greaterThanOrEqualTo(59));
+      expect(g.fim, enviado * 188, reason: 'contínuo');
+      await ultima.close();
+      await g.parar();
+    });
+
+    test('lixo depois de já haver TS gravado não conta como proveito: 4 seguidas desistem', () async {
+      var ligacoes = 0;
+      final desistiu = Completer<void>();
+      final g = GravadorDireto(
+          origem: _origem,
+          cabecalhos: const {},
+          armazem: ArmazemMemoria(_bloco),
+          reservaBytes: 64 * _bloco,
+          tamanhoBloco: _bloco,
+          agora: agora,
+          esperar: nada,
+          abrir: (_, _) async {
+            ligacoes++;
+            if (ligacoes == 1) {
+              relogio = relogio.add(const Duration(seconds: 30)); // a 1.ª ligação dura 30 s
+              return Stream.fromIterable(emPedacos(tsSintetico(0, 3000), 65536));
+            }
+            relogio = relogio.add(const Duration(seconds: 6));
+            return Stream.value(_bytes(0, 2000)); // 2000 bytes que não são TS
+          });
+      final erros = <ErroGravador>[];
+      g.erros.listen((e) {
+        erros.add(e);
+        if (e.desistiu) desistiu.complete();
+      });
+      await g.iniciar();
+      await desistiu.future;
+      expect(ligacoes, 5);
+      expect(erros.map((e) => e.desistiu), [false, false, false, false, true]);
       await g.parar();
     });
   });

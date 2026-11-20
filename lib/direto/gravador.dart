@@ -307,6 +307,8 @@ class GravadorDireto {
     // ligações seguidas sem vídeo novo: escolhem a espera e decidem a desistência
     var semProveito = 0;
     while (!_parado) {
+      // o começo desta ligação: a seguinte começa pelo menos [intervaloMinimo] depois
+      final comeco = _agora();
       DateTime? ultimaChegada;
       Object? falha;
       // o que o gravado tinha antes desta ligação: o proveito é o que ela acrescentou
@@ -386,12 +388,19 @@ class GravadorDireto {
       _avisar(ErroGravador(
           desistiu: false,
           mensagem: falha == null ? 'o servidor fechou a ligação' : descreverErro(falha)));
-      if (semProveito > 0) {
-        final esperas = ContinuarDireto.esperas;
-        await _esperar(esperas[math.min(semProveito - 1, esperas.length - 1)]);
-      }
+      // sem vídeo novo, a espera da regra; com ele, só o que falta para [intervaloMinimo] desde o
+      // começo desta ligação (um servidor que fecha logo não faz o portal receber um pedido de link
+      // atrás do outro)
+      final esperas = ContinuarDireto.esperas;
+      var espera = semProveito > 0 ? esperas[math.min(semProveito - 1, esperas.length - 1)] : Duration.zero;
+      final falta = intervaloMinimo - _agora().difference(comeco);
+      if (falta > espera) espera = falta;
+      if (espera > Duration.zero) await _esperar(espera);
     }
   }
+
+  /// O mínimo entre o começo de duas ligações à origem (cada uma pede um link ao portal).
+  static const intervaloMinimo = Duration(seconds: 1);
 
   /// Uma ligação acrescentou vídeo novo ao gravado: pelo menos um pacote e, se o gravado tinha PCR,
   /// o PCR mudou (andou; ou o canal recomeçou). Um pedaço solto de bytes não conta.
