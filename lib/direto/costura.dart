@@ -419,7 +419,10 @@ class ProcuraCostura {
     final ponto = _ponto;
     if (ponto != null) return _decidir(DecisaoCostura(ModoCostura.pcr, _pesNovo ?? ponto));
     if (_leitor.primeiroPacote == null) {
-      return _decidir(DecisaoCostura(ModoCostura.inteira, 0, motivo: recebidos == 0 ? null : 'não parece MPEG-TS'));
+      // uns bytes soltos (a ligação fechou logo, ex.: 20 bytes): não chegam a um pacote que se possa
+      // ver; vêm de uma ligação que recomeça atrás, por isso não se grava nada
+      if (recebidos < 4 * pacoteTs) return _decidir(DecisaoCostura(ModoCostura.pcr, recebidos));
+      return _decidir(const DecisaoCostura(ModoCostura.inteira, 0, motivo: 'não parece MPEG-TS'));
     }
     if (ultimoPcr != null && _viuPcr) {
       final pes = _pesNovo;

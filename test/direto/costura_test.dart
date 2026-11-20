@@ -197,4 +197,14 @@ void main() {
       expect(p.comparacoes, lessThanOrEqualTo(2 * p.recebidos));
     });
   });
+
+  test('uma ligação que fecha com uns bytes soltos (20 B) não grava nada', () {
+    final gravado = tsSintetico(0, 4000);
+    final p = ProcuraCostura(
+        cauda: gravado.sublist(gravado.length - tamanhoCauda), ultimoPcr: pcrSintetico(3999));
+    expect(p.receber(tsSintetico(2000, 2001).sublist(0, 20)), isNull);
+    final d = p.terminar();
+    expect(d.desde, 20, reason: 'nada a gravar');
+    expect(d.modo, isNot(ModoCostura.inteira));
+  });
 }

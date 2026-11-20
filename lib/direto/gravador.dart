@@ -6,8 +6,12 @@
 /// reserva, contando o bloco em escrita. As posições são absolutas (bytes desde o início da sessão):
 /// o bloco `n` guarda `[n × tamanhoBloco, (n + 1) × tamanhoBloco)`.
 ///
-/// Quando a ligação à origem cai, volta a ligar e continua no mesmo ponto (o `fim` não salta), com a
-/// regra de desistência do [ContinuarDireto]. [GravadorDireto.parar] apaga a pasta.
+/// Quando a ligação à origem cai, volta a ligar e continua no mesmo ponto (o `fim` não salta). A regra
+/// de desistência é do gravador, não a do player: uma ligação tem proveito se acrescentou vídeo novo
+/// ao gravado (pelo menos um pacote e, com PCR, o PCR a andar), por mais curta que seja; só as que
+/// não acrescentaram nada esperam antes de religar ([ContinuarDireto.esperas]) e, à
+/// [ContinuarDireto.maximoSemProveito] + 1.ª seguida, desiste-se. [GravadorDireto.parar] apaga a
+/// pasta.
 ///
 /// Com [GravadorDireto.espacoLivre] (só no disco), antes de cada bloco novo vê-se o espaço livre do
 /// aparelho: sem [margemEspaco] mais um bloco, apagam-se os blocos mais antigos (medindo outra vez
@@ -179,9 +183,6 @@ class GravadorDireto {
   final _pendente = <List<int>>[];
   int _pendenteDesde = 0;
 
-  /// A regra de desistência do player ([ContinuarDireto.permitir]).
-  final _regra = ContinuarDireto();
-
   bool _iniciado = false;
   bool _parado = false;
 
@@ -303,10 +304,14 @@ class GravadorDireto {
   // ---- ligação ----
 
   Future<void> _correr() async {
-    var semProveito = 0; // só para escolher a espera; quem decide desistir é o [_regra]
+    // ligações seguidas sem vídeo novo: escolhem a espera e decidem a desistência
+    var semProveito = 0;
     while (!_parado) {
-      DateTime? primeiraChegada, ultimaChegada;
+      DateTime? ultimaChegada;
       Object? falha;
+      // o que o gravado tinha antes desta ligação: o proveito é o que ela acrescentou
+      final fimAntes = _fim;
+      final pcrAntes = _gravado.ultimoPcr;
       try {
         final obter = obterOrigem;
         final (uri, cab) = obter == null ? (origem, cabecalhos) : await obter();
@@ -334,10 +339,7 @@ class GravadorDireto {
           _novaLigacaoNoAlinhamento(0);
           _aSincronizar = BytesBuilder();
         }
-        await _consumir(stream, () {
-          ultimaChegada = _agora();
-          primeiraChegada ??= ultimaChegada;
-        });
+        await _consumir(stream, () => ultimaChegada = _agora());
       } catch (e) {
         falha = e;
       }
@@ -368,14 +370,16 @@ class GravadorDireto {
                 : 'não foi possível gravar no armazenamento'));
         break;
       }
-      final primeira = primeiraChegada, ultima = ultimaChegada;
+      final ultima = ultimaChegada;
       // o fim desta ligação no índice: o corte até à próxima não se espalha pelos bytes dela
       if (ultima != null) _marcar(ultima, _fim);
-      // o proveito é o tempo em que chegaram dados (nem a espera pela resposta nem uma ligação
-      // parada até ao limite contam)
-      final deu = primeira == null || ultima == null ? Duration.zero : ultima.difference(primeira);
-      semProveito = deu >= ContinuarDireto.proveito ? 0 : semProveito + 1;
-      if (!_regra.permitir(tocou: deu)) {
+      // o proveito é o vídeo novo que a ligação acrescentou depois da costura (o servidor pode fechar
+      // ao fim de 1 s, mas o que trouxe de novo conta), e não o tempo que durou
+      semProveito = _acrescentouVideo(
+              escritos: _fim - fimAntes, pcrAntes: pcrAntes, pcrDepois: _gravado.ultimoPcr)
+          ? 0
+          : semProveito + 1;
+      if (semProveito > ContinuarDireto.maximoSemProveito) {
         _avisar(const ErroGravador(desistiu: true, mensagem: ContinuarDireto.desistencia));
         break;
       }
@@ -388,6 +392,11 @@ class GravadorDireto {
       }
     }
   }
+
+  /// Uma ligação acrescentou vídeo novo ao gravado: pelo menos um pacote e, se o gravado tinha PCR,
+  /// o PCR mudou (andou; ou o canal recomeçou). Um pedaço solto de bytes não conta.
+  static bool _acrescentouVideo({required int escritos, required int? pcrAntes, required int? pcrDepois}) =>
+      escritos >= pacote && (pcrAntes == null || pcrDepois != pcrAntes);
 
   void _avisar(ErroGravador e) {
     if (!_parado && !_erros.isClosed) _erros.add(e);

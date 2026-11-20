@@ -210,7 +210,7 @@ void main() {
     await g.parar();
   });
 
-  test('a regra do player: 3 reaberturas sem proveito passam, a 4.ª ligação falhada desiste, sem o URL',
+  test('a regra do gravador: 3 religações sem proveito passam, a 4.ª ligação sem vídeo novo desiste, sem o URL',
       () async {
     var ligacoes = 0;
     final esperas = <Duration>[];
@@ -218,7 +218,7 @@ void main() {
         origem: _origem, cabecalhos: const {}, pasta: pasta, reservaBytes: _reserva, tamanhoBloco: _bloco,
         agora: agora, esperar: (d) async => esperas.add(d), abrir: (_, _) async {
       ligacoes++;
-      if (ligacoes == 2) return Stream.fromIterable([_bytes(0, 1000)]); // fecha logo: sem proveito
+      if (ligacoes == 2) return const Stream<List<int>>.empty(); // fecha logo sem nada: sem proveito
       throw SocketException('falhou a ligação a $_origem');
     });
     final erros = <ErroGravador>[];
@@ -866,6 +866,146 @@ void main() {
       await g.parar();
       expect(armazem.bytesEmUso, 0);
       expect(await g.ler(0, 10), isNull);
+    });
+  });
+  group('proveito das religações (o vídeo novo que cada uma acrescentou)', () {
+    /// O servidor medido na SIC Notícias: cada ligação recomeça num múltiplo de 10 s, 20–30 s atrás
+    /// do direto, manda logo tudo até ao direto (a rajada) e depois em tempo real até fechar. As
+    /// ligações fecham aos 0,9 s, 3,8 s, 2,2 s, e uma dá só 20 bytes, a repetir. O TS sintético anda
+    /// 100 pacotes por segundo do relógio do teste.
+    test('o padrão de fechos da SIC durante 3 minutos: nunca desiste e o gravado é contínuo', () async {
+      const fechos = [0.9, 3.8, 2.2, -1.0]; // -1: só 20 bytes
+      final t0 = relogio;
+      const direto0 = 3000; // 30 s de canal antes de começar
+      int direto() => direto0 + relogio.difference(t0).inMilliseconds ~/ 10;
+      var ligacoes = 0;
+      final esperas = <Duration>[];
+      final fim = Completer<void>();
+      final ultima = StreamController<List<int>>();
+      int? primeiro;
+      var ultimoEnviado = 0;
+      final armazem = ArmazemMemoria(_bloco);
+      final g = GravadorDireto(
+          origem: _origem,
+          cabecalhos: const {},
+          armazem: armazem,
+          reservaBytes: 128 * _bloco, // 8 MiB: os 3 minutos cabem todos
+          tamanhoBloco: _bloco,
+          agora: agora,
+          esperar: (d) async {
+            esperas.add(d);
+            relogio = relogio.add(d);
+          },
+          abrir: (_, _) async {
+            if (relogio.difference(t0) >= const Duration(minutes: 3)) {
+              if (!fim.isCompleted) fim.complete();
+              return ultima.stream;
+            }
+            final fecho = fechos[ligacoes++ % fechos.length];
+            final agoraDireto = direto();
+            final inicio = (agoraDireto - 2000) ~/ 1000 * 1000; // 20–30 s atrás, num múltiplo de 10 s
+            primeiro ??= inicio;
+            if (fecho < 0) return Stream.value(tsSintetico(inicio, inicio + 1).sublist(0, 20));
+            Stream<List<int>> ligacao() async* {
+              // a rajada: tudo até ao direto, de uma vez
+              yield* Stream.fromIterable(emPedacos(tsSintetico(inicio, agoraDireto), 65536));
+              var enviado = agoraDireto;
+              var falta = (fecho * 1000).round();
+              while (falta > 0) {
+                final passo = math.min(1000, falta);
+                relogio = relogio.add(Duration(milliseconds: passo));
+                falta -= passo;
+                final ate = direto();
+                yield tsSintetico(enviado, ate);
+                enviado = ate;
+              }
+              ultimoEnviado = enviado;
+            }
+
+            return ligacao();
+          });
+      final erros = <ErroGravador>[];
+      g.erros.listen((e) {
+        erros.add(e);
+        if (e.desistiu && !fim.isCompleted) fim.complete();
+      });
+      await g.iniciar();
+      await fim.future;
+      await pumpEventQueue();
+      expect(erros.where((e) => e.desistiu), isEmpty, reason: 'nunca desiste');
+      expect(ligacoes, greaterThan(40));
+      // só a ligação dos 20 bytes (sem vídeo novo) espera antes de religar
+      expect(esperas, everyElement(const Duration(seconds: 1)));
+      expect(esperas.length, ligacoes ~/ 4);
+      expect(g.inicio, 0);
+      final gravado = (await g.ler(0, g.fim))!;
+      expect(gravado.length, (ultimoEnviado - primeiro!) * 188);
+      expect(gravado, tsSintetico(primeiro!, ultimoEnviado), reason: 'contínuo, sem repetições nem buracos');
+      await ultima.close();
+      await g.parar();
+    });
+
+    test('um canal morto (4 ligações seguidas sem vídeo novo) continua a desistir', () async {
+      var ligacoes = 0;
+      final esperas = <Duration>[];
+      final desistiu = Completer<void>();
+      final g = GravadorDireto(
+          origem: _origem,
+          cabecalhos: const {},
+          armazem: ArmazemMemoria(_bloco),
+          reservaBytes: 64 * _bloco,
+          tamanhoBloco: _bloco,
+          agora: agora,
+          esperar: (d) async => esperas.add(d),
+          abrir: (_, _) async {
+            ligacoes++;
+            // a 1.ª traz 30 s; as seguintes só repetem o que já foi gravado
+            if (ligacoes == 1) return Stream.fromIterable(emPedacos(tsSintetico(0, 3000), 65536));
+            relogio = relogio.add(const Duration(seconds: 6));
+            return Stream.fromIterable(emPedacos(tsSintetico(1000, 3000), 65536));
+          });
+      final erros = <ErroGravador>[];
+      g.erros.listen((e) {
+        erros.add(e);
+        if (e.desistiu) desistiu.complete();
+      });
+      await g.iniciar();
+      await desistiu.future;
+      expect(ligacoes, 5);
+      expect(erros.map((e) => e.desistiu), [false, false, false, false, true]);
+      expect(esperas, ContinuarDireto.esperas, reason: 'só as ligações sem vídeo novo esperam');
+      expect(g.fim, 3000 * 188, reason: 'nada repetido');
+      await g.parar();
+    });
+
+    test('uma ligação curta com vídeo novo religa logo, sem espera', () async {
+      var ligacoes = 0;
+      final esperas = <Duration>[];
+      final ultima = StreamController<List<int>>();
+      final terceira = Completer<void>();
+      final g = GravadorDireto(
+          origem: _origem,
+          cabecalhos: const {},
+          armazem: ArmazemMemoria(_bloco),
+          reservaBytes: 64 * _bloco,
+          tamanhoBloco: _bloco,
+          agora: agora,
+          esperar: (d) async => esperas.add(d),
+          abrir: (_, _) async {
+            ligacoes++;
+            if (ligacoes == 1) return Stream.fromIterable(emPedacos(tsSintetico(0, 3000), 65536));
+            // 0,9 s: repete 20 s e traz 90 pacotes novos
+            if (ligacoes == 2) return Stream.fromIterable(emPedacos(tsSintetico(1000, 3090), 65536));
+            terceira.complete();
+            return ultima.stream;
+          });
+      await g.iniciar();
+      await terceira.future;
+      await pumpEventQueue();
+      expect(esperas, isEmpty);
+      expect(g.fim, 3090 * 188);
+      await ultima.close();
+      await g.parar();
     });
   });
 }
