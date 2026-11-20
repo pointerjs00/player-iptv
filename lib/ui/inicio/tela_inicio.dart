@@ -68,6 +68,7 @@ class _TelaInicioState extends State<TelaInicio> {
   /// O foco de cada cartão (pelo id da lista): depois de eliminar, o foco passa ao cartão ao lado.
   final _focos = <String, FocusNode>{};
 
+  final _focoChipFavoritas = FocusNode(debugLabel: 'Filtro Favoritas');
   FocusNode _focoCartao(String id) => _focos.putIfAbsent(id, () => FocusNode(debugLabel: 'Cartão $id'));
 
   @override
@@ -98,6 +99,7 @@ class _TelaInicioState extends State<TelaInicio> {
   void dispose() {
     widget.biblioteca.removeListener(_mudou);
     _pesquisa.dispose();
+    _focoChipFavoritas.dispose();
     for (final f in _focos.values) {
       f.dispose();
     }
@@ -166,6 +168,20 @@ class _TelaInicioState extends State<TelaInicio> {
     });
   }
 
+  /// Um cartão saiu da vista (estava na posição [i]): o foco vai ao que ficou no lugar dele (ou ao
+  /// anterior); com a vista vazia, ao chip «Favoritas».
+  void _focarDepoisDeSair(int i) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final vis = _visiveis();
+      if (vis.isEmpty) {
+        _focoChipFavoritas.requestFocus();
+      } else if (i >= 0) {
+        _focos[vis[i.clamp(0, vis.length - 1)].id]?.requestFocus();
+      }
+    });
+  }
+
   /// O menu de ações do cartão (pressão longa, clique direito ou OK mantido).
   Future<void> _menu(Lista l) async {
     final area = widget.area;
@@ -180,7 +196,14 @@ class _TelaInicioState extends State<TelaInicio> {
         final m = await mostrarEditarLista(context, widget.biblioteca, l);
         if (m != null) _avisar(m);
       case AcaoLista.favorita:
+        final i = _visiveis().indexWhere((x) => x.id == l.id);
         await widget.biblioteca.alternarFavorita(l.id);
+        // sob o filtro «Favoritas» o cartão sai da vista: o foco passa ao que ficou no lugar dele
+        // (ou, com a vista vazia, ao chip do filtro)
+        if (_filtro == _filtroFavoritas && mounted) {
+          setState(() {}); // a vista já perde o cartão neste frame
+          _focarDepoisDeSair(i);
+        }
       case AcaoLista.copiarLink:
         // nunca se mostra o link (pode ter credenciais)
         await Clipboard.setData(ClipboardData(text: linkParaCopiar(l.conta)));
@@ -323,7 +346,12 @@ class _TelaInicioState extends State<TelaInicio> {
       child: Row(children: [
         for (final (i, (v, t)) in _filtros.indexed) ...[
           if (i > 0) const SizedBox(width: Tokens.e8),
-          ChoiceChip(label: Text(t), selected: _filtro == v, onSelected: (_) => setState(() => _filtro = v)),
+          ChoiceChip(
+            focusNode: v == _filtroFavoritas ? _focoChipFavoritas : null,
+            label: Text(t),
+            selected: _filtro == v,
+            onSelected: (_) => setState(() => _filtro = v),
+          ),
         ],
       ]),
     );

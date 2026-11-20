@@ -65,6 +65,40 @@ void main() {
     expect(find.text('Nenhuma lista com este filtro.'), findsOneWidget);
   });
 
+  /// Com o filtro «Favoritas» ligado e [favoritas] listas favoritas (as primeiras), tira a primeira.
+  Future<void> tirarDaPrimeira(WidgetTester t, int favoritas) async {
+    ecraTvTeste(t);
+    await abrir(t);
+    for (final l in bib.listas.take(favoritas)) {
+      await t.runAsync(() => bib.alternarFavorita(l.id));
+    }
+    await t.pump();
+    await t.ensureVisible(find.widgetWithText(ChoiceChip, 'Favoritas'));
+    await t.tap(find.widgetWithText(ChoiceChip, 'Favoritas'));
+    await t.pumpAndSettle();
+    await menuDoPrimeiro(t);
+    await t.tap(find.text('Tirar das favoritas'));
+    await t.pump();
+    // a gravação do ficheiro acontece em tempo real
+    for (var k = 0; k < 20; k++) {
+      await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+      await t.pump();
+    }
+    await t.pumpAndSettle();
+  }
+
+  testWidgets('«Tirar das favoritas» sob o filtro: o foco passa ao cartão que fica no lugar', (t) async {
+    await tirarDaPrimeira(t, 2);
+    expect(bib.listas.first.favorita, isFalse);
+    expect(textosFocados(), contains(bib.listas[1].nomeMostrado));
+  });
+
+  testWidgets('«Tirar das favoritas» sob o filtro com a vista vazia: o foco vai ao chip «Favoritas»', (t) async {
+    await tirarDaPrimeira(t, 1);
+    expect(find.text('Nenhuma lista com este filtro.'), findsOneWidget);
+    expect(textosFocados(), 'Favoritas');
+  });
+
   testWidgets('o D-pad chega ao chip «Favoritas»', (t) async {
     ecraTvTeste(t);
     await abrir(t);
