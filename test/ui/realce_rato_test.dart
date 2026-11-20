@@ -35,6 +35,23 @@ void main() {
     expect(FocusManager.instance.highlightMode, FocusHighlightMode.traditional);
   });
 
+  testWidgets('no computador a app arranca sem realce (o cartão com foco automático não brilha) até uma tecla',
+      (t) async {
+    addTearDown(() async {
+      await configurarRealceFoco(eTv: () async => false, computador: false);
+      FocusManager.instance.highlightStrategy = FocusHighlightStrategy.automatic;
+    });
+    FocusManager.instance.highlightStrategy = FocusHighlightStrategy.alwaysTraditional; // como o Windows ao abrir
+    await configurarRealceFoco(eTv: () async => false, computador: true);
+    await t.pumpWidget(MaterialApp(
+        home: Scaffold(body: ElevatedButton(autofocus: true, onPressed: () {}, child: const Text('Continuar')))));
+    await t.pump();
+    expect(FocusManager.instance.highlightMode, FocusHighlightMode.touch);
+    await t.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await t.pump();
+    expect(FocusManager.instance.highlightMode, FocusHighlightMode.traditional);
+  });
+
   testWidgets('configurarRealceFoco: no computador instala o vigia uma só vez e tira-o quando não se aplica',
       (t) async {
     addTearDown(() async {

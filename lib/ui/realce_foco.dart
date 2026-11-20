@@ -90,6 +90,9 @@ class RealceConformeEntrada {
   }
 
   void instalar() {
+    // ao abrir ainda não houve entrada: sem realce até uma tecla (o cartão com foco automático,
+    // como o "Continuar a ver", não brilha com o rato)
+    _modo(FocusHighlightStrategy.alwaysTouch);
     GestureBinding.instance.pointerRouter.addGlobalRoute(_ponteiro);
     HardwareKeyboard.instance.addHandler(_tecla);
   }
