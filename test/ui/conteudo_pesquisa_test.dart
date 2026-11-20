@@ -385,6 +385,10 @@ void main() {
       await t.tap(find.byTooltip(k.isEven ? 'Pôr nos favoritos' : 'Tirar dos favoritos').first);
       await t.pump();
     }
+    // 5 alternâncias (pôr, tirar, pôr, tirar, pôr): o mesmo canal fica nos favoritos, e o filtro e a pesquisa mantêm-se
+    expect(find.byTooltip('Tirar dos favoritos'), findsOneWidget);
+    expect(find.text('Canais · 10000'), findsOneWidget);
+    expect(find.descendant(of: _grupos, matching: find.text('Filmes 12')), findsOneWidget);
   });
 
   testWidgets('‹ Início sai logo, mesmo com texto na pesquisa', (t) async {
