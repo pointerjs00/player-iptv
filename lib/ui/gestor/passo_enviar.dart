@@ -32,7 +32,7 @@ class PassoEnviar extends StatefulWidget {
   final ValueChanged<List<Lista>> aoEnviar;
   final ValueChanged<List<Lista>> aoExportar;
 
-  /// O controlo que recebe o foco quando o passo abre (o chip "As que funcionam").
+  /// O controlo que recebe o foco quando o passo abre (o chip "Funcionam").
   final FocusNode? focoInicial;
 
   @override
@@ -40,7 +40,12 @@ class PassoEnviar extends StatefulWidget {
 }
 
 class _PassoEnviarState extends State<PassoEnviar> {
-  final _focoFuncionam = FocusNode(debugLabel: 'As que funcionam');
+  final _focoFuncionam = FocusNode(debugLabel: 'Funcionam');
+  final _focoInconclusivas = FocusNode(debugLabel: 'Inconclusivas');
+  final _focoNaoFuncionam = FocusNode(debugLabel: 'Não funcionam');
+  final _focoPorVerificar = FocusNode(debugLabel: 'Por verificar');
+  final _focoTodas = FocusNode(debugLabel: 'Todas');
+  final _focoNenhuma = FocusNode(debugLabel: 'Nenhuma');
   final _focoEnviar = FocusNode(debugLabel: 'Enviar');
   final _focoExportar = FocusNode(debugLabel: 'Exportar');
   final _focosLinhas = <String, FocusNode>{};
@@ -57,21 +62,32 @@ class _PassoEnviarState extends State<PassoEnviar> {
     super.initState();
     _focoEnviar.addListener(() => _seDesligou(_focoEnviar));
     _focoExportar.addListener(() => _seDesligou(_focoExportar));
+    // aberto sem listas que funcionam, o chip inicial está desativado: o foco não se perde
+    _focarUmChip();
   }
 
   /// O botão com o foco ficou desativado (já não há marcadas): o foco passa ao chip "As que
   /// funcionam" (senão perdia-se e deixava de se ver).
   void _seDesligou(FocusNode no) {
     if (no.hasFocus || no.canRequestFocus) return;
+    _focarUmChip();
+  }
+
+  /// O foco vai ao chip "Funcionam"; se ele estiver desativado (sem listas que funcionam), a
+  /// «Nenhuma», que está sempre ativa. Só se o foco se tinha perdido.
+  void _focarUmChip() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final atual = FocusManager.instance.primaryFocus;
-      if (mounted && (atual == null || atual is FocusScopeNode)) _focoChip.requestFocus();
+      if (!mounted || !(atual == null || atual is FocusScopeNode)) return;
+      (_focoChip.canRequestFocus ? _focoChip : _focoNenhuma).requestFocus();
     });
   }
 
   @override
   void dispose() {
-    _focoFuncionam.dispose();
+    for (final f in [_focoFuncionam, _focoInconclusivas, _focoNaoFuncionam, _focoPorVerificar, _focoTodas, _focoNenhuma]) {
+      f.dispose();
+    }
     _focoEnviar.dispose();
     _focoExportar.dispose();
     _rolChips.dispose();
@@ -83,10 +99,9 @@ class _PassoEnviarState extends State<PassoEnviar> {
 
   FocusNode _focoLinha(String id) => _focosLinhas.putIfAbsent(id, () => FocusNode(debugLabel: 'Linha'));
 
-  void _marcar(bool Function(EstadoLista) criterio) {
-    widget.marcadas
-      ..clear()
-      ..addAll([for (final l in _g.listas) if (criterio(estadoDe(l))) l.id]);
+  /// Marca (ou desmarca) estes ids sem tocar nas outras marcadas.
+  void _marcarEstado(List<String> ids, bool marcar) {
+    marcar ? widget.marcadas.addAll(ids) : widget.marcadas.removeAll(ids);
     widget.aoMudarMarcadas();
     setState(() {});
   }
@@ -185,22 +200,41 @@ class _PassoEnviarState extends State<PassoEnviar> {
       );
 
   Widget _marcarBarra(List<Lista> listas) {
-    final funcionam = listas.where((l) => estadoDe(l) == EstadoLista.funciona).length;
-    final ateInconcl =
-        listas.where((l) => estadoDe(l) == EstadoLista.funciona || estadoDe(l) == EstadoLista.inconclusiva).length;
-    ActionChip chip(String texto, VoidCallback aoCarregar, {FocusNode? foco}) => ActionChip(
-          focusNode: foco,
-          label: Text(texto),
-          visualDensity: VisualDensity.compact,
-          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          onPressed: aoCarregar,
-        );
-    final chips = [
-      chip('As que funcionam ($funcionam)', () => _marcar((e) => e == EstadoLista.funciona), foco: _focoChip),
-      chip('+ inconclusivas ($ateInconcl)',
-          () => _marcar((e) => e == EstadoLista.funciona || e == EstadoLista.inconclusiva)),
-      chip('Todas (${listas.length})', () => _marcar((_) => true)),
-      chip('Nenhuma', () => _marcar((_) => false)),
+    // um chip por estado, ligado quando todas as listas desse estado estão marcadas (calcula-se
+    // das marcadas: marcar à mão a última que faltava liga-o); sem listas desse estado, desativado
+    FilterChip chip(String nome, List<Lista> doEstado, {required FocusNode foco, VoidCallback? aoLigar, bool? ligado}) {
+      final n = doEstado.length;
+      final todas = n > 0 && doEstado.every((l) => widget.marcadas.contains(l.id));
+      return FilterChip(
+        focusNode: foco,
+        label: Text('$nome ($n)'),
+        selected: ligado ?? todas,
+        visualDensity: VisualDensity.compact,
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        onSelected: n == 0
+            ? null
+            : (v) => aoLigar != null ? aoLigar() : _marcarEstado([for (final l in doEstado) l.id], v),
+      );
+    }
+
+    FilterChip porEstado(String nome, EstadoLista e, FocusNode foco) =>
+        chip(nome, [for (final l in listas) if (estadoDe(l) == e) l], foco: foco);
+
+    final todasMarcadas = listas.isNotEmpty && listas.every((l) => widget.marcadas.contains(l.id));
+    final chips = <Widget>[
+      porEstado('Funcionam', EstadoLista.funciona, _focoChip),
+      porEstado('Inconclusivas', EstadoLista.inconclusiva, _focoInconclusivas),
+      porEstado('Não funcionam', EstadoLista.naoFunciona, _focoNaoFuncionam),
+      porEstado('Por verificar', EstadoLista.porVerificar, _focoPorVerificar),
+      // «Todas» liga tudo e fica ligado (para desmarcar há «Nenhuma»)
+      chip('Todas', listas, foco: _focoTodas, ligado: todasMarcadas, aoLigar: () => _marcarEstado([for (final l in listas) l.id], true)),
+      ActionChip(
+        focusNode: _focoNenhuma,
+        label: const Text('Nenhuma'),
+        visualDensity: VisualDensity.compact,
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        onPressed: () => _marcarEstado([for (final l in listas) l.id], false),
+      ),
     ];
     // numa só linha, com «Marcar:» fixo: se os chips não couberem, deslizam para o lado (o foco
     // leva-os à vista; com o rato há a barra)

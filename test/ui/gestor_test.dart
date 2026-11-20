@@ -120,7 +120,10 @@ List<String> _desligados() {
     n++;
     if (!ligado) {
       final textos = find.descendant(of: find.byWidget(w), matching: find.byType(Text)).evaluate();
-      desligados.add('${w.runtimeType}: ${textos.map((t) => (t.widget as Text).data).join(' ')}');
+      final rotulo = textos.map((t) => (t.widget as Text).data).join(' ');
+      // os chips de marcar por estado sem listas (`Inconclusivas (0)`) não estão à espera de nada
+      if (w is FilterChip && rotulo.endsWith(' (0)')) continue;
+      desligados.add('${w.runtimeType}: $rotulo');
     }
   }
   expect(n, greaterThanOrEqualTo(3), reason: 'há controlos à vista');
@@ -199,11 +202,11 @@ void main() {
     await t.pump();
   }
 
-  /// No passo 3: o chip de marcar que começa por `rotulo` ("As que funcionam", "Todas"...).
+  /// No passo 3: o chip de marcar que começa por `rotulo` ("Funcionam", "Todas"...).
   /// Primeiro à vista: os chips vão numa só fila e, com a letra dos testes (larga), os da
   /// direita deslizam.
   Future<void> marcarChip(WidgetTester t, String rotulo) async {
-    final chip = find.ancestor(of: find.textContaining(rotulo), matching: find.byType(ActionChip)).first;
+    final chip = find.ancestor(of: find.textContaining(rotulo), matching: find.byWidgetPredicate((w) => w is FilterChip || w is ActionChip)).first;
     await t.ensureVisible(chip);
     await t.pump();
     await t.tap(chip);
@@ -449,7 +452,7 @@ void main() {
     testWidgets('Enviar: adicionar corre como tarefa e o resultado diz quantas foram', (t) async {
       await preparar(t);
       await abrirPasso(t, 'Enviar ou exportar');
-      await marcarChip(t, 'As que funcionam');
+      await marcarChip(t, 'Funcionam');
       await abrirEnvio(t);
       await t.tap(doDialogo('Enviar 1 lista'));
       final tarefa = await acabada(t);
@@ -464,7 +467,7 @@ void main() {
     testWidgets('Enviar: substituir deixa o Player só com as enviadas', (t) async {
       await preparar(t);
       await abrirPasso(t, 'Enviar ou exportar');
-      await marcarChip(t, 'As que funcionam');
+      await marcarChip(t, 'Funcionam');
       await abrirEnvio(t);
       await t.tap(find.text('Substituir as listas do Player'));
       await t.pump();
@@ -482,7 +485,7 @@ void main() {
           [Importada(contaDeLinha('http://boa.com/c/ 00:1A:79:00:00:01')!, _u('funciona', motivo: 'canal 1/3'))]));
       await t.pump();
       await abrirPasso(t, 'Enviar ou exportar');
-      await marcarChip(t, 'As que funcionam');
+      await marcarChip(t, 'Funcionam');
       await abrirEnvio(t);
       await t.tap(doDialogo('Enviar 2 listas'));
       final tarefa = await acabada(t);
@@ -491,7 +494,9 @@ void main() {
 
     /// Os chips de "manter" ligados, por rótulo.
     Set<String> ligados(WidgetTester t) => {
-          for (final c in t.widgetList<FilterChip>(find.byType(FilterChip)))
+          // só os chips de manter (os do passo 3, por baixo, não contam)
+          for (final c in t.widgetList<FilterChip>(find.descendant(
+              of: find.byType(AlertDialog), matching: find.byType(FilterChip))))
             if (c.selected) (c.label as Text).data!
         };
 
@@ -518,7 +523,7 @@ void main() {
         await preparar(t);
         await t.runAsync(() => bib.adicionar([Importada(contaDeLinha('http://talvez.com/l.m3u')!, _u('inconclusivo'))]));
         await abrirPasso(t, 'Enviar ou exportar');
-        await marcarChip(t, 'As que funcionam');
+        await marcarChip(t, 'Funcionam');
         await abrirEnvio(t);
         expect(find.text('Das listas que já estão em Ver TV, manter:'), findsNothing);
         await t.tap(find.text('Substituir as listas do Player'));
@@ -538,7 +543,7 @@ void main() {
     testWidgets('Substituir: "Favoritas" vem ligado e "Nenhuma" é exclusivo', (t) async {
       await preparar(t);
       await abrirPasso(t, 'Enviar ou exportar');
-      await marcarChip(t, 'As que funcionam');
+      await marcarChip(t, 'Funcionam');
       await abrirEnvio(t);
       await t.tap(find.text('Substituir as listas do Player'));
       await t.pump();
@@ -563,7 +568,7 @@ void main() {
       await preparar(t);
       await t.runAsync(() => bib.alternarFavorita(bib.listas.first.id)); // velha.com
       await abrirPasso(t, 'Enviar ou exportar');
-      await marcarChip(t, 'As que funcionam');
+      await marcarChip(t, 'Funcionam');
       await abrirEnvio(t);
       await t.tap(find.text('Substituir as listas do Player'));
       await t.pump();
@@ -576,7 +581,7 @@ void main() {
     testWidgets('Substituir: os chips de manter alcançam-se com o teclado e o foco não fica preso', (t) async {
       await preparar(t);
       await abrirPasso(t, 'Enviar ou exportar');
-      await marcarChip(t, 'As que funcionam');
+      await marcarChip(t, 'Funcionam');
       await abrirEnvio(t);
       await _tecla(t, LogicalKeyboardKey.arrowDown);
       await _tecla(t, LogicalKeyboardKey.select); // Substituir
@@ -591,11 +596,11 @@ void main() {
 
     testWidgets('Enviar com o comando: setas, OK e Voltar', (t) async {
       await preparar(t);
-      // OK no cartão 3: o foco fica em "As que funcionam"; OK marca-as
+      // OK no cartão 3: o foco fica em "Funcionam"; OK marca-as
       await _irPara(t, '3 | Enviar ou exportar');
       await _tecla(t, LogicalKeyboardKey.select);
       await t.pumpAndSettle();
-      expect(_focado(), 'As que funcionam (1)');
+      expect(_focado(), 'Funcionam (1)');
       await _tecla(t, LogicalKeyboardKey.select);
       await _irPara(t, 'Enviar 1 lista');
       await _tecla(t, LogicalKeyboardKey.select);
@@ -620,7 +625,7 @@ void main() {
     testWidgets('"Ir para Ver TV" troca de secção', (t) async {
       await preparar(t, ecra: inicio(inicial: Seccao.gestor));
       await abrirPasso(t, 'Enviar ou exportar');
-      await marcarChip(t, 'As que funcionam');
+      await marcarChip(t, 'Funcionam');
       await abrirEnvio(t);
       await t.tap(doDialogo('Enviar 1 lista'));
       final tarefa = await acabada(t);
@@ -924,7 +929,7 @@ void main() {
       await t.pumpWidget(_app(inicio(inicial: Seccao.gestor)));
       await t.pump();
       await abrirPasso(t, 'Enviar ou exportar');
-      await marcarChip(t, 'As que funcionam');
+      await marcarChip(t, 'Funcionam');
       await t.tap(find.text('2 · Verificar'));
       await t.pumpAndSettle();
       await estado(t, 'Funcionam · 2');

@@ -93,8 +93,10 @@ void main() {
     await abrir(t);
     for (final s in [
       'Marcar:',
-      'As que funcionam (2)',
-      '+ inconclusivas (3)',
+      'Funcionam (2)',
+      'Inconclusivas (1)',
+      'Não funcionam (1)',
+      'Por verificar (1)',
       'Todas (5)',
       'Nenhuma',
       'Enviar para o Player',
@@ -110,25 +112,98 @@ void main() {
     expect(find.text('Não funciona'), findsOneWidget);
   });
 
-  testWidgets('cada chip substitui a marcação', (t) async {
+  FilterChip chip(WidgetTester t, String texto) =>
+      t.widget<FilterChip>(find.ancestor(of: find.text(texto), matching: find.byType(FilterChip)));
+  bool ligadoChip(WidgetTester t, String texto) => chip(t, texto).selected;
+  Future<void> marcaLinha(WidgetTester t, String nome) async {
+    await t.tap(linha(nome));
+    await t.pump();
+  }
+
+  testWidgets('um chip por estado: ligar marca só esse estado, desligar desmarca-o', (t) async {
     await abrir(t);
-    await tocarChip(t, find.text('As que funcionam (2)'));
+    await tocarChip(t, find.text('Funcionam (2)'));
     await t.pump();
     expect(find.text('2 marcadas · OK marca/desmarca uma lista'), findsOneWidget);
-    await tocarChip(t, find.text('+ inconclusivas (3)'));
+    expect(ligadoChip(t, 'Funcionam (2)'), isTrue);
+    await tocarChip(t, find.text('Inconclusivas (1)'));
     await t.pump();
     expect(find.text('3 marcadas · OK marca/desmarca uma lista'), findsOneWidget);
+    expect(ligadoChip(t, 'Funcionam (2)'), isTrue, reason: 'não toca nas outras');
+    expect(ligadoChip(t, 'Inconclusivas (1)'), isTrue);
+    expect(ligadoChip(t, 'Não funcionam (1)'), isFalse);
+    expect(ligadoChip(t, 'Por verificar (1)'), isFalse);
+    expect(ligadoChip(t, 'Todas (5)'), isFalse);
+    await tocarChip(t, find.text('Funcionam (2)'));
+    await t.pump();
+    expect(find.text('1 marcada · OK marca/desmarca uma lista'), findsOneWidget);
+    expect(t.widget<CheckboxListTile>(find.ancestor(of: find.textContaining('010BETA'), matching: find.byType(CheckboxListTile))).value, isTrue);
+    expect(t.widget<CheckboxListTile>(linha('001ALFA 070927')).value, isFalse);
+    expect(ligadoChip(t, 'Funcionam (2)'), isFalse);
+    expect(mudou, 3);
+  });
+
+  testWidgets('um estado só fica ligado com todas as suas listas marcadas', (t) async {
+    await abrir(t);
+    await marcaLinha(t, '001ALFA 070927');
+    expect(ligadoChip(t, 'Funcionam (2)'), isFalse, reason: 'falta uma');
+    await marcaLinha(t, '002ALFA 040227');
+    expect(ligadoChip(t, 'Funcionam (2)'), isTrue, reason: 'a última que faltava liga o chip');
+    await marcaLinha(t, '002ALFA 040227');
+    expect(ligadoChip(t, 'Funcionam (2)'), isFalse);
+    // ligado a partir de um estado parcial: completa-o
+    await tocarChip(t, find.text('Funcionam (2)'));
+    await t.pump();
+    expect(find.text('2 marcadas · OK marca/desmarca uma lista'), findsOneWidget);
+  });
+
+  testWidgets('Todas liga tudo e fica ligado; Nenhuma desmarca tudo', (t) async {
+    await abrir(t);
+    expect(ligadoChip(t, 'Todas (5)'), isFalse);
     await tocarChip(t, find.text('Todas (5)'));
     await t.pump();
     expect(find.text('5 marcadas · OK marca/desmarca uma lista'), findsOneWidget);
-    await tocarChip(t, find.text('As que funcionam (2)'));
+    expect(ligadoChip(t, 'Todas (5)'), isTrue);
+    for (final c in ['Funcionam (2)', 'Inconclusivas (1)', 'Não funcionam (1)', 'Por verificar (1)']) {
+      expect(ligadoChip(t, c), isTrue, reason: c);
+    }
+    await tocarChip(t, find.text('Todas (5)'));
     await t.pump();
-    expect(find.text('2 marcadas · OK marca/desmarca uma lista'), findsOneWidget);
-    expect(t.widget<CheckboxListTile>(linha('019DELTA 161027')).value, isFalse);
+    expect(ligadoChip(t, 'Todas (5)'), isTrue, reason: 'continua ligado');
+    expect(marcadas.length, 5);
+    await marcaLinha(t, '007GAMA 201126');
+    expect(ligadoChip(t, 'Todas (5)'), isFalse);
+    expect(ligadoChip(t, 'Não funcionam (1)'), isFalse);
     await tocarChip(t, find.text('Nenhuma'));
     await t.pump();
     expect(marcadas, isEmpty);
-    expect(mudou, 5);
+    expect(ligadoChip(t, 'Todas (5)'), isFalse);
+    expect(ligadoChip(t, 'Funcionam (2)'), isFalse);
+  });
+
+  testWidgets('um chip sem listas desse estado fica desativado', (t) async {
+    await abrir(t);
+    await t.runAsync(() => area.remover([area.listas.last.id]));
+    await t.pump();
+    final porVerificar = chip(t, 'Por verificar (0)');
+    expect(porVerificar.onSelected, isNull);
+    expect(porVerificar.selected, isFalse);
+    expect(chip(t, 'Funcionam (2)').onSelected, isNotNull);
+  });
+
+  testWidgets('o D-pad percorre os chips pela ordem', (t) async {
+    await abrir(t);
+    await tocarChip(t, find.text('Nenhuma'));
+    await t.pump();
+    final ordem = ['Funcionam (2)', 'Inconclusivas (1)', 'Não funcionam (1)', 'Por verificar (1)', 'Todas (5)', 'Nenhuma'];
+    chip(t, ordem.first).focusNode!.requestFocus();
+    await t.pump();
+    expect(textosFocados(), ordem.first);
+    for (final c in ordem.skip(1)) {
+      await t.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await t.pump();
+      expect(textosFocados(), c);
+    }
   });
 
   testWidgets('OK numa linha marca e desmarca', (t) async {
@@ -209,7 +284,7 @@ void main() {
     expect(linhaNo.hasPrimaryFocus, isTrue);
   });
 
-  testWidgets('com 0 marcadas o foco num botão passa ao chip As que funcionam', (t) async {
+  testWidgets('com 0 marcadas o foco num botão passa ao chip Funcionam', (t) async {
     await abrir(t);
     await t.tap(linha('001ALFA 070927'));
     await t.pump();
@@ -220,10 +295,10 @@ void main() {
     await t.runAsync(() => area.remover([area.listas.first.id]));
     await t.pump();
     await t.pump();
-    expect(textosFocados(), 'As que funcionam (1)');
+    expect(textosFocados(), 'Funcionam (1)');
   });
 
-  testWidgets('o Gestor esvazia-se com o foco em Exportar: o foco passa ao chip As que funcionam', (t) async {
+  testWidgets('o Gestor esvazia-se com o foco em Exportar: o foco passa a Nenhuma (os outros chips ficam desativados)', (t) async {
     await abrir(t);
     await tocarChip(t, find.textContaining('Todas ('));
     await t.pump();
@@ -235,7 +310,7 @@ void main() {
     await t.pump();
     await t.pump();
     expect(area.listas, isEmpty);
-    expect(textosFocados(), 'As que funcionam (0)');
+    expect(textosFocados(), 'Nenhuma');
   });
 
   testWidgets('a pílula das linhas é compacta: não passa a altura da linha, nem com a letra a 2x', (t) async {
@@ -256,12 +331,12 @@ void main() {
     expect(find.ancestor(of: find.text('Nenhuma'), matching: barra), findsOneWidget);
     expect(find.ancestor(of: find.text('Marcar:'), matching: barra), findsNothing);
     final marcar = t.getRect(find.text('Marcar:'));
-    final antes = t.getRect(find.text('As que funcionam (2)'));
+    final antes = t.getRect(find.text('Funcionam (2)'));
     expect(antes.left, greaterThan(marcar.right), reason: 'os chips à direita de «Marcar:»');
     await t.ensureVisible(find.text('Nenhuma'));
     await t.pumpAndSettle();
     expect(t.getRect(find.text('Marcar:')), marcar, reason: '«Marcar:» não desliza');
-    expect(t.getRect(find.text('As que funcionam (2)')).left, lessThan(antes.left), reason: 'os chips deslizaram');
+    expect(t.getRect(find.text('Funcionam (2)')).left, lessThan(antes.left), reason: 'os chips deslizaram');
   });
 
   testWidgets('ecrã estreito: uma barra fixa por cima da lista com Enviar e Exportar', (t) async {

@@ -683,7 +683,7 @@ void main() {
       expect(await _semRealceAoPercorrer(t, 10, vistos: noGestor), isEmpty);
       expect(noGestor.join(' / '), allOf(contains('Ficheiros'), contains('Escolher ficheiros'),
           contains('Limpar o Gestor'), contains('Ações (0)'), contains('1 · Importar | 2 · Verificar'),
-          contains('As que funcionam')));
+          contains('Funcionam')));
     });
 
     testWidgets('T1: Conteúdo — grupos, canais, pesquisa e Atualizar com realce (a estrela não é paragem)',

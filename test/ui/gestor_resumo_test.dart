@@ -371,7 +371,7 @@ void main() {
     await t.pump();
     await t.tap(em(cartao('Enviar ou exportar'), 'Enviar ou exportar'));
     await t.pumpAndSettle();
-    await t.tap(find.text('As que funcionam (3)'));
+    await t.tap(find.text('Funcionam (3)'));
     await t.pump();
     await t.tap(find.widgetWithText(FilledButton, 'Enviar 3 listas'));
     await t.pumpAndSettle();
@@ -574,11 +574,11 @@ void main() {
     expect(alturas.single, moreOrLessEquals(PassoVerificarState.alturaLinha * escalaCompacto, epsilon: .1),
         reason: 'a altura das linhas do passo 2');
     expect(inteiras, greaterThanOrEqualTo(10), reason: 'linhas à vista');
-    // «Marcar:» e os quatro chips numa só linha
+    // «Marcar:» e os seis chips numa só linha
     final marcar = t.getCenter(find.descendant(of: passo, matching: find.text('Marcar:'))).dy;
-    final chips = find.descendant(of: passo, matching: find.byType(ActionChip));
-    expect(chips, findsNWidgets(4));
-    for (var i = 0; i < 4; i++) {
+    final chips = find.descendant(of: passo, matching: find.byWidgetPredicate((w) => w is FilterChip || w is ActionChip));
+    expect(chips, findsNWidgets(6));
+    for (var i = 0; i < 6; i++) {
       expect(t.getCenter(chips.at(i)).dy, moreOrLessEquals(marcar, epsilon: 2), reason: 'chip $i');
     }
     // → numa linha leva ao Enviar; ↓ ao Exportar; os dois à vista
@@ -599,7 +599,7 @@ void main() {
     await teclaDpad(t, LogicalKeyboardKey.arrowLeft);
     expect(linhaNo.hasPrimaryFocus, isTrue);
     // → pela fila dos chips chega ao último (desliza para a vista)
-    await irPara(t, 'As que funcionam');
+    await irPara(t, 'Funcionam');
     for (var i = 0; i < 6 && textosFocados() != 'Nenhuma'; i++) {
       await teclaDpad(t, LogicalKeyboardKey.arrowRight);
     }

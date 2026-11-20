@@ -94,8 +94,8 @@ void main() {
     expect(find.descendant(of: passo('Enviar ou exportar'), matching: find.text('2')), findsOneWidget);
     await abrir(t, 'Enviar ou exportar');
     expect(find.text('0 marcadas · OK marca/desmarca uma lista'), findsOneWidget);
-    await t.ensureVisible(find.text('As que funcionam (2)'));
-    await t.tap(find.text('As que funcionam (2)'));
+    await t.ensureVisible(find.text('Funcionam (2)'));
+    await t.tap(find.text('Funcionam (2)'));
     await t.pump();
     expect(find.text('2 marcadas · OK marca/desmarca uma lista'), findsOneWidget);
     // ao passo 2 e de volta pela faixa: as marcadas ficam
@@ -259,7 +259,7 @@ void main() {
     await teclaDpad(t, LogicalKeyboardKey.arrowRight);
     await teclaDpad(t, LogicalKeyboardKey.select);
     await t.pumpAndSettle();
-    expect(textosFocados(), startsWith('As que funcionam (2)'));
+    expect(textosFocados(), startsWith('Funcionam (2)'));
     await teclaDpad(t, LogicalKeyboardKey.select);
     for (var i = 0; i < 6 && !textosFocados().contains('001BOA'); i++) {
       await teclaDpad(t, LogicalKeyboardKey.arrowDown);
