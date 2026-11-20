@@ -122,9 +122,9 @@ void main() {
     await t.pumpAndSettle();
     expect(l.gruposEscondidos, {'Portugal'});
     // (a gravação no disco está nos testes da Biblioteca: aqui o IO real não acaba no relógio falso)
-    // o grupo escolhido passou para o primeiro visível, com o foco
-    expect(find.text('1 de 2'), findsOneWidget);
-    expect(_focado(), isNotNull);
+    // o grupo escolhido desapareceu: fica «Todos os canais» (sem os 2 de Portugal), com o foco
+    expect(find.text('1 de 3'), findsOneWidget);
+    expect(_focado(), 'Todos os canais');
 
     // as opções no topo (ao alcance das setas): mostrar os escondidos
     await t.tap(find.byTooltip('Opções dos canais'));
@@ -140,6 +140,56 @@ void main() {
     await t.tap(find.text('Mostrar o grupo'));
     await t.pumpAndSettle();
     expect(l.gruposEscondidos, isEmpty);
+  });
+
+  testWidgets('quando o grupo escolhido desaparece, fica «Todos os canais» (esconder, ocultar, último favorito)',
+      (t) async {
+    final l = await preparar(t);
+    await mostrar(t, l);
+    final cabecalho = find.descendant(of: find.byType(TelaConteudo), matching: find.text('Todos os canais'));
+    // sem grupo, o cabeçalho dos canais diz o mesmo que a linha
+    expect(cabecalho, findsNWidgets(2));
+
+    // 1. esconder o grupo escolhido
+    await t.tap(grupo('Desporto'));
+    await t.pumpAndSettle();
+    expect(_nomesCanais(t), ['Sport TV 1', 'Eleven']);
+    await t.longPress(grupo('Desporto'));
+    await t.pumpAndSettle();
+    await t.tap(find.text('Esconder o grupo'));
+    await t.pumpAndSettle();
+    expect(l.gruposEscondidos, {'Desporto'});
+    expect(_nomesCanais(t), ['SIC', 'RTP 1', 'BBC One']);
+    expect(_focado(), 'Todos os canais');
+    expect(cabecalho, findsNWidgets(2));
+
+    // 2. ocultar os escondidos com um deles escolhido
+    await t.tap(find.byTooltip('Opções dos canais'));
+    await t.pumpAndSettle();
+    await t.tap(find.text('Mostrar grupos escondidos (1)'));
+    await t.pumpAndSettle();
+    await t.tap(grupo('Desporto'));
+    await t.pumpAndSettle();
+    expect(_nomesCanais(t), ['Sport TV 1', 'Eleven']);
+    await t.tap(find.byTooltip('Opções dos canais'));
+    await t.pumpAndSettle();
+    await t.tap(find.text('Ocultar grupos escondidos'));
+    await t.pumpAndSettle();
+    expect(grupo('Desporto'), findsNothing);
+    expect(_nomesCanais(t), ['SIC', 'RTP 1', 'BBC One']);
+    expect(_focado(), 'Todos os canais');
+
+    // 3. tirar o último favorito com os favoritos escolhidos
+    await t.tap(find.byTooltip('Pôr nos favoritos').first);
+    await t.pumpAndSettle();
+    await t.tap(grupo(grupoFavoritos));
+    await t.pumpAndSettle();
+    expect(_nomesCanais(t), ['SIC']);
+    await t.tap(find.byTooltip('Tirar dos favoritos'));
+    await t.pumpAndSettle();
+    expect(grupo(grupoFavoritos), findsNothing);
+    expect(_nomesCanais(t), ['SIC', 'RTP 1', 'BBC One']);
+    expect(_focado(), 'Todos os canais');
   });
 
   testWidgets('D-pad: as opções do topo chegam-se com as setas e ordenam A–Z (persistente)', (t) async {

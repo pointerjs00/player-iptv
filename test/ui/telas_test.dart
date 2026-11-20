@@ -169,7 +169,7 @@ void main() {
       expect(find.text('UK · 0'), findsOneWidget);
 
       // sem grupo, a pesquisa procura em todos e ignora acentos
-      await t.tap(find.text('Todos os canais'));
+      await t.tap(find.descendant(of: find.byKey(const Key('lista-grupos')), matching: find.text('Todos os canais')));
       await t.pumpAndSettle();
       await _escrever(t, find.byKey(const Key('pesquisa-canais')), 'rtp acores');
       await t.pump(const Duration(milliseconds: 200));

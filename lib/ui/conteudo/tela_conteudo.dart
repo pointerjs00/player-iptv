@@ -221,13 +221,6 @@ class _TelaConteudoState extends State<TelaConteudo> {
     }
   }
 
-  String? _primeiroGrupo(ConteudoLista c) {
-    if (widget.lista.favoritos.isNotEmpty) return grupoFavoritos;
-    final escondidos = widget.lista.gruposEscondidos;
-    return c.grupos.where((g) => _verEscondidos || !escondidos.contains(g)).firstOrNull ??
-        (c.grupos.isEmpty ? null : c.grupos.first);
-  }
-
   /// "Continuar a ver": abre o player nesse canal, com os canais do grupo dele.
   void _continuarA(String id) {
     final canal = _conteudo?.canais.where((c) => c.id == id).firstOrNull;
@@ -264,7 +257,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
         final escondido = grupo!;
         final eraAtual = _grupo == escondido;
         unawaited(gravar(widget.biblioteca.esconderGrupo(l.id, escondido, true)));
-        if (!_verEscondidos && eraAtual) _grupo = _primeiroGrupo(_conteudo!);
+        if (!_verEscondidos && eraAtual) _grupo = null;
         mostrarMensagem(context, 'Grupo "$escondido" escondido', acao: 'Desfazer', aoAcao: () {
           if (!mounted) return;
           unawaited(gravar(widget.biblioteca.esconderGrupo(l.id, escondido, false)));
@@ -280,7 +273,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
             .definirOrdem(l.id, o == OpcaoCanais.ordemAz ? OrdemCanais.az : OrdemCanais.lista)));
       case OpcaoCanais.verEscondidos || OpcaoCanais.ocultarEscondidos:
         _verEscondidos = o == OpcaoCanais.verEscondidos;
-        if (!_verEscondidos && l.gruposEscondidos.contains(_grupo)) _grupo = _primeiroGrupo(_conteudo!);
+        if (!_verEscondidos && l.gruposEscondidos.contains(_grupo)) _grupo = null;
     }
     setState(() => _chaveVisiveis = null);
     // o grupo com o foco pode ter saído: o foco vai para o grupo escolhido
@@ -722,7 +715,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
     final l = widget.lista;
     setState(() {
       _verEscondidos = !_verEscondidos;
-      if (!_verEscondidos && l.gruposEscondidos.contains(_grupo)) _grupo = _primeiroGrupo(_conteudo!);
+      if (!_verEscondidos && l.gruposEscondidos.contains(_grupo)) _grupo = null;
       _chaveVisiveis = null;
     });
     if (!_verEscondidos) {
@@ -1047,7 +1040,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
       child: Row(children: [
         Expanded(
           child: Text(
-            pesquisa ? '${_grupo ?? 'Canais'} · $n' : (_grupo ?? 'Todos'),
+            pesquisa ? '${_grupo ?? 'Canais'} · $n' : (_grupo ?? 'Todos os canais'),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: estilo,
@@ -1318,7 +1311,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
 
   /// Põe/tira o canal `i` dos favoritos (o conjunto muda logo; a gravação em disco segue em
   /// segundo plano). No grupo dos favoritos o canal sai da lista: o foco passa ao que fica no
-  /// lugar dele (ou, sem favoritos, ao primeiro grupo).
+  /// lugar dele (ou, sem favoritos, a "Todos os canais").
   void _alternarFavorito(List<Canal> canais, int i) {
     final c = canais[i];
     final agora = !widget.lista.favoritos.contains(c.id);
@@ -1330,7 +1323,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
     if (!noGrupoFav || agora) return;
     final restantes = _canaisVisiveis();
     if (restantes.isEmpty) {
-      setState(() => _grupo = _primeiroGrupo(_conteudo!));
+      setState(() => _grupo = null);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _focoEscolhido?.requestFocus();
       });
