@@ -728,6 +728,22 @@ void main() {
       await g.parar();
     });
 
+    test('em pedaços de menos de 188 B: o pacote a meio entre dois pedaços não se larga antes da decisão',
+        () async {
+      // a costura pelo DTS cai no PES 4025, que chega partido entre pedaços de 100 bytes
+      final (:g, armazem: _, :ultima, :todas) = comLigacoes([
+        emPedacos(tsSintetico(0, 4024), 65536),
+        emPedacos(tsSintetico(3902, 4200, variante: 1), 100),
+      ]);
+      await g.iniciar();
+      await todas;
+      await pumpEventQueue();
+      final gravado = await tudo(g);
+      expect(gravado, [...tsSintetico(0, 4024), ...tsSintetico(4025, 4200, variante: 1)]);
+      await ultima.close();
+      await g.parar();
+    });
+
     test('uma cauda ambígua (20 pacotes nulos): só vale o encontro com o PCR seguinte maior', () async {
       final (:g, armazem: _, :ultima, :todas) = comLigacoes([
         emPedacos([...tsSintetico(0, 4000), ...nulos(20)], 65536),

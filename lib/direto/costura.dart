@@ -400,8 +400,9 @@ class ProcuraCostura {
       final pes = _pesNovo;
       if (pes != null && _ponto == null && recebidos - pes > limite) _pesNovo = null;
       // o que se guarda: a partir do pedaço atual (um encontro que acabe mais à frente só precisa do
-      // que vem depois dele), de um encontro por confirmar, do PES novo ou do ponto do PCR
-      var guarda = _procurarBytes ? ini : recebidos;
+      // que vem depois dele), de um encontro por confirmar, do PES novo ou do ponto do PCR; e nunca o
+      // pacote que o leitor ainda tem a meio (com pedaços de menos de 188 B começa num pedaço anterior)
+      var guarda = math.min(_procurarBytes ? ini : recebidos, _leitor.lidoAte);
       for (final p in [_candidato, if (_encontros.isNotEmpty) _encontros.first, _pesNovo, _ponto]) {
         if (p != null && p < guarda) guarda = p;
       }
