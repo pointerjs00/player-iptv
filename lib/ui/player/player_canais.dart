@@ -1141,15 +1141,21 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     widget.aoSair();
   }
 
-  /// O motor larga o URL local e a sessão fecha (o gravado apaga-se).
+  /// O motor larga o URL local e a sessão fecha (o gravado apaga-se). Espera pelo fecho no máximo
+  /// [_limiteFechoAoSair]: um gravador encravado a parar não deixa o «Sair» sem efeito (o que
+  /// ficar, a limpeza no arranque apaga).
   Future<void> _fecharParaSair() async {
     if (_sessaoDireto != null) {
       try {
         await _motor.parar().timeout(_limiteStop);
       } catch (_) {}
     }
-    await _fecharSessao();
+    await _fecharSessao().timeout(_limiteFechoAoSair, onTimeout: () {
+      debugPrint('direto gravado: a sessão não fechou em ${_limiteFechoAoSair.inSeconds} s; sai-se na mesma');
+    });
   }
+
+  static const _limiteFechoAoSair = Duration(seconds: 3);
 
   /// Windows: o X da janela do player (ou o fim da app) pede para sair. O gravado apaga-se antes,
   /// com um limite (uma sessão que não fecha fica para a limpeza no arranque).

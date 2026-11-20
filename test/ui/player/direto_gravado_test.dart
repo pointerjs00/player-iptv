@@ -106,11 +106,16 @@ class _SessaoFalsa implements SessaoDireto {
   @override
   Stream<int> get crescimento => _crescimento.stream;
 
+  /// Se dado, o `fechar` só acaba quando isto acabar (um gravador encravado a parar).
+  Future<void>? fecharDemora;
+
   @override
   Future<void> fechar() async {
     if (fechada) return;
     fechada = true;
     registo.add('sessao$n: fechar');
+    final demora = fecharDemora;
+    if (demora != null) await demora;
     final p = pasta;
     if (p != null && p.existsSync()) p.deleteSync(recursive: true);
     await _erros.close();
@@ -147,6 +152,9 @@ class _Montagem {
   bool zeroAoParar = false;
 
 
+  /// O player chamou o `aoSair`.
+  bool saiu = false;
+
   MotorFalso get motor => motores.last;
   _SessaoFalsa get sessao => sessoes.last;
 
@@ -179,7 +187,7 @@ class _Montagem {
           canais: _canais,
           indice: 0,
           nomeLista: 'Lista A',
-          aoSair: () {},
+          aoSair: () => saiu = true,
           plataforma: PlataformaVideo.android,
           agora: agora,
           resolver: (c, {continuar = false}) async {
@@ -744,6 +752,24 @@ void main() {
     expect(m.sessao.fechada, isTrue, reason: 'o gravado apaga-se antes do exit');
     expect(tmp.listSync(), isEmpty);
     expect(m.registo.lastIndexOf('exo1: parou'), lessThan(m.registo.indexOf('sessao1: fechar')));
+    await _sair(t);
+  });
+
+  testWidgets('«Voltar» espera pelo fecho da sessão no máximo 3 s', (t) async {
+    final m = _Montagem();
+    await m.montar(t);
+    await _abrirComImagem(t, m.motor);
+    final nunca = Completer<void>();
+    m.sessao.fecharDemora = nunca.future; // o gravador encravado a parar
+    await t.sendKeyEvent(LogicalKeyboardKey.select);
+    await t.pumpAndSettle();
+    await t.tap(find.byTooltip('Voltar'));
+    await t.pump(const Duration(seconds: 2));
+    expect(m.sessao.fechada, isTrue, reason: 'pediu o fecho');
+    expect(m.saiu, isFalse, reason: 'ainda espera');
+    await t.pump(const Duration(seconds: 2));
+    expect(m.saiu, isTrue, reason: 'o «Sair» nunca fica sem efeito');
+    nunca.complete();
     await _sair(t);
   });
 
