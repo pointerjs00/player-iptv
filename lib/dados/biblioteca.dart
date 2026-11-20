@@ -245,15 +245,13 @@ enum ModoEnvio {
   /// Junta (sem duplicar) e atualiza o resultado das que já existiam.
   adicionar,
 
-  /// Do Player ficam só as que funcionam, mais as enviadas.
-  esmagarMantendoFuncionais,
-
-  /// Do Player ficam as que funcionam e as inconclusivas, mais as enviadas.
-  esmagarMantendoFuncionaisEInc,
-
-  /// O Player fica só com as enviadas.
-  esmagarTodas,
+  /// O Player fica com as enviadas e com o que [ManterAoSubstituir] pedir; o resto sai.
+  substituir,
 }
+
+/// O que se mantém das listas que já estão no Player ao substituir (combina por «ou»).
+/// Nenhum = o Player fica só com as enviadas.
+enum ManterAoSubstituir { favoritas, funcionam, inconclusivas }
 
 /// O que um envio para o Player mudou.
 class ResumoEnvio {
@@ -419,16 +417,18 @@ class Biblioteca extends ChangeNotifier implements ColecaoListas {
     return mesma;
   }
 
-  /// Recebe as listas enviadas pelo Gestor. Nos modos de esmagar, as listas do Player que não
-  /// foram enviadas e não passam no critério saem (com os favoritos e a cache de canais).
-  /// As enviadas que já existiam (pela chave) ficam com o resultado do Gestor.
-  Future<ResumoEnvio> receber(Iterable<Lista> doGestor, ModoEnvio modo) async {
+  /// Recebe as listas enviadas pelo Gestor. Ao substituir, as listas do Player que não foram
+  /// enviadas e não pertencem a nenhum dos filtros de [manter] saem (com os favoritos e a cache
+  /// de canais). As enviadas que já existiam (pela chave) ficam com o resultado do Gestor e
+  /// continuam favoritas se já o eram.
+  Future<ResumoEnvio> receber(Iterable<Lista> doGestor, ModoEnvio modo,
+      {Set<ManterAoSubstituir> manter = const {}}) async {
     final enviadas = {for (final l in doGestor) chave(l.conta): l};
     bool mantem(Lista l) => switch (modo) {
           ModoEnvio.adicionar => true,
-          ModoEnvio.esmagarMantendoFuncionais => l.ultima?.estado == 'funciona',
-          ModoEnvio.esmagarMantendoFuncionaisEInc => const {'funciona', 'inconclusivo'}.contains(l.ultima?.estado),
-          ModoEnvio.esmagarTodas => false,
+          ModoEnvio.substituir => (manter.contains(ManterAoSubstituir.favoritas) && l.favorita) ||
+              (manter.contains(ManterAoSubstituir.funcionam) && l.ultima?.estado == 'funciona') ||
+              (manter.contains(ManterAoSubstituir.inconclusivas) && l.ultima?.estado == 'inconclusivo'),
         };
     // as listas mudam todas de uma vez (a interface nunca vê um envio a meio); a cache depois.
     // Se a gravação falhar, tudo volta a como estava (o que se vê é sempre o que está no disco)

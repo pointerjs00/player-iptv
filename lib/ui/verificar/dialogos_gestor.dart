@@ -138,10 +138,10 @@ String textoResultadoEnvio(int n, ResumoEnvio r, {int aDecorrer = 0}) {
 }
 
 /// "Enviar n listas para o Player": como — adicionar, ou substituir (e o que manter das que já lá
-/// estão). As listas já vêm escolhidas do passo 3. Devolve o modo; null = cancelado.
-/// "Substituir" sem manter nenhuma deixa o Player só com as enviadas ([ModoEnvio.esmagarTodas]).
-Future<ModoEnvio?> perguntarEnvio(BuildContext context, {required int n}) {
-  return showDialog<ModoEnvio>(context: context, builder: (_) => _DialogoEnvio(n: n));
+/// estão, com filtros que se ligam e desligam). As listas já vêm escolhidas do passo 3. Devolve o
+/// modo e o que manter (vazio ao adicionar, ou ao substituir sem manter nada); null = cancelado.
+Future<(ModoEnvio, Set<ManterAoSubstituir>)?> perguntarEnvio(BuildContext context, {required int n}) {
+  return showDialog<(ModoEnvio, Set<ManterAoSubstituir>)>(context: context, builder: (_) => _DialogoEnvio(n: n));
 }
 
 class _DialogoEnvio extends StatefulWidget {
@@ -154,7 +154,23 @@ class _DialogoEnvio extends StatefulWidget {
 
 class _DialogoEnvioState extends State<_DialogoEnvio> {
   var _substituir = false;
-  var _manter = ModoEnvio.esmagarTodas;
+  // «Nenhuma» é o conjunto vazio: ligá-lo desliga os outros; desligar o último volta a ligá-lo
+  final _manter = {ManterAoSubstituir.favoritas};
+
+  void _alternar(ManterAoSubstituir m) => setState(() {
+        if (!_manter.remove(m)) _manter.add(m);
+      });
+
+  String get _descricaoSubstituir {
+    final partes = [
+      if (_manter.contains(ManterAoSubstituir.favoritas)) 'as favoritas',
+      if (_manter.contains(ManterAoSubstituir.funcionam)) 'as que funcionam',
+      if (_manter.contains(ManterAoSubstituir.inconclusivas)) 'as inconclusivas',
+    ];
+    if (partes.isEmpty) return 'Ver TV fica só com estas.';
+    final juntas = partes.length == 1 ? partes.single : '${partes.take(partes.length - 1).join(', ')} e ${partes.last}';
+    return 'Ver TV fica com estas e com $juntas.';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -183,32 +199,33 @@ class _DialogoEnvioState extends State<_DialogoEnvio> {
               compacto: baixo,
               icone: Icons.delete_sweep_outlined,
               titulo: 'Substituir as listas do Player',
-              descricao: switch (_manter) {
-                ModoEnvio.esmagarMantendoFuncionais => 'O Player fica com estas e com as que já lá funcionam.',
-                ModoEnvio.esmagarMantendoFuncionaisEInc =>
-                  'O Player fica com estas e com as que já lá funcionam ou são inconclusivas.',
-                _ => 'O Player fica só com estas. Os favoritos das que saem perdem-se.',
-              },
+              descricao: _descricaoSubstituir,
               escolhido: _substituir,
               aoEscolher: () => setState(() => _substituir = true),
             ),
             if (_substituir) ...[
               espaco,
-              const Text('Das listas que já estão no Player, manter:', style: TextStyle(fontWeight: FontWeight.w600)),
+              const Text('Das listas que já estão em Ver TV, manter:', style: TextStyle(fontWeight: FontWeight.w600)),
               const SizedBox(height: Tokens.e8),
-              for (final (modo, rotulo) in [
-                (ModoEnvio.esmagarTodas, 'nenhuma'),
-                (ModoEnvio.esmagarMantendoFuncionais, 'as que funcionam'),
-                (ModoEnvio.esmagarMantendoFuncionaisEInc, 'as que funcionam e as inconclusivas'),
-              ]) ...[
-                _CartaoEscolha(
-                  compacto: true,
-                  titulo: rotulo,
-                  escolhido: _manter == modo,
-                  aoEscolher: () => setState(() => _manter = modo),
+              Wrap(spacing: Tokens.e8, runSpacing: Tokens.e8, children: [
+                FilterChip(
+                  label: const Text('Nenhuma'),
+                  selected: _manter.isEmpty,
+                  showCheckmark: true,
+                  onSelected: (_) => setState(_manter.clear),
                 ),
-                const SizedBox(height: Tokens.e8),
-              ],
+                for (final (m, rotulo) in [
+                  (ManterAoSubstituir.favoritas, 'Favoritas'),
+                  (ManterAoSubstituir.funcionam, 'As que funcionam'),
+                  (ManterAoSubstituir.inconclusivas, 'As inconclusivas'),
+                ])
+                  FilterChip(
+                    label: Text(rotulo),
+                    selected: _manter.contains(m),
+                    showCheckmark: true,
+                    onSelected: (_) => _alternar(m),
+                  ),
+              ]),
             ],
           ]),
         ),
@@ -216,7 +233,10 @@ class _DialogoEnvioState extends State<_DialogoEnvio> {
       actions: [
         TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
         FilledButton(
-          onPressed: () => Navigator.pop(context, _substituir ? _manter : ModoEnvio.adicionar),
+          onPressed: () => Navigator.pop(
+            context,
+            _substituir ? (ModoEnvio.substituir, {..._manter}) : (ModoEnvio.adicionar, <ManterAoSubstituir>{}),
+          ),
           child: Text('Enviar ${_listas(n)}'),
         ),
       ],

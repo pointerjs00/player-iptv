@@ -335,8 +335,9 @@ class _TelaGestorState extends State<TelaGestor> {
           ? 'A lista marcada ainda está a ser verificada.'
           : 'As listas marcadas ainda estão a ser verificadas.');
     }
-    final modo = await perguntarEnvio(context, n: antes.prontas.length);
-    if (modo == null || !mounted) return;
+    final escolha = await perguntarEnvio(context, n: antes.prontas.length);
+    if (escolha == null || !mounted) return;
+    final (modo, manter) = escolha;
     // o estado pode ter mudado com o diálogo aberto: conta-se de novo
     final agora = ponto();
     final enviar = agora.prontas;
@@ -351,7 +352,7 @@ class _TelaGestorState extends State<TelaGestor> {
       (p) async {
         final ResumoEnvio r;
         try {
-          r = await b.receber(enviar, modo);
+          r = await b.receber(enviar, modo, manter: manter);
         } catch (e) {
           throw _ErroTarefa('Não foi possível enviar (${descreverErro(e)}). As listas do Player não mudaram.');
         }

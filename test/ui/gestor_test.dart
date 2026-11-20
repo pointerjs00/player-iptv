@@ -429,7 +429,7 @@ void main() {
         'Adicionar às listas do Player',
         'As que já lá estão ficam. Repetidas não se duplicam.',
         'Substituir as listas do Player',
-        'O Player fica só com estas. Os favoritos das que saem perdem-se.',
+        'Ver TV fica com estas e com as favoritas.',
         'Cancelar',
       ]) {
         expect(find.text(texto), findsOneWidget, reason: texto);
@@ -489,27 +489,44 @@ void main() {
       expect(tarefa.resultado, '2 listas enviadas para o Player · 1 nova, 1 atualizada');
     });
 
-    for (final (rotulo, descricao, esperado) in [
-      ('nenhuma', 'O Player fica só com estas. Os favoritos das que saem perdem-se.',
-          ['nova.com']),
-      ('as que funcionam', 'O Player fica com estas e com as que já lá funcionam.',
-          ['boa.com', 'nova.com']),
-      ('as que funcionam e as inconclusivas',
-          'O Player fica com estas e com as que já lá funcionam ou são inconclusivas.',
-          ['boa.com', 'talvez.com', 'nova.com']),
+    /// Os chips de "manter" ligados, por rótulo.
+    Set<String> ligados(WidgetTester t) => {
+          for (final c in t.widgetList<FilterChip>(find.byType(FilterChip)))
+            if (c.selected) (c.label as Text).data!
+        };
+
+    Future<void> chipManter(WidgetTester t, String rotulo) async {
+      await t.tap(find.widgetWithText(FilterChip, rotulo));
+      await t.pump();
+    }
+
+    for (final (toques, descricao, esperado) in [
+      (['Favoritas'], 'Ver TV fica só com estas.', ['nova.com']),
+      (['As que funcionam'], 'Ver TV fica com estas e com as favoritas e as que funcionam.', ['boa.com', 'nova.com']),
+      (
+        ['Nenhuma', 'As que funcionam', 'As inconclusivas'],
+        'Ver TV fica com estas e com as que funcionam e as inconclusivas.',
+        ['boa.com', 'talvez.com', 'nova.com']
+      ),
+      (
+        ['As que funcionam', 'As inconclusivas'],
+        'Ver TV fica com estas e com as favoritas, as que funcionam e as inconclusivas.',
+        ['boa.com', 'talvez.com', 'nova.com']
+      ),
     ]) {
-      testWidgets('Enviar: substituir mantendo "$rotulo" (descrição e resultado)', (t) async {
+      testWidgets('Enviar: substituir com $toques (descrição e resultado)', (t) async {
         await preparar(t);
         await t.runAsync(() => bib.adicionar([Importada(contaDeLinha('http://talvez.com/l.m3u')!, _u('inconclusivo'))]));
         await abrirPasso(t, 'Enviar ou exportar');
         await marcarChip(t, 'As que funcionam');
         await abrirEnvio(t);
-        expect(find.text('Das listas que já estão no Player, manter:'), findsNothing);
+        expect(find.text('Das listas que já estão em Ver TV, manter:'), findsNothing);
         await t.tap(find.text('Substituir as listas do Player'));
         await t.pump();
-        expect(find.text('Das listas que já estão no Player, manter:'), findsOneWidget);
-        await t.tap(find.text(rotulo));
-        await t.pump();
+        expect(find.text('Das listas que já estão em Ver TV, manter:'), findsOneWidget);
+        for (final r in toques) {
+          await chipManter(t, r);
+        }
         expect(find.text(descricao), findsOneWidget);
         await t.tap(doDialogo('Enviar 1 lista'));
         final tarefa = await acabada(t);
@@ -518,17 +535,54 @@ void main() {
       });
     }
 
-    testWidgets('Substituir: as opções de manter alcançam-se com as setas e o foco não fica preso', (t) async {
+    testWidgets('Substituir: "Favoritas" vem ligado e "Nenhuma" é exclusivo', (t) async {
+      await preparar(t);
+      await abrirPasso(t, 'Enviar ou exportar');
+      await marcarChip(t, 'As que funcionam');
+      await abrirEnvio(t);
+      await t.tap(find.text('Substituir as listas do Player'));
+      await t.pump();
+      for (final r in ['Nenhuma', 'Favoritas', 'As que funcionam', 'As inconclusivas']) {
+        expect(find.widgetWithText(FilterChip, r), findsOneWidget, reason: r);
+      }
+      expect(ligados(t), {'Favoritas'});
+      await chipManter(t, 'As que funcionam');
+      expect(ligados(t), {'Favoritas', 'As que funcionam'});
+      await chipManter(t, 'Nenhuma'); // liga e desliga os outros
+      expect(ligados(t), {'Nenhuma'});
+      await chipManter(t, 'As inconclusivas'); // desliga "Nenhuma"
+      expect(ligados(t), {'As inconclusivas'});
+      await chipManter(t, 'As inconclusivas'); // desligar o último liga "Nenhuma"
+      expect(ligados(t), {'Nenhuma'});
+      await chipManter(t, 'Nenhuma'); // "Nenhuma" já ligado: continua (nunca fica tudo desligado)
+      expect(ligados(t), {'Nenhuma'});
+    });
+
+    testWidgets('Enviar: substituir mantém por omissão as listas favoritas e o resumo conta as removidas',
+        (t) async {
+      await preparar(t);
+      await t.runAsync(() => bib.alternarFavorita(bib.listas.first.id)); // velha.com
+      await abrirPasso(t, 'Enviar ou exportar');
+      await marcarChip(t, 'As que funcionam');
+      await abrirEnvio(t);
+      await t.tap(find.text('Substituir as listas do Player'));
+      await t.pump();
+      await t.tap(doDialogo('Enviar 1 lista'));
+      final tarefa = await acabada(t);
+      expect(player(), ['velha.com', 'nova.com'], reason: 'a favorita fica; boa.com sai');
+      expect(tarefa.resultado, '1 lista enviada para o Player · 1 nova, 1 removida');
+    });
+
+    testWidgets('Substituir: os chips de manter alcançam-se com o teclado e o foco não fica preso', (t) async {
       await preparar(t);
       await abrirPasso(t, 'Enviar ou exportar');
       await marcarChip(t, 'As que funcionam');
       await abrirEnvio(t);
       await _tecla(t, LogicalKeyboardKey.arrowDown);
       await _tecla(t, LogicalKeyboardKey.select); // Substituir
-      await _irPara(t, 'nenhuma', exato: true);
-      await _tecla(t, LogicalKeyboardKey.arrowDown);
-      expect(_focado(), contains('as que funcionam'));
-      await _tecla(t, LogicalKeyboardKey.select);
+      await _irPara(t, 'As que funcionam', exato: true);
+      await _tecla(t, LogicalKeyboardKey.select); // OK liga
+      expect(ligados(t), {'Favoritas', 'As que funcionam'});
       await _irPara(t, 'Enviar 1 lista');
       await _tecla(t, LogicalKeyboardKey.select);
       await acabada(t);

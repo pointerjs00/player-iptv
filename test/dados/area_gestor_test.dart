@@ -154,7 +154,7 @@ void main() {
 
     test('esmagar mantendo as que funcionam', () async {
       final removida = b.listas[1].id; // B (inconclusiva)
-      final r = await b.receber(g.listas, ModoEnvio.esmagarMantendoFuncionais);
+      final r = await b.receber(g.listas, ModoEnvio.substituir, manter: {ManterAoSubstituir.funcionam});
       // A é enviada (fica, atualizada); B, C e D saem
       expect((r.adicionadas, r.atualizadas, r.removidas), (1, 1, 3));
       expect(await hosts(b), ['a.com', 'e.com']);
@@ -162,10 +162,37 @@ void main() {
     });
 
     test('esmagar mantendo as que funcionam e as inconclusivas', () async {
-      final r = await b.receber(g.listas, ModoEnvio.esmagarMantendoFuncionaisEInc);
+      final r = await b.receber(g.listas, ModoEnvio.substituir, manter: {ManterAoSubstituir.funcionam, ManterAoSubstituir.inconclusivas});
       expect((r.adicionadas, r.atualizadas, r.removidas), (1, 1, 2));
       expect(await hosts(b), ['a.com', 'b.com', 'e.com']);
       expect(b.listas[1].favoritos, {'fav'});
+    });
+
+    test('substituir mantendo as favoritas e as que funcionam: fica a união', () async {
+      await b.alternarFavorita(b.listas[2].id); // C (não funciona) é favorita
+      final r = await b.receber(g.listas, ModoEnvio.substituir,
+          manter: {ManterAoSubstituir.favoritas, ManterAoSubstituir.funcionam});
+      // A é enviada; C fica por ser favorita; B e D saem
+      expect((r.adicionadas, r.atualizadas, r.removidas), (1, 1, 2));
+      expect(await hosts(b), ['a.com', 'c.com', 'e.com']);
+    });
+
+    test('substituir mantendo só as favoritas ou só as inconclusivas', () async {
+      await b.alternarFavorita(b.listas[3].id); // D (por verificar) é favorita
+      final r = await b.receber(g.listas, ModoEnvio.substituir, manter: {ManterAoSubstituir.favoritas});
+      expect(r.removidas, 2);
+      expect(await hosts(b), ['a.com', 'd.com', 'e.com']);
+      final r2 = await b.receber(g.listas, ModoEnvio.substituir, manter: {ManterAoSubstituir.inconclusivas});
+      expect(r2.removidas, 1, reason: 'D sai: já não é inconclusiva nem pedida');
+      expect(await hosts(b), ['a.com', 'e.com']);
+    });
+
+    test('substituir sem manter nada: uma enviada igual a uma favorita continua favorita', () async {
+      await b.alternarFavorita(b.listas.first.id); // A é favorita e também vem do Gestor
+      await b.receber(g.listas, ModoEnvio.substituir);
+      expect(await hosts(b), ['a.com', 'e.com']);
+      expect(b.listas.first.favorita, isTrue);
+      expect((await Biblioteca.abrir(pasta)).listas.first.favorita, isTrue);
     });
 
     test('M2: se a gravação falhar, o Player fica como estava (memória = disco) e o erro chega', () async {
@@ -176,7 +203,7 @@ void main() {
       Directory(f.path).createSync();
       var avisos = 0;
       b.addListener(() => avisos++);
-      await expectLater(b.receber(g.listas, ModoEnvio.esmagarTodas), throwsA(isA<FileSystemException>()));
+      await expectLater(b.receber(g.listas, ModoEnvio.substituir), throwsA(isA<FileSystemException>()));
       expect([for (final l in b.listas) (hostDe(l.conta.endereco), l.ultima?.estado)], antes);
       expect(avisos, greaterThan(0), reason: 'a interface volta a desenhar o estado antigo');
       for (final l in b.listas) {
@@ -186,7 +213,7 @@ void main() {
 
     test('esmagar todas: o Player fica só com as enviadas; favoritos e cache das removidas saem', () async {
       final ids = [for (final l in b.listas) l.id];
-      final r = await b.receber([g.listas.last], ModoEnvio.esmagarTodas);
+      final r = await b.receber([g.listas.last], ModoEnvio.substituir);
       expect((r.adicionadas, r.atualizadas, r.removidas), (1, 0, 4));
       expect(await hosts(b), ['e.com']);
       expect(b.listas.single.favoritos, isEmpty);
