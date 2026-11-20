@@ -253,6 +253,30 @@ void main() {
     expect(itemMenu('Verificar todas'), findsNothing);
   });
 
+  testWidgets('Gestor vazio: Ações não abre o menu, diz que o Gestor está vazio e o foco fica no botão', (t) async {
+    t.view.physicalSize = const Size(1200, 900);
+    t.view.devicePixelRatio = 1;
+    addTearDown(t.view.reset);
+    await t.pumpWidget(appTeste(Scaffold(
+        body: PassoVerificar(
+      area: area,
+      servico: servico,
+      agora: () => _agora,
+      aoVerificar: verificadas.add,
+      aoVerificarTodas: () => todas++,
+      aoRemover: (ls) async => removidas.add(ls),
+    ))));
+    await t.pump();
+    focoAcoes(t).requestFocus();
+    await t.pump();
+    await t.sendKeyEvent(LogicalKeyboardKey.enter);
+    await t.pump();
+    expect(itemMenu('Verificar todas'), findsNothing, reason: 'o menu não abre');
+    expect(find.text('O Gestor está vazio'), findsOneWidget);
+    expect(focoAcoes(t).hasPrimaryFocus, isTrue);
+    await t.pump(const Duration(seconds: 6));
+  });
+
   testWidgets('as ações do menu: Verificar selecionadas, Verificar todas e Remover do gestor', (t) async {
     await abrir(t);
     await t.tap(linha('018DELTA 181027'));

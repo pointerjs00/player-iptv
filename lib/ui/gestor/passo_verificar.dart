@@ -6,6 +6,7 @@ import '../../dados/biblioteca.dart';
 import '../../modelo/canal.dart';
 import '../../verificar/servico.dart';
 import '../design/design.dart';
+import '../design/mensagens.dart';
 import '../campo_tv.dart';
 import '../realce_foco.dart';
 
@@ -242,6 +243,11 @@ class PassoVerificarState extends State<PassoVerificar> {
   /// O menu das ações, por baixo do botão `Ações` (a tecla Menu, também de fora do passo: a
   /// `TelaGestor` chama-o). Voltar fecha-o e o foco volta a quem o tinha.
   Future<void> abrirAcoes() async {
+    if (_g.listas.isEmpty) {
+      // sem listas todos os itens ficariam desligados e o menu abria sem foco: diz-se e o foco fica no botão
+      mostrarMensagem(context, 'O Gestor está vazio');
+      return;
+    }
     final botao = _focoAcoes.context?.findRenderObject() as RenderBox?;
     final overlay = Navigator.of(context).overlay?.context.findRenderObject() as RenderBox?;
     if (botao == null || overlay == null || !botao.attached) return;
