@@ -152,6 +152,10 @@ abstract interface class MotorReproducao {
   /// (TS e HLS no ExoPlayer). O mpv não manda nada aqui: o ecrã lê as propriedades dele.
   Stream<double> get fps;
 
+  /// A primeira imagem do canal chegou ao ecrã (o ExoPlayer diz-o logo; o mpv não manda nada: o
+  /// ecrã vê-o pela posição a andar com imagem, [VigiaAbertura]).
+  Stream<void> get primeiraImagem;
+
   /// Se o canal aberto é um direto (sem fim conhecido), segundo o motor; null se não sabe (o mpv:
   /// o ecrã lê as propriedades dele).
   bool? get direto;

@@ -378,6 +378,8 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     _subsPlayer.add(_motor.faixaAtual.listen((t) {
       if (mounted) setState(() => _faixa = t);
     }));
+    // o ExoPlayer diz quando a primeira imagem chegou ao ecrã: o "A abrir…" sai logo
+    _subsPlayer.add(_motor.primeiraImagem.listen((_) => _vigia.imagem()));
     _subsPlayer.add(_motor.fps.listen((fps) {
       // o fps que o motor mediu (TS e HLS no ExoPlayer não o dizem no formato): pede o modo de
       // ecrã, se este canal ainda não tinha fps

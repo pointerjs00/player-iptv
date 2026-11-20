@@ -74,6 +74,10 @@ class MotorMediaKit implements MotorReproducao {
   @override
   Stream<double> get fps => const Stream.empty();
 
+  /// O ecrã vê a primeira imagem pela posição ([VigiaAbertura]).
+  @override
+  Stream<void> get primeiraImagem => const Stream.empty();
+
   /// O ecrã sabe-o pelas propriedades `seekable` e `partially-seekable` ([ContinuarDireto.eDireto]).
   @override
   bool? get direto => null;

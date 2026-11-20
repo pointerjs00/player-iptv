@@ -546,6 +546,17 @@ void main() {
       await _sair(t);
     });
 
+    testWidgets('M2: o "A abrir…" sai logo com a primeira imagem do ExoPlayer, sem esperar pela posição', (t) async {
+      final m = _Montagem();
+      await m.montar(t);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      m.exos.single.mostrouPrimeiraImagem();
+      await t.pump();
+      await t.pump();
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      await _sair(t);
+    });
+
     testWidgets('"Abrir em modo compatível" no cartão de erro abre o canal no mpv', (t) async {
       final m = _Montagem();
       await m.montar(t);

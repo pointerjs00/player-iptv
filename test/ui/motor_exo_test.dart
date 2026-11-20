@@ -471,6 +471,23 @@ void main() {
       await m.descartar();
     });
 
+    test('M2: o evento primeiraImagem (da sessão atual) vira o stream primeiraImagem', () async {
+      final exo = _ExoFalso();
+      final m = _motor();
+      var imagens = 0;
+      m.primeiraImagem.listen((_) => imagens++);
+      await m.abrir('http://exemplo.invalid/1.ts', const {});
+      await m.abrir('http://exemplo.invalid/2.ts', const {});
+      await _esperar();
+      exo.evento('primeiraImagem', const {}, null, 1); // do canal anterior
+      await _esperar();
+      expect(imagens, 0);
+      exo.evento('primeiraImagem');
+      await _esperar();
+      expect(imagens, 1);
+      await m.descartar();
+    });
+
     test('estatisticas sem vídeo: nulls, não lança', () async {
       _ExoFalso(estatisticas: {'perdidas': 0, 'renderizadas': 0, 'fps': null, 'codec': null, 'resolucao': null});
       final m = _motor();

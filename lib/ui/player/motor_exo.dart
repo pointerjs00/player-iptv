@@ -100,6 +100,7 @@ class MotorExo implements MotorReproducao {
   final _faixas = StreamController<FaixasMotor>.broadcast();
   final _faixaAtual = StreamController<FaixaAtual>.broadcast();
   final _fps = StreamController<double>.broadcast();
+  final _primeiraImagem = StreamController<void>.broadcast();
 
   @override
   String get nome => 'exoplayer';
@@ -136,6 +137,9 @@ class MotorExo implements MotorReproducao {
 
   @override
   bool? get direto => _direto;
+
+  @override
+  Stream<void> get primeiraImagem => _primeiraImagem.stream;
 
   /// O que o nativo disse do canal aberto (no `pronto` e no `fim`); null até lá.
   bool? _direto;
@@ -332,7 +336,7 @@ class MotorExo implements MotorReproducao {
     // sem esperar: o cancel de uma subscrição pode devolver um futuro de outra zona (nos testes de
     // widgets nunca acabava) e nada depende dele
     unawaited(_subEventos.cancel());
-    for (final c in [_erros, _aCarregar, _percentagem, _tamanho, _posicao, _fim, _faixas, _faixaAtual, _fps]) {
+    for (final c in [_erros, _aCarregar, _percentagem, _tamanho, _posicao, _fim, _faixas, _faixaAtual, _fps, _primeiraImagem]) {
       unawaited(c.close());
     }
     legenda.value = '';
@@ -415,6 +419,8 @@ class MotorExo implements MotorReproducao {
         ));
       case 'legendaTexto':
         legenda.value = e['texto'] is String ? e['texto'] as String : '';
+      case 'primeiraImagem':
+        _primeiraImagem.add(null);
       case 'pronto':
         // o ecrã sabe que abriu pela imagem e pela posição; aqui só se é um direto
         if (e['direto'] case final bool d) _direto = d;

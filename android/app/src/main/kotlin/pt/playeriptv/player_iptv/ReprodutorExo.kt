@@ -595,7 +595,11 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
         }
 
         override fun onRenderedFirstFrame() {
+            // uma vez por canal (também volta a vir depois de ligar o vídeo de novo ou de um seek)
+            if (primeiraImagem) return
             primeiraImagem = true
+            // o Dart tira o "A abrir…" já, sem esperar pela posição (que vai a cada 500 ms)
+            enviar("primeiraImagem")
         }
 
         override fun onVideoSizeChanged(tamanho: VideoSize) {

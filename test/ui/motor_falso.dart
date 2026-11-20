@@ -27,6 +27,7 @@ class MotorFalso implements MotorReproducao {
   final _faixas = StreamController<FaixasMotor>.broadcast();
   final _faixaAtual = StreamController<FaixaAtual>.broadcast();
   final _fps = StreamController<double>.broadcast();
+  final _primeiraImagem = StreamController<void>.broadcast();
 
   void erro(String e, {bool formato = false, bool rede = false}) =>
       _erros.add(ErroMotor(e, formato: formato, rede: rede));
@@ -39,6 +40,7 @@ class MotorFalso implements MotorReproducao {
   void mudarFaixas(FaixasMotor f) => _faixas.add(f);
   void mudarFaixaAtual(FaixaAtual f) => _faixaAtual.add(f);
   void medirFps(double v) => _fps.add(v);
+  void mostrouPrimeiraImagem() => _primeiraImagem.add(null);
 
   @override
   final String nome;
@@ -64,6 +66,8 @@ class MotorFalso implements MotorReproducao {
   Stream<double> get fps => _fps.stream;
   @override
   bool? direto = true;
+  @override
+  Stream<void> get primeiraImagem => _primeiraImagem.stream;
 
   @override
   Future<void> abrir(String url, Map<String, String> cabecalhos, {Duration? inicio}) async {
