@@ -2,6 +2,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:player_iptv/ui/design/escala_interface.dart';
 import 'package:player_iptv/ui/player/configuracao_mpv.dart';
 import 'package:player_iptv/ui/player/desentrelacamento.dart';
 import 'package:player_iptv/ui/player/filtro_desentrelacamento.dart';
@@ -149,5 +150,27 @@ void main() {
     await t.pump();
     expect(n.value, 540);
     expect(find.text('540'), findsOneWidget, reason: 'quem depende das linhas é reconstruído');
+  });
+
+  testWidgets('dentro da EscalaInterface(0,8) mede o tamanho real no ecrã, não o de antes da escala', (t) async {
+    final n = ValueNotifier<double?>(null);
+    addTearDown(n.dispose);
+    // a escala 0,8 faz o layout a 1/0,8: a caixa vê 2400 x 1350, mas no ecrã ocupa 1920 x 1080
+    t.view.devicePixelRatio = 1;
+    t.view.physicalSize = const Size(1920, 1080);
+    addTearDown(t.view.reset);
+    await t.pumpWidget(Directionality(
+      textDirection: TextDirection.ltr,
+      child: EscalaInterface(
+        escala: 0.8,
+        child: MedidorLinhas(
+          linhas: n,
+          medir: (caixa, dpr) => linhasMostradas(caixa: caixa, dpr: dpr, colunas: 1920, linhas: 1080, fit: BoxFit.contain),
+          child: const SizedBox.expand(),
+        ),
+      ),
+    ));
+    await t.pump();
+    expect(n.value, 1080);
   });
 }

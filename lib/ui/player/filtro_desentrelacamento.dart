@@ -146,12 +146,31 @@ class MedidorLinhas extends StatelessWidget {
   Widget build(BuildContext context) {
     final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? View.of(context).devicePixelRatio;
     return LayoutBuilder(builder: (context, c) {
-      final v = medir(c.biggest, dpr);
+      // dentro da escala da interface o layout faz-se noutro tamanho: mede-se o que ocupa no ecrã
+      final k = _escalaNoEcra(context);
+      final v = medir(k == 1 ? c.biggest : c.biggest * k, dpr);
       if (v != linhas.value) {
         // depois do layout: mudar o valor a meio dele marcava widgets abaixo a meio da construção
         WidgetsBinding.instance.addPostFrameCallback((_) => linhas.value = v);
       }
       return child;
     });
+  }
+
+  /// A escala acumulada dos `Transform` acima (a `getTransformTo(null)` não serve: a meio do layout
+  /// os pais ainda não têm tamanho). Só conta a escala; a translação não muda o tamanho.
+  static double _escalaNoEcra(BuildContext context) {
+    var k = 1.0;
+    context.visitAncestorElements((e) {
+      final w = e.widget;
+
+      if (w is Transform) {
+        // a escala no plano (x, y): o eixo z não conta (`getMaxScaleOnAxis` daria 1)
+        final m = w.transform.storage;
+        k *= math.sqrt(m[0] * m[0] + m[1] * m[1]);
+      }
+      return true;
+    });
+    return k.isFinite && k > 0 ? k : 1;
   }
 }
