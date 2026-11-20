@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
@@ -33,7 +34,8 @@ Future<bool> _eTvAndroid() async =>
 
 /// Na TV o realce do foco fica sempre ligado: no modo automático, um toque (por exemplo no
 /// emulador ou num comando com rato) escondia-o e com as setas não voltava.
-Future<void> configurarRealceFoco({Future<bool> Function()? eTv}) async {
+/// `computador`: só para os testes (por omissão, Windows/Linux/macOS).
+Future<void> configurarRealceFoco({Future<bool> Function()? eTv, bool? computador}) async {
   bool tv;
   try {
     tv = await (eTv ?? _eTvAndroid)();
@@ -41,7 +43,61 @@ Future<void> configurarRealceFoco({Future<bool> Function()? eTv}) async {
     tv = false;
   }
   EcraTv.nativo = tv; // ecraTv(): tamanhos maiores (vista de longe)
+  // no computador, o Flutter conta o rato como "teclado" (realce ligado): o cartão que tinha o
+  // foco ficava com o anel depois de se clicar noutro. O rato passa a contar como toque
+  final pc = !tv && (computador ?? (Platform.isWindows || Platform.isLinux || Platform.isMacOS));
+  if (!pc) {
+    _vigiaEntrada?.desinstalar();
+    _vigiaEntrada = null;
+  } else {
+    _vigiaEntrada ??= RealceConformeEntrada()..instalar();
+  }
   if (tv) FocusManager.instance.highlightStrategy = FocusHighlightStrategy.alwaysTraditional;
+}
+
+/// O vigia do computador (um só, mesmo que se configure mais de uma vez).
+RealceConformeEntrada? _vigiaEntrada;
+
+/// O modo de realce do foco conforme a última entrada: rato ou toque → sem realce; uma tecla de
+/// navegação → com realce. (No modo automático do Flutter, o rato também liga o realce.)
+class RealceConformeEntrada {
+  static final _teclas = {
+    LogicalKeyboardKey.arrowUp,
+    LogicalKeyboardKey.arrowDown,
+    LogicalKeyboardKey.arrowLeft,
+    LogicalKeyboardKey.arrowRight,
+    LogicalKeyboardKey.tab,
+    LogicalKeyboardKey.enter,
+    LogicalKeyboardKey.numpadEnter,
+    LogicalKeyboardKey.select,
+    LogicalKeyboardKey.space,
+    LogicalKeyboardKey.escape,
+    LogicalKeyboardKey.goBack,
+    LogicalKeyboardKey.contextMenu,
+  };
+
+  void _modo(FocusHighlightStrategy s) {
+    if (FocusManager.instance.highlightStrategy != s) FocusManager.instance.highlightStrategy = s;
+  }
+
+  void _ponteiro(PointerEvent e) {
+    if (e is PointerDownEvent) _modo(FocusHighlightStrategy.alwaysTouch);
+  }
+
+  bool _tecla(KeyEvent e) {
+    if (e is KeyDownEvent && _teclas.contains(e.logicalKey)) _modo(FocusHighlightStrategy.alwaysTraditional);
+    return false; // só observa: a tecla segue para quem a trata
+  }
+
+  void instalar() {
+    GestureBinding.instance.pointerRouter.addGlobalRoute(_ponteiro);
+    HardwareKeyboard.instance.addHandler(_tecla);
+  }
+
+  void desinstalar() {
+    GestureBinding.instance.pointerRouter.removeGlobalRoute(_ponteiro);
+    HardwareKeyboard.instance.removeHandler(_tecla);
+  }
 }
 
 /// Mostra o realce à volta de `child` quando `focado` (e o modo de realce é o do teclado/comando).

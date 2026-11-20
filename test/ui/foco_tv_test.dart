@@ -628,9 +628,9 @@ void main() {
       await configurarRealceFoco(eTv: () async => true);
       expect(FocusManager.instance.highlightStrategy, FocusHighlightStrategy.alwaysTraditional);
       FocusManager.instance.highlightStrategy = FocusHighlightStrategy.automatic;
-      await configurarRealceFoco(eTv: () async => false);
+      await configurarRealceFoco(eTv: () async => false, computador: false);
       expect(FocusManager.instance.highlightStrategy, FocusHighlightStrategy.automatic);
-      await configurarRealceFoco(eTv: () async => throw Exception('sem canal'));
+      await configurarRealceFoco(eTv: () async => throw Exception('sem canal'), computador: false);
       expect(FocusManager.instance.highlightStrategy, FocusHighlightStrategy.automatic);
     });
 

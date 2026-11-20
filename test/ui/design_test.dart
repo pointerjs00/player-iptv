@@ -191,7 +191,7 @@ void main() {
     });
     await configurarRealceFoco(eTv: () async => true);
     expect(EcraTv.nativo, isTrue);
-    await configurarRealceFoco(eTv: () async => false);
+    await configurarRealceFoco(eTv: () async => false, computador: false);
     expect(EcraTv.nativo, isFalse);
   });
 
