@@ -190,7 +190,7 @@ void main() {
     expect(em(cartao('Verificar'), 'por verificar'), findsNothing);
   });
 
-  testWidgets('"No Player" conta as listas de Ver TV; depois de importar, o cartão 1 diz quando e quantas',
+  testWidgets('"Em Ver TV" conta as listas de Ver TV; depois de importar, o cartão 1 diz quando e quantas',
       (t) async {
     ecraTvTeste(t, largura: 1400, altura: 1400);
     await t.runAsync(() => bib.adicionar([

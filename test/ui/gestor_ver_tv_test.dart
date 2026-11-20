@@ -129,4 +129,38 @@ void main() {
     expect(_resto.hasMatch(resultado), isFalse);
     semPlayer(t, 'depois de enviar');
   });
+
+  testWidgets('verificar, confirmar remover e confirmar limpar sem «Player»', (t) async {
+    ecraTvTeste(t, largura: 1400, altura: 1400);
+    await t.runAsync(() => area.adicionar([
+          Importada(contaDeLinha('http://a.com/l.m3u')!,
+              UltimaVerificacao(estado: 'funciona', data: DateTime(2026, 3, 1))),
+        ]));
+    await t.pumpWidget(appTeste(Scaffold(
+        body: TelaGestor(
+            biblioteca: bib, area: area, servico: ServicoVerificacao(bib, colecao: area), tarefas: tarefas))));
+    await t.pump();
+    await t.tap(cartao('Verificar'));
+    await t.pumpAndSettle();
+    semPlayer(t, 'passo verificar');
+    await t.tap(find.byKey(const ValueKey('caixaCabecalho')));
+    await t.pump();
+    await t.tap(find.byKey(const ValueKey('botaoAcoes')));
+    await t.pumpAndSettle();
+    await t.tap(find.descendant(of: find.byWidgetPredicate((w) => w is PopupMenuItem), matching: find.text('Remover do gestor')));
+    await t.pumpAndSettle();
+    expect(find.text('Remover do Gestor?'), findsOneWidget);
+    semPlayer(t, 'confirmar remover');
+    await t.tap(find.text('Cancelar'));
+    await t.pumpAndSettle();
+
+    await t.tap(find.widgetWithText(TextButton, 'Voltar'));
+    await t.pumpAndSettle();
+    await t.tap(cartao('Importar'));
+    await t.pumpAndSettle();
+    await t.tap(find.text('Limpar o Gestor'));
+    await t.pumpAndSettle();
+    expect(find.text('Limpar o Gestor?'), findsOneWidget);
+    semPlayer(t, 'confirmar limpar');
+  });
 }

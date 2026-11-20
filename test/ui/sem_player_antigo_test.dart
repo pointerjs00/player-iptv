@@ -2,20 +2,50 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
-/// «Ver TV» é o nome do antigo «Player»: nenhum texto entre aspas em lib/ o diz. Ficam «Player IPTV»
-/// (a app) e «Stalker Portal Player» (produto externo).
+/// «Ver TV» é o nome do antigo «Player»: nada em lib/ o diz. Ficam «Player IPTV» (a app) e
+/// «Stalker Portal Player» (produto externo).
+final _palavra = RegExp(r'(?<![A-Za-z0-9_])Player(?![A-Za-z0-9_])');
+final _permitidos = RegExp(r'Player IPTV|Stalker Portal Player');
+
+/// Usos do tipo `Player` do media_kit (código, não texto). Cada ficheiro traz o motivo.
+const _excecoes = <String, String>{
+  // `Player(configuration: ...)` e `final Player player`: o tipo do media_kit
+  'lib/ui/player/motor_mpv.dart': 'tipo Player do media_kit',
+  // `MotorForaDaUi.doPlayer(Player player)`: o mesmo tipo
+  'lib/ui/player/mpv_fora_da_ui.dart': 'tipo Player do media_kit',
+};
+
+/// Tira os comentários (`//` até ao fim da linha e blocos `/* */`) sem olhar para os literais:
+/// um `//` dentro de um texto («http://») não é tratado como comentário se vier depois de `:`.
+String _semComentarios(String s) => s
+    .replaceAll(RegExp(r'/\*[\s\S]*?\*/'), ' ')
+    .replaceAll(RegExp(r'(?<!:)//[^\n]*'), ' ');
+
+/// As ocorrências de «Player» que não são «Player IPTV» nem «Stalker Portal Player».
+List<String> _restos(String codigo) {
+  final r = <String>[];
+  for (final linha in _semComentarios(codigo).split('\n')) {
+    if (_palavra.hasMatch(linha.replaceAll(_permitidos, ''))) r.add(linha.trim());
+  }
+  return r;
+}
+
 void main() {
-  test('nenhuma string de lib/ fala do «Player» antigo', () {
-    final resto = RegExp(r'(?<!Stalker Portal )(?<![A-Za-z])Player(?![A-Za-z])(?! IPTV)');
-    final aspas = RegExp(r'''('[^'\n]*'|"[^"\n]*")''');
+  test('o verificador apanha texto interpolado, ignora comentários e deixa «Player IPTV»', () {
+    expect(_restos(r"final t = '${x ? 'Player' : 'y'}';"), isNotEmpty);
+    expect(_restos(r"final t = 'A lista \'do Player\'';"), isNotEmpty);
+    expect(_restos("// o Player muda\n/* Player */\nfinal a = 1;"), isEmpty);
+    expect(_restos("final t = 'Player IPTV e Stalker Portal Player';"), isEmpty);
+    expect(_restos("final t = 'MotorPlayer e player';"), isEmpty);
+  });
+
+  test('nada em lib/ fala do «Player» antigo', () {
     final maus = <String>[];
     for (final f in Directory('lib').listSync(recursive: true).whereType<File>()) {
-      if (!f.path.endsWith('.dart')) continue;
-      for (final (i, linha) in f.readAsLinesSync().indexed) {
-        if (linha.trimLeft().startsWith('//')) continue;
-        for (final m in aspas.allMatches(linha)) {
-          if (resto.hasMatch(m[0]!)) maus.add('${f.path}:${i + 1}: ${m[0]}');
-        }
+      final caminho = f.path.replaceAll(r'\', '/');
+      if (!caminho.endsWith('.dart') || _excecoes.keys.any(caminho.endsWith)) continue;
+      for (final l in _restos(f.readAsStringSync())) {
+        maus.add('$caminho: $l');
       }
     }
     expect(maus, isEmpty);
