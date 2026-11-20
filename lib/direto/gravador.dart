@@ -16,9 +16,14 @@
 ///
 /// Cada religação cose-se à anterior ([ProcuraCostura], em `costura.dart`): há servidores que, em
 /// cada ligação nova, voltam a mandar 10–30 s que já tinham mandado. Enquanto se procura o ponto
-/// da costura não se grava nada; os bytes recebidos entretanto ficam em memória (no máximo
-/// [limiteCostura] mais um pedaço, cerca de 8 MiB) e não contam para a reserva, porque não estão no
-/// armazém. Grava-se logo que se decide.
+/// da costura não se grava nada; os bytes recebidos entretanto ficam em memória e grava-se logo
+/// que se decide. A procura da cauda continua sem guardar bytes enquanto o PCR não passar o último
+/// gravado; só se guarda o que ainda pode ser gravado (no máximo cerca do limite da procura mais
+/// dois pedaços do socket):
+/// - no disco, até [limiteCostura] (8 MiB), fora da reserva (que é do disco);
+/// - em memória ([ArmazemMemoria]), dentro da reserva: tira-se-lhe [folgaProcura] (um bloco, ou o
+///   [limiteCostura] se for menor), e a procura guarda no máximo ¾ disso (o último ¼ é margem para os
+///   pedaços), por isso os blocos mais o que a procura guarda nunca passam da reserva.
 ///
 /// Nunca se regista o URL nem os cabeçalhos (levam utilizador, password, MAC ou token).
 library;
@@ -80,7 +85,11 @@ class GravadorDireto {
     Future<void> Function(Duration)? esperar,
     this.espacoLivre,
     this.limiteCostura = limiteProcura,
-  })  : maximoBlocos = tamanhoBloco > 0 ? reservaBytes ~/ tamanhoBloco : 0,
+  })  : folgaProcura = armazem is ArmazemMemoria ? math.min(limiteCostura, tamanhoBloco) : 0,
+        maximoBlocos = tamanhoBloco > 0
+            ? (reservaBytes - (armazem is ArmazemMemoria ? math.min(limiteCostura, tamanhoBloco) : 0)) ~/
+                tamanhoBloco
+            : 0,
         _agora = agora ?? DateTime.now,
         _esperar = esperar ?? Future<void>.delayed,
         armazem = armazem ?? ArmazemDisco(pasta ?? (throw ArgumentError('falta a pasta ou o armazém'))) {
@@ -103,8 +112,14 @@ class GravadorDireto {
   final int reservaBytes;
   final int tamanhoBloco;
 
-  /// Quantos blocos cabem na reserva (contando o que está em escrita).
+  /// Quantos blocos cabem na reserva (contando o que está em escrita), tirada a [folgaProcura].
   final int maximoBlocos;
+
+  /// A parte da reserva em memória que fica para a procura da costura (0 no disco).
+  final int folgaProcura;
+
+  /// Quanto a procura da costura pode guardar (mais um ou dois pedaços).
+  int get _limiteProcura => folgaProcura > 0 ? folgaProcura - folgaProcura ~/ 4 : limiteCostura;
 
   /// O espaço livre do aparelho (null: não se sabe), visto a cada bloco novo; sem ele, só a reserva.
   final Future<int?> Function()? espacoLivre;
@@ -311,7 +326,8 @@ class GravadorDireto {
               pidPcr: _gravado.pidPcr,
               pidVideo: _gravado.pidVideo,
               pidPmt: _gravado.pidPmt,
-              limite: limiteCostura);
+              ultimoDts: _gravado.ultimoDts,
+              limite: _limiteProcura);
           _pendente.clear();
           _pendenteDesde = 0;
         } else {
@@ -471,7 +487,8 @@ class GravadorDireto {
       case ModoCostura.pcr:
         _novaLigacaoNoAlinhamento(0); // começa num pacote
       case ModoCostura.salto || ModoCostura.inteira:
-        _novaLigacaoNoAlinhamento(d.sincronia ?? 0);
+        // o primeiro pacote, contado a partir do que se começa a gravar
+        _novaLigacaoNoAlinhamento(math.max(0, (d.sincronia ?? d.desde) - d.desde));
     }
     if (d.motivo != null) {
       debugPrint('gravador do direto: religação sem costura (${d.motivo}); grava-se inteira');

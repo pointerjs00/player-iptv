@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:player_iptv/direto/costura.dart';
 
@@ -94,6 +96,105 @@ void main() {
       expect(l.pidPcr, pidVideoSintetico);
       expect(l.pidVideo, pidVideoSintetico);
       expect(l.ultimoPcr, pcrSintetico(399));
+      expect(l.ultimoDts, tempoSintetico(395));
+    });
+
+    test('o PCR num PID diferente do vídeo (pela PMT)', () {
+      final l = LeitorTs();
+      for (final p in emPedacos(tsSintetico(0, 400, pcrNoutroPid: true), 999)) {
+        l.ler(p);
+      }
+      expect(l.pidPcr, pidPcrSintetico);
+      expect(l.pidVideo, pidVideoSintetico);
+      expect(l.ultimoPcr, pcrSintetico(399));
+    });
+
+    test('pedaços de 1 byte dão o mesmo que um pedaço só', () {
+      final ts = tsSintetico(0, 300).sublist(50);
+      final a = <int>[], b = <int>[];
+      final la = LeitorTs(), lb = LeitorTs();
+      la.ler(ts, (p) {
+        a.add(p.posicao);
+        return false;
+      });
+      for (var i = 0; i < ts.length; i++) {
+        lb.ler([ts[i]], (p) {
+          b.add(p.posicao);
+          return false;
+        });
+      }
+      expect(b, a);
+      expect(a.first, 138);
+      expect(a, hasLength(299));
+    });
+  });
+
+  group('ProcuraCostura (ronda 1)', () {
+    test('o PCR num PID diferente do vídeo: começa no PES do vídeo', () {
+      final novo = tsSintetico(1500, 6000, variante: 1, pcrNoutroPid: true);
+      expect(costuraPorPcr(pcrSintetico(3999), novo), (4005 - 1500) * 188);
+    });
+
+    test('a volta dos 33 bits do PCR e do DTS', () {
+      // o tempo dá a volta no pacote 1500: o último gravado (1503) tem um PCR pequeno
+      const d = (1 << 33) - 1500 * 900;
+      final novo = tsSintetico(1000, 2500, variante: 1, deslocamento: d);
+      final ultimo = pcrSintetico(1503, deslocamento: d);
+      expect(ultimo, lessThan(pcrSintetico(1003, deslocamento: d)), reason: 'sem a volta, pareceria salto');
+      expect(costuraPorPcr(ultimo, novo), (1510 - 1000) * 188);
+      expect(costuraPorPcr(ultimo, novo, ultimoDts: tempoSintetico(1500 + 5, deslocamento: d)), (1510 - 1000) * 188);
+    });
+
+    test('pelo DTS não se perde a imagem que começa antes do PCR seguinte', () {
+      final novo = tsSintetico(1500, 6000, variante: 1);
+      // último gravado: PES 4020, PCR 4023; o PES 4025 vem antes do PCR 4027
+      expect(costuraPorPcr(pcrSintetico(4023), novo, ultimoDts: tempoSintetico(4020)), (4025 - 1500) * 188);
+      expect(costuraPorPcr(pcrSintetico(4023), novo), (4030 - 1500) * 188, reason: 'sem o DTS: depois do PCR');
+    });
+
+    test('uma cauda ambígua (nulos) só vale com o PCR seguinte maior do que o último', () {
+      final novo = [
+        ...tsSintetico(1500, 2000), ...nulos(25), //
+        ...tsSintetico(2000, 4000), ...nulos(20), ...tsSintetico(4000, 6000),
+      ];
+      final p = ProcuraCostura(cauda: nulos(20), ultimoPcr: pcrSintetico(3999));
+      DecisaoCostura? d;
+      for (final c in emPedacos(novo, 65536)) {
+        d ??= p.receber(c);
+      }
+      expect(d?.modo, ModoCostura.bytes);
+      expect(d?.desde, (4000 - 1500 + 25) * 188 + 20 * 188);
+    });
+
+    test('a cauda a 21 MB: continua a procurar sem guardar (custo medido em comparações)', () {
+      final todo = tsSintetico(0, 125000, passo: 24); // ~3750 pacotes/s (~5,6 Mb/s)
+      final cauda = todo.sublist(120000 * 188 - tamanhoCauda, 120000 * 188);
+      final p = ProcuraCostura(
+          cauda: cauda,
+          ultimoPcr: pcrSintetico(119999, passo: 24),
+          ultimoDts: tempoSintetico(119995, passo: 24),
+          limite: limiteProcura);
+      DecisaoCostura? d;
+      var guardadoMax = 0;
+      for (final c in emPedacos(todo.sublist(8000 * 188), 65536)) {
+        d = p.receber(c);
+        guardadoMax = math.max(guardadoMax, p.recebidos - p.descartavelAte);
+        if (d != null) break;
+      }
+      expect(d?.modo, ModoCostura.bytes);
+      expect(d?.desde, 112000 * 188);
+      // com PCR, só fica guardado o pedaço atual (a procura não precisa dos bytes já vistos)
+      expect(guardadoMax, lessThanOrEqualTo(65536));
+      // KMP: no máximo 2 comparações por byte procurado
+      expect(p.comparacoes, lessThanOrEqualTo(2 * p.recebidos));
+      printOnFailure('comparações: ${p.comparacoes} em ${p.recebidos} bytes');
+    });
+
+    test('o pior caso do KMP (só 0xFF) continua linear', () {
+      final cauda = [...List<int>.filled(tamanhoCauda - 1, 0xFF), 0x00];
+      final p = ProcuraCostura(cauda: cauda, ultimoPcr: 0, limite: 1 << 30);
+      p.receber(List<int>.filled(4 << 20, 0xFF));
+      expect(p.comparacoes, lessThanOrEqualTo(2 * p.recebidos));
     });
   });
 }

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:player_iptv/direto/armazem.dart';
@@ -549,7 +550,9 @@ void main() {
         final n = total - g.fim < 50000 ? total - g.fim : 50000;
         await enviar(g, c, _bytes(g.fim, n));
       }
-      expect(maximo, _reserva, reason: 'a reserva enche-se toda');
+      expect(maximo, _reserva - _bloco,
+          reason: 'a reserva enche-se toda, menos a folga da procura da costura (um bloco)');
+      expect(g.folgaProcura, _bloco);
       expect(g.inicio, greaterThanOrEqualTo(total - _reserva));
       expect(await g.ler(g.inicio, 70000), _bytes(g.inicio, 70000), reason: 'atravessa blocos em memória');
       expect(await g.ler(g.fim - 1000, 5000), _bytes(g.fim - 1000, 1000));
@@ -688,17 +691,79 @@ void main() {
       await g.parar();
     });
 
-    test('a cauda só depois do limite da procura: cose pelo PCR', () async {
+    test('uma repetição de ~21 MB (muito para lá do limite da procura): costura exata pelos bytes', () async {
+      // 30 s a ~5,7 Mb/s: 112 000 pacotes repetidos (21 MB), com a reserva de 4 MiB a rodar
+      final todo = tsSintetico(0, 125000, passo: 24); // ~3750 pacotes/s (~5,6 Mb/s)
+      final (:g, :armazem, :ultima, :todas) = comLigacoes([
+        emPedacos(todo.sublist(0, 120000 * 188), 65536),
+        emPedacos(todo.sublist(8000 * 188), 65536),
+      ]);
+      var maximo = 0;
+      g.crescimento.listen((_) => maximo = math.max(maximo, armazem.bytesEmUso));
+      await g.iniciar();
+      await todas;
+      await pumpEventQueue();
+      expect(g.fim, 125000 * 188, reason: 'sem nada repetido');
+      final gravado = await tudo(g);
+      expect(gravado, todo.sublist(g.inicio), reason: 'contínuo byte a byte');
+      expect(maximo, lessThanOrEqualTo(64 * _bloco - g.folgaProcura));
+      await ultima.close();
+      await g.parar();
+    });
+
+    test('bytes diferentes e o PES seguinte antes do PCR seguinte: começa nesse PES (pelo DTS)', () async {
+      // o último PES gravado é o 4020 e o último PCR o 4023; o PES 4025 vem antes do PCR 4027
       final (:g, armazem: _, :ultima, :todas) = comLigacoes([
-        emPedacos(tsSintetico(0, 4000), 65536),
-        emPedacos(tsSintetico(1500, 6000), 65536),
-      ], limite: 1000 * 188);
+        emPedacos(tsSintetico(0, 4024), 65536),
+        emPedacos(tsSintetico(1500, 6000, variante: 1), 65536),
+      ]);
       await g.iniciar();
       await todas;
       await pumpEventQueue();
       final gravado = await tudo(g);
-      expect(gravado, [...tsSintetico(0, 4000), ...tsSintetico(4005, 6000)]);
+      expect(gravado, [...tsSintetico(0, 4024), ...tsSintetico(4025, 6000, variante: 1)],
+          reason: 'pelo PCR seria o 4030: perdia-se a imagem 4025');
       pcrSempreASubir(gravado);
+      await ultima.close();
+      await g.parar();
+    });
+
+    test('uma cauda ambígua (20 pacotes nulos): só vale o encontro com o PCR seguinte maior', () async {
+      final (:g, armazem: _, :ultima, :todas) = comLigacoes([
+        emPedacos([...tsSintetico(0, 4000), ...nulos(20)], 65536),
+        emPedacos([
+          ...tsSintetico(1500, 2000), ...nulos(25), // os nulos casam aqui primeiro (cedo demais)
+          ...tsSintetico(2000, 4000), ...nulos(20), ...tsSintetico(4000, 6000),
+        ], 65536),
+      ]);
+      await g.iniciar();
+      await todas;
+      await pumpEventQueue();
+      final gravado = await tudo(g);
+      expect(gravado, [...tsSintetico(0, 4000), ...nulos(20), ...tsSintetico(4000, 6000)]);
+      pcrSempreASubir(gravado);
+      await ultima.close();
+      await g.parar();
+    });
+
+    test('o canal recomeça (PCR muito para trás) depois de já se ter largado o começo: alinhamento certo',
+        () async {
+      final novo = tsSintetico(0, 1000, variante: 2);
+      final (:g, armazem: _, :ultima, :todas) = comLigacoes([
+        emPedacos(tsSintetico(13000, 17000), 65536), // PCR de 130 a 170 s
+        emPedacos([...tsSintetico(14000, 15500, variante: 1), ...novo], 65536), // velha, e depois 0 s
+      ], limite: 100 * 188);
+      await g.iniciar();
+      await todas;
+      await pumpEventQueue();
+      final antes = 4000 * 188;
+      final gravado = await tudo(g);
+      // grava-se do primeiro PCR do recomeço (o pacote 3), não do que já se tinha largado
+      expect(gravado, [...tsSintetico(13000, 17000), ...novo.sublist(3 * 188)]);
+      for (final p in [antes, antes + 1, antes + 500 * 188 + 7]) {
+        final a = g.alinhar(p);
+        expect((await g.ler(a, 1))!.single, 0x47, reason: 'alinhar($p) = $a');
+      }
       await ultima.close();
       await g.parar();
     });
