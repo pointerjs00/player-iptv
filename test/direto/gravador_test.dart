@@ -331,6 +331,20 @@ void main() {
       expect((await g.ler(p, 1))!.single, 0x47, reason: 'posição $p');
       expect(await g.ler(p + 188, 1), anyOf(isEmpty, [0x47]));
     }
+    // alinhar: pela ligação que contém a posição, nunca para além do fim
+    expect(g.alinhar(0), 138);
+    expect(g.alinhar(138), 138);
+    expect(g.alinhar(139), 138 + 188);
+    expect(g.alinhar(138 + 4 * 188), 138 + 4 * 188);
+    expect(g.alinhar(990), 1000 + 138); // o pacote cortado no fim da 1.ª: o primeiro da 2.ª
+    expect(g.alinhar(1000), 1000 + 138);
+    expect(g.alinhar(1000 + 139), 1000 + 138 + 188);
+    expect(g.alinhar(g.fim + 500), g.fim);
+    for (final p in [0, 777, 1001, 50000, 90000]) {
+      final a = g.alinhar(p);
+      expect(a, greaterThanOrEqualTo(p));
+      if (a < g.fim) expect((await g.ler(a, 1))!.single, 0x47, reason: 'alinhar($p) = $a');
+    }
     await g.parar();
   });
 }

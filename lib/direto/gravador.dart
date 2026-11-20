@@ -242,6 +242,10 @@ class GravadorDireto {
     return _alinhar(p);
   }
 
+  /// A primeira fronteira de pacote TS em `p` ou depois, contada a partir do primeiro pacote da
+  /// ligação que contém `p` (nunca passa do [fim]). Para começar a enviar num pacote inteiro.
+  int alinhar(int p) => _alinhar(p);
+
   /// Há quanto tempo chegou o byte em `posicao` (o inverso de [posicaoHa], para a barra).
   Duration recuoDe(int posicao) {
     if (posicao >= _fim || _indice.isEmpty) return Duration.zero;

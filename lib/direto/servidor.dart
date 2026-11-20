@@ -1,9 +1,13 @@
 /// Servir o direto gravado pelo [GravadorDireto] ao motor do player, em `127.0.0.1`.
 ///
 /// `GET /<código>/direto?desde=<posição>` envia os bytes gravados a partir dessa posição e continua a
-/// enviar o que vai chegando (stream sem fim, `video/mp2t`, sem `Content-Length`). O código é
-/// aleatório (128 bits) e só é conhecido pelo player: as outras apps do aparelho não conseguem ler.
-/// Se a posição pedida já foi apagada, continua no bloco mais antigo ([GravadorDireto.inicio]).
+/// enviar o que vai chegando (stream sem fim, `video/mp2t`, sem `Content-Length` nem chunked, até a
+/// ligação fechar). O código é aleatório (128 bits) e só é conhecido pelo player: as outras apps do
+/// aparelho não conseguem ler. Se a posição pedida já foi apagada, continua no bloco mais antigo
+/// ([GravadorDireto.inicio]). Começa-se sempre numa fronteira de pacote TS ([GravadorDireto.alinhar]).
+///
+/// `Range: bytes=N-` (o motor a tentar de novo no mesmo URL) responde 206 a partir de `desde + N`
+/// alinhado, com `Content-Range: bytes <início>-*/*` (tamanho desconhecido).
 ///
 /// Cada pedido tem o seu ciclo de leitura: lê um pedaço, envia-o e só lê o seguinte quando o cliente
 /// o recebeu, por isso um leitor lento atrasa-se a ele próprio e nunca ao gravador.
@@ -15,7 +19,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:flutter/foundation.dart' show debugPrint, visibleForTesting;
 
 import 'gravador.dart';
 
@@ -80,8 +84,11 @@ class ServidorDireto {
 
   Future<void> _fechar() async {
     _fechado = true;
+    // as ligações dos pedidos já não são do HttpServer: destroem-se aqui (também solta um envio
+    // preso num cliente que não lê)
     for (final p in _pedidos) {
       p.acordar();
+      p.socket?.destroy();
     }
     try {
       await _http.close(force: true);
@@ -117,22 +124,38 @@ class ServidorDireto {
         await _recusar(resposta, HttpStatus.badRequest);
         return;
       }
-      resposta
-        ..statusCode = HttpStatus.ok
-        ..bufferOutput = false
-        ..headers.contentType = ContentType('video', 'mp2t')
-        ..headers.set(HttpHeaders.cacheControlHeader, 'no-store');
       if (pedido.method == 'HEAD') {
+        resposta
+          ..statusCode = HttpStatus.ok
+          ..headers.contentType = ContentType('video', 'mp2t')
+          ..headers.set(HttpHeaders.cacheControlHeader, 'no-store');
         await resposta.close();
         return;
       }
-      await _servir(resposta, desde);
-    } catch (_) {
-      // o cliente foi-se ou o servidor fechou: não há a quem responder
+      await _servir(resposta, desde, _inicioRange(pedido.headers.value(HttpHeaders.rangeHeader)));
+    } catch (e) {
+      _registar(e);
       try {
         await resposta.close();
       } catch (_) {}
     }
+  }
+
+  /// O `N` de um `Range: bytes=N-` (o fim de `bytes=N-M` ignora-se: o direto não tem fim); null sem
+  /// `Range`, com `bytes=0-` (é o pedido todo) ou com outra forma (ignorada, como a RFC permite).
+  static int? _inicioRange(String? range) {
+    if (range == null) return null;
+    final m = RegExp(r'^\s*bytes\s*=\s*(\d+)\s*-\s*\d*\s*$').firstMatch(range);
+    final n = m == null ? null : int.tryParse(m.group(1)!);
+    return n == null || n == 0 ? null : n;
+  }
+
+  /// Um erro que não é só o cliente a ir-se (um problema a ler o disco, por exemplo): o player vê o
+  /// fim da resposta, por isso fica o rasto, sem URL nem código.
+  static void _registar(Object e) {
+    if (e is SocketException || e is HttpException) return;
+    final codigo = e is FileSystemException ? ' (código ${e.osError?.errorCode ?? '?'})' : '';
+    debugPrint('servidor do direto: a resposta parou com ${e.runtimeType}$codigo');
   }
 
   Future<void> _recusar(HttpResponse r, int estado) async {
@@ -142,32 +165,63 @@ class ServidorDireto {
     await r.close();
   }
 
-  /// O ciclo de um pedido: lê, envia, espera pelo cliente; no fim do gravado espera por crescimento.
-  Future<void> _servir(HttpResponse resposta, int desde) async {
+  /// O ciclo de um pedido: escreve o cabeçalho, depois lê, envia, espera pelo cliente; no fim do
+  /// gravado espera por crescimento.
+  ///
+  /// A ligação é tirada ao [HttpServer] (`detachSocket`): o corpo vai sem chunked e acaba quando a
+  /// ligação fecha (`Connection: close`), os erros de escrita chegam (o HttpServer engole-os) e o
+  /// fecho do cliente vê-se logo, mesmo à espera de crescimento.
+  Future<void> _servir(HttpResponse resposta, int desde, int? range) async {
     final p = _Pedido();
     _pedidos.add(p);
     _mudou();
-    final crescer = _gravador.crescimento.listen((_) => p.acordar(), onDone: () {
-      p.gravadorParou = true;
-      p.acordar();
-    });
-    var clienteFoi = false;
-    unawaited(resposta.done.then((_) {}, onError: (Object _) {}).whenComplete(() {
-      clienteFoi = true;
-      p.acordar();
-    }));
+    StreamSubscription<int>? crescer;
     try {
-      // uma posição para além do gravado ficaria à espera para sempre: começa no fim
-      var pos = math.min(desde, _gravador.fim);
-      while (!_fechado && !clienteFoi) {
+      // uma posição para além do gravado ficaria à espera para sempre: começa no fim; e começa
+      // sempre numa fronteira de pacote TS
+      var pos = math.min(desde + (range ?? 0), _gravador.fim);
+      var porAlinhar = true;
+      final alinhado = _gravador.alinhar(pos);
+      if (alinhado < _gravador.fim) pos = alinhado;
+      final sock = await resposta.detachSocket(writeHeaders: false);
+      p.socket = sock;
+      if (_fechado) return;
+      sock.listen((_) {}, onDone: p.clienteFoi, onError: (Object _) => p.clienteFoi(), cancelOnError: true);
+      crescer = _gravador.crescimento.listen((_) => p.acordar(), onDone: () {
+        p.gravadorParou = true;
+        p.acordar();
+      });
+      final cab = StringBuffer(range == null ? 'HTTP/1.1 200 OK\r\n' : 'HTTP/1.1 206 Partial Content\r\n')
+        ..write('Content-Type: video/mp2t\r\n')
+        ..write('Cache-Control: no-store\r\n')
+        ..write('Connection: close\r\n');
+      // tamanho desconhecido: o ExoPlayer ignora esta forma (fica sem comprimento) e o ffmpeg lê o
+      // início e marca o tamanho como desconhecido
+      if (range != null) cab.write('Content-Range: bytes ${math.max(0, pos - desde)}-*/*\r\n');
+      cab.write('\r\n');
+      sock.add(cab.toString().codeUnits);
+      await sock.flush(); // o cabeçalho sai já, mesmo sem nada para enviar
+      while (!_fechado && !p.foi) {
         p.cresceu = false;
+        if (porAlinhar) {
+          // a fronteira seguinte pode ainda não ter chegado (o alinhar não passa do fim): espera
+          final a = _gravador.alinhar(pos);
+          if (a >= _gravador.fim) {
+            if (p.gravadorParou) break;
+            if (!p.cresceu) await p.esperar();
+            continue;
+          }
+          pos = a;
+          porAlinhar = false;
+        }
         final dados = await _gravador.ler(pos, pedaco);
-        if (_fechado || clienteFoi) break;
+        if (_fechado || p.foi) break;
         if (dados == null) {
-          // o leitor atrasou-se e o bloco foi apagado: continua no mais antigo
+          // o leitor atrasou-se e o bloco foi apagado: continua no mais antigo, num pacote inteiro
           final inicio = _gravador.inicio;
           if (inicio <= pos) break; // o gravador parou e apagou tudo
           pos = inicio;
+          porAlinhar = true;
           continue;
         }
         if (dados.isEmpty) {
@@ -175,20 +229,15 @@ class ServidorDireto {
           if (!p.cresceu) await p.esperar();
           continue;
         }
-        resposta.add(dados);
-        await resposta.flush(); // só continua quando o cliente recebeu: um leitor lento fica para trás
-        // o HttpServer engole o erro de escrita quando o cliente fecha (o flush acaba bem e o resto
-        // é ignorado), mas destrói a ligação: sem ela, o ciclo termina
-        if (resposta.connectionInfo == null) break;
+        sock.add(dados);
+        await sock.flush(); // só continua quando o cliente recebeu: um leitor lento fica para trás
         pos += dados.length;
       }
-    } catch (_) {
-      // o cliente fechou a ligação (ou o servidor a meio do envio)
+    } catch (e) {
+      _registar(e);
     } finally {
-      await crescer.cancel();
-      try {
-        await resposta.close();
-      } catch (_) {}
+      await crescer?.cancel();
+      p.socket?.destroy();
       _pedidos.remove(p);
       p.terminar();
       _mudou();
@@ -205,12 +254,23 @@ class _Pedido {
   /// Houve crescimento (ou outra razão para olhar de novo) desde a última leitura.
   bool cresceu = false;
   bool gravadorParou = false;
+
+  /// O cliente fechou a ligação.
+  bool foi = false;
+
+  /// A ligação, depois de tirada ao HttpServer: o [ServidorDireto.fechar] destrói-a.
+  Socket? socket;
   Completer<void>? _espera;
   final _feito = Completer<void>();
 
   Future<void> get feito => _feito.future;
 
   Future<void> esperar() => (_espera ??= Completer<void>()).future;
+
+  void clienteFoi() {
+    foi = true;
+    acordar();
+  }
 
   void acordar() {
     cresceu = true;
