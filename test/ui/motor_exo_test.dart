@@ -8,7 +8,9 @@ import 'package:player_iptv/modelo/canal.dart';
 import 'package:player_iptv/ui/design/componentes.dart';
 import 'package:player_iptv/ui/player/motor_exo.dart';
 import 'package:player_iptv/ui/player/motor_reproducao.dart';
+import 'package:player_iptv/ui/player/configuracao_mpv.dart';
 import 'package:player_iptv/ui/player/player_canais.dart';
+import 'package:player_iptv/ui/player/taxa_ecra.dart';
 import 'package:player_iptv/ui/tema.dart';
 
 const _metodos = MethodChannel('player_iptv/exo');
@@ -87,6 +89,36 @@ class _ExoFalso {
     addTearDown(m.descartar);
     return m;
   }
+}
+
+/// O canal do modo de ecrã (`player_iptv/ecra`) a fingir: um ecrã a 60 Hz que também faz 50.
+class _EcraFalso {
+  _EcraFalso() {
+    const canal = MethodChannel('player_iptv/ecra');
+    final m = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    TaxaEcra.reiniciarGlobal();
+    final antes = TaxaEcra.aoIrParaSegundoPlano;
+    TaxaEcra.aoIrParaSegundoPlano = (_) {};
+    m.setMockMethodCallHandler(canal, (c) async {
+      switch (c.method) {
+        case 'taxas':
+          return {'atual': hz, 'suportadas': [50.0, 60.0]};
+        case 'pedir':
+          final v = ((c.arguments as Map)['hz'] as num).toDouble();
+          pedidos.add(v);
+          hz = v;
+      }
+      return null;
+    });
+    addTearDown(() {
+      m.setMockMethodCallHandler(canal, null);
+      TaxaEcra.aoIrParaSegundoPlano = antes;
+      TaxaEcra.reiniciarGlobal();
+    });
+  }
+
+  double hz = 60;
+  final pedidos = <double>[];
 }
 
 Future<void> _esperar() => pumpEventQueue();
@@ -374,6 +406,32 @@ void main() {
       await m.descartar();
     });
 
+    test('C1: o fps medido pelo nativo (evento fps) vale quando o formato não o diz, e recomeça a cada sessão', () async {
+      final exo = _ExoFalso(estatisticas: {'perdidas': 0, 'renderizadas': 40, 'fps': null, 'largura': 1920, 'altura': 1080});
+      final m = _motor();
+      final medidos = <double>[];
+      m.fps.listen(medidos.add);
+      await m.abrir('http://exemplo.invalid/1.ts', const {});
+      await _esperar();
+      expect((await m.estatisticas()).fps, isNull, reason: 'TS sem fps no formato: ainda por medir');
+      exo.evento('fps', {'valor': 50.0});
+      await _esperar();
+      expect(medidos, [50.0]);
+      expect((await m.estatisticas()).fps, 50.0);
+      // outro canal (sessão nova): a medição recomeça; um fps atrasado do anterior não conta
+      await m.abrir('http://exemplo.invalid/2.ts', const {});
+      await _esperar();
+      exo.evento('fps', {'valor': 50.0}, null, 1);
+      await _esperar();
+      expect(medidos, [50.0]);
+      expect((await m.estatisticas()).fps, isNull);
+      exo.evento('fps', {'valor': 25.0});
+      await _esperar();
+      expect(medidos, [50.0, 25.0]);
+      expect((await m.estatisticas()).fps, 25.0);
+      await m.descartar();
+    });
+
     test('estatisticas sem vídeo: nulls, não lança', () async {
       _ExoFalso(estatisticas: {'perdidas': 0, 'renderizadas': 0, 'fps': null, 'codec': null, 'resolucao': null});
       final m = _motor();
@@ -524,12 +582,16 @@ void main() {
     const canal = Canal(id: '1', nome: 'RTP 1', grupo: 'Generalistas');
     const canal2 = Canal(id: '2', nome: 'RTP 2', grupo: 'Generalistas');
 
-    Future<void> montarPlayer(WidgetTester t, _ExoFalso exo, {FormatoImagem formato = FormatoImagem.ajustar}) async {
+    Future<void> montarPlayer(WidgetTester t, _ExoFalso exo,
+        {FormatoImagem formato = FormatoImagem.ajustar, bool android = false}) async {
       t.view.physicalSize = const Size(1920, 1080);
       t.view.devicePixelRatio = 1;
       addTearDown(t.view.reset);
       final antes = Preferencias.atual;
-      Preferencias.atual = Preferencias.omissao()..formato = formato;
+      Preferencias.atual = Preferencias.omissao()
+        ..formato = formato
+        ..motorAndroid = MotorAndroid.exoplayer
+        ..ajustarTaxaEcra = true;
       addTearDown(() => Preferencias.atual = antes);
       await t.pumpWidget(MaterialApp(
         theme: temaApp(),
@@ -544,6 +606,9 @@ void main() {
             resolver: (c, {continuar = false}) async =>
                 FonteVideo('http://exemplo.invalid/${c.id}.ts', const {'User-Agent': 'Teste'}),
             criarMotor: (_, _) => exo.motor(),
+            criarMotorExo: ({required bool tunel}) => exo.motor(),
+            plataforma: android ? PlataformaVideo.android : null,
+            agora: () => t.binding.clock.now(),
           ),
         ),
       ));
@@ -612,6 +677,32 @@ void main() {
               matching: find.byWidgetPredicate((w) => w is Transform && w.transform.getMaxScaleOnAxis() > 1.01)),
           findsNothing,
           reason: 'o aumento do Flutter não mexe na SurfaceView');
+      await t.pumpWidget(const SizedBox());
+      await t.pump(const Duration(seconds: 1));
+    });
+
+    testWidgets('C1: sem fps no formato (TS/HLS), o fps medido pelo nativo pede os 50 Hz e aparece nas estatísticas',
+        (t) async {
+      final exo = _ExoFalso(estatisticas: {'perdidas': 0, 'renderizadas': 40, 'fps': null, 'largura': 1920, 'altura': 1080});
+      final ecra = _EcraFalso();
+      await montarPlayer(t, exo, android: true);
+      // as tentativas de ler o fps do formato passam sem nada (o TS não o diz)
+      await t.pump(const Duration(seconds: 6));
+      expect(ecra.pedidos, isEmpty, reason: 'sem fps não se pede modo');
+      exo.evento('fps', {'valor': 50.0});
+      await t.pump();
+      await t.pump();
+      expect(ecra.pedidos, [50.0]);
+      await t.pump(const Duration(seconds: 4)); // a TV a mudar de modo
+      t.state<PlayerCanaisState>(find.byType(PlayerCanais)).alternarEstatisticas();
+      await t.pump();
+      await t.pump(const Duration(seconds: 1));
+      expect(find.text('Imagens/s'), findsOneWidget);
+      expect(find.text('50.00'), findsOneWidget);
+      // o mesmo fps outra vez não volta a pedir
+      exo.evento('fps', {'valor': 50.0});
+      await t.pump(const Duration(seconds: 1));
+      expect(ecra.pedidos, [50.0]);
       await t.pumpWidget(const SizedBox());
       await t.pump(const Duration(seconds: 1));
     });

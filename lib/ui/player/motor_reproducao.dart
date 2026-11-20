@@ -131,6 +131,10 @@ abstract interface class MotorReproducao {
   Stream<FaixasMotor> get faixas;
   Stream<FaixaAtual> get faixaAtual;
 
+  /// As imagens por segundo que o motor mediu no vídeo deste canal, quando o formato não as diz
+  /// (TS e HLS no ExoPlayer). O mpv não manda nada aqui: o ecrã lê as propriedades dele.
+  Stream<double> get fps;
+
   /// Abre o canal (`inicio`: num ficheiro, onde começar).
   Future<void> abrir(String url, Map<String, String> cabecalhos, {Duration? inicio});
   Future<void> play();

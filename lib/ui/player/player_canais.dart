@@ -165,6 +165,12 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   /// O tamanho da imagem agora (no mpv lê-se na hora: chega depois de o vídeo ser construído).
   Size? get _tamanhoAgora => _mk?.tamanhoAtual ?? _tamanho;
   final _taxa = TaxaEcra();
+
+  /// O fps do canal aberto no pedido `pedido` (do motor ou medido): sabido uma vez por abertura.
+  ({int pedido, double fps})? _fpsConhecido;
+
+  /// Cada pedido de modo de ecrã ([_ajustarTaxa]) leva um número: um mais novo cala os anteriores.
+  int _ajusteTaxa = 0;
   double? _hzPedidos;
   double? _hzEcra;
   String? _aviso;
@@ -359,6 +365,13 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     }));
     _subsPlayer.add(_motor.faixaAtual.listen((t) {
       if (mounted) setState(() => _faixa = t);
+    }));
+    _subsPlayer.add(_motor.fps.listen((fps) {
+      // o fps que o motor mediu (TS e HLS no ExoPlayer não o dizem no formato): pede o modo de
+      // ecrã, se este canal ainda não tinha fps
+      if (!mounted || _fpsConhecido?.pedido == _pedido) return;
+      _fpsConhecido = (pedido: _pedido, fps: fps);
+      unawaited(_ajustarTaxa(_pedido));
     }));
   }
 
@@ -702,19 +715,25 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     final mpv = _mpv;
     final motor = _motor;
     if (mpv == null && !_exo) return;
-    // o container-fps costuma vir logo; senão o medido, que demora uns segundos
+    final minha = ++_ajusteTaxa;
+    // o container-fps costuma vir logo; senão o medido, que demora uns segundos (no ExoPlayer o
+    // medido também chega pelo motor: [MotorReproducao.fps])
     try {
       for (var tentativa = 0; tentativa < 5; tentativa++) {
-        if (!mounted || pedido != _pedido || !identical(motor, _motor)) return;
+        if (!mounted || pedido != _pedido || !identical(motor, _motor) || minha != _ajusteTaxa) return;
+        final conhecido = _fpsConhecido;
         double fps;
-        if (mpv != null) {
+        if (conhecido != null && conhecido.pedido == pedido) {
+          fps = conhecido.fps;
+        } else if (mpv != null) {
           fps = double.tryParse(await mpv.getProperty('container-fps')) ?? 0;
           if (fps <= 0) fps = double.tryParse(await mpv.getProperty('estimated-vf-fps')) ?? 0;
         } else {
           fps = (await motor.estatisticas()).fps ?? 0;
         }
         if (fps > 0) {
-          if (!mounted || pedido != _pedido) return;
+          if (!mounted || pedido != _pedido || minha != _ajusteTaxa) return;
+          _fpsConhecido = (pedido: pedido, fps: fps);
           final hz = await _taxa.ajustarPara(fps);
           final ecra = _hzEcra?.toStringAsFixed(2) ?? '?';
           final pedidoTexto = hz == null ? 'nada pedido (já certo ou nenhum modo serve)' : 'pedido ${hz.toStringAsFixed(2)} Hz';

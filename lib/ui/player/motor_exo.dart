@@ -77,6 +77,9 @@ class MotorExo implements MotorReproducao {
   int _pedidoAbrir = 0;
   String? _url;
 
+  /// As imagens por segundo medidas pelo nativo nesta sessão (null até haver imagens que cheguem).
+  double? _fpsMedido;
+
   /// Quantas vezes o [video] está montado (mostra-se de 0 para 1, esconde-se de 1 para 0).
   int _montados = 0;
   bool? _visivelEnviado;
@@ -96,6 +99,7 @@ class MotorExo implements MotorReproducao {
   final _fim = StreamController<void>.broadcast();
   final _faixas = StreamController<FaixasMotor>.broadcast();
   final _faixaAtual = StreamController<FaixaAtual>.broadcast();
+  final _fps = StreamController<double>.broadcast();
 
   @override
   String get nome => 'exoplayer';
@@ -126,6 +130,9 @@ class MotorExo implements MotorReproducao {
 
   @override
   Stream<FaixaAtual> get faixaAtual => _faixaAtual.stream;
+
+  @override
+  Stream<double> get fps => _fps.stream;
 
   // ---------------------------------------------------------------- pedidos
 
@@ -170,6 +177,8 @@ class MotorExo implements MotorReproducao {
     if (_descartado) return;
     final pedido = ++_pedidoAbrir;
     _url = url;
+    // a medição do fps recomeça com o canal
+    _fpsMedido = null;
     // a imagem do canal anterior deixa de contar (como o stop do mpv)
     _tamanho.add(null);
     legenda.value = '';
@@ -251,7 +260,8 @@ class MotorExo implements MotorReproducao {
       final rw = r?.length == 2 ? double.tryParse(r![0]) : null, rh = r?.length == 2 ? double.tryParse(r![1]) : null;
       if (rw != null && rh != null && rw > 0 && rh > 0) resolucao = Size(rw, rh);
     }
-    final fps = n('fps'), buffer = i('bufferMs'), bitrate = n('bitrate');
+    // o fps do formato, ou o medido nas imagens (o TS e o HLS sem FRAME-RATE não o dizem)
+    final fps = n('fps') ?? _fpsMedido, buffer = i('bufferMs'), bitrate = n('bitrate');
     return EstatisticasMotor(
       resolucao: resolucao,
       fps: fps != null && fps > 0 ? fps : null,
@@ -310,7 +320,7 @@ class MotorExo implements MotorReproducao {
     // sem esperar: o cancel de uma subscrição pode devolver um futuro de outra zona (nos testes de
     // widgets nunca acabava) e nada depende dele
     unawaited(_subEventos.cancel());
-    for (final c in [_erros, _aCarregar, _percentagem, _tamanho, _posicao, _fim, _faixas, _faixaAtual]) {
+    for (final c in [_erros, _aCarregar, _percentagem, _tamanho, _posicao, _fim, _faixas, _faixaAtual, _fps]) {
       unawaited(c.close());
     }
     legenda.value = '';
@@ -358,6 +368,11 @@ class MotorExo implements MotorReproducao {
         if (e['ms'] case final num ms) _posicao.add(Duration(milliseconds: ms.round()));
       case 'fim':
         _fim.add(null);
+      case 'fps':
+        if (e['valor'] case final num v when v > 0) {
+          _fpsMedido = v.toDouble();
+          _fps.add(v.toDouble());
+        }
       case 'erro':
         if (e['codigo'] case final String codigo) debugPrint('exoplayer: erro $codigo (${e['numero']})');
         _erro(e['mensagem'] is String ? e['mensagem'] as String : '', formato: e['formato'] == true);

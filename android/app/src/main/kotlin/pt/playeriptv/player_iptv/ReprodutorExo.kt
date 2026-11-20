@@ -36,6 +36,7 @@ import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
+import androidx.media3.exoplayer.video.VideoFrameMetadataListener
 import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory
 import io.flutter.plugin.common.BinaryMessenger
@@ -92,6 +93,24 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
     private var descodificadorVideo: String? = null
     private var pausadoPeloSistema = false
     private var pausadoEm = 0L
+
+    // O fps medido nas imagens (o TS do Media3 nunca põe Format.frameRate e o HLS das listas não traz
+    // FRAME-RATE): sem ele a TV não muda para 50 Hz. Medido na thread do player pelos PTS das imagens
+    // a mostrar ([MedidorFps]); a [geracaoFps] muda a cada abrir, e uma medição de outra geração
+    // (do canal anterior) não conta.
+    @Volatile private var geracaoFps = 0
+    private val medidorFps = MedidorFps()
+    private var fpsMedido: Double? = null
+    // Em túnel o ExoPlayer não chama o ouvinte das imagens: mede-se pelas imagens mostradas
+    // (renderedOutputBufferCount) contra a posição, numa janela de alguns segundos.
+    private var amostraTunel: Pair<Int, Long>? = null
+
+    /** Na thread do player, antes de cada imagem ir para o ecrã. */
+    private val ouvinteImagens = VideoFrameMetadataListener { pts, _, _, _ ->
+        val g = geracaoFps
+        val fps = medidorFps.registar(g, pts) ?: return@VideoFrameMetadataListener
+        principal.post { aoMedirFps(g, fps) }
+    }
 
     init {
         // Os logs do próprio Media3 (ex.: "Playback error" com o stack trace e as causas) podem
@@ -237,6 +256,7 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
         p.setVideoChangeFrameRateStrategy(C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_ONLY_IF_SEAMLESS)
         p.addListener(ouvinte)
         p.addAnalyticsListener(analise)
+        p.setVideoFrameMetadataListener(ouvinteImagens)
         idAtual += 1
         sessaoAtual = 0L
         player = p
@@ -271,6 +291,7 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
         ultimaPosicao = -1L
         tamanhoVideo = VideoSize.UNKNOWN
         pausadoPeloSistema = false
+        recomecarFps()
         // zapping: o mesmo player (mesmo id) abre o canal seguinte; as faixas escolhidas no canal
         // anterior não se aplicam a este (a legenda desligada e o vídeo escondido mantêm-se)
         p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
@@ -339,6 +360,8 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
         player = null
         p.removeListener(ouvinte)
         p.removeAnalyticsListener(analise)
+        p.clearVideoFrameMetadataListener(ouvinteImagens)
+        recomecarFps()
         p.clearVideoSurface()
         p.release()
         aCarregar = false
@@ -377,7 +400,8 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
         contadores?.ensureUpdated()
         val v = p.videoFormat
         val a = p.audioFormat
-        val fps = v?.frameRate?.takeIf { it != Format.NO_VALUE.toFloat() && it > 0 }?.toDouble()
+        // o do formato (MP4, HLS com FRAME-RATE) ou o medido nas imagens (TS, HLS sem FRAME-RATE)
+        val fps = v?.frameRate?.takeIf { it != Format.NO_VALUE.toFloat() && it > 0 }?.toDouble() ?: fpsMedido
         val largura = v?.width?.takeIf { it > 0 }
         val altura = v?.height?.takeIf { it > 0 }
         val bitrate = v?.let { f ->
@@ -389,6 +413,7 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
             "saltadas" to (contadores?.skippedOutputBufferCount ?: 0),
             "perdidasSeguidasMax" to (contadores?.maxConsecutiveDroppedBufferCount ?: 0),
             "fps" to fps,
+            "fpsMedido" to fpsMedido,
             "codec" to (v?.codecs ?: v?.sampleMimeType),
             "mime" to v?.sampleMimeType,
             "descodificador" to descodificadorVideo,
@@ -404,6 +429,46 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
     }
 
     // ---------------------------------------------------------------- eventos
+
+    /** Canal novo (ou player largado): a medição do fps recomeça. */
+    private fun recomecarFps() {
+        geracaoFps += 1
+        fpsMedido = null
+        amostraTunel = null
+    }
+
+    /** Uma medição nova da thread do player: só a da geração atual vai para o Dart. */
+    private fun aoMedirFps(geracao: Int, fps: Double) {
+        if (geracao != geracaoFps || player == null) return
+        if (fpsMedido?.let { Math.abs(it - fps) < 0.01 } == true) return
+        fpsMedido = fps
+        Log.i(TAG, "fps medido: id=$idAtual ${"%.3f".format(fps)}")
+        enviar("fps", mapOf("valor" to fps))
+    }
+
+    /**
+     * Em túnel não há ouvinte das imagens: imagens mostradas / tempo do vídeo, numa janela de
+     * [JANELA_TUNEL_MS] de vídeo a tocar, arredondado ao fps comum mais perto ([MedidorFps.arredondar]).
+     */
+    private fun medirFpsEmTunel(p: ExoPlayer) {
+        if (fpsMedido != null || !p.isPlaying || !primeiraImagem) return
+        val c = p.videoDecoderCounters ?: return
+        c.ensureUpdated()
+        val agora = c.renderedOutputBufferCount to p.currentPosition
+        val inicio = amostraTunel
+        if (inicio == null || agora.second < inicio.second || agora.first < inicio.first) {
+            amostraTunel = agora
+            return
+        }
+        val ms = agora.second - inicio.second
+        if (ms < JANELA_TUNEL_MS) return
+        val fps = MedidorFps.arredondar((agora.first - inicio.first) * 1000.0 / ms)
+        if (fps == null) {
+            amostraTunel = agora // uma janela estranha (paragem, salto): tenta-se outra
+            return
+        }
+        aoMedirFps(geracaoFps, fps)
+    }
 
     private fun enviar(tipo: String, dados: Map<String, Any?> = emptyMap()) {
         val sink = eventos ?: return
@@ -434,6 +499,7 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
             if (aCarregar) {
                 enviar("aCarregar", mapOf("valor" to true, "percentagem" to percentagemCarga()))
             }
+            medirFpsEmTunel(p)
             if (p.isPlaying) {
                 val ms = p.currentPosition
                 if (ms != ultimaPosicao) {
@@ -717,6 +783,7 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
     companion object {
         private const val TAG = "ReprodutorExo"
         private const val INTERVALO_POSICAO_MS = 500L
+        private const val JANELA_TUNEL_MS = 4_000L
 
         /**
          * Erros de descodificador/formato: o Dart pode passar ao mpv. O resto (rede, HTTP…) não, exceto
@@ -735,5 +802,59 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
 
         /** Erros do AudioTrack (5000–5999: abrir, escrever, offload): formato só antes de o canal começar. */
         private val CODIGOS_AUDIO_TRACK = 5000..5999
+    }
+}
+
+/**
+ * Mede as imagens por segundo de um vídeo pelos PTS das imagens a mostrar: a mediana dos intervalos
+ * das últimas [AMOSTRAS] (uma imagem perdida ou um intervalo estranho não mexem na mediana). Usado só
+ * na thread do player; uma [registar] com outra geração (canal novo) recomeça do zero.
+ */
+internal class MedidorFps {
+    private var geracao = Int.MIN_VALUE
+    private val pts = LongArray(AMOSTRAS + 1)
+    private var n = 0
+    private var ultimo = Long.MIN_VALUE
+    private var enviado: Double? = null
+
+    /** Regista o PTS (µs) de uma imagem; devolve o fps quando há amostras e ele mudou, senão null. */
+    fun registar(g: Int, ptsUs: Long): Double? {
+        if (g != geracao) {
+            geracao = g
+            n = 0
+            ultimo = Long.MIN_VALUE
+            enviado = null
+        }
+        // para trás ou um buraco grande (salto, descontinuidade): recomeça a janela
+        if (ultimo != Long.MIN_VALUE && (ptsUs <= ultimo || ptsUs - ultimo > 1_000_000L)) n = 0
+        ultimo = ptsUs
+        if (n == pts.size) {
+            System.arraycopy(pts, 1, pts, 0, pts.size - 1)
+            n--
+        }
+        pts[n++] = ptsUs
+        if (n < pts.size) return null
+        val deltas = LongArray(AMOSTRAS) { pts[it + 1] - pts[it] }
+        deltas.sort()
+        val mediana = (deltas[AMOSTRAS / 2 - 1] + deltas[AMOSTRAS / 2]) / 2.0
+        if (mediana <= 0) return null
+        val fps = Math.round(1e6 / mediana * 1000.0) / 1000.0
+        val antes = enviado
+        // só se manda outra vez se mudou de verdade (mais de 2%)
+        if (antes != null && Math.abs(antes - fps) / antes < 0.02) return null
+        enviado = fps
+        return fps
+    }
+
+    companion object {
+        /** ~30 imagens: pouco mais de 1 s a 25 fps. */
+        const val AMOSTRAS = 30
+        private val COMUNS = doubleArrayOf(23.976, 24.0, 25.0, 29.97, 30.0, 48.0, 50.0, 59.94, 60.0)
+
+        /** O fps comum mais perto de [fps] (até 3% de diferença), ou null. */
+        fun arredondar(fps: Double): Double? {
+            val melhor = COMUNS.minByOrNull { Math.abs(it - fps) } ?: return null
+            return if (Math.abs(melhor - fps) / melhor <= 0.03) melhor else null
+        }
     }
 }

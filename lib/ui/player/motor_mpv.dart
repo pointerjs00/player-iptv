@@ -70,6 +70,10 @@ class MotorMediaKit implements MotorReproducao {
   @override
   Stream<Duration> get posicao => player.stream.position;
 
+  /// O ecrã lê o fps nas propriedades do mpv (`container-fps`, `estimated-vf-fps`).
+  @override
+  Stream<double> get fps => const Stream.empty();
+
   @override
   Stream<void> get fim => player.stream.completed.where((c) => c).map<void>((_) {});
 
