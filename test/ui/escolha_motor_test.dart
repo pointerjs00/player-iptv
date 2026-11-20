@@ -412,6 +412,58 @@ void main() {
     });
   });
 
+  group('N1: corte com a app em segundo plano', () {
+    Future<void> paraFundo(WidgetTester t) async {
+      for (final e in [AppLifecycleState.inactive, AppLifecycleState.hidden, AppLifecycleState.paused]) {
+        t.binding.handleAppLifecycleStateChanged(e);
+        await t.pump();
+      }
+    }
+
+    Future<void> deVolta(WidgetTester t) async {
+      for (final e in [AppLifecycleState.hidden, AppLifecycleState.inactive, AppLifecycleState.resumed]) {
+        t.binding.handleAppLifecycleStateChanged(e);
+        await t.pump();
+      }
+    }
+
+    testWidgets('um erro de rede em segundo plano não reabre; reabre ao voltar à app', (t) async {
+      final m = _Montagem();
+      await m.montar(t);
+      final exo = m.exos.single;
+      await _abrirComImagem(t, exo);
+      await t.pump(const Duration(seconds: 30));
+      await paraFundo(t);
+      exo.erro('Falha de rede ao abrir o canal', rede: true);
+      await _reabrir(t);
+      await t.pump(const Duration(seconds: 5));
+      expect(exo.aberturas, hasLength(1), reason: 'nada toca com a app escondida');
+      expect(find.textContaining('o canal não abriu'), findsNothing);
+      await deVolta(t);
+      await _reabrir(t);
+      expect(exo.aberturas, hasLength(2), reason: 'ao voltar, o canal reabre');
+      await _sair(t);
+    });
+
+    testWidgets('uma paragem em segundo plano não arma os 15 s; ao voltar volta a contar', (t) async {
+      final m = _Montagem();
+      await m.montar(t);
+      final exo = m.exos.single;
+      await _abrirComImagem(t, exo);
+      await t.pump(const Duration(seconds: 30));
+      exo.carregar(true);
+      await t.pump(const Duration(seconds: 5));
+      await paraFundo(t);
+      await t.pump(const Duration(seconds: 30));
+      expect(exo.aberturas, hasLength(1));
+      await deVolta(t);
+      await t.pump(const Duration(seconds: 16));
+      await _reabrir(t);
+      expect(exo.aberturas, hasLength(2));
+      await _sair(t);
+    });
+  });
+
   group('com o ExoPlayer', () {
     testWidgets('o painel: as opções só do mpv aparecem desativadas com "só no motor mpv"', (t) async {
       final m = _Montagem();
@@ -523,10 +575,11 @@ void main() {
       final exo = m.exos.single;
       await _abrirComImagem(t, exo);
       exo.pedidos.clear();
-      exo.erro('O servidor respondeu com o código HTTP 403');
+      // o que o nativo manda num ERROR_CODE_DECODING_FAILED depois da 1.ª imagem: nem formato nem rede
+      exo.erro('O ExoPlayer não conseguiu tocar o canal', formato: false, rede: false);
       await t.pump();
       await t.pump();
-      expect(find.text('RTP 1: o canal não abriu (O servidor respondeu com o código HTTP 403)'), findsOneWidget);
+      expect(find.text('RTP 1: o canal não abriu (O ExoPlayer não conseguiu tocar o canal)'), findsOneWidget);
       expect(exo.pedidos, contains('parar'));
       await _sair(t);
     });

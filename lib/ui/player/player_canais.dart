@@ -214,6 +214,14 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   /// [ContinuarDireto.limiteSemDados] a ligação conta como cortada ([_corteSemMpv]).
   Timer? _semDados;
 
+  /// A app está à vista (`resumed`). Fora dela o ExoPlayer está pausado pelo sistema: um corte não
+  /// reabre o canal (tocava com a app escondida) nem conta a paragem; fica guardado em
+  /// [_cortePendente] e trata-se ao voltar.
+  bool get _aVista => (WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed) == AppLifecycleState.resumed;
+
+  /// Um corte que chegou com a app em segundo plano (null: nenhum); o valor é o `retomavel` dele.
+  bool? _cortePendente;
+
   /// Quando o canal deu imagem pela última vez (para saber se uma reabertura valeu a pena).
   DateTime? _abriuEm;
 
@@ -445,8 +453,17 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     switch (state) {
       case AppLifecycleState.paused || AppLifecycleState.hidden || AppLifecycleState.detached:
         _taxa.repor(); // a TV volta ao modo normal fora do player
+        _pararVigiaSemDados(); // em segundo plano a espera por dados não conta
       case AppLifecycleState.resumed:
         if (!_aAbrir && _erro == null) _ajustarTaxa(_pedido);
+        // o corte que chegou com a app escondida reabre agora; uma paragem volta a contar
+        final pendente = _cortePendente;
+        _cortePendente = null;
+        if (pendente != null) {
+          _corteSemMpv(retomavel: pendente);
+        } else if (_buffering) {
+          _vigiarSemDados(true);
+        }
       case AppLifecycleState.inactive:
         break;
     }
@@ -526,7 +543,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   /// [ContinuarDireto.limiteSemDados] é um corte (o ExoPlayer num progressivo fica à espera para
   /// sempre).
   void _vigiarSemDados(bool aCarregar) {
-    if (aCarregar && _mk == null && !_aAbrir && _erro == null && _aTocar) {
+    if (aCarregar && _mk == null && !_aAbrir && _erro == null && _aTocar && _aVista) {
       _semDados ??= Timer(ContinuarDireto.limiteSemDados, () {
         _semDados = null;
         if (!mounted) return;
@@ -552,6 +569,12 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     _pararVigiaSemDados();
     if (!mounted || _mk != null) return false;
     final direto = _motor.direto ?? true;
+    if (!_aVista && !_aAbrir && _erro == null) {
+      // com a app escondida não se reabre (o canal tocava em fundo): reabre-se ao voltar
+      _cortePendente = (_cortePendente ?? false) || retomavel;
+      debugPrint('player: corte com a app em segundo plano; reabre ao voltar');
+      return true;
+    }
     if (!ContinuarDireto.deve(
         fimDoBuffer: true, aAbrir: _aAbrir, erro: _erro != null, aTocar: _aTocar, direto: direto || retomavel)) {
       return false;
@@ -627,6 +650,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     }
     _saltoPendente = false;
     _pararVigiaSemDados();
+    _cortePendente = null;
     _mudo.reiniciar();
     _ligacao = LigacaoDireto();
     _vigiaEntrelacamento?.cancel();

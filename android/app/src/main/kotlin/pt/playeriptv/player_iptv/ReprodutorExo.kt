@@ -96,6 +96,8 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
     private var descodificadorHardware: Boolean? = null
     private var pausadoPeloSistema = false
     private var pausadoEm = 0L
+    // a Activity está pausada (entre aoPausar e aoRetomar): um abrir nesse intervalo não toca
+    private var emSegundoPlano = false
 
     // O fps medido nas imagens (o TS do Media3 nunca põe Format.frameRate e o HLS das listas não traz
     // FRAME-RATE): sem ele a TV não muda para 50 Hz. Medido na thread do player pelos PTS das imagens
@@ -329,7 +331,14 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
         Log.i(TAG, "abrir: id=$idAtual ${if (hls) "hls" else "progressivo"}") // nunca o URL
         if (inicioMs != null && inicioMs > 0) p.setMediaSource(fonte, inicioMs) else p.setMediaSource(fonte)
         p.prepare()
-        p.playWhenReady = true
+        if (emSegundoPlano) {
+            // a app está escondida: prepara mas não toca; o aoRetomar põe-no a tocar ao voltar
+            p.playWhenReady = false
+            pausadoPeloSistema = true
+            pausadoEm = SystemClock.elapsedRealtime()
+        } else {
+            p.playWhenReady = true
+        }
         definirACarregar(true)
     }
 
@@ -680,7 +689,12 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
      * software são os da Google/AOSP: `OMX.google.*`, `c2.android.*`, e os `*.sw.*`). Com o
      * `setEnableDecoderFallback` o ExoPlayer pode passar ao software sem avisar: as estatísticas dizem-no.
      */
-    private fun eHardware(nome: String): Boolean {
+    private fun eHardware(nome: String): Boolean = hardwarePorNome.getOrPut(nome) { perguntarHardware(nome) }
+
+    /** O resultado de [eHardware] por nome: a lista de descodificadores não se cria em cada zapping. */
+    private val hardwarePorNome = HashMap<String, Boolean>()
+
+    private fun perguntarHardware(nome: String): Boolean {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             try {
                 MediaCodecList(MediaCodecList.ALL_CODECS).codecInfos.firstOrNull { it.name == nome }?.let {
@@ -815,6 +829,7 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
 
     /** onPause/onStop: pausa (a Surface é largada pelo próprio SurfaceView ao esconder a janela). */
     fun aoPausar() {
+        emSegundoPlano = true
         val p = player ?: return
         if (p.playWhenReady) {
             pausadoPeloSistema = true
@@ -828,6 +843,7 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
      * (o buffer guardado já está velho); a primeira imagem nova vai para a Surface recriada.
      */
     fun aoRetomar() {
+        emSegundoPlano = false
         val p = player ?: return
         if (!pausadoPeloSistema) return
         pausadoPeloSistema = false
@@ -919,7 +935,7 @@ internal class MedidorFps {
     companion object {
         /** ~30 imagens: pouco mais de 1 s a 25 fps. */
         const val AMOSTRAS = 30
-        private val COMUNS = doubleArrayOf(23.976, 24.0, 25.0, 29.97, 30.0, 48.0, 50.0, 59.94, 60.0)
+        private val COMUNS = doubleArrayOf(23.976, 24.0, 25.0, 29.97, 30.0, 50.0, 59.94, 60.0)
 
         /** O fps comum mais perto de [fps] (até 3% de diferença), ou null. */
         fun arredondar(fps: Double): Double? {
