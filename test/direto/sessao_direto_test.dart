@@ -353,4 +353,54 @@ void main() {
       expect(tmp.listSync(), isEmpty);
     });
   });
+
+  group('nunca duas sessões no processo (dois players seguidos)', () {
+    const outro = 'http://exemplo.invalid/live/utilizador/segredo/2.ts';
+
+    test('sair de um canal e abrir logo outro, com o descartar lento: a nova só liga depois de a anterior fechar',
+        () async {
+      final s1 = nova();
+      final a1 = s1.abrir(const FonteVideo(_origem));
+      (await origem.proxima()).add(_ts(188 * 4));
+      expect(await a1, isNotNull);
+      // o player 1 saiu, mas o dispose dele só fecha a sessão depois do descartar do motor (lento);
+      // o player 2 já abriu outro canal
+      final s2 = nova();
+      final a2 = s2.abrir(const FonteVideo(outro));
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      expect(origem.pedidos, hasLength(1), reason: 'a sessão nova espera pela anterior');
+      expect(tmp.listSync().whereType<Directory>(), hasLength(1), reason: 'nem a pasta nova se cria antes');
+      final ligou = origem._ligou.stream.first;
+      await s1.fechar();
+      final l2 = await ligou;
+      l2.add(_ts(188 * 4));
+      expect(await a2, isNotNull);
+      expect(origem.maximoAbertas, 1, reason: 'nunca duas ligações à origem');
+      expect(tmp.listSync().whereType<Directory>(), hasLength(1));
+      await s2.fechar();
+      expect(tmp.listSync(), isEmpty);
+    });
+
+    test('uma anterior que nunca fecha é fechada pela nova ao fim do limite', () async {
+      final antes = SessaoGravada.esperaAnterior;
+      SessaoGravada.esperaAnterior = const Duration(milliseconds: 200);
+      addTearDown(() => SessaoGravada.esperaAnterior = antes);
+      final s1 = nova();
+      final a1 = s1.abrir(const FonteVideo(_origem));
+      (await origem.proxima()).add(_ts(188 * 4));
+      expect(await a1, isNotNull);
+      final s2 = nova();
+      final ligou = origem._ligou.stream.first;
+      final a2 = s2.abrir(const FonteVideo(outro));
+      final l2 = await ligou;
+      expect(origem.abertas, lessThanOrEqualTo(1), reason: 'a anterior largou a origem antes');
+      l2.add(_ts(188 * 4));
+      expect(await a2, isNotNull);
+      expect(origem.maximoAbertas, 1);
+      expect(s1.janela, Duration.zero, reason: 'a anterior fechou');
+      await s2.fechar();
+      await s1.fechar();
+      expect(tmp.listSync(), isEmpty);
+    });
+  });
 }

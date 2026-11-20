@@ -3,7 +3,8 @@
 /// O player abre o canal pela sessão ([SessaoDireto.abrir]) e o motor toca o URL local; recuar e
 /// avançar são reaberturas do motor noutro `desde=`. Ao mudar de canal, sair ou dar erro, o player
 /// chama [SessaoDireto.fechar]: pára o gravador, apaga a pasta e fecha o servidor. Nunca há duas
-/// sessões ao mesmo tempo.
+/// sessões ao mesmo tempo, nem entre dois players seguidos: a fila do processo
+/// ([SessaoGravada.abrir] espera que a anterior feche).
 ///
 /// Nunca se regista o URL de origem, os cabeçalhos, nem o código do servidor local.
 library;
@@ -214,6 +215,36 @@ class SessaoGravada implements SessaoDireto {
   final Future<Stream<List<int>>> Function(Uri, Map<String, String>)? abrirOrigem;
   final Future<void> Function(Duration)? esperar;
 
+  /// Quanto a sessão nova espera que a anterior feche antes de a fechar ela.
+  @visibleForTesting
+  static Duration esperaAnterior = const Duration(seconds: 10);
+
+  /// A última sessão que começou a abrir, de qualquer player do processo. As sessões fazem uma
+  /// fila: cada uma só cria a pasta e liga à origem depois de a anterior ter fechado (um player que
+  /// sai fecha a sua depois de largar o motor, e o seguinte já pode estar a abrir). Nunca há duas
+  /// sessões nem duas ligações à origem.
+  static SessaoGravada? _ultima;
+
+  /// A sessão antes desta na fila (null depois de ela fechar).
+  SessaoGravada? _anterior;
+  bool _naFila = false;
+
+  /// Esta sessão e as anteriores na fila fecharam.
+  final _fechadaToda = Completer<void>();
+
+  /// Espera que esta sessão (e as anteriores) feche; passado [esperaAnterior], fecha-as.
+  Future<void> _esperarFecho() async {
+    try {
+      await _fechadaToda.future.timeout(esperaAnterior);
+    } on TimeoutException {
+      debugPrint('direto gravado: a sessão anterior não fechou a tempo; fecha-se agora');
+      for (SessaoGravada? s = this; s != null; s = s._anterior) {
+        unawaited(s.fechar());
+      }
+      await _fechadaToda.future;
+    }
+  }
+
   GravadorDireto? _g;
   ServidorDireto? _s;
   bool _fechada = false;
@@ -256,8 +287,16 @@ class SessaoGravada implements SessaoDireto {
 
   @override
   Future<Uri?> abrir(FonteVideo fonte, {Future<FonteVideo> Function()? renovar}) async {
-    if (_g != null) throw StateError('a sessão já foi aberta');
+    if (_g != null || _naFila) throw StateError('a sessão já foi aberta');
     if (_fechada) return null;
+    // a fila do processo: a anterior (de outro player, também) fecha antes de esta começar
+    _naFila = true;
+    final anterior = _anterior = _ultima;
+    _ultima = this;
+    if (anterior != null) {
+      await anterior._esperarFecho();
+      if (_fechada) return null;
+    }
     final GravadorDireto g;
     try {
       // em disco: a reserva conforme o espaço livre; sem espaço nem para o mínimo, a memória
@@ -308,6 +347,7 @@ class SessaoGravada implements SessaoDireto {
       );
     } catch (e) {
       debugPrint('direto gravado: a sessão não começou (${e.runtimeType}); toca a origem');
+      await fechar(); // a seguinte na fila não fica à espera desta
       return null;
     }
     _g = g;
@@ -424,5 +464,11 @@ class SessaoGravada implements SessaoDireto {
     _subs.clear();
     await _erros.close();
     await _crescimento.close();
+    // fechada só quando as anteriores na fila também fecharam
+    final anterior = _anterior;
+    if (anterior != null) await anterior._esperarFecho();
+    _anterior = null;
+    if (identical(_ultima, this)) _ultima = null;
+    _fechadaToda.complete();
   }
 }
