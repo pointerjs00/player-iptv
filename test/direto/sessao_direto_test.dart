@@ -64,6 +64,46 @@ void main() {
         esperar: (_) async {},
       );
 
+  group('a sessão só para coser (Stalker com o recuo Desligado)', () {
+    test('criarSessaoDireto(costura): em memória, 32 MiB em blocos de 4 MiB, sem pasta', () {
+      final s = criarSessaoDireto(memoria: false, costura: true) as SessaoGravada;
+      expect(s.memoria, isTrue);
+      expect(s.reservaBytes, 32 << 20);
+      expect(s.tamanhoBlocoMemoria, 4 << 20);
+      final normal = criarSessaoDireto(memoria: true) as SessaoGravada;
+      expect(normal.reservaBytes, reservaMemoriaPlataforma, reason: 'o recuo em Memória fica como estava');
+      expect(normal.tamanhoBlocoMemoria, blocoMemoria);
+    });
+
+    test('a sessão de costura grava em RAM e nunca passa dos 32 MiB', () async {
+      final s = SessaoGravada(
+        pastaBase: () async => throw StateError('não pede a pasta'),
+        reservaBytes: reservaCostura,
+        memoria: true,
+        tamanhoBlocoMemoria: blocoCostura,
+        abrirOrigem: origem.abrir,
+        esperar: (_) async {},
+      );
+      final url = s.abrir(const FonteVideo(_origem));
+      final c = await origem.proxima();
+      final pedaco = _ts(188 * 1393); // ~256 KiB
+      c.add(pedaco);
+      expect(await url, isNotNull);
+      var maximo = 0;
+      for (var i = 0; i < 200; i++) {
+        c.add(pedaco); // ~51 MiB no total
+        await Future<void>.delayed(Duration.zero);
+        final usado = (s.armazem! as ArmazemMemoria).bytesEmUso;
+        if (usado > maximo) maximo = usado;
+      }
+      expect(s.emMemoria, isTrue);
+      expect(maximo, lessThanOrEqualTo(reservaCostura));
+      expect(maximo, greaterThan(0));
+      await s.fechar();
+      expect(Directory(tmp.path).listSync(), isEmpty);
+    });
+  });
+
   group('gravavel', () {
     test('só diretos progressivos', () {
       expect(gravavel('http://h:8080/live/u/p/1.ts'), isTrue);

@@ -23,12 +23,17 @@ final _canais = [
   for (var i = 1; i <= 5; i++) Canal(id: '$i', nome: 'Canal $i', grupo: 'G'),
 ];
 
+/// Canais de um portal Stalker (o link vem do `create_link`, pelo `cmd`).
+final _stalker = [
+  for (var i = 1; i <= 3; i++) Canal(id: 's$i', nome: 'Stalker $i', grupo: 'G', cmd: 'ffrt http://localhost/ch/$i'),
+];
+
 String _origem(Canal c) => 'http://exemplo.invalid/live/utilizador/segredo/${c.id}.ts';
 
 /// Uma sessão sem rede nem servidor: o gravado cresce 1000 bytes por segundo do relógio do teste
 /// (10 min já gravados ao abrir) e o "URL local" diz o `desde`.
 class _SessaoFalsa implements SessaoDireto {
-  _SessaoFalsa(this.agora, this.registo, this.n, {this.pasta, this.memoria = false});
+  _SessaoFalsa(this.agora, this.registo, this.n, {this.pasta, this.memoria = false, this.costura = false});
 
   final DateTime Function() agora;
   final List<String> registo;
@@ -37,6 +42,9 @@ class _SessaoFalsa implements SessaoDireto {
 
   /// Criada para gravar em memória.
   final bool memoria;
+
+  /// Criada só para coser as religações (Stalker com o recuo Desligado).
+  final bool costura;
   late final DateTime _t0 = agora().subtract(const Duration(minutes: 10));
   final fontes = <FonteVideo>[];
   Future<FonteVideo> Function()? renovar;
@@ -131,6 +139,12 @@ class _MotorProcura extends MotorFalso implements MotorComProcura {
       posicao: Duration(seconds: 50), duracao: Duration(seconds: 60), procuravel: true, direto: true);
   final seeks = <Duration>[];
 
+  /// O buffer à frente da posição, nas estatísticas (null: não se sabe).
+  Duration? buffer;
+
+  @override
+  Future<EstatisticasMotor> estatisticas() async => EstatisticasMotor(buffer: buffer);
+
   @override
   Future<JanelaMotor?> janela() async => janelaAgora;
 
@@ -144,6 +158,11 @@ class _Montagem {
   final sessoes = <_SessaoFalsa>[];
   Directory? pastas;
   String Function(Canal c) url = _origem;
+  List<Canal> canais = _canais;
+
+  /// Quantas vezes o player pediu um link; `falhar(n)`: o n.º pedido (de 1) falha.
+  int resolucoes = 0;
+  bool Function(int n)? falhar;
 
   /// Aplicado a cada sessão criada (antes de abrir).
   void Function(_SessaoFalsa s)? preparar;
@@ -184,25 +203,27 @@ class _Montagem {
       theme: temaApp(),
       home: Scaffold(
         body: PlayerCanais(
-          canais: _canais,
+          canais: canais,
           indice: 0,
           nomeLista: 'Lista A',
           aoSair: () => saiu = true,
           plataforma: PlataformaVideo.android,
           agora: agora,
           resolver: (c, {continuar = false}) async {
+            final n = ++resolucoes;
             registo.add('resolver ${c.id} continuar=$continuar');
+            if (falhar?.call(n) ?? false) throw StateError('o portal não deu o link');
             return FonteVideo(url(c), const {'User-Agent': 'Teste'});
           },
           criarMotor: (ModoDescodificacao modo, bool hardware) => novo('mpv'),
           criarMotorExo: ({required bool tunel}) => novo('exo'),
           criarSessao: comSessao
-              ? ({required bool memoria}) {
+              ? ({required bool memoria, bool costura = false}) {
                   final n = sessoes.length + 1;
                   final p = pastas;
-                  registo.add('criar sessao$n memoria=$memoria');
+                  registo.add('criar sessao$n memoria=$memoria${costura ? ' costura' : ''}');
                   final s = _SessaoFalsa(agora, registo, n,
-                      pasta: p == null ? null : Directory('${p.path}/s$n'), memoria: memoria);
+                      pasta: p == null ? null : Directory('${p.path}/s$n'), memoria: memoria, costura: costura);
                   preparar?.call(s);
                   sessoes.add(s);
                   return s;
@@ -817,6 +838,156 @@ void main() {
       await _abrirComImagem(t, m.motor);
       await pausar(t);
       expect(m.motor.ecraLigado, isFalse);
+      await _sair(t);
+    });
+  });
+  group('canais Stalker', () {
+    testWidgets('recuo Desligado: passam pelo gravador numa sessão só para coser, em memória; sem recuo, sem '
+        'barra e a pausa não prende o ecrã', (t) async {
+      final m = _Montagem()..canais = _stalker;
+      await m.montar(t, recuo: RecuoDireto.desligado);
+      expect(m.registo, contains('criar sessao1 memoria=true costura'));
+      expect(m.sessao.costura, isTrue);
+      final exo = m.motor as _MotorProcura;
+      expect(exo.aberturas.single.url, m.sessao.urlDireto.toString(), reason: 'o motor toca o URL local');
+      await _abrirComImagem(t, exo);
+      await _tocar(t, m, 3);
+      await t.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+      await _reabrir(t);
+      expect(exo.aberturas, hasLength(1), reason: 'sem recuo no gravado');
+      expect(exo.seeks, isEmpty, reason: 'nem o seek do motor no URL local');
+      await t.sendKeyEvent(LogicalKeyboardKey.select);
+      await t.pumpAndSettle();
+      expect(find.byType(BarraProgresso), findsNothing);
+      expect(find.byTooltip('Recuar 10 s'), findsNothing);
+      await t.tap(find.byTooltip('Pausa'));
+      await t.pump();
+      expect(exo.pedidos, contains('pausar'));
+      expect(exo.ecraLigado, isFalse, reason: 'sem pausa com gravação: como no Desligado');
+      await _sair(t);
+      expect(m.sessao.fechada, isTrue);
+    });
+
+    testWidgets('recuo Desligado: um corte do motor reabre no URL local, sem pedir outro link', (t) async {
+      final m = _Montagem()..canais = _stalker;
+      await m.montar(t, recuo: RecuoDireto.desligado);
+      await _abrirComImagem(t, m.motor);
+      await _tocar(t, m, 20);
+      m.motor.acabar();
+      await _reabrir(t);
+      expect(m.resolucoes, 1);
+      expect(m.sessoes, hasLength(1));
+      expect(m.motor.aberturas, hasLength(2));
+      expect(m.motor.aberturas.last.url, startsWith('http://127.0.0.1:4567/'));
+      await _sair(t);
+    });
+
+    testWidgets('recuo Armazenamento e Memória: como estavam (com recuo)', (t) async {
+      final m = _Montagem()..canais = _stalker;
+      await m.montar(t);
+      expect(m.registo, contains('criar sessao1 memoria=false'));
+      expect(m.sessao.costura, isFalse);
+      await _abrirComImagem(t, m.motor);
+      await t.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+      await _reabrir(t);
+      expect(m.motor.aberturas, hasLength(2), reason: 'recuar reabre no gravado');
+      await _sair(t);
+
+      final mem = _Montagem()..canais = _stalker;
+      await mem.montar(t, recuo: RecuoDireto.memoria);
+      expect(mem.registo, contains('criar sessao1 memoria=true'));
+      expect(mem.sessao.costura, isFalse);
+      await _sair(t);
+    });
+
+    testWidgets('um canal que não é Stalker com o recuo Desligado continua sem sessão', (t) async {
+      final m = _Montagem();
+      await m.montar(t, recuo: RecuoDireto.desligado);
+      expect(m.sessoes, isEmpty);
+      await _sair(t);
+    });
+  });
+
+  group('sem gravador: o link da reabertura pede-se antes', () {
+    testWidgets('num canal Stalker, com o buffer abaixo de 5 s pede já o link; a reabertura usa-o', (t) async {
+      final m = _Montagem()..canais = _stalker;
+      m.url = (c) => '${_origem(c)}?link=${m.resolucoes}';
+      await m.montar(t, comSessao: false);
+      final exo = m.motor as _MotorProcura;
+      expect(exo.aberturas.single.url, endsWith('link=1'));
+      await _abrirComImagem(t, exo);
+      exo.buffer = const Duration(seconds: 20);
+      await t.pump(const Duration(seconds: 3));
+      expect(m.resolucoes, 1, reason: 'com buffer não se pede nada');
+      exo.buffer = const Duration(milliseconds: 4500);
+      await t.pump(const Duration(seconds: 1));
+      await t.pump();
+      expect(m.registo.where((r) => r.startsWith('resolver')),
+          ['resolver s1 continuar=false', 'resolver s1 continuar=true']);
+      expect(exo.aberturas, hasLength(1), reason: 'só se pede o link: a stream nova não abre');
+      await t.pump(const Duration(seconds: 3));
+      expect(m.resolucoes, 2, reason: 'um só pedido');
+      exo.acabar(); // o servidor fechou e o buffer acabou
+      await _reabrir(t);
+      expect(m.resolucoes, 2, reason: 'a reabertura usa o link pedido antes');
+      expect(exo.aberturas, hasLength(2));
+      expect(exo.aberturas.last.url, endsWith('link=2'));
+      expect(m.registo.lastIndexOf('exo1: parou'), lessThan(m.registo.lastIndexOf('exo1: abrir')),
+          reason: 'a ligação nova só abre depois de parar a anterior');
+      await _sair(t);
+    });
+
+    testWidgets('se o pedido antecipado falha, pede-se outro', (t) async {
+      final m = _Montagem()
+        ..canais = _stalker
+        ..falhar = (n) => n == 2;
+      m.url = (c) => '${_origem(c)}?link=${m.resolucoes}';
+      await m.montar(t, comSessao: false);
+      final exo = m.motor as _MotorProcura;
+      await _abrirComImagem(t, exo);
+      exo.buffer = const Duration(seconds: 2);
+      await t.pump(const Duration(seconds: 1));
+      await t.pump();
+      expect(m.resolucoes, 2);
+      await t.pump(const Duration(seconds: 1));
+      await t.pump();
+      expect(m.resolucoes, 3, reason: 'o pedido que falhou não fica: pede-se outro');
+      await t.pump(const Duration(seconds: 6));
+      exo.acabar();
+      await _reabrir(t);
+      expect(m.resolucoes, 3);
+      expect(exo.aberturas.last.url, endsWith('link=3'));
+      await _sair(t);
+    });
+
+    testWidgets('se o link pedido antes não abre, a reabertura pede outro', (t) async {
+      final m = _Montagem()..canais = _stalker;
+      m.url = (c) => '${_origem(c)}?link=${m.resolucoes}';
+      await m.montar(t, comSessao: false);
+      final exo = m.motor as _MotorProcura;
+      await _abrirComImagem(t, exo);
+      exo.buffer = const Duration(seconds: 2);
+      await t.pump(const Duration(seconds: 6));
+      exo.acabar();
+      await _reabrir(t);
+      expect(exo.aberturas.last.url, endsWith('link=2'));
+      exo.erro('HTTP error 462', rede: true); // o link já não servia
+      await t.pump();
+      await t.pump(const Duration(seconds: 1));
+      await _reabrir(t);
+      expect(m.resolucoes, 3);
+      expect(exo.aberturas.last.url, endsWith('link=3'));
+      await _sair(t);
+    });
+
+    testWidgets('num canal que não é Stalker nada se pede antes', (t) async {
+      final m = _Montagem();
+      await m.montar(t, comSessao: false);
+      final exo = m.motor as _MotorProcura;
+      await _abrirComImagem(t, exo);
+      exo.buffer = const Duration(seconds: 1);
+      await t.pump(const Duration(seconds: 5));
+      expect(m.resolucoes, 1);
       await _sair(t);
     });
   });

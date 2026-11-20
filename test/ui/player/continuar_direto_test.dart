@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:player_iptv/modelo/canal.dart';
 import 'package:player_iptv/ui/player/continuar_direto.dart';
 import 'package:player_iptv/ui/player/progresso.dart';
 
@@ -289,6 +292,86 @@ void main() {
       m.reiniciar();
       expect(m.mudouSilencio(false), 'no');
       expect(m.primeiraImagem(silencio: false), isNull);
+    });
+  });
+
+  group('LinkAntecipado (sem gravador: o link da reabertura pede-se antes de o buffer acabar)', () {
+    late DateTime agora;
+    late LinkAntecipado l;
+    late List<Completer<FonteVideo>> pedidos;
+    Future<FonteVideo> pedir() {
+      final c = Completer<FonteVideo>();
+      pedidos.add(c);
+      return c.future;
+    }
+
+    setUp(() {
+      agora = DateTime(2026, 11, 20, 12);
+      l = LinkAntecipado(agora: () => agora);
+      pedidos = [];
+    });
+
+    test('com 5 s ou mais no buffer (ou sem saber) não pede nada', () {
+      l.nivel(const Duration(seconds: 5), pedir);
+      l.nivel(const Duration(seconds: 25), pedir);
+      l.nivel(null, pedir);
+      expect(pedidos, isEmpty);
+      expect(LinkAntecipado.limiar, const Duration(seconds: 5));
+    });
+
+    test('abaixo de 5 s pede um link (um só, mesmo com o buffer a continuar baixo)', () async {
+      l.nivel(const Duration(milliseconds: 4900), pedir);
+      l.nivel(const Duration(seconds: 3), pedir);
+      expect(pedidos, hasLength(1));
+      pedidos.single.complete(const FonteVideo('http://exemplo.invalid/1'));
+      await Future<void>.delayed(Duration.zero);
+      expect(l.pronto, isTrue);
+      l.nivel(const Duration(seconds: 1), pedir);
+      expect(pedidos, hasLength(1), reason: 'já há um guardado');
+    });
+
+    test('o link guardado serve uma vez (na reabertura); depois volta a poder pedir-se', () async {
+      l.nivel(const Duration(seconds: 2), pedir);
+      pedidos.single.complete(const FonteVideo('http://exemplo.invalid/1'));
+      expect((await l.tomar())?.url, 'http://exemplo.invalid/1');
+      expect(await l.tomar(), isNull);
+      l.nivel(const Duration(seconds: 2), pedir);
+      expect(pedidos, hasLength(2));
+    });
+
+    test('se o pedido falha, o nível seguinte abaixo de 5 s pede outro', () async {
+      l.nivel(const Duration(seconds: 2), pedir);
+      pedidos.single.completeError(StateError('create_link falhou'));
+      await Future<void>.delayed(Duration.zero);
+      expect(l.pronto, isFalse);
+      expect(await l.tomar(), isNull);
+      l.nivel(const Duration(seconds: 2), pedir);
+      expect(pedidos, hasLength(2));
+    });
+
+    test('a reabertura com o pedido ainda a caminho espera por ele (nunca dois pedidos)', () async {
+      l.nivel(const Duration(seconds: 2), pedir);
+      final tomado = l.tomar();
+      pedidos.single.complete(const FonteVideo('http://exemplo.invalid/1'));
+      expect((await tomado)?.url, 'http://exemplo.invalid/1');
+      expect(pedidos, hasLength(1));
+    });
+
+    test('um link guardado há mais de 30 s já não se usa', () async {
+      l.nivel(const Duration(seconds: 2), pedir);
+      pedidos.single.complete(const FonteVideo('http://exemplo.invalid/1'));
+      await Future<void>.delayed(Duration.zero);
+      agora = agora.add(const Duration(seconds: 31));
+      expect(await l.tomar(), isNull);
+    });
+
+    test('esquecer (outro canal): a resposta atrasada não fica guardada', () async {
+      l.nivel(const Duration(seconds: 2), pedir);
+      l.esquecer();
+      pedidos.single.complete(const FonteVideo('http://exemplo.invalid/1'));
+      await Future<void>.delayed(Duration.zero);
+      expect(l.pronto, isFalse);
+      expect(await l.tomar(), isNull);
     });
   });
 }

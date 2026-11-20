@@ -63,6 +63,13 @@ class ConfiguracaoMpv {
   /// Com os 20 s de antes, ao recuar mais de ~20 s o mpv deixava de ler e o canal ficava para trás.
   static const segundosAFrente = 300;
 
+  /// Quanto o mpv junta (s) antes de começar a tocar um canal: evita engasgos logo no arranque.
+  static const esperaCache = 2;
+
+  /// O mesmo ao reabrir um direto depois de um corte: a ligação nova traz logo uns 25 s (a rajada
+  /// do servidor), por isso 1 s chega e o «A carregar…» fica mais curto (`aplicarAoAbrir`).
+  static const esperaCacheReabrir = 1;
+
   /// A saída de vídeo e a descodificação (vão no `VideoControllerConfiguration`).
   final String vo;
   final String hwdec;
@@ -132,9 +139,9 @@ class ConfiguracaoMpv {
         'cache-secs': '$segundosAFrente',
         'demuxer-max-bytes': '$bufferBytes',
         'demuxer-max-back-bytes': '$bufferBytes',
-        // junta 2 s antes de começar: evita engasgos logo no arranque
+        // junta 2 s antes de começar: evita engasgos logo no arranque (1 s ao reabrir um direto)
         'cache-pause-initial': 'yes',
-        'cache-pause-wait': '2',
+        'cache-pause-wait': '$esperaCache',
         'network-timeout': '${ContinuarDireto.limiteSemDados.inSeconds}',
         // sem reconexão dentro do mesmo stream (o mpv liga-a por omissão no http): o servidor
         // responde a uma ligação nova com um bloco do que já passou, os tempos recomeçam e o

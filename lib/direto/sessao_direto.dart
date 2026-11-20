@@ -27,7 +27,9 @@ import 'servidor.dart';
 
 /// Cria a sessão de um canal (uma por canal aberto). null no player: sem gravação. `memoria`: o
 /// recuo em Memória (ou o armazenamento acabou neste canal): grava num anel de blocos em RAM.
-typedef CriarSessaoDireto = SessaoDireto Function({required bool memoria});
+/// `costura`: só para coser as religações (um canal Stalker com o recuo Desligado): um anel em RAM
+/// pequeno ([reservaCostura]), sem recuo nem pausa com gravação na interface.
+typedef CriarSessaoDireto = SessaoDireto Function({required bool memoria, bool costura});
 
 /// O gravador desistiu antes de o canal começar: a mensagem é para o utilizador e não tem o URL.
 class ErroSessaoDireto implements Exception, ErroLegivel {
@@ -96,6 +98,14 @@ int get reservaMemoriaPlataforma => Platform.isWindows ? 256 << 20 : 128 << 20;
 
 /// Os blocos em memória: mais pequenos do que no disco (a janela roda em passos de 8 MiB).
 const blocoMemoria = 8 << 20;
+
+/// A sessão só para coser as religações (o recuo Desligado num canal Stalker): 32 MiB em RAM, que
+/// chegam para o motor ler à frente e para a procura da costura. Não é para recuar.
+const reservaCostura = 32 << 20;
+
+/// Os blocos da sessão de costura: 4 MiB (a reserva tira um bloco para a procura da costura; com
+/// blocos de 8 MiB ficavam só 3 no anel).
+const blocoCostura = 4 << 20;
 
 /// Só os diretos progressivos passam pelo gravador: nem HLS (`.m3u8`, `extension=m3u8`), nem
 /// filmes e séries (Xtream `/movie/`, `/series/`, extensões de ficheiro).
@@ -178,11 +188,16 @@ Future<void> fecharSessoesDireto() async {
 
 /// A sessão de produção. Em disco: `direto/<sessão>` na cache, com a reserva das Definições
 /// ([Preferencias.reservaDiretoGb]) ajustada ao espaço livre do aparelho. Em `memoria`: um anel em
-/// RAM de [reservaMemoriaPlataforma].
-SessaoDireto criarSessaoDireto({required bool memoria}) => SessaoGravada(
+/// RAM de [reservaMemoriaPlataforma]. Em `costura`: um anel em RAM de [reservaCostura].
+SessaoDireto criarSessaoDireto({required bool memoria, bool costura = false}) => SessaoGravada(
       pastaBase: pastaDireto,
-      reservaBytes: memoria ? reservaMemoriaPlataforma : Preferencias.atual.reservaDiretoGb << 30,
-      memoria: memoria,
+      reservaBytes: costura
+          ? reservaCostura
+          : memoria
+              ? reservaMemoriaPlataforma
+              : Preferencias.atual.reservaDiretoGb << 30,
+      memoria: memoria || costura,
+      tamanhoBlocoMemoria: costura ? blocoCostura : blocoMemoria,
       espacoLivre: espacoLivre,
     );
 

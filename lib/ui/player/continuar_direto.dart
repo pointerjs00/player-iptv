@@ -1,5 +1,8 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show debugPrint;
+
+import '../../modelo/canal.dart';
 import 'progresso.dart';
 
 /// Continuar um direto quando o servidor fecha a ligação.
@@ -207,5 +210,81 @@ class MudoDuranteSalto {
   void reiniciar() {
     _aEsconder = false;
     _esperaImagem = false;
+  }
+}
+
+/// Sem gravador, num canal Stalker: o link da reabertura pede-se antes de o buffer acabar.
+///
+/// O servidor fecha a ligação a cada poucos segundos e o motor toca o buffer até ao fim; só aí o
+/// player reabre o canal, e o `create_link` entrava no «A carregar…». Com o buffer abaixo de
+/// [limiar], pede-se já o link seguinte e guarda-se para essa reabertura. Só se *pede* o link:
+/// nenhuma ligação à stream abre antes de a anterior fechar (há servidores com 1 ligação).
+/// Se o pedido falhar, o nível seguinte abaixo de [limiar] pede outro; um link guardado há mais
+/// de [validade] já não se usa (a reabertura pede um novo, como antes).
+class LinkAntecipado {
+  LinkAntecipado({required this.agora});
+
+  /// Abaixo disto no buffer do motor pede-se o link seguinte.
+  static const limiar = Duration(seconds: 5);
+
+  /// Quanto tempo um link pedido antes ainda se usa.
+  static const validade = Duration(seconds: 30);
+
+  final DateTime Function() agora;
+
+  Future<FonteVideo?>? _aPedir;
+  FonteVideo? _link;
+  DateTime? _em;
+
+  /// Muda a cada [esquecer]: uma resposta de antes já não conta.
+  int _geracao = 0;
+
+  /// Há um link guardado.
+  bool get pronto => _link != null;
+
+  /// O buffer do motor agora (null: não se sabe): abaixo de [limiar], e sem nenhum pedido a caminho
+  /// nem link guardado, pede-o com `pedir`.
+  void nivel(Duration? buffer, Future<FonteVideo> Function() pedir) {
+    if (buffer == null || buffer >= limiar || _aPedir != null || _link != null) return;
+    final g = _geracao;
+    debugPrint('player: o buffer está abaixo de ${limiar.inSeconds} s; pede-se já o link seguinte');
+    late final Future<FonteVideo?> f;
+    f = _aPedir = pedir().then<FonteVideo?>((l) {
+      if (g != _geracao) return null;
+      if (identical(_aPedir, f)) _aPedir = null;
+      _link = l;
+      _em = agora();
+      return l;
+    }, onError: (Object e) {
+      if (g == _geracao && identical(_aPedir, f)) _aPedir = null;
+      debugPrint('player: o link pedido antes falhou (${e.runtimeType}); pede-se outro');
+      return null;
+    });
+  }
+
+  /// O link guardado para a reabertura (uma só vez), esperando pelo pedido que ainda vai a caminho;
+  /// null se não há, se falhou ou se já é velho.
+  Future<FonteVideo?> tomar() async {
+    final g = _geracao;
+    final pendente = _aPedir;
+    if (_link == null && pendente != null) await pendente;
+    if (g != _geracao) return null;
+    final l = _link, em = _em;
+    _link = null;
+    _em = null;
+    if (l == null || em == null) return null;
+    if (agora().difference(em) > validade) {
+      debugPrint('player: o link pedido antes já é velho; pede-se outro');
+      return null;
+    }
+    return l;
+  }
+
+  /// Outro canal (ou o player fechou): o que havia deixa de valer.
+  void esquecer() {
+    _geracao++;
+    _aPedir = null;
+    _link = null;
+    _em = null;
   }
 }

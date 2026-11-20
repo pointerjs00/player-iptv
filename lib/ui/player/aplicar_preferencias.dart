@@ -54,14 +54,18 @@ String? hwdecEmTempoReal(PlataformaVideo p, {required bool hardware}) =>
 /// `limparFiltro`, sem o `vf` do canal anterior. `manterDesentrelacamento`: o mesmo canal reaberto
 /// depois de um corte do servidor, no mesmo mpv: fica tudo como estava (nem um segundo com riscas
 /// nem os filtros refeitos). `hardware`: em vez da preferência (Windows: um canal aberto "em modo
-/// compatível" no cartão de erro fica por software).
+/// compatível" no cartão de erro fica por software). `reabrirDireto`: um direto reaberto depois de
+/// um corte junta só [ConfiguracaoMpv.esperaCacheReabrir] antes de tocar (os outros, a espera normal).
 Future<void> aplicarAoAbrir(MotorMpv mpv, Preferencias p, SessaoPlayer s,
     {required PlataformaVideo plataforma,
     required ModoDescodificacao modo,
     bool? hardware,
     bool limparFiltro = false,
-    bool manterDesentrelacamento = false}) async {
+    bool manterDesentrelacamento = false,
+    bool reabrirDireto = false}) async {
   try {
+    await mpv.setProperty('cache-pause-wait',
+        '${reabrirDireto ? ConfiguracaoMpv.esperaCacheReabrir : ConfiguracaoMpv.esperaCache}');
     await mpv.setRate(1.0);
     await mpv.setVolume(p.volume);
     await mpv.setProperty('mute', s.silencio ? 'yes' : 'no');

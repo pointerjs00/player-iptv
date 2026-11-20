@@ -269,9 +269,13 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
             .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF)
         val seletor = DefaultTrackSelector(activity)
         seletor.setParameters(seletor.buildUponParameters().setTunnelingEnabled(comTunel))
-        // Direto: começa depressa (1,5 s) e retoma com 2,5 s; guarda até 30 s à frente.
+        // Direto: começa depressa (1,5 s) e retoma com 2,5 s; guarda até 60 s à frente. Cada ligação
+        // nova de muitos servidores traz logo 20–50 s (a rajada) e fecha ao fim de poucos segundos:
+        // com o máximo a 30 s, o resto ficava no socket e perdia-se. Abaixo do mínimo (30 s) lê-se
+        // sempre, mesmo com o limite de bytes (o tempo primeiro); acima, até aos 60 s ou ao limite
+        // de bytes do Media3 (~144 MB com vídeo e áudio: 60 s a 6 Mb/s são ~45 MB).
         val carga = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(15_000, 30_000, 1_500, 2_500)
+            .setBufferDurationsMs(30_000, 60_000, 1_500, 2_500)
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
         val p = ExoPlayer.Builder(activity, renderizadores)

@@ -105,7 +105,8 @@ enum RecuoDireto {
   /// O canal grava-se num anel em RAM (128 MiB no Android, 256 MiB no Windows): menos tempo.
   memoria('memoria', 'Memória', 'Guarda os últimos minutos em memória (menos tempo, sem usar o armazenamento).'),
 
-  /// Sem gravar (o mpv fica com o seu cache, como sempre).
+  /// Sem gravar (o mpv fica com o seu cache, como sempre). Os canais Stalker passam na mesma por um
+  /// anel pequeno em RAM, só para coser as religações (sem recuo nem pausa com gravação).
   desligado('desligado', 'Desligado', 'Sem recuo no direto.');
 
   const RecuoDireto(this.nome, this.rotulo, this.descricao);

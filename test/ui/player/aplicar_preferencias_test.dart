@@ -83,6 +83,26 @@ void main() {
       expect(mpv.chamadas, containsAll(['mute=yes', 'audio-delay=-0.250']));
     });
 
+    test('reabrir um direto espera 1 s pelo cache (a rajada do servidor traz ~25 s); o resto, 2 s', () async {
+      final novo = MpvFalso();
+      await aplicarAoAbrir(novo, Preferencias.omissao(), SessaoPlayer(), plataforma: PlataformaVideo.android,
+          modo: ModoDescodificacao.direto);
+      expect(novo.props['cache-pause-wait'], '2');
+      final reaberto = MpvFalso();
+      await aplicarAoAbrir(reaberto, Preferencias.omissao(), SessaoPlayer(),
+          plataforma: PlataformaVideo.android,
+          modo: ModoDescodificacao.direto,
+          reabrirDireto: true,
+          manterDesentrelacamento: true);
+      expect(reaberto.props['cache-pause-wait'], '1', reason: 'também com o desentrelaçamento mantido');
+      // o mesmo mpv: o canal seguinte volta aos 2 s
+      await aplicarAoAbrir(reaberto, Preferencias.omissao(), SessaoPlayer(), plataforma: PlataformaVideo.android,
+          modo: ModoDescodificacao.direto);
+      expect(reaberto.props['cache-pause-wait'], '2');
+      expect(ConfiguracaoMpv.esperaCache, 2);
+      expect(ConfiguracaoMpv.esperaCacheReabrir, 1);
+    });
+
     test('a velocidade volta sempre a 1× (não é preferência)', () async {
       final mpv = await _abrir(Preferencias.omissao(), sessao: SessaoPlayer());
       expect(mpv.chamadas.where((c) => c.startsWith('rate')), ['rate=1.0']);
