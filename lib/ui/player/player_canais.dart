@@ -657,9 +657,10 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
 
   /// Sem mpv: uma paragem à espera de dados com o canal aberto e a tocar que dura mais do que
   /// [ContinuarDireto.limiteSemDados] é um corte (o ExoPlayer num progressivo fica à espera para
-  /// sempre).
+  /// sempre). No direto gravado também (o motor encravado com o gravado a crescer): o
+  /// [_corteSemMpv] reabre-o no URL local ([_corteGravado]).
   void _vigiarSemDados(bool aCarregar) {
-    if (aCarregar && _mk == null && !_gravado && !_aAbrir && _erro == null && _aTocar && _aVista) {
+    if (aCarregar && _mk == null && !_aAbrir && _erro == null && _aTocar && _aVista) {
       _semDados ??= Timer(ContinuarDireto.limiteSemDados, () {
         _semDados = null;
         if (!mounted) return;

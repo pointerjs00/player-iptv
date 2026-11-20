@@ -407,6 +407,28 @@ void main() {
     await _sair(t);
   });
 
+  testWidgets('o ExoPlayer encravado a carregar com o gravado a crescer: 15 s depois reabre no URL local',
+      (t) async {
+    final m = _Montagem();
+    await m.montar(t);
+    await _abrirComImagem(t, m.motor);
+    m.motor.carregar(true);
+    for (var i = 0; i < 14; i++) {
+      await t.pump(const Duration(seconds: 1));
+      m.sessao.crescer();
+    }
+    expect(m.motor.aberturas, hasLength(1), reason: 'ainda dentro do limite');
+    for (var i = 0; i < 2; i++) {
+      await t.pump(const Duration(seconds: 1));
+      m.sessao.crescer();
+    }
+    await _reabrir(t);
+    expect(m.motor.aberturas, hasLength(2), reason: 'a rodinha não fica para sempre');
+    expect(m.motor.aberturas.last.url, startsWith('http://127.0.0.1:4567/codigo1/'));
+    expect(m.sessoes, hasLength(1), reason: 'a mesma sessão');
+    await _sair(t);
+  });
+
   testWidgets('sem sessão (null) fica tudo como antes: a origem no motor', (t) async {
     final m = _Montagem();
     await m.montar(t, comSessao: false);
