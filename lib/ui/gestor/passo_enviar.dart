@@ -161,21 +161,24 @@ class _PassoEnviarState extends State<PassoEnviar> {
               ]),
             );
           }
-          return CustomScrollView(slivers: [
-            SliverPadding(
+          // estreito (telemóvel): as ações ficam numa barra fixa por cima da lista, que desliza por baixo
+          return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Padding(
               padding: const EdgeInsets.fromLTRB(Tokens.e16, Tokens.e16, Tokens.e16, Tokens.e8),
-              sliver: SliverToBoxAdapter(child: _marcarBarra(listas)),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                _marcarBarra(listas),
+                const SizedBox(height: Tokens.e8),
+                _cartoes(sel, barra: true),
+              ]),
             ),
-            SliverPadding(padding: const EdgeInsets.symmetric(horizontal: Tokens.e16), sliver: lista),
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(Tokens.e16, 0, Tokens.e16, Tokens.e16),
-              sliver: SliverToBoxAdapter(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                  rodape,
-                  const SizedBox(height: Tokens.e12),
-                  cartoes,
-                ]),
-              ),
+            Expanded(
+              child: CustomScrollView(slivers: [
+                SliverPadding(padding: const EdgeInsets.symmetric(horizontal: Tokens.e16), sliver: lista),
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(Tokens.e16, 0, Tokens.e16, Tokens.e16),
+                  sliver: SliverToBoxAdapter(child: rodape),
+                ),
+              ]),
             ),
           ]);
         }),
@@ -271,7 +274,7 @@ class _PassoEnviarState extends State<PassoEnviar> {
         ]),
       );
 
-  Widget _cartoes(List<Lista> sel) {
+  Widget _cartoes(List<Lista> sel, {bool barra = false}) {
     final n = sel.length;
     final listas = _n(n, 'lista', 'listas');
     return Focus(
@@ -281,7 +284,25 @@ class _PassoEnviarState extends State<PassoEnviar> {
       child: Semantics(
         container: true,
         label: 'Para onde',
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        child: barra
+            ? Row(children: [
+                Expanded(
+                  child: FilledButton(
+                    focusNode: _focoEnviar,
+                    onPressed: n == 0 ? null : () => widget.aoEnviar(sel),
+                    child: Text('Enviar $listas'),
+                  ),
+                ),
+                const SizedBox(width: Tokens.e8),
+                Expanded(
+                  child: OutlinedButton(
+                    focusNode: _focoExportar,
+                    onPressed: n == 0 ? null : () => widget.aoExportar(sel),
+                    child: Text('Exportar $listas'),
+                  ),
+                ),
+              ])
+            : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           _cartao(
             titulo: 'Enviar para o Player',
             texto: 'Adicionar às que já lá estão, ou substituir (escolhes a seguir).',
