@@ -15,6 +15,9 @@ class MotorFalso implements MotorReproducao {
   final audios = <FaixaMotor>[];
   bool descartado = false;
 
+  /// Se dado, o `parar` só acaba quando isto acabar (um mpv lento a largar o descodificador).
+  Future<void>? pararDemora;
+
   final _erros = StreamController<ErroMotor>.broadcast();
   final _aCarregar = StreamController<bool>.broadcast();
   final _percentagem = StreamController<double>.broadcast();
@@ -63,7 +66,12 @@ class MotorFalso implements MotorReproducao {
   @override
   Future<void> pausar() async => pedidos.add('pausar');
   @override
-  Future<void> parar() async => pedidos.add('parar');
+  Future<void> parar() async {
+    pedidos.add('parar');
+    final espera = pararDemora;
+    if (espera != null) await espera;
+    registo?.add('$nome: parou');
+  }
   @override
   Future<void> escolherAudio(FaixaMotor faixa) async => audios.add(faixa);
   @override

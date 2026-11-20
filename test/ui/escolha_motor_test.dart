@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
@@ -27,6 +29,9 @@ class _Montagem {
   final tuneis = <bool>[];
   EstatisticasMotor estatisticas = const EstatisticasMotor();
 
+  /// Se dado, o link só chega quando isto acabar (o canal fica "a ser pedido").
+  Future<void>? resolverEspera;
+
   MotorFalso get atual => registo.lastWhere((r) => r.startsWith('criar ')).endsWith('exo')
       ? exos.last
       : mpvs.last;
@@ -54,8 +59,11 @@ class _Montagem {
           nomeLista: 'Lista A',
           aoSair: () {},
           plataforma: plataforma,
-          resolver: (c, {continuar = false}) async =>
-              FonteVideo('http://exemplo.invalid/${c.id}.ts', const {'User-Agent': 'Teste'}),
+          resolver: (c, {continuar = false}) async {
+            final espera = resolverEspera;
+            if (espera != null) await espera;
+            return FonteVideo('http://exemplo.invalid/${c.id}.ts', const {'User-Agent': 'Teste'});
+          },
           criarMotor: (ModoDescodificacao modo, bool hardware) {
             registo.add('criar mpv');
             final m = MotorFalso(nome: 'mpv${mpvs.length + 1}', registo: registo, estatisticasFalsas: estatisticas);
@@ -236,6 +244,73 @@ void main() {
       ));
       await _reabrir(t);
       expect(n.registo, ['criar mpv', 'mpv: abrir']);
+      await _sair(t);
+    });
+  });
+
+  group('zapping e recurso', () {
+    testWidgets('um erro de formato atrasado do canal anterior não marca o canal novo', (t) async {
+      final m = _Montagem();
+      await m.montar(t);
+      await _abrirComImagem(t, m.exos.single);
+      // seta para cima: o canal 2 está a ser pedido (ainda sem abrir) quando chega o erro do canal 1
+      final link = Completer<void>();
+      m.resolverEspera = link.future;
+      await t.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      await t.pump();
+      expect(m.exos.single.aberturas, hasLength(1), reason: 'o canal 2 ainda não abriu');
+      m.exos.single.erro('formato do canal 1', formato: true);
+      await _reabrir(t);
+      m.resolverEspera = null;
+      link.complete();
+      await _reabrir(t);
+      expect(m.mpvs, isEmpty, reason: 'nada passa ao mpv');
+      expect(m.exos, hasLength(1));
+      expect(m.exos.single.aberturas.map((a) => a.url), ['http://exemplo.invalid/1.ts', 'http://exemplo.invalid/2.ts']);
+      await _abrirComImagem(t, m.exos.single);
+      expect(find.text('Este canal abriu com o motor mpv'), findsNothing);
+      // nenhum dos dois canais ficou marcado: voltar ao 1 continua no ExoPlayer
+      await t.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      await _reabrir(t);
+      expect(m.mpvs, isEmpty);
+      expect(m.exos.single.aberturas.last.url, 'http://exemplo.invalid/1.ts');
+      await _sair(t);
+    });
+
+    testWidgets('do mpv para o ExoPlayer: o ExoPlayer só é criado depois de o mpv parar', (t) async {
+      final m = _Montagem();
+      await m.montar(t);
+      m.exos.single.erro('formato', formato: true);
+      await _reabrir(t);
+      await _abrirComImagem(t, m.mpvs.single);
+      final lento = Completer<void>();
+      m.mpvs.single.pararDemora = lento.future;
+      await t.sendKeyEvent(LogicalKeyboardKey.arrowUp); // o canal 2 volta ao ExoPlayer
+      await t.pump(const Duration(seconds: 1));
+      expect(m.exos, hasLength(1), reason: 'à espera de o mpv largar o descodificador');
+      lento.complete();
+      await _reabrir(t);
+      expect(m.exos, hasLength(2));
+      expect(m.registo.indexOf('mpv1: parou'), lessThan(m.registo.lastIndexOf('criar exo')));
+      expect(m.exos.last.aberturas.single.url, 'http://exemplo.invalid/2.ts');
+      await _sair(t);
+    });
+
+    testWidgets('do mpv para o ExoPlayer: um mpv que não pára não prende (limite)', (t) async {
+      final m = _Montagem();
+      await m.montar(t);
+      m.exos.single.erro('formato', formato: true);
+      await _reabrir(t);
+      await _abrirComImagem(t, m.mpvs.single);
+      m.mpvs.single.pararDemora = Completer<void>().future; // nunca acaba
+      await t.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      await t.pump(const Duration(seconds: 4));
+      expect(m.exos, hasLength(1));
+      await t.pump(const Duration(seconds: 2));
+      await _reabrir(t);
+      expect(m.exos, hasLength(2), reason: 'ao fim do limite segue-se em frente');
+      expect(m.mpvs.single.descartado, isTrue);
+      expect(m.exos.last.aberturas.single.url, 'http://exemplo.invalid/2.ts');
       await _sair(t);
     });
   });

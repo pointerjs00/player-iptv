@@ -133,6 +133,11 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
 
   /// Ao abrir no mpv um canal que o ExoPlayer não tocou: diz-se quando abrir.
   bool _avisarMpv = false;
+
+  /// O canal ([_chave]) de que são os erros do motor agora: o que o motor abriu (ou para que foi
+  /// criado). null entre a tecla do zapping e o `abrir` do canal novo: nesse intervalo o mesmo
+  /// ExoPlayer ainda pode mandar um erro atrasado do canal anterior, que não é do novo.
+  String? _chaveDoMotor;
   SaltosDireto? _saltos;
 
   /// O motor do mpv (media_kit), quando é ele que está por trás: as propriedades do mpv para o
@@ -290,6 +295,8 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
 
   void _criarPlayer(TipoMotor tipo) {
     _tipo = tipo;
+    // um motor novo só tem erros do canal para que foi criado
+    _chaveDoMotor = _chave(_canais[_i]);
     _motor = tipo == TipoMotor.exoplayer
         ? widget.criarMotorExo(tunel: _prefs.modoTunel)
         : widget.criarMotor(_modo, _hardware);
@@ -302,7 +309,10 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       // o ExoPlayer não toca este canal (formato ou descodificador): abre no mpv, que fica com ele
       // nesta sessão (um 2.º erro já é do mpv: nunca há ciclos)
       if (erro.formato && _tipo == TipoMotor.exoplayer) {
-        _passarAoMpv(aviso: true);
+        final chave = _chaveDoMotor;
+        // um erro atrasado do canal anterior (zapping no mesmo ExoPlayer): não é deste canal
+        if (chave == null || chave != _chave(_canais[_i])) return;
+        _passarAoMpv(chave, aviso: true);
         return;
       }
       final e = erro.mensagem;
@@ -387,8 +397,8 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
 
   /// O ExoPlayer não tocou o canal (ou o utilizador pediu o modo compatível): o canal passa ao mpv
   /// nesta sessão e reabre já lá (no mesmo ponto, se se estava a reabrir depois de um corte).
-  void _passarAoMpv({required bool aviso}) {
-    MotorNaSessao.instancia.passarAoMpv(_chave(_canais[_i]));
+  void _passarAoMpv(String chave, {required bool aviso}) {
+    MotorNaSessao.instancia.passarAoMpv(chave);
     _vigia.parar();
     _avisarMpv = aviso;
     _abrir(continuar: _aRetomar, mesmoCanal: true);
@@ -510,7 +520,11 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     final canal = _canais[_i];
     final repetido = continuar || mesmoCanal;
     // o aviso do mpv é só do recurso, quando for ele a abrir
-    if (!repetido) _avisarMpv = false;
+    if (!repetido) {
+      _avisarMpv = false;
+      // os erros que o motor mandar até abrir o canal novo são do anterior
+      _chaveDoMotor = null;
+    }
     if (!continuar) {
       _continuar.reiniciar();
       _audioEscolhido = null;
@@ -561,6 +575,17 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
         if (identical(_largando, l)) _largando = null;
         if (!mounted || pedido != _pedido) return;
       } else {
+        if (tipo == TipoMotor.exoplayer && _tipo == TipoMotor.mpv) {
+          // do mpv para o ExoPlayer: o mpv larga primeiro o descodificador (num aparelho com poucos
+          // descodificadores, o ExoPlayer falhava ao criar o seu e o canal passava ao mpv sem razão);
+          // um mpv que não pára a tempo não prende
+          try {
+            await _motor.parar().timeout(_limiteStop);
+          } catch (e) {
+            debugPrint('mpv: não parou a tempo antes do ExoPlayer (${e.runtimeType})');
+          }
+          if (!mounted || pedido != _pedido) return;
+        }
         // um mpv que deixou de responder não se volta a usar: player novo
         final mpvNovo = tipo == TipoMotor.mpv &&
             ((_android && (modo != _modo || hardware != _hardware)) || (_mpv?.semResposta ?? false));
@@ -601,6 +626,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       _larguraVista = 0;
       await VezDoAudio.instancia.esperar();
       if (!mounted || pedido != _pedido) return;
+      _chaveDoMotor = _chave(canal);
       await _motor.abrir(f.url, f.headers, inicio: continuar ? _retomarEm : null);
       // o modo de ecrã pede-se já (o fps sabe-se logo que o canal abre): a TV pisca a mudar de
       // modo enquanto o indicador de abertura ainda está à vista, não por cima da imagem
@@ -936,7 +962,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   /// Android, software no Windows).
   void _abrirCompativel() {
     // no ExoPlayer não há modo compatível: o mais compatível é o mpv
-    if (_tipo == TipoMotor.exoplayer) return _passarAoMpv(aviso: false);
+    if (_tipo == TipoMotor.exoplayer) return _passarAoMpv(_chave(_canais[_i]), aviso: false);
     CompativelNaSessao.instancia.pedir(_chave(_canais[_i]));
     _abrir();
   }
