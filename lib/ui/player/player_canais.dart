@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:ui' as ui;
+import 'dart:ui' show AppExitResponse;
 
 import 'package:material_ui/material_ui.dart';
 import 'package:path_provider/path_provider.dart';
@@ -1135,13 +1136,30 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
 
   /// Sair do player: o gravado apaga-se antes (no Windows a janela sai do processo).
   Future<void> _sair() async {
+    await _fecharParaSair();
+    widget.aoSair();
+  }
+
+  /// O motor larga o URL local e a sessão fecha (o gravado apaga-se).
+  Future<void> _fecharParaSair() async {
     if (_sessaoDireto != null) {
       try {
         await _motor.parar().timeout(_limiteStop);
       } catch (_) {}
     }
     await _fecharSessao();
-    widget.aoSair();
+  }
+
+  /// Windows: o X da janela do player (ou o fim da app) pede para sair. O gravado apaga-se antes,
+  /// com um limite (uma sessão que não fecha fica para a limpeza no arranque).
+  @override
+  Future<AppExitResponse> didRequestAppExit() async {
+    try {
+      await _fecharParaSair().timeout(const Duration(seconds: 3));
+    } catch (e) {
+      debugPrint('direto gravado: a sessão não fechou a tempo antes de sair (${e.runtimeType})');
+    }
+    return AppExitResponse.exit;
   }
 
   /// [ContinuarDireto.limiteSemDados] sem crescimento do gravado (a origem parou e o servidor local

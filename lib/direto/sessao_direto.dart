@@ -165,6 +165,17 @@ Future<bool> _sessaoViva(Directory pasta) async {
   }
 }
 
+/// Fecha as sessões abertas do processo (a fila de [SessaoGravada]): o gravado apaga-se e a origem
+/// fica livre. Para a janela do player do Windows antes do `exit` (a janela principal fechou).
+/// Nunca lança.
+Future<void> fecharSessoesDireto() async {
+  try {
+    await SessaoGravada._fecharTodas();
+  } catch (e) {
+    debugPrint('direto gravado: as sessões não fecharam bem (${e.runtimeType})');
+  }
+}
+
 /// A sessão de produção. Em disco: `direto/<sessão>` na cache, com a reserva das Definições
 /// ([Preferencias.reservaDiretoGb]) ajustada ao espaço livre do aparelho. Em `memoria`: um anel em
 /// RAM de [reservaMemoriaPlataforma].
@@ -231,6 +242,16 @@ class SessaoGravada implements SessaoDireto {
 
   /// Esta sessão e as anteriores na fila fecharam.
   final _fechadaToda = Completer<void>();
+
+  /// Fecha todas as sessões da fila e espera por elas.
+  static Future<void> _fecharTodas() async {
+    final u = _ultima;
+    if (u == null) return;
+    for (SessaoGravada? s = u; s != null; s = s._anterior) {
+      unawaited(s.fechar());
+    }
+    await u._fechadaToda.future;
+  }
 
   /// Espera que esta sessão (e as anteriores) feche; passado [esperaAnterior], fecha-as.
   Future<void> _esperarFecho() async {

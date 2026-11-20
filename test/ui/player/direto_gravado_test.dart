@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:ui' show AppExitResponse;
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -706,6 +707,22 @@ void main() {
       expect(m.motor.aberturas.single.url, m.sessao.urlDireto.toString());
       await _sair(t);
     });
+  });
+
+  testWidgets('Windows: pedir para sair (o X da janela) fecha a sessão antes de deixar sair', (t) async {
+    final tmp = Directory.systemTemp.createTempSync('direto_sair_');
+    addTearDown(() {
+      if (tmp.existsSync()) tmp.deleteSync(recursive: true);
+    });
+    final m = _Montagem()..pastas = tmp;
+    await m.montar(t);
+    await _abrirComImagem(t, m.motor);
+    final resposta = await t.binding.handleRequestAppExit();
+    expect(resposta, AppExitResponse.exit);
+    expect(m.sessao.fechada, isTrue, reason: 'o gravado apaga-se antes do exit');
+    expect(tmp.listSync(), isEmpty);
+    expect(m.registo.lastIndexOf('exo1: parou'), lessThan(m.registo.indexOf('sessao1: fechar')));
+    await _sair(t);
   });
 
   group('ecrã ligado na pausa do gravado', () {

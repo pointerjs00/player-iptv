@@ -381,6 +381,18 @@ void main() {
       expect(tmp.listSync(), isEmpty);
     });
 
+    test('fecharSessoesDireto (a janela do Windows a sair) fecha a sessão aberta e apaga a pasta', () async {
+      final s1 = nova();
+      final a1 = s1.abrir(const FonteVideo(_origem));
+      (await origem.proxima()).add(_ts(188 * 4));
+      expect(await a1, isNotNull);
+      expect(tmp.listSync(), hasLength(1));
+      await fecharSessoesDireto();
+      expect(tmp.listSync(), isEmpty);
+      expect(origem.abertas, 0, reason: 'a origem fica livre');
+      await fecharSessoesDireto(); // sem sessões não faz nada
+    });
+
     test('uma anterior que nunca fecha é fechada pela nova ao fim do limite', () async {
       final antes = SessaoGravada.esperaAnterior;
       SessaoGravada.esperaAnterior = const Duration(milliseconds: 200);

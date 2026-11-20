@@ -36,10 +36,14 @@ Future<void> main(List<String> args) async {
   if (Platform.isWindows && i >= 0 && i + 1 < args.length) {
     // esta é a janela do player (Windows): liga-se à janela principal
     final porta = int.parse(args[i + 1]);
-    final ligacao =
-        await LigacaoPrincipal.ligar(porta, token: Platform.environment[JanelaPlayer.variavelToken] ?? '');
-    // as sobras do direto gravado (um fecho pelo X não passa pela limpeza da sessão), antes de
-    // qualquer canal; as sessões de outra janela do player ainda viva estão bloqueadas e ficam
+    // a principal fechou: o gravado apaga-se antes de a janela sair do processo
+    final ligacao = await LigacaoPrincipal.ligar(porta,
+        token: Platform.environment[JanelaPlayer.variavelToken] ?? '', aoFechar: () async {
+      await fecharSessoesDireto().timeout(const Duration(seconds: 2), onTimeout: () {});
+      exit(0);
+    });
+    // as sobras do direto gravado (de um fecho à força), antes de qualquer canal; as sessões de
+    // outra janela do player ainda viva estão bloqueadas e ficam
     await limparDireto();
     // as mesmas preferências do player que no Android (o ficheiro da janela principal)
     // a abertura que a principal manda já pode chegar durante estas esperas: a ligação
