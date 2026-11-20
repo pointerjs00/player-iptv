@@ -62,8 +62,19 @@ class CartaoLista extends StatelessWidget {
             const SizedBox(width: 10),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(lista.nomeMostrado, maxLines: 1, overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: tv ? 17 : 15, fontWeight: FontWeight.w700)),
+                Row(children: [
+                  Expanded(
+                    child: Text(lista.nomeMostrado, maxLines: 1, overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: tv ? 17 : 15, fontWeight: FontWeight.w700)),
+                  ),
+                  // a estrela das listas favoritas (no canto de cima, à direita)
+                  if (lista.favorita)
+                    Padding(
+                      padding: const EdgeInsets.only(left: Tokens.e4),
+                      child: Icon(Icons.star_rounded, key: const Key('lista-favorita'),
+                          color: Tokens.aviso, size: tv ? 22 : 18, semanticLabel: 'Favorita'),
+                    ),
+                ]),
                 // numa linha: o servidor encolhe primeiro (com reticências); as contagens só
                 // encolhem se não couberem em 2/3 da largura
                 LayoutBuilder(

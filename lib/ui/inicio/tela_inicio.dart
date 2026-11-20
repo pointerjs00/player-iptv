@@ -131,13 +131,17 @@ class _TelaInicioState extends State<TelaInicio> {
     ('inconclusivo', 'INC'),
     ('nao_funciona', 'Não funcionam'),
     ('por_verificar', 'Por verificar'),
+    (_filtroFavoritas, 'Favoritas'),
   ];
+
+  static const _filtroFavoritas = 'favoritas';
 
   List<Lista> _visiveis() {
     final q = semAcentos(_q.trim());
     return [
       for (final l in widget.biblioteca.listas)
-        if ((_filtro == null || (l.ultima?.estado ?? 'por_verificar') == _filtro) &&
+        if ((_filtro == null ||
+                (_filtro == _filtroFavoritas ? l.favorita : (l.ultima?.estado ?? 'por_verificar') == _filtro)) &&
             (q.isEmpty || semAcentos('${l.nomeMostrado} ${l.conta.endereco} ${l.conta.nome}').contains(q)))
           l,
     ];
@@ -175,6 +179,8 @@ class _TelaInicioState extends State<TelaInicio> {
       case AcaoLista.editar:
         final m = await mostrarEditarLista(context, widget.biblioteca, l);
         if (m != null) _avisar(m);
+      case AcaoLista.favorita:
+        await widget.biblioteca.alternarFavorita(l.id);
       case AcaoLista.copiarLink:
         // nunca se mostra o link (pode ter credenciais)
         await Clipboard.setData(ClipboardData(text: linkParaCopiar(l.conta)));

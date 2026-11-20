@@ -63,7 +63,7 @@ const maxVistos = 20;
 class Lista {
   Lista({required this.id, required this.ordem, required this.conta, this.ultima,
       Set<String>? favoritos, this.nomeProprio = '', Set<String>? gruposEscondidos,
-      this.ordemCanais = OrdemCanais.lista, List<String>? vistos})
+      this.ordemCanais = OrdemCanais.lista, List<String>? vistos, this.favorita = false})
       : vistos = vistos ?? <String>[],
         favoritos = favoritos ?? <String>{},
         gruposEscondidos = gruposEscondidos ?? <String>{};
@@ -82,6 +82,9 @@ class Lista {
 
   /// Ids dos canais favoritos.
   final Set<String> favoritos;
+
+  /// A lista inteira está nas favoritas (não confundir com [favoritos], os canais).
+  bool favorita;
 
   /// Os grupos escondidos no ecrã de canais (e na pesquisa).
   final Set<String> gruposEscondidos;
@@ -105,6 +108,7 @@ class Lista {
         if (gruposEscondidos.isNotEmpty) 'grupos_escondidos': gruposEscondidos.toList(),
         if (ordemCanais != OrdemCanais.lista) 'ordem_canais': ordemCanais.name,
         if (vistos.isNotEmpty) 'vistos': vistos,
+        if (favorita) 'favorita': true,
       };
 
   static Lista? deJson(Object? j) {
@@ -119,6 +123,7 @@ class Lista {
         gruposEscondidos: {for (final g in (j['grupos_escondidos'] as List? ?? const [])) '$g'},
         ordemCanais: OrdemCanais.values.asNameMap()[j['ordem_canais']] ?? OrdemCanais.lista,
         vistos: {for (final v in (j['vistos'] as List? ?? const [])) '$v'}.take(maxVistos).toList(),
+        favorita: j['favorita'] == true,
       );
     } catch (_) {
       return null; // entrada estragada: ignora-se, as outras ficam
@@ -154,7 +159,7 @@ class ResultadoRestauro {
 Lista _copiaLista(Lista l, {String? id, int? ordem}) => Lista(
     id: id ?? l.id, ordem: ordem ?? l.ordem, conta: l.conta, ultima: l.ultima,
     favoritos: Set.of(l.favoritos), nomeProprio: l.nomeProprio, gruposEscondidos: Set.of(l.gruposEscondidos),
-    ordemCanais: l.ordemCanais, vistos: List.of(l.vistos));
+    ordemCanais: l.ordemCanais, vistos: List.of(l.vistos), favorita: l.favorita);
 
 /// Calcula as listas depois de restaurar `doFicheiro` sobre `atuais`, sem mexer em nenhuma.
 /// - juntar: as da mesma conta (pela chave) ficam, com os favoritos e os grupos escondidos unidos,
@@ -203,6 +208,10 @@ PlanoRestauro planearRestauro(List<Lista> atuais, List<Lista> doFicheiro, {requi
     if (dest.gruposEscondidos.length != escondidosAntes) mudou = true;
     if (dest.vistos.isEmpty && f.vistos.isNotEmpty) {
       dest.vistos.addAll(f.vistos);
+      mudou = true;
+    }
+    if (f.favorita && !dest.favorita) {
+      dest.favorita = true;
       mudou = true;
     }
     if (dest.ordemCanais == OrdemCanais.lista && f.ordemCanais != OrdemCanais.lista) {
@@ -580,6 +589,14 @@ class Biblioteca extends ChangeNotifier implements ColecaoListas {
     final l = porId(id);
     if (l == null) return;
     if (!l.favoritos.remove(canalId)) l.favoritos.add(canalId);
+    await guardar();
+  }
+
+  /// Põe a lista nas favoritas, ou tira-a.
+  Future<void> alternarFavorita(String id) async {
+    final l = porId(id);
+    if (l == null) return;
+    l.favorita = !l.favorita;
     await guardar();
   }
 

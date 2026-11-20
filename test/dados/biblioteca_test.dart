@@ -91,6 +91,36 @@ void main() {
     expect(l.paraJson().containsKey('vistos'), isFalse);
   });
 
+  test('lista favorita: guarda e relê; JSON antigo sem o campo é false', () async {
+    var b = await Biblioteca.abrir(pasta);
+    await b.adicionar([_imp('http://a.com/l.m3u'), _imp('http://b.com/l.m3u')]);
+    final id = b.listas.first.id;
+    expect(b.listas.first.favorita, isFalse);
+    await b.alternarFavorita(id);
+    b = await Biblioteca.abrir(pasta);
+    expect(b.porId(id)!.favorita, isTrue);
+    expect(b.listas.where((l) => l.favorita), hasLength(1));
+    await b.alternarFavorita(id);
+    b = await Biblioteca.abrir(pasta);
+    expect(b.porId(id)!.favorita, isFalse);
+    final antiga = Lista.deJson({
+      'id': 'x', 'ordem': 1, 'conta': contaDeLinha('http://a.com/c/ 00:1A:79:00:00:01')!.paraJson(),
+    })!;
+    expect(antiga.favorita, isFalse);
+    expect(antiga.paraJson().containsKey('favorita'), isFalse);
+  });
+
+  test('a lista favorita passa pela cópia de segurança (juntar e substituir)', () {
+    final conta = contaDeLinha('http://a.com/c/ 00:1A:79:00:00:01')!;
+    final atual = Lista(id: 'a', ordem: 1, conta: conta);
+    final ficheiro = Lista(id: 'f', ordem: 1, conta: conta, favorita: true);
+    expect(planearRestauro([atual], [ficheiro], substituir: true).listas.single.favorita, isTrue);
+    expect(planearRestauro([atual], [ficheiro], substituir: false).listas.single.favorita, isTrue);
+    final jaFavorita = Lista(id: 'a', ordem: 1, conta: conta, favorita: true);
+    expect(planearRestauro([jaFavorita], [Lista(id: 'f', ordem: 1, conta: conta)], substituir: false)
+        .listas.single.favorita, isTrue);
+  });
+
   test('vistos passam pela cópia de segurança (juntar e substituir)', () {
     final conta = contaDeLinha('http://a.com/c/ 00:1A:79:00:00:01')!;
     final atual = Lista(id: 'a', ordem: 1, conta: conta);

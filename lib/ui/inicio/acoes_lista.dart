@@ -17,6 +17,7 @@ enum AcaoLista {
   atualizar('Atualizar canais', Icons.refresh_rounded, 'Pede a lista de canais outra vez ao servidor'),
   verificar('Verificar agora', Icons.fact_check_outlined, 'Testa 3 canais · cerca de 20 s'),
   editar('Editar lista', Icons.edit_outlined, 'Nome, endereço, MAC ou utilizador'),
+  favorita('Pôr nas favoritas', Icons.star_border_rounded, 'Fica à mão no filtro «Favoritas»'),
   copiarLink('Copiar link', Icons.link_rounded, 'Só no Windows · leva os dados de acesso'),
   enviarGestor('Enviar para o Gestor', Icons.send_outlined, 'Para verificar ou exportar com as outras'),
   eliminar('Remover lista', Icons.delete_outline_rounded, 'Pede confirmação · os favoritos desta lista saem');
@@ -27,6 +28,11 @@ enum AcaoLista {
 
   /// A linha pequena por baixo do rótulo (ecrã 3).
   final String explicacao;
+
+  /// O rótulo para esta lista: «Pôr nas favoritas» ou «Tirar das favoritas».
+  String rotuloPara(Lista l) => this == favorita && l.favorita ? 'Tirar das favoritas' : rotulo;
+
+  IconData iconePara(Lista l) => this == favorita && l.favorita ? Icons.star_rounded : icone;
 }
 
 final _reMac = RegExp(r'^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}$');
@@ -118,8 +124,8 @@ Future<AcaoLista?> mostrarMenuLista(BuildContext context, Lista lista,
                         construir: (_, aoMudarFoco) => ListTile(
                           autofocus: i == 0,
                           onFocusChange: aoMudarFoco,
-                          leading: Icon(a.icone, color: a == AcaoLista.eliminar ? Tokens.mau : Tokens.texto2),
-                          title: Text(a.rotulo, style: TextStyle(fontSize: tv ? 17 : 15, fontWeight: FontWeight.w500,
+                          leading: Icon(a.iconePara(lista), color: a == AcaoLista.eliminar ? Tokens.mau : Tokens.texto2),
+                          title: Text(a.rotuloPara(lista), style: TextStyle(fontSize: tv ? 17 : 15, fontWeight: FontWeight.w500,
                               color: a == AcaoLista.eliminar ? Tokens.mau : null)),
                           subtitle: Text(a.explicacao,
                               style: TextStyle(fontSize: tv ? 14 : 12.5, color: Tokens.texto2)),
