@@ -174,11 +174,15 @@ class _TelaInicioState extends State<TelaInicio> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final vis = _visiveis();
-      if (vis.isEmpty) {
-        _focoChipFavoritas.requestFocus();
-      } else if (i >= 0) {
-        _focos[vis[i.clamp(0, vis.length - 1)].id]?.requestFocus();
-      }
+      final no = vis.isEmpty
+          ? _focoChipFavoritas
+          : i >= 0
+              ? _focos[vis[i.clamp(0, vis.length - 1)].id]
+              : null;
+      no?.requestFocus();
+      // `requestFocus()` não desliza: leva o chip (fila horizontal) ou o cartão à vista
+      final c = no?.context;
+      if (c != null) Scrollable.ensureVisible(c);
     });
   }
 

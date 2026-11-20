@@ -175,6 +175,26 @@ void main() {
     expect(FocusManager.instance.primaryFocus!.context!.findRenderObject()!.attached, isTrue);
   });
 
+  testWidgets('foco recuperado para «Funcionam» com a fila deslizada para o fim: fica à vista', (t) async {
+    ecraTvTeste(t, largura: 500, altura: 900);
+    await abrir(t, largura: 500);
+    final fila = find.byType(SingleChildScrollView).first;
+    await t.drag(fila, const Offset(-2000, 0));
+    await t.pump();
+    final area0 = t.getRect(fila);
+    expect(t.getRect(find.text('Funcionam (2)')).right, lessThan(area0.left + 1), reason: 'saiu da vista');
+    // o passo dá o foco ao primeiro chip ativo (como ao entrar no passo)
+    final estado = t.state<PassoEnviarState>(find.byType(PassoEnviar));
+    FocusManager.instance.primaryFocus?.unfocus();
+    await t.pump();
+    estado.focoInicio.requestFocus();
+    await t.pump();
+    await t.pumpAndSettle();
+    final r = t.getRect(find.text('Funcionam (2)'));
+    expect(r.left, greaterThanOrEqualTo(area0.left));
+    expect(r.right, lessThanOrEqualTo(area0.right));
+  });
+
   testWidgets('Todas liga tudo e fica ligado; Nenhuma desmarca tudo', (t) async {
     await abrir(t);
     expect(ligadoChip(t, 'Todas (5)'), isFalse);

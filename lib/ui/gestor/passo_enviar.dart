@@ -94,7 +94,23 @@ class PassoEnviarState extends State<PassoEnviar> {
   /// O chip com o foco ficou desativado (a verificação esvaziou esse estado): o foco passa ao
   /// próximo chip ativo (ou ao anterior, ou a «Nenhuma»); senão perdia-se.
   void _seChipDesligou(FocusNode no) {
-    if (no.hasFocus || no.canRequestFocus) return;
+    if (no.hasFocus) {
+      // `requestFocus()` não desliza a fila (horizontal): leva o chip à vista
+      _chipComFoco = no;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final c = no.context;
+        if (mounted && no.hasFocus && c != null) Scrollable.ensureVisible(c);
+      });
+      return;
+    }
+    // só se foi este o chip que perdeu o foco por ficar desativado
+    final tinhaFoco = _chipComFoco == no;
+    if (no.canRequestFocus) {
+      if (tinhaFoco) _chipComFoco = null;
+      return;
+    }
+    if (!tinhaFoco) return;
+    _chipComFoco = null;
     final i = _focosChips.indexOf(no);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final atual = FocusManager.instance.primaryFocus;
@@ -105,6 +121,8 @@ class PassoEnviarState extends State<PassoEnviar> {
       _focosChips[j].requestFocus();
     });
   }
+
+  FocusNode? _chipComFoco;
 
   /// O botão com o foco ficou desativado (já não há marcadas): o foco passa ao chip "As que
   /// funcionam" (senão perdia-se e deixava de se ver).
