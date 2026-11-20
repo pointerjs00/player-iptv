@@ -21,6 +21,8 @@ void main() {
         // toca o buffer até ao fim e só então pede o canal de novo (ContinuarDireto)
         expect(c.propriedades, containsPair('stream-lavf-o', 'reconnect=0,reconnect_streamed=0'));
         expect(c.propriedades, containsPair('framedrop', 'vo'));
+        // o media_kit liga a cache em disco; num direto só gasta escrita (e pausa) no armazenamento
+        expect(c.propriedades, containsPair('cache-on-disk', 'no'));
         expect(ConfiguracaoMpv.bufferBytes, 64 * 1024 * 1024);
         expect(c.configuracaoPlayer.bufferSize, 64 * 1024 * 1024);
       });

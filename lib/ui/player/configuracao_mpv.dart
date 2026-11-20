@@ -140,6 +140,9 @@ class ConfiguracaoMpv {
         // 462). O buffer toca até ao fim e o player pede o canal de novo (ContinuarDireto).
         'stream-lavf-o': 'reconnect=0,reconnect_streamed=0',
         'framedrop': 'vo',
+        // o media_kit liga a cache em disco (sem cache-dir): num direto só gastava escrita e
+        // pausas no armazenamento (lento num Fire TV Stick); a cache fica na memória
+        'cache-on-disk': 'no',
         if (p == PlataformaVideo.android) 'ao': 'audiotrack,opensles',
         if (reamostra) 'video-sync': 'display-resample',
       },

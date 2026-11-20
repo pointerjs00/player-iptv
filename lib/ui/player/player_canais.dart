@@ -1301,6 +1301,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
                 ler: exo ? null : _lerMpv,
                 lerMotor: exo ? _motor.estatisticas : null,
                 geracao: _pedido,
+                soInterface: exo,
                 hzEcra: _hzEcra,
                 extra: [
                   if (_android && !exo) ('Modo de descodificação', _rotuloModoAtual),

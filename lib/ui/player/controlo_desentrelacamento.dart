@@ -49,9 +49,10 @@ class ControloDesentrelacamento {
 
   /// Android, reaberto em Compatível para o filtro: a partir de quantas imagens perdidas por segundo
   /// (o `frame-drop-count` mais o `decoder-frame-drop-count` do mpv) o aparelho não aguenta a cópia
-  /// das imagens + o bwdif e o canal volta ao direto. 2/s é 4 % das 50 imagens/s do bwdif: já se vê
-  /// a imagem a saltar; as poucas do arranque não chegam lá numa janela de [janelaPerdidas].
-  static const perdidasPorSegundo = 2.0;
+  /// das imagens + o bwdif e o canal volta ao direto. 0,5/s (1 % das 50 imagens/s do bwdif) já se vê
+  /// como um soluço a cada dois segundos; com 2/s o canal ficava a saltar em Compatível para sempre.
+  /// As poucas perdidas do arranque não chegam lá numa janela de [janelaPerdidas].
+  static const perdidasPorSegundo = 0.5;
   static const janelaPerdidas = Duration(seconds: 8);
 
   final PlataformaVideo plataforma;
@@ -145,6 +146,9 @@ class ControloDesentrelacamento {
     final lida = imagemEntrelacada(m);
     if (_meio == MeioDesentrelacamento.filtroMpv || _meio == MeioDesentrelacamento.d3d11vpp) {
       _medir(m, chave);
+    } else if (compativel.eProgressivo(chave)) {
+      // já visto progressivo nesta sessão (o idet, em Compatível): nem shader nem reabrir
+      _entrelacada = false;
     } else if (lida != null) {
       _entrelacada = lida;
     }

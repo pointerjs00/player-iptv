@@ -412,6 +412,32 @@ void main() {
     });
   });
 
+  group('canal visto progressivo: memorizado na sessão (por id do canal)', () {
+    Map<String, String> direto() => _leitura(hwdec: 'mediacodec', interlaced: '');
+
+    test('ao reabrir não leva shader nem Compatível', () async {
+      final mpv = _Mpv();
+      final c = android();
+      // sem memória: parece entrelaçado (1080 a 25) e leva o shader
+      expect(c.ler(direto(), ligado: true, direto: true, chave: 'lista|9'), isTrue);
+      compativel.progressivo('lista|9'); // o idet viu-o progressivo em Compatível
+      final c2 = android();
+      c2.abrir(continuar: false, playerNovo: true);
+      expect(c2.ler(direto(), ligado: true, direto: true, chave: 'lista|9'), isFalse, reason: 'sem Compatível');
+      expect(c2.entrelacada, isFalse);
+      await aplicar(c2, mpv, direto: true);
+      expect(c2.meio, MeioDesentrelacamento.nenhum, reason: 'sem shader');
+      expect(compativel.modoPara('lista|9', ModoDescodificacao.direto), ModoDescodificacao.direto);
+    });
+
+    test('outro canal não é afetado', () {
+      compativel.progressivo('lista|9');
+      final c = android();
+      expect(c.ler(direto(), ligado: true, direto: true, chave: 'lista|10'), isTrue);
+      expect(c.entrelacada, isTrue);
+    });
+  });
+
   group('Android: o Compatível com o bwdif que perde imagens volta ao direto', () {
     const k = 'lista|7';
     Map<String, String> direto() => _leitura(hwdec: 'mediacodec', interlaced: '');
@@ -431,7 +457,7 @@ void main() {
       return c;
     }
 
-    test('mais de 2 imagens perdidas por segundo durante 10 s: reabre no direto (e fica nesta sessão)', () async {
+    test('mais de 0,5 imagens perdidas por segundo durante 10 s: reabre no direto (e fica nesta sessão)', () async {
       final mpv = _Mpv();
       final c = await confirmado(mpv);
       agora = agora.add(const Duration(seconds: 10));
@@ -442,12 +468,30 @@ void main() {
           reason: 'não volta a reabrir em Compatível para o filtro nesta sessão');
     });
 
-    test('poucas perdidas (as do arranque, ou < 2/s): fica no Compatível com o bwdif', () async {
+    test('limite de perdidas: 0,5/s (antes 2/s)', () {
+      expect(ControloDesentrelacamento.perdidasPorSegundo, 0.5);
+    });
+
+    test('0,6 imagens perdidas por segundo (6 em 10 s) já fazem voltar ao direto', () async {
+      final mpv = _Mpv();
+      final c = await confirmado(mpv);
+      agora = agora.add(const Duration(seconds: 10));
+      expect(await passo(c, mpv, aDobrar(6), chave: k), isTrue);
+    });
+
+    test('0,4 imagens perdidas por segundo (4 em 10 s) ainda aguenta', () async {
+      final mpv = _Mpv();
+      final c = await confirmado(mpv);
+      agora = agora.add(const Duration(seconds: 10));
+      expect(await passo(c, mpv, aDobrar(4), chave: k), isFalse);
+    });
+
+    test('poucas perdidas (as do arranque, ou < 0,5/s): fica no Compatível com o bwdif', () async {
       final mpv = _Mpv();
       final c = await confirmado(mpv);
       for (var i = 1; i <= 6; i++) {
         agora = agora.add(const Duration(seconds: 10));
-        expect(await passo(c, mpv, aDobrar(5 * i), chave: k), isFalse);
+        expect(await passo(c, mpv, aDobrar(3 * i), chave: k), isFalse);
       }
       expect(c.meio, MeioDesentrelacamento.filtroMpv);
       expect(compativel.modoPara(k, ModoDescodificacao.direto), ModoDescodificacao.compativel);
