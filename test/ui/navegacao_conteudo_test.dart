@@ -141,17 +141,20 @@ void main() {
     final l = await preparar(t);
     await mostrar(t, l);
     expect(_nomesCanais(t), ['SIC', 'RTP 1']);
-    // do grupo, CIMA leva ao filtro dos grupos e outra vez ao "‹ Início"; por baixo dele, a
-    // linha do estado tem a "Ordem"
+    // do grupo, CIMA leva ao filtro dos grupos e outra vez ao "‹ Início"
     await _tecla(t, LogicalKeyboardKey.arrowUp);
     await _tecla(t, LogicalKeyboardKey.arrowUp);
     expect(textosFocados(), '‹ Início');
-    await _tecla(t, LogicalKeyboardKey.arrowRight);
+    // as opções (Ordem, Grupos escondidos, Atualizar) estão juntas no canto direito, por cima da
+    // coluna dos canais: BAIXO volta ao filtro dos grupos, DIREITA vai à pesquisa dos canais, CIMA
+    // chega às opções e ESQUERDA anda até à "Ordem"
     await _tecla(t, LogicalKeyboardKey.arrowDown);
+    await _tecla(t, LogicalKeyboardKey.arrowRight);
+    await _tecla(t, LogicalKeyboardKey.arrowUp);
     for (var i = 0; i < 4; i++) {
       final ctx = FocusManager.instance.primaryFocus?.context;
       if (ctx?.findAncestorWidgetOfExactType<Tooltip>()?.message == 'Opções dos canais') break;
-      await _tecla(t, LogicalKeyboardKey.arrowRight);
+      await _tecla(t, LogicalKeyboardKey.arrowLeft);
     }
     expect(FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<Tooltip>()?.message,
         'Opções dos canais');

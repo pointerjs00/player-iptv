@@ -733,19 +733,26 @@ class _TelaConteudoState extends State<TelaConteudo> {
           Row(children: [
             inicio,
             const SizedBox(width: Tokens.e8),
-            Flexible(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 360), child: nome)),
-            if (contagem != null) ...[const SizedBox(width: Tokens.e12), contagem],
-            const Spacer(),
-            if (!medio) ...[ordem, const SizedBox(width: Tokens.e8), escondidos],
-            atualizar,
+            // o nome e a contagem ficam com o espaço todo do meio (um Flexible + Spacer dividiam-no a
+            // meias e a ordem e os escondidos ficavam a meio do topo)
+            Expanded(
+              child: Row(children: [
+                Flexible(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 360), child: nome)),
+                if (contagem != null) ...[const SizedBox(width: Tokens.e12), contagem],
+              ]),
+            ),
+            if (!medio) ...[ordem, const SizedBox(width: Tokens.e8), escondidos, atualizar],
           ]),
           const SizedBox(height: Tokens.e4),
+          // ecrã médio: as três opções juntas no canto da linha do estado (CIMA na pesquisa dos
+          // canais chega lá)
           if (medio)
             Row(children: [
               Expanded(child: info()),
               ordem,
               const SizedBox(width: Tokens.e8),
               escondidos,
+              atualizar,
             ])
           else
             info(),

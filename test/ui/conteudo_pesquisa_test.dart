@@ -115,6 +115,19 @@ void main() {
     expect(_focado(), texto);
   }
 
+  for (final largura in [1100.0, 1800.0]) {
+    testWidgets('a $largura px, «Ordem» e «Grupos escondidos» ficam no canto direito do topo', (t) async {
+      await abrir(t, largura: largura, altura: 900);
+      final ecra = t.getRect(find.byType(TelaConteudo));
+      final ordem = t.getRect(find.ancestor(of: find.textContaining('Ordem:'), matching: find.byType(OutlinedButton)));
+      final escondidos =
+          t.getRect(find.ancestor(of: find.textContaining('Grupos escondidos:'), matching: find.byType(OutlinedButton)));
+      expect(escondidos.left, greaterThan(ordem.right - 1), reason: 'a ordem antes dos escondidos');
+      // só o botão de atualizar (≈48) e a margem cabem à direita dos dois
+      expect(ecra.right - escondidos.right, lessThan(80), reason: 'encostados à direita, não a meio');
+    });
+  }
+
   testWidgets('dois campos separados: filtrar grupos e pesquisar canais ou número; sem Tudo · Canais · Grupos', (t) async {
     await abrir(t);
     expect(find.text('Filtrar grupos'), findsOneWidget);
