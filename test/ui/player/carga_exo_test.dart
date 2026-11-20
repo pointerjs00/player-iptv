@@ -6,7 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 /// 40–50 s, e fecha ao fim de poucos segundos): com o máximo a 30 s, o resto ficava no socket e
 /// perdia-se no fecho. O `DefaultLoadControl` do Media3 1.5.1 continua a ler abaixo do mínimo
 /// mesmo com o limite de bytes atingido, se `prioritizeTimeOverSizeThresholds`; entre o mínimo e o
-/// máximo pára só no máximo ou no limite de bytes (por omissão ~144 MB com vídeo e áudio).
+/// máximo pára no máximo ou no limite de bytes (64 MiB, em vez dos ~144 MB por omissão).
 void main() {
   test('o LoadControl do ExoPlayer: mínimo 30 s, máximo 60 s, início 1,5 s, retoma 2,5 s, tempo antes dos bytes',
       () {
@@ -16,7 +16,9 @@ void main() {
     final corpo = carga!.group(1)!;
     expect(corpo, contains('.setBufferDurationsMs(30_000, 60_000, 1_500, 2_500)'));
     expect(corpo, contains('.setPrioritizeTimeOverSizeThresholds(true)'));
-    expect(corpo, isNot(contains('setTargetBufferBytes')), reason: 'o limite de bytes fica o do Media3 (~144 MB)');
+    // 64 MiB: o pico no heap Java fica nos 64 MiB num canal pesado; os 60 s cabem até ~8,9 Mb/s, e
+    // abaixo dos 30 s lê-se sempre (o tempo primeiro)
+    expect(corpo, contains('.setTargetBufferBytes(64 shl 20)'));
     expect(RegExp(r'DefaultLoadControl\.Builder\(\)').allMatches(fonte), hasLength(1));
   });
 }

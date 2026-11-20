@@ -272,10 +272,12 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
         // Direto: começa depressa (1,5 s) e retoma com 2,5 s; guarda até 60 s à frente. Cada ligação
         // nova de muitos servidores traz logo 20–50 s (a rajada) e fecha ao fim de poucos segundos:
         // com o máximo a 30 s, o resto ficava no socket e perdia-se. Abaixo do mínimo (30 s) lê-se
-        // sempre, mesmo com o limite de bytes (o tempo primeiro); acima, até aos 60 s ou ao limite
-        // de bytes do Media3 (~144 MB com vídeo e áudio: 60 s a 6 Mb/s são ~45 MB).
+        // sempre, mesmo com o limite de bytes (o tempo primeiro); acima, até aos 60 s ou aos 64 MiB
+        // (60 s cabem até ~8,9 Mb/s; num canal pesado o heap Java não passa dos 64 MiB, em vez dos
+        // ~144 MB por omissão do Media3).
         val carga = DefaultLoadControl.Builder()
             .setBufferDurationsMs(30_000, 60_000, 1_500, 2_500)
+            .setTargetBufferBytes(64 shl 20)
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
         val p = ExoPlayer.Builder(activity, renderizadores)
