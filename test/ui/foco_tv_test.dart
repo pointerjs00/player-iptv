@@ -239,7 +239,7 @@ void main() {
     Canal(id: '3', nome: 'BBC One', grupo: 'UK', url: 'u3'),
   ]);
 
-  testWidgets('I6: Conteúdo começa com o foco no grupo; setas até um canal e OK abre-o', (t) async {
+  testWidgets('I6: Conteúdo começa com o foco em «Todos os canais»; setas até um canal e OK abre-o', (t) async {
     _tamanho(t, 1200, 800);
     final l = await comCache(t, pequena);
     (List<Canal>, int)? aberto;
@@ -247,9 +247,9 @@ void main() {
       aberto = (c, i);
       return null;
     });
-    expect(_focado(), contains('Portugal'));
+    expect(_focado(), contains('Todos os canais'));
     await _tecla(t, LogicalKeyboardKey.arrowRight);
-    expect(_focado(), contains('PT: '), reason: 'a seta para a direita vai para os canais do grupo');
+    expect(_focado(), contains('PT: '), reason: 'a seta para a direita vai para os canais');
     // cima/baixo até ao 1.º canal e de volta ao 2.º
     for (var i = 0; i < 3 && !_focado().contains('PT: RTP 1 HD'); i++) {
       await _tecla(t, LogicalKeyboardKey.arrowUp);
@@ -287,8 +287,8 @@ void main() {
     _tamanho(t, 1200, 800);
     final l = await comCache(t, pequena);
     await mostrar(t, l);
-    expect(_focado(), contains('Portugal'));
-    // a pesquisa está no topo: CIMA no primeiro grupo vai direto ao campo
+    expect(_focado(), contains('Todos os canais'));
+    // a pesquisa está no topo: CIMA na primeira linha dos grupos vai direto ao campo
     await _tecla(t, LogicalKeyboardKey.arrowUp);
     expect(_focado(), contains('[campo'));
     expect(t.testTextInput.isVisible, isFalse, reason: 'o foco sozinho não abre o teclado no ecrã');

@@ -148,10 +148,14 @@ void main() {
       await t.pump();
     }
 
-    testWidgets('grupos à esquerda, canais do grupo à direita; pesquisa em todos os grupos', (t) async {
+    testWidgets('grupos à esquerda, canais do grupo à direita; sem grupo, pesquisa em todos', (t) async {
       _tamanho(t, 1200, 800);
       final l = await preparar(t);
       await mostrar(t, l);
+      // abre em «Todos os canais»
+      expect(find.text('1 de 5'), findsOneWidget);
+      await t.tap(find.text('Portugal'));
+      await t.pump();
       expect(find.text('1 de 2'), findsOneWidget);
       expect(find.text('PT: RTP 1 HD'), findsOneWidget);
       expect(find.text('BBC One'), findsNothing);
@@ -159,8 +163,14 @@ void main() {
       await t.tap(find.text('UK'));
       await t.pump();
       expect(find.text('BBC One'), findsOneWidget);
+      // com um grupo escolhido, a pesquisa só procura nele
+      await _escrever(t, find.byKey(const Key('pesquisa-canais')), 'rtp');
+      await t.pump(const Duration(milliseconds: 200));
+      expect(find.text('UK · 0'), findsOneWidget);
 
-      // a pesquisa ignora acentos e o grupo escolhido
+      // sem grupo, a pesquisa procura em todos e ignora acentos
+      await t.tap(find.text('Todos os canais'));
+      await t.pumpAndSettle();
       await _escrever(t, find.byKey(const Key('pesquisa-canais')), 'rtp acores');
       await t.pump(const Duration(milliseconds: 200));
       expect(find.text('Canais · 1'), findsOneWidget);
@@ -188,6 +198,8 @@ void main() {
         aberto = (c, i);
         return null;
       });
+      await t.tap(find.text('Portugal'));
+      await t.pump();
       await t.tap(find.byTooltip('Pôr nos favoritos').first);
       await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
       await t.pump();
@@ -205,7 +217,7 @@ void main() {
       await mostrar(t, l);
       await _escrever(t, find.byKey(const Key('pesquisa-canais')), 'rtp');
       await t.pump(const Duration(milliseconds: 50));
-      expect(find.text('1 de 2'), findsOneWidget);
+      expect(find.text('1 de 5'), findsOneWidget, reason: 'ainda «Todos os canais», sem filtrar');
       await t.pump(const Duration(milliseconds: 150));
       expect(find.text('Canais · 2'), findsOneWidget);
     });

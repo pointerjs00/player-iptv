@@ -66,11 +66,15 @@ void main() {
   });
 
   /// A lista aberta por cima de um ecrã "base" (para o Voltar ter para onde ir).
-  Future<Lista> abrir(WidgetTester t, {ConteudoLista? conteudo, double largura = 960, double altura = 540}) async {
+  Future<Lista> abrir(WidgetTester t,
+      {ConteudoLista? conteudo, double largura = 960, double altura = 540, List<String> favoritos = const []}) async {
     ecraTvTeste(t, largura: largura, altura: altura);
     await t.runAsync(() async {
       await bib.adicionar([Importada(contaDeLinha('http://x.com/l.m3u')!)]);
       await bib.guardarCanais(bib.listas.single.id, conteudo ?? _conteudo);
+      for (final f in favoritos) {
+        await bib.alternarFavorito(bib.listas.single.id, f);
+      }
     });
     final l = bib.listas.single;
     await t.runAsync(() async {
@@ -143,8 +147,11 @@ void main() {
 
   testWidgets('filtrar grupos mostra só esses grupos e não mexe nos canais', (t) async {
     await abrir(t);
+    await t.tap(find.descendant(of: _grupos, matching: find.text('Desporto')));
+    await t.pumpAndSettle();
     await filtrar(t, 'desp');
-    expect(_nomes(t, _grupos), ['Desporto', 'Desporto Internacional']);
+    // «Todos os canais» não é filtrada: fica sempre no topo
+    expect(_nomes(t, _grupos), ['Todos os canais', 'Desporto', 'Desporto Internacional']);
     expect(find.textContaining('Grupos ·'), findsNothing);
     // a parte encontrada vem destacada
     final destaque = t.widget<Text>(find.descendant(of: _grupos, matching: find.text('Desporto Internacional')));
@@ -155,7 +162,7 @@ void main() {
     expect(find.descendant(of: _canais, matching: find.text('Desporto 1')), findsOneWidget);
     expect(find.text('Desp. Mundo 1'), findsNothing);
     await filtrar(t, 'notic');
-    expect(_nomes(t, _grupos), ['Notícias']);
+    expect(_nomes(t, _grupos), ['Todos os canais', 'Notícias']);
     expect(find.descendant(of: _canais, matching: find.text('Desporto 1')), findsOneWidget);
   });
 
@@ -163,7 +170,7 @@ void main() {
     await abrir(t);
     await escrever(t, 'desp');
     expect(find.text('Canais · 31'), findsOneWidget);
-    expect(_nomes(t, _grupos), ['Desporto', 'Desporto Internacional', 'Notícias']);
+    expect(_nomes(t, _grupos), ['Todos os canais', 'Desporto', 'Desporto Internacional', 'Notícias']);
     // o resultado todo, com scroll: o último canal encontrado alcança-se (sem "+ N canais")
     expect(find.textContaining(RegExp(r'\+ ?\d+ canais')), findsNothing);
     await t.scrollUntilVisible(find.text('Desp. Mundo 11'), 300, scrollable: find.descendant(
@@ -180,7 +187,8 @@ void main() {
     await abrir(t);
     await filtrar(t, 'notic');
     await escrever(t, 'desp. mundo 3');
-    expect(_nomes(t, _grupos), ['Notícias']);
+    expect(_nomes(t, _grupos), ['Todos os canais', 'Notícias']);
+    // sem grupo escolhido, a pesquisa procura em todos (também fora dos grupos filtrados)
     expect(find.text('Canais · 1'), findsOneWidget);
     expect(_texto(t, _filtro), 'notic');
     expect(_texto(t, _pesquisa), 'desp. mundo 3');
@@ -208,7 +216,7 @@ void main() {
     await teclaDpad(t, LogicalKeyboardKey.select);
     await t.pumpAndSettle();
     expect(_texto(t, _filtro), 'internac');
-    expect(_nomes(t, _grupos), ['Desporto Internacional']);
+    expect(_nomes(t, _grupos), ['Todos os canais', 'Desporto Internacional']);
     expect(find.descendant(of: _canais, matching: find.text('Desp. Mundo 1')), findsOneWidget);
   });
 
@@ -252,7 +260,7 @@ void main() {
     await voltar(t);
     expect(_texto(t, _filtro), '');
     expect(_texto(t, _pesquisa), 'desp');
-    expect(_nomes(t, _grupos), ['Desporto', 'Desporto Internacional', 'Notícias']);
+    expect(_nomes(t, _grupos), ['Todos os canais', 'Desporto', 'Desporto Internacional', 'Notícias']);
     expect(_focado(), isNotNull, reason: 'o foco não se perde: ${textosFocados()}');
     // com o foco nos canais, limpa a pesquisa
     await focar(t, 'Desporto 1');
@@ -271,55 +279,60 @@ void main() {
     expect(find.byType(TelaConteudo), findsNothing);
   });
 
-  testWidgets('Voltar com o foco num canal encontrado leva o foco ao 1.º canal do grupo', (t) async {
+  testWidgets('Voltar com o foco num canal encontrado leva o foco ao 1.º canal do que fica à vista', (t) async {
     await abrir(t);
     await escrever(t, 'desp');
     await voltar(t); // acaba de escrever
     await focar(t, 'Desporto 3');
     await voltar(t); // limpa a pesquisa
     expect(find.text('Canais · 31'), findsNothing);
-    // o foco não fica numa linha qualquer (outro canal na mesma posição): vai ao 1.º do grupo
+    // o foco não fica numa linha qualquer (outro canal na mesma posição): vai ao 1.º de «Todos os canais»
     expect(_focado(), 'Desporto 1', reason: textosFocados());
-    expect(t.widget<Text>(find.byKey(const Key('contador-canais'))).data, '1 de 20');
+    expect(t.widget<Text>(find.byKey(const Key('contador-canais'))).data, '1 de 33');
     await teclaDpad(t, LogicalKeyboardKey.arrowDown);
     expect(_focado(), 'Desporto 2');
-    expect(t.widget<Text>(find.byKey(const Key('contador-canais'))).data, '2 de 20');
+    expect(t.widget<Text>(find.byKey(const Key('contador-canais'))).data, '2 de 33');
     await teclaDpad(t, LogicalKeyboardKey.arrowUp);
     expect(_focado(), 'Desporto 1');
     await teclaDpad(t, LogicalKeyboardKey.arrowUp);
     expect(_naPesquisa(t), isTrue);
   });
 
-  testWidgets('Voltar com o foco num canal que fica sem par no grupo não perde o foco', (t) async {
+  testWidgets('Voltar com o foco num canal encontrado lá em baixo não perde o foco', (t) async {
     await abrir(t);
     await escrever(t, 'desp');
     await voltar(t);
-    // a 25.ª linha dos resultados: o grupo «Desporto» só tem 20
+    // a 25.ª linha dos resultados (a pesquisa só procura no grupo escolhido: os resultados nunca
+    // têm mais linhas do que o que fica à vista depois de limpar)
     await t.scrollUntilVisible(find.text('Desp. Mundo 5'), 300,
         scrollable: find.descendant(of: _canais, matching: find.byType(Scrollable)));
     await focar(t, 'Desp. Mundo 5');
     await voltar(t);
     expect(_focado(), 'Desporto 1', reason: textosFocados());
-    expect(t.widget<Text>(find.byKey(const Key('contador-canais'))).data, '1 de 20');
+    expect(t.widget<Text>(find.byKey(const Key('contador-canais'))).data, '1 de 33');
   });
 
   testWidgets('↑ no primeiro grupo vai ao filtro dos grupos; ↑ no primeiro canal à pesquisa dos canais', (t) async {
     await abrir(t);
-    // o foco começa no grupo escolhido (o primeiro)
-    expect(_focado(), 'Desporto');
+    // o foco começa no escolhido: «Todos os canais», a 1.ª linha
+    expect(_focado(), 'Todos os canais');
     await teclaDpad(t, LogicalKeyboardKey.arrowUp);
-    expect(_noCampo(t, _filtro), isTrue, reason: 'do 1.º grupo: ${textosFocados()}');
+    expect(_noCampo(t, _filtro), isTrue, reason: 'da 1.ª linha: ${textosFocados()}');
     await focar(t, 'Desporto 1');
     await teclaDpad(t, LogicalKeyboardKey.arrowUp);
     expect(_naPesquisa(t), isTrue, reason: 'do 1.º canal: ${textosFocados()}');
-    // de um grupo que não é o primeiro, ↑ vai ao de cima
+    // de um grupo que não é o primeiro, ↑ vai ao de cima (do 1.º grupo, a «Todos os canais»)
     await focar(t, 'Desporto Internacional');
     await teclaDpad(t, LogicalKeyboardKey.arrowUp);
     expect(_focado(), 'Desporto');
-    // com o filtro, o 1.º grupo encontrado também sobe ao filtro
+    await teclaDpad(t, LogicalKeyboardKey.arrowUp);
+    expect(_focado(), 'Todos os canais');
+    // com o filtro, o 1.º grupo encontrado sobe a «Todos os canais» e daí ao filtro
     await filtrar(t, 'internac');
     await voltar(t);
     await focar(t, 'Desporto Internacional');
+    await teclaDpad(t, LogicalKeyboardKey.arrowUp);
+    expect(_focado(), 'Todos os canais', reason: textosFocados());
     await teclaDpad(t, LogicalKeyboardKey.arrowUp);
     expect(_noCampo(t, _filtro), isTrue);
     // com pesquisa, ↑ no 1.º canal encontrado vai à pesquisa
@@ -362,11 +375,14 @@ void main() {
     expect(find.text('base'), findsOneWidget);
   });
 
-  testWidgets('← nos canais com o filtro sem resultados vai ao filtro dos grupos', (t) async {
+  testWidgets('← nos canais com o grupo escolhido escondido pelo filtro vai ao filtro dos grupos', (t) async {
     await abrir(t);
+    await t.tap(find.descendant(of: _grupos, matching: find.text('Desporto')));
+    await t.pumpAndSettle();
     await filtrar(t, 'zzz');
     await voltar(t);
-    expect(_nomes(t, _grupos), isEmpty);
+    // só fica «Todos os canais» (nunca é filtrada); o grupo escolhido não está à vista
+    expect(_nomes(t, _grupos), ['Todos os canais']);
     await focar(t, 'Desporto 1');
     await teclaDpad(t, LogicalKeyboardKey.arrowLeft);
     expect(_noCampo(t, _filtro), isTrue, reason: '${textosFocados()} ${FocusManager.instance.primaryFocus?.debugLabel}');
@@ -402,6 +418,102 @@ void main() {
     expect(find.byTooltip('Tirar dos favoritos'), findsOneWidget);
     expect(find.text('Canais · 10000'), findsOneWidget);
     expect(find.descendant(of: _grupos, matching: find.text('Filmes 12')), findsOneWidget);
+  });
+
+  /// A dica (hintText) da pesquisa dos canais.
+  String? dica(WidgetTester t) =>
+      t.widget<TextField>(find.descendant(of: _pesquisa, matching: find.byType(TextField))).decoration?.hintText;
+
+  bool chipEscolhido(WidgetTester t, String texto) => t.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, texto)).selected;
+
+  group('a pesquisa procura só no grupo escolhido', () {
+    testWidgets('ao abrir, «Todos os canais» está escolhido (com o foco) e a dica é a de todos', (t) async {
+      await abrir(t);
+      expect(_nomes(t, _grupos).first, 'Todos os canais');
+      expect(_focado(), 'Todos os canais', reason: textosFocados());
+      final todos = t.widget<ListTile>(find.ancestor(
+          of: find.descendant(of: _grupos, matching: find.text('Todos os canais')), matching: find.byType(ListTile)));
+      expect(todos.selected, isTrue);
+      expect(todos.trailing, isA<Row>());
+      expect(find.descendant(of: _grupos, matching: find.text('33')), findsOneWidget, reason: 'o total dos canais');
+      expect(dica(t), 'Pesquisar canais ou número');
+      // os canais de todos os grupos
+      expect(find.descendant(of: _canais, matching: find.text('Desporto 1')), findsOneWidget);
+    });
+
+    testWidgets('com «Desporto» escolhido, pesquisar «1» só encontra canais desse grupo', (t) async {
+      await abrir(t);
+      await t.tap(find.descendant(of: _grupos, matching: find.text('Desporto')));
+      await t.pumpAndSettle();
+      expect(dica(t), 'Pesquisar em Desporto');
+      await escrever(t, '1');
+      // Desporto 1 e 10–19 (os «Desp. Mundo 1…» e «Notícias 1» são de outros grupos)
+      expect(find.text('Desporto · 11'), findsOneWidget);
+      expect(find.text('Canais · 11'), findsNothing);
+      expect(find.descendant(of: _canais, matching: find.text('Desp. Mundo 1')), findsNothing);
+      expect(find.descendant(of: _canais, matching: find.text('Notícias 1')), findsNothing);
+      // o número também, mas só no grupo
+      await escrever(t, '401');
+      expect(find.text('Desporto · 0'), findsOneWidget);
+      await escrever(t, '205');
+      expect(find.text('Desporto · 1'), findsOneWidget);
+      expect(find.descendant(of: _canais, matching: find.text('Desporto 5')), findsOneWidget);
+    });
+
+    testWidgets('escolher «Todos os canais» volta a pesquisar em todos os grupos', (t) async {
+      await abrir(t);
+      await t.tap(find.descendant(of: _grupos, matching: find.text('Desporto')));
+      await t.pumpAndSettle();
+      await t.tap(find.descendant(of: _grupos, matching: find.text('Todos os canais')));
+      await t.pumpAndSettle();
+      expect(dica(t), 'Pesquisar canais ou número');
+      await escrever(t, '1');
+      // Desporto 1, 10–19; Desp. Mundo 1, 10, 11; Notícias 1
+      expect(find.text('Canais · 15'), findsOneWidget);
+    });
+
+    testWidgets('com Favoritos escolhido, a pesquisa só encontra favoritos', (t) async {
+      await abrir(t, favoritos: ['d1', 'd12', 'i1', 'n2']);
+      // abre em «Todos os canais», mesmo com favoritos
+      expect(_focado(), 'Todos os canais');
+      await t.tap(find.descendant(of: _grupos, matching: find.text(grupoFavoritos)));
+      await t.pumpAndSettle();
+      expect(dica(t), 'Pesquisar em Favoritos');
+      await escrever(t, '1');
+      expect(find.text('$grupoFavoritos · 3'), findsOneWidget);
+      expect(find.descendant(of: _canais, matching: find.text('Desporto 10')), findsNothing);
+      expect(find.descendant(of: _canais, matching: find.text('Notícias 1')), findsNothing);
+      expect(find.descendant(of: _canais, matching: find.text('Desp. Mundo 1')), findsOneWidget);
+      await escrever(t, '402');
+      expect(find.text('$grupoFavoritos · 1'), findsOneWidget);
+    });
+
+    testWidgets('no ecrã estreito o 1.º chip é «Todos» e tira a escolha do grupo', (t) async {
+      await abrir(t, largura: 400, altura: 800);
+      final chips = find.byType(ChoiceChip);
+      expect(find.descendant(of: chips.first, matching: find.text('Todos')), findsOneWidget);
+      expect(chipEscolhido(t, 'Todos'), isTrue);
+      await t.tap(find.widgetWithText(ChoiceChip, 'Desporto'));
+      await t.pumpAndSettle();
+      expect(chipEscolhido(t, 'Todos'), isFalse);
+      expect(chipEscolhido(t, 'Desporto'), isTrue);
+      await escrever(t, '1');
+      expect(find.text('Desporto · 11'), findsOneWidget);
+      await t.tap(find.widgetWithText(ChoiceChip, 'Todos'));
+      await t.pumpAndSettle();
+      expect(chipEscolhido(t, 'Todos'), isTrue);
+      await escrever(t, '1');
+      expect(find.text('Canais · 15'), findsOneWidget);
+    });
+
+    testWidgets('↑ em «Todos os canais» vai ao filtro dos grupos; o filtro não a esconde', (t) async {
+      await abrir(t);
+      expect(_focado(), 'Todos os canais');
+      await teclaDpad(t, LogicalKeyboardKey.arrowUp);
+      expect(_noCampo(t, _filtro), isTrue, reason: textosFocados());
+      await filtrar(t, 'zzz');
+      expect(_nomes(t, _grupos), ['Todos os canais']);
+    });
   });
 
   testWidgets('‹ Início sai logo, mesmo com texto na pesquisa', (t) async {

@@ -85,6 +85,8 @@ class _TelaConteudoState extends State<TelaConteudo> {
   /// O "Cancelar" do loader, e quem tinha o foco antes do loader (volta para lá ao fechar).
   final _focoCancelar = FocusNode(debugLabel: 'Cancelar o carregamento');
   FocusNode? _focoAntes;
+
+  /// O grupo escolhido (null = nenhum: "Todos os canais"). A pesquisa dos canais procura só nele.
   String? _grupo;
 
   /// A pesquisa dos canais (já com o atraso de [_pesquisar]) e o filtro dos grupos (idem).
@@ -105,6 +107,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
 
   // feitos uma vez por lista (com 100 mil canais, refazê-los a cada build congela a TV)
   Map<String, List<Canal>> _porGrupo = const {};
+  Map<String, List<int>> _posicoesPorGrupo = const {}; // as posições em `canais` (para os nomes sem acentos)
   Map<String, String> _gruposSemAcentos = const {}; // para a pesquisa nos grupos
   List<String>? _nomes; // os nomes sem acentos, pela ordem de `canais`
   Timer? _atrasoPesquisa;
@@ -131,6 +134,12 @@ class _TelaConteudoState extends State<TelaConteudo> {
   /// O foco de cada grupo (depois de esconder um, o foco passa ao grupo escolhido).
   final _focosGrupos = <String, FocusNode>{};
   FocusNode _focoGrupo(String g) => _focosGrupos.putIfAbsent(g, () => FocusNode(debugLabel: 'Grupo $g'));
+
+  /// O foco da linha "Todos os canais" (sem grupo escolhido).
+  final _focoTodos = FocusNode(debugLabel: 'Todos os canais');
+
+  /// O foco da linha do grupo escolhido ("Todos os canais", sem grupo); null se não estiver à vista.
+  FocusNode? get _focoEscolhido => _grupo == null ? _focoTodos : _focosGrupos[_grupo];
 
   /// O canal com o foco na lista visível (0 = o primeiro): o "i" do "i de n".
   int _indice = 0;
@@ -164,6 +173,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
     _focoCancelar.dispose();
     _textoPesquisa.dispose();
     _focoPesquisa.dispose();
+    _focoTodos.dispose();
     for (final f in _focosGrupos.values) {
       f.dispose();
     }
@@ -185,18 +195,22 @@ class _TelaConteudoState extends State<TelaConteudo> {
 
   void _mostrar(ConteudoLista c) {
     final porGrupo = <String, List<Canal>>{};
-    for (final x in c.canais) {
+    final posicoes = <String, List<int>>{};
+    for (var i = 0; i < c.canais.length; i++) {
+      final x = c.canais[i];
       (porGrupo[x.grupo] ??= []).add(x);
+      (posicoes[x.grupo] ??= []).add(i);
     }
     setState(() {
       _conteudo = c;
       _contagens = {for (final e in porGrupo.entries) e.key: e.value.length};
       _porGrupo = porGrupo;
+      _posicoesPorGrupo = posicoes;
       _gruposSemAcentos = {for (final g in c.grupos) g: semAcentos(g)};
       _nomes = null;
       _chaveVisiveis = null;
       _erro = null;
-      _grupo ??= _primeiroGrupo(c);
+      // abre sem grupo ("Todos os canais"); ao atualizar, o grupo escolhido fica
     });
     _indexarNomes(c);
     if (widget.continuar != null && !_continuou) {
@@ -272,8 +286,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
     // o grupo com o foco pode ter saído: o foco vai para o grupo escolhido
     if (o == OpcaoCanais.esconderGrupo || o == OpcaoCanais.ocultarEscondidos) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        final g = _grupo;
-        if (mounted && g != null) _focosGrupos[g]?.requestFocus();
+        if (mounted) _focoEscolhido?.requestFocus();
       });
     }
   }
@@ -319,7 +332,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
       if (canais.isNotEmpty) {
         _focarNoCanal(canais, 0);
       } else {
-        final g = _focosGrupos[_grupo];
+        final g = _focoEscolhido;
         if (g != null && g.context != null && g.canRequestFocus) g.requestFocus();
       }
     });
@@ -346,7 +359,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
     if (!nosGrupos) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      final g = _focosGrupos[_grupo];
+      final g = _focoEscolhido;
       if (g != null && g.context != null && g.canRequestFocus) {
         g.requestFocus();
       } else {
@@ -355,8 +368,9 @@ class _TelaConteudoState extends State<TelaConteudo> {
     });
   }
 
-  /// Escolhe o grupo `g`. Com pesquisa de canais, apaga-a e abre o grupo, com o foco nele.
-  void _escolherGrupo(String g) {
+  /// Escolhe o grupo `g` (null = "Todos os canais"). Com pesquisa de canais, apaga-a e abre o
+  /// grupo, com o foco nele.
+  void _escolherGrupo(String? g) {
     if (!_comTexto && _q.trim().isEmpty) {
       setState(() => _grupo = g);
       return;
@@ -364,7 +378,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
     _limparPesquisa();
     setState(() => _grupo = g);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _focosGrupos[g]?.requestFocus();
+      if (mounted) _focoEscolhido?.requestFocus();
     });
   }
 
@@ -519,35 +533,68 @@ class _TelaConteudoState extends State<TelaConteudo> {
     final q = _pesquisaCanais ? semAcentos(_q.trim()) : '';
     final ordem = widget.lista.ordemCanais;
     final escondidos = widget.lista.gruposEscondidos;
-    final chave = '${ordem.name}|${_verEscondidos ? '' : escondidos.join('\u0000')}|'
-        '${q.isNotEmpty ? 'q:$q' : (_grupo == grupoFavoritos ? 'f:$_versaoFavoritos' : _grupo == grupoVistos ? 'v:${widget.lista.vistos.join(',')}' : 'g:$_grupo')}';
+    final grupo = _grupo == grupoFavoritos
+        ? 'f:$_versaoFavoritos'
+        : _grupo == grupoVistos ? 'v:${widget.lista.vistos.join(',')}' : 'g:${_grupo ?? ''}';
+    final chave = '${ordem.name}|${_verEscondidos ? '' : escondidos.join('\u0000')}|$grupo|'
+        '${q.isNotEmpty ? 'q:$q' : ''}';
     if (chave == _chaveVisiveis) return _visiveis;
     _chaveVisiveis = chave;
     _indice = 0;
+    // sem grupo, os grupos escondidos ficam de fora (também da pesquisa)
+    final semEscondidos = _verEscondidos || escondidos.isEmpty;
     final List<Canal> r;
     if (q.isNotEmpty) {
       final nomes = _nomes ??= [for (final x in c.canais) semAcentos(x.nome)];
-      // os grupos escondidos também ficam fora da pesquisa
-      final semEscondidos = _verEscondidos || escondidos.isEmpty;
       // um número escrito também encontra o canal com esse número
       final numero = int.tryParse(q);
-      r = [
-        for (var i = 0; i < c.canais.length; i++)
-          if ((nomes[i].contains(q) || (numero != null && c.canais[i].numero == numero)) &&
-              (semEscondidos || !escondidos.contains(c.canais[i].grupo)))
-            c.canais[i],
-      ];
+      bool encontra(int i) => nomes[i].contains(q) || (numero != null && c.canais[i].numero == numero);
+      if (_grupo == grupoVistos) {
+        // poucos (até maxVistos), pela ordem em que se viram
+        _visiveis = [
+          for (final x in _vistosExistentes(c))
+            if (semAcentos(x.nome).contains(q) || (numero != null && x.numero == numero)) x,
+        ];
+        return _visiveis;
+      } else if (_grupo == grupoFavoritos) {
+        final favoritos = widget.lista.favoritos;
+        r = [
+          for (var i = 0; i < c.canais.length; i++)
+            if (favoritos.contains(c.canais[i].id) && encontra(i)) c.canais[i],
+        ];
+      } else if (_grupo != null) {
+        // só as posições do grupo: com 100 mil canais não se percorre a lista toda
+        r = [for (final i in _posicoesPorGrupo[_grupo] ?? const <int>[]) if (encontra(i)) c.canais[i]];
+      } else {
+        r = [
+          for (var i = 0; i < c.canais.length; i++)
+            if (encontra(i) && (semEscondidos || !escondidos.contains(c.canais[i].grupo))) c.canais[i],
+        ];
+      }
     } else if (_grupo == grupoVistos) {
       // pela ordem em que se viram, não pela ordem dos canais
       _visiveis = _vistosExistentes(c);
       return _visiveis;
     } else if (_grupo == grupoFavoritos) {
       r = [for (final x in c.canais) if (widget.lista.favoritos.contains(x.id)) x];
+    } else if (_grupo != null) {
+      r = _porGrupo[_grupo] ?? const [];
     } else {
-      r = _grupo == null ? c.canais : (_porGrupo[_grupo] ?? const []);
+      r = semEscondidos ? c.canais : [for (final x in c.canais) if (!escondidos.contains(x.grupo)) x];
     }
     _visiveis = ordenarCanais(r, ordem);
     return _visiveis;
+  }
+
+  /// Quantos canais tem "Todos os canais" (sem os dos grupos escondidos, se não estão à vista).
+  int _totalTodos(ConteudoLista c) {
+    final escondidos = widget.lista.gruposEscondidos;
+    if (_verEscondidos || escondidos.isEmpty) return c.canais.length;
+    var n = c.canais.length;
+    for (final g in escondidos) {
+      n -= _contagens[g] ?? 0;
+    }
+    return n;
   }
 
   /// Guarda o canal para o "Continuar a ver" (em segundo plano; uma falha não incomoda).
@@ -680,8 +727,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
     });
     if (!_verEscondidos) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        final g = _grupo;
-        if (mounted && g != null) _focosGrupos[g]?.requestFocus();
+        if (mounted) _focoEscolhido?.requestFocus();
       });
     }
   }
@@ -872,13 +918,18 @@ class _TelaConteudoState extends State<TelaConteudo> {
         child: ListView.separated(
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.symmetric(horizontal: Tokens.e16),
-          itemCount: grupos.length,
+          // o 1.º chip, "Todos", tira a escolha do grupo
+          itemCount: grupos.length + 1,
           separatorBuilder: (_, _) => const SizedBox(width: 6),
-          itemBuilder: (_, i) => ChoiceChip(
-            label: Text(grupos[i], maxLines: 1, overflow: TextOverflow.ellipsis),
-            selected: !pesquisa && grupos[i] == _grupo,
-            onSelected: (_) => _escolherGrupo(grupos[i]),
-          ),
+          itemBuilder: (_, i) {
+            final g = i == 0 ? null : grupos[i - 1];
+            return ChoiceChip(
+              label: Text(g ?? 'Todos', maxLines: 1, overflow: TextOverflow.ellipsis),
+              // a pesquisa procura no grupo escolhido: ele continua marcado
+              selected: g == _grupo,
+              onSelected: (_) => _escolherGrupo(g),
+            );
+          },
         ),
       ),
       _campoPesquisaCanais(),
@@ -962,8 +1013,12 @@ class _TelaConteudoState extends State<TelaConteudo> {
         ),
       );
 
-  Widget _campoPesquisaCanais() => _campoColuna(const Key('pesquisa-canais'), _textoPesquisa, _focoPesquisa,
-      Icons.search, 'Pesquisar canais ou número', _pesquisar);
+  /// A pesquisa dos canais: sem grupo, em todos; com grupo, só nele ("Pesquisar em Desporto").
+  Widget _campoPesquisaCanais() {
+    final g = _grupo;
+    final dica = g == null ? 'Pesquisar canais ou número' : 'Pesquisar em ${g == grupoFavoritos ? 'Favoritos' : g}';
+    return _campoColuna(const Key('pesquisa-canais'), _textoPesquisa, _focoPesquisa, Icons.search, dica, _pesquisar);
+  }
 
   /// O texto com a parte encontrada (`q`, já sem acentos) em [Tokens.anelFoco]; sem ela, só o texto.
   Widget _comRealce(String texto, String q, TextStyle estilo) {
@@ -983,8 +1038,8 @@ class _TelaConteudoState extends State<TelaConteudo> {
     );
   }
 
-  /// Por cima dos canais: o grupo (com pesquisa, "Canais · n") à esquerda e `i de n` à direita
-  /// (i = o canal com o foco).
+  /// Por cima dos canais: o grupo (com pesquisa, "Desporto · n", ou sem grupo "Canais · n") à
+  /// esquerda e `i de n` à direita (i = o canal com o foco).
   Widget _cabecalhoCanais(int n, bool pesquisa) {
     final estilo = _estiloCabecalho();
     return Padding(
@@ -992,7 +1047,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
       child: Row(children: [
         Expanded(
           child: Text(
-            pesquisa ? 'Canais · $n' : (_grupo ?? 'Todos'),
+            pesquisa ? '${_grupo ?? 'Canais'} · $n' : (_grupo ?? 'Todos'),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: estilo,
@@ -1025,18 +1080,20 @@ class _TelaConteudoState extends State<TelaConteudo> {
         child: Focus(
           focusNode: _focoColunaGrupos,
           includeSemantics: false,
-          onKeyEvent: (_, e) => _subirParaCampo(
-                  e, grupos.isNotEmpty && (_focosGrupos[grupos.first]?.hasPrimaryFocus ?? false), _focoFiltroGrupos)
-                  ? KeyEventResult.handled
-                  : KeyEventResult.ignored,
+          // "Todos os canais" é sempre a primeira linha
+          onKeyEvent: (_, e) => _subirParaCampo(e, _focoTodos.hasPrimaryFocus, _focoFiltroGrupos)
+              ? KeyEventResult.handled
+              : KeyEventResult.ignored,
           child: FocusTraversalGroup(
           child: ListView.builder(
             key: const Key('lista-grupos'),
             // margem para a borda de realce não ser cortada pelo vidro
             padding: const EdgeInsets.all(_margemLista),
-            itemCount: grupos.length,
-            itemBuilder: (_, i) {
-              final g = grupos[i];
+            // a 1.ª linha, "Todos os canais", nunca é filtrada
+            itemCount: grupos.length + 1,
+            itemBuilder: (_, j) {
+              if (j == 0) return _linhaTodos(tv);
+              final g = grupos[j - 1];
               final n = g == grupoFavoritos
                   ? widget.lista.favoritos.length
                   : g == grupoVistos ? _vistosExistentes(_conteudo!).length : (_contagens[g] ?? 0);
@@ -1050,7 +1107,8 @@ class _TelaConteudoState extends State<TelaConteudo> {
                   dense: !tv,
                   // o foco começa no grupo escolhido
                   autofocus: g == _grupo,
-                  selected: g == _grupo && !_pesquisaCanais,
+                  // a pesquisa procura no grupo escolhido: ele continua marcado
+                  selected: g == _grupo,
                   title: _comRealce(g, q, TextStyle(fontSize: tv ? 17 : 14, fontWeight: FontWeight.w500,
                       color: escondido ? Tokens.texto2 : null)),
                   trailing: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -1075,6 +1133,23 @@ class _TelaConteudoState extends State<TelaConteudo> {
       ),
     ]);
   }
+
+  /// "Todos os canais", com o total: escolhê-la tira a escolha do grupo.
+  Widget _linhaTodos(bool tv) => RealceFoco(
+        construir: (_, aoMudarFoco) => ListTile(
+          focusNode: _focoTodos,
+          onFocusChange: aoMudarFoco,
+          dense: !tv,
+          autofocus: _grupo == null,
+          selected: _grupo == null,
+          title: Text('Todos os canais', maxLines: 1, overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: tv ? 17 : 14, fontWeight: FontWeight.w500)),
+          trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+            Text('${_totalTodos(_conteudo!)}', style: TextStyle(color: Tokens.texto2, fontSize: tv ? 15 : 12.5)),
+          ]),
+          onTap: () => _escolherGrupo(null),
+        ),
+      );
 
   Widget _listaCanais(List<Canal> canais) {
     if (canais.isEmpty) {
@@ -1220,7 +1295,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
     if (e.logicalKey == LogicalKeyboardKey.arrowRight) return KeyEventResult.handled;
     if (_subirParaCampo(e, _indice == 0, _focoPesquisa)) return KeyEventResult.handled;
     if (e.logicalKey == LogicalKeyboardKey.arrowLeft) {
-      final g = _focosGrupos[_grupo];
+      final g = _focoEscolhido;
       if (g != null && (g.context?.mounted ?? false) && g.canRequestFocus) {
         g.requestFocus();
         return KeyEventResult.handled;
@@ -1257,8 +1332,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
     if (restantes.isEmpty) {
       setState(() => _grupo = _primeiroGrupo(_conteudo!));
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        final g = _grupo;
-        if (mounted && g != null) _focosGrupos[g]?.requestFocus();
+        if (mounted) _focoEscolhido?.requestFocus();
       });
       return;
     }

@@ -130,7 +130,11 @@ void main() {
     testWidgets('CIMA/BAIXO vão sempre de canal em canal (a estrela não é uma paragem)', (t) async {
       ecraTvTeste(t);
       await mostrar(t);
+      // abre em «Todos os canais»: BAIXO vai ao grupo G e OK escolhe-o
+      expect(textosFocados(), contains('Todos os canais'));
+      await teclaDpad(t, LogicalKeyboardKey.arrowDown);
       expect(textosFocados(), contains('G'));
+      await teclaDpad(t, LogicalKeyboardKey.select);
       await teclaDpad(t, LogicalKeyboardKey.arrowRight);
       expect(canalFocado(), 'Canal 0', reason: 'foco em: ${textosFocados()}');
       for (var i = 1; i < 20; i++) {
@@ -189,7 +193,11 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 300));
     });
     await t.pump();
+    // abre em «Todos os canais»: BAIXO vai aos favoritos e OK escolhe-os
+    expect(textosFocados(), contains('Todos os canais'));
+    await teclaDpad(t, LogicalKeyboardKey.arrowDown);
     expect(textosFocados(), contains(grupoFavoritos));
+    await teclaDpad(t, LogicalKeyboardKey.select);
     await teclaDpad(t, LogicalKeyboardKey.arrowRight);
     await teclaDpad(t, LogicalKeyboardKey.arrowDown);
     expect(textosFocados(), contains('Dois'));

@@ -97,7 +97,12 @@ void main() {
       (t) async {
     final l = await preparar(t);
     await mostrar(t, l);
+    // abre em «Todos os canais»: BAIXO vai a Portugal e OK escolhe-o
+    expect(_focado(), 'Todos os canais');
+    await _tecla(t, LogicalKeyboardKey.arrowDown);
     expect(_focado(), 'Portugal');
+    await _tecla(t, LogicalKeyboardKey.select);
+    expect(_nomesCanais(t), ['SIC', 'RTP 1']);
     await _okMantido(t);
     expect(find.text('Esconder o grupo'), findsOneWidget);
     expect(_focado(), 'Esconder o grupo');
@@ -140,8 +145,9 @@ void main() {
   testWidgets('D-pad: as opções do topo chegam-se com as setas e ordenam A–Z (persistente)', (t) async {
     final l = await preparar(t);
     await mostrar(t, l);
-    expect(_nomesCanais(t), ['SIC', 'RTP 1']);
-    // do grupo, CIMA leva ao filtro dos grupos e outra vez ao "‹ Início"
+    // abre em «Todos os canais», pela ordem da lista
+    expect(_nomesCanais(t), ['SIC', 'RTP 1', 'Sport TV 1', 'BBC One', 'Eleven']);
+    // de «Todos os canais», CIMA leva ao filtro dos grupos e outra vez ao "‹ Início"
     await _tecla(t, LogicalKeyboardKey.arrowUp);
     await _tecla(t, LogicalKeyboardKey.arrowUp);
     expect(textosFocados(), '‹ Início');
@@ -164,18 +170,21 @@ void main() {
     }
     expect(_focado(), 'Ordenar A–Z');
     await _tecla(t, LogicalKeyboardKey.select);
-    expect(_nomesCanais(t), ['RTP 1', 'SIC']);
+    expect(_nomesCanais(t), ['BBC One', 'Eleven', 'RTP 1', 'SIC', 'Sport TV 1']);
     expect(l.ordemCanais, OrdemCanais.az);
 
     // outra vez o ecrã: continua A–Z
     await mostrar(t, bib.listas.single);
-    expect(_nomesCanais(t), ['RTP 1', 'SIC']);
+    expect(_nomesCanais(t), ['BBC One', 'Eleven', 'RTP 1', 'SIC', 'Sport TV 1']);
   });
 
   testWidgets('a pesquisa não mostra canais de grupos escondidos (só com "Mostrar grupos escondidos")', (t) async {
     final l = await preparar(t);
     await t.runAsync(() => bib.esconderGrupo(l.id, 'UK', true));
     await mostrar(t, l);
+    // «Todos os canais» também os deixa de fora (e não os conta)
+    expect(_nomesCanais(t), ['SIC', 'RTP 1', 'Sport TV 1', 'Eleven']);
+    expect(find.descendant(of: find.byKey(const Key('lista-grupos')), matching: find.text('4')), findsOneWidget);
     await t.tap(find.byKey(const Key('pesquisa-canais')));
     await t.pump();
     await t.enterText(find.byKey(const Key('pesquisa-canais')), 'bbc');
