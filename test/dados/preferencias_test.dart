@@ -369,4 +369,33 @@ void main() {
       }
     });
   });
+  group('motor do player no Android (ExoPlayer / mpv) e modo túnel', () {
+    test('por omissão: ExoPlayer e túnel desligado', () async {
+      final p = await Preferencias.abrir(pasta);
+      expect(p.motorAndroid, MotorAndroid.exoplayer);
+      expect(p.modoTunel, isFalse);
+    });
+
+    test('guardam-se e voltam a ler-se; um nome desconhecido dá o ExoPlayer', () async {
+      final p = await Preferencias.abrir(pasta);
+      p
+        ..motorAndroid = MotorAndroid.mpv
+        ..modoTunel = true;
+      await p.guardar();
+      final m = jsonDecode(ficheiro().readAsStringSync()) as Map;
+      expect((m['motorAndroid'], m['modoTunel']), ('mpv', true));
+      final q = await Preferencias.abrir(pasta);
+      expect((q.motorAndroid, q.modoTunel), (MotorAndroid.mpv, true));
+      ficheiro().writeAsStringSync('{"motorAndroid": "vlc"}');
+      expect((await Preferencias.abrir(pasta)).motorAndroid, MotorAndroid.exoplayer);
+    });
+
+    test('a cópia de segurança leva-os e aplicar repõe-nos', () async {
+      final p = await Preferencias.abrir(pasta);
+      expect(p.paraJson(), containsPair('motorAndroid', 'exoplayer'));
+      expect(p.paraJson(), containsPair('modoTunel', false));
+      p.aplicar({'motorAndroid': 'mpv', 'modoTunel': true});
+      expect((p.motorAndroid, p.modoTunel), (MotorAndroid.mpv, true));
+    });
+  });
 }

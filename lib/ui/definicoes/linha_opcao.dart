@@ -7,28 +7,46 @@ const paddingLinhaOpcao = EdgeInsets.symmetric(horizontal: Tokens.e8, vertical: 
 
 /// O título e a explicação de uma opção (a coluna da esquerda).
 class TextoOpcao extends StatelessWidget {
-  const TextoOpcao(this.titulo, this.explicacao, {super.key});
+  const TextoOpcao(this.titulo, this.explicacao, {super.key, this.nota});
   final String titulo;
   final String explicacao;
+
+  /// Porque é que a opção está desativada (por exemplo, «só no motor mpv»); null: está ativa.
+  final String? nota;
 
   @override
   Widget build(BuildContext context) => Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
         Text(titulo, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Tokens.texto)),
         const SizedBox(height: 2),
         Text(explicacao, style: const TextStyle(fontSize: 13.5, color: Tokens.texto2)),
+        if (nota case final nota?) NotaOpcao(nota),
       ]);
+}
+
+/// A nota (em itálico) de uma opção desativada, por baixo da explicação.
+class NotaOpcao extends StatelessWidget {
+  const NotaOpcao(this.texto, {super.key});
+  final String texto;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(top: 2),
+        child: Text(texto, style: const TextStyle(fontSize: 13, fontStyle: FontStyle.italic, color: Tokens.texto2)),
+      );
 }
 
 /// Uma opção das Definições, em linha simples (sem caixa): título e explicação à esquerda e o
 /// controlo à direita; por baixo do título quando `empilhar` ou quando a largura é curta. Sem
-/// alturas fixas: cresce com a letra do sistema.
+/// alturas fixas: cresce com a letra do sistema. Com `nota`, a nota aparece por baixo da explicação.
 class LinhaOpcao extends StatelessWidget {
-  const LinhaOpcao({super.key, required this.titulo, required this.explicacao, this.controlo, this.empilhar = false});
+  const LinhaOpcao(
+      {super.key, required this.titulo, required this.explicacao, this.controlo, this.empilhar = false, this.nota});
 
   final String titulo;
   final String explicacao;
   final Widget? controlo;
   final bool empilhar;
+  final String? nota;
 
   /// Abaixo desta largura o controlo vai para baixo do título.
   static const larguraMinimaLado = 520.0;
@@ -37,7 +55,7 @@ class LinhaOpcao extends StatelessWidget {
   Widget build(BuildContext context) => Padding(
         padding: paddingLinhaOpcao,
         child: LayoutBuilder(builder: (context, c) {
-          final texto = TextoOpcao(titulo, explicacao);
+          final texto = TextoOpcao(titulo, explicacao, nota: nota);
           final controlo = this.controlo;
           if (controlo == null) return SizedBox(width: double.infinity, child: texto);
           if (empilhar || c.maxWidth < larguraMinimaLado) {

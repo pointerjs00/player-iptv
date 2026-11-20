@@ -84,6 +84,15 @@ class VigiaAbertura {
     aoAbrir();
   }
 
+  /// O motor diz que a primeira imagem deste canal chegou ao ecrã (o ExoPlayer: `onRenderedFirstFrame`):
+  /// abre já, sem esperar que a posição ande (que só chega a cada 500 ms).
+  void imagem() {
+    if (!_aceitar || !_aVigiar) return;
+    _aVigiar = false;
+    _prazo?.cancel();
+    aoAbrir();
+  }
+
   /// O canal falhou por outra razão ou o player fechou.
   void parar() {
     _aVigiar = false;

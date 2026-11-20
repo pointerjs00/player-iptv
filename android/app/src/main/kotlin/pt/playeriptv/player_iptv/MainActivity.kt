@@ -9,6 +9,8 @@ import android.os.Environment
 import android.provider.MediaStore
 import android.view.Display
 import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.RenderMode
+import io.flutter.embedding.android.TransparencyMode
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.engine.renderer.FlutterRenderer
 import io.flutter.plugin.common.MethodChannel
@@ -17,6 +19,7 @@ import java.io.File
 class MainActivity : FlutterActivity() {
     private var pedidoPermissao: (() -> Unit)? = null
     private var falhaPermissao: (() -> Unit)? = null
+    private var reprodutorExo: ReprodutorExo? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // A textura do vídeo (SurfaceProducer do media_kit_video) passa a SurfaceTexture também no
@@ -29,8 +32,42 @@ class MainActivity : FlutterActivity() {
         super.onCreate(savedInstanceState)
     }
 
+    // Motor ExoPlayer: o vídeo desenha-se num SurfaceView por baixo da interface. Para se ver, a
+    // FlutterView é sempre transparente: o FlutterSurfaceView fica com formato TRANSPARENT e
+    // setZOrderOnTop(true) (por cima da janela), e o SurfaceView do vídeo, com a ordem normal, fica
+    // por trás da janela. A transparência só se escolhe ao criar a FlutterView, por isso é fixa;
+    // a app pinta o seu fundo opaco em Flutter. O fundo da janela (tema) não muda.
+    override fun getRenderMode(): RenderMode = RenderMode.surface
+
+    override fun getTransparencyMode(): TransparencyMode = TransparencyMode.transparent
+
+    override fun onPause() {
+        // em ecrã dividido/PiP a app continua à vista: não pausa
+        if (!(Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && isInMultiWindowMode)) reprodutorExo?.aoPausar()
+        super.onPause()
+    }
+
+    override fun onStop() {
+        reprodutorExo?.aoPausar()
+        super.onStop()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        reprodutorExo?.aoRetomar()
+    }
+
+    override fun onDestroy() {
+        reprodutorExo?.destruir()
+        reprodutorExo = null
+        super.onDestroy()
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        // Motor ExoPlayer (Media3): canais player_iptv/exo e player_iptv/exo/eventos
+        reprodutorExo?.destruir()
+        reprodutorExo = ReprodutorExo(this, flutterEngine.dartExecutor.binaryMessenger)
         // "eTv": Android TV (leanback) ou sem ecrã tátil -> o realce do foco fica sempre ligado
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "player_iptv/tv").setMethodCallHandler { call, result ->
             if (call.method == "eTv") {

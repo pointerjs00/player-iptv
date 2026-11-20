@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
+import 'continuar_direto.dart';
+
 /// Onde o player corre (decide a saída de vídeo e a descodificação).
 enum PlataformaVideo {
   android,
@@ -133,13 +135,16 @@ class ConfiguracaoMpv {
         // junta 2 s antes de começar: evita engasgos logo no arranque
         'cache-pause-initial': 'yes',
         'cache-pause-wait': '2',
-        'network-timeout': '15',
+        'network-timeout': '${ContinuarDireto.limiteSemDados.inSeconds}',
         // sem reconexão dentro do mesmo stream (o mpv liga-a por omissão no http): o servidor
         // responde a uma ligação nova com um bloco do que já passou, os tempos recomeçam e o
         // vídeo voltava atrás dezenas de segundos; no Stalker o link nem serve duas vezes (HTTP
         // 462). O buffer toca até ao fim e o player pede o canal de novo (ContinuarDireto).
         'stream-lavf-o': 'reconnect=0,reconnect_streamed=0',
         'framedrop': 'vo',
+        // o media_kit liga a cache em disco (sem cache-dir): num direto só gastava escrita e
+        // pausas no armazenamento (lento num Fire TV Stick); a cache fica na memória
+        'cache-on-disk': 'no',
         if (p == PlataformaVideo.android) 'ao': 'audiotrack,opensles',
         if (reamostra) 'video-sync': 'display-resample',
       },

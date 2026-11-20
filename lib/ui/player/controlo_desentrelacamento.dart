@@ -49,10 +49,14 @@ class ControloDesentrelacamento {
 
   /// Android, reaberto em Compatível para o filtro: a partir de quantas imagens perdidas por segundo
   /// (o `frame-drop-count` mais o `decoder-frame-drop-count` do mpv) o aparelho não aguenta a cópia
-  /// das imagens + o bwdif e o canal volta ao direto. 2/s é 4 % das 50 imagens/s do bwdif: já se vê
-  /// a imagem a saltar; as poucas do arranque não chegam lá numa janela de [janelaPerdidas].
-  static const perdidasPorSegundo = 2.0;
+  /// das imagens + o bwdif e o canal volta ao direto. 0,5/s (1 % das 50 imagens/s do bwdif) já se vê
+  /// como um soluço a cada dois segundos; com 2/s o canal ficava a saltar em Compatível para sempre.
+  /// As poucas perdidas do arranque não chegam lá numa janela de [janelaPerdidas].
+  static const perdidasPorSegundo = 0.5;
   static const janelaPerdidas = Duration(seconds: 8);
+
+  /// Janelas seguidas acima do limite para desistir (um soluço isolado da rede não chega).
+  static const janelasParaDesistir = 2;
 
   final PlataformaVideo plataforma;
   final FiltrosNaSessao sessao;
@@ -78,6 +82,7 @@ class ControloDesentrelacamento {
   int _leiturasIdet = 0;
   Future<void> _fila = Future.value();
   ({DateTime quando, int perdidas})? _basePerdidas;
+  int _janelasMas = 0;
   String? _avisoReabrir;
 
   /// O que dizer ao utilizador quando [ler] pede para reabrir o canal.
@@ -128,6 +133,7 @@ class ControloDesentrelacamento {
 
   void _esquecerCanal() {
     _basePerdidas = null;
+    _janelasMas = 0;
     _entrelacada = null;
     _falhouNoCanal = false;
     _leiturasIdet = 0;
@@ -145,6 +151,9 @@ class ControloDesentrelacamento {
     final lida = imagemEntrelacada(m);
     if (_meio == MeioDesentrelacamento.filtroMpv || _meio == MeioDesentrelacamento.d3d11vpp) {
       _medir(m, chave);
+    } else if (compativel.eProgressivo(chave) && _aindaProgressivo(m, chave)) {
+      // já visto progressivo nesta sessão (o idet, em Compatível): nem shader nem reabrir
+      _entrelacada = false;
     } else if (lida != null) {
       _entrelacada = lida;
     }
@@ -166,6 +175,29 @@ class ControloDesentrelacamento {
     return false;
   }
 
+  /// O canal memorizado como progressivo continua a sê-lo: o mpv não o lê marcado como entrelaçado
+  /// (só vale com o mpv a descodificar; o MediaCodec não marca) e a altura e as imagens/s são as de
+  /// quando foi visto. Se não, sai da memória e decide a leitura.
+  bool _aindaProgressivo(Map<String, String> m, String chave) {
+    final marca = (m['video-frame-info/interlaced'] ?? '').trim();
+    final mpvMarca = !(m['hwdec-current'] ?? '').trim().startsWith('mediacodec') && marca == 'yes';
+    final guardada = compativel.assinaturaProgressivo(chave);
+    final atual = _assinatura(m);
+    if (mpvMarca || (guardada != null && atual != null && guardada != atual)) {
+      compativel.esquecerProgressivo(chave);
+      return false;
+    }
+    return true;
+  }
+
+  /// Altura@imagens/s do vídeo (null enquanto não se sabe).
+  String? _assinatura(Map<String, String> m) {
+    final h = double.tryParse((m['height'] ?? '').trim());
+    final f = double.tryParse((m['container-fps'] ?? '').trim()) ?? double.tryParse((m['estimated-vf-fps'] ?? '').trim());
+    if (h == null || h <= 0 || f == null || f <= 0) return null;
+    return '${h.round()}@${f.round()}';
+  }
+
   /// Android, num canal reaberto em Compatível para o filtro, com o filtro a dobrar as imagens: as
   /// imagens perdidas numa janela de pelo menos [janelaPerdidas] passam de [perdidasPorSegundo]? Em
   /// pausa, a carregar ou no fim do buffer a janela recomeça (essas paragens não são do aparelho).
@@ -175,6 +207,7 @@ class ControloDesentrelacamento {
         !_confirmado ||
         !compativel.paraFiltro(chave)) {
       _basePerdidas = null;
+      _janelasMas = 0;
       return false;
     }
     final perdidas = (int.tryParse((m['frame-drop-count'] ?? '').trim()) ?? 0) +
@@ -184,12 +217,15 @@ class ControloDesentrelacamento {
     final base = _basePerdidas;
     if (parado || base == null || perdidas < base.perdidas) {
       _basePerdidas = parado ? null : (quando: agora, perdidas: perdidas);
+      _janelasMas = 0;
       return false;
     }
     final passou = agora.difference(base.quando);
     if (passou < janelaPerdidas) return false;
     _basePerdidas = (quando: agora, perdidas: perdidas);
-    return (perdidas - base.perdidas) / (passou.inMilliseconds / 1000) > perdidasPorSegundo;
+    final ma = (perdidas - base.perdidas) / (passou.inMilliseconds / 1000) > perdidasPorSegundo;
+    _janelasMas = ma ? _janelasMas + 1 : 0;
+    return _janelasMas >= janelasParaDesistir;
   }
 
   /// O filtro posto leva o idet (MediaCodec, só as imagens marcadas); o de todas as imagens não.
@@ -201,7 +237,7 @@ class ControloDesentrelacamento {
     final idet = _comIdet ? idetEntrelacado(m['vf-metadata/$rotuloIdet']) : null;
     if (_comIdet && m['vf-metadata/$rotuloIdet']?.trim().isNotEmpty == true) _leiturasIdet++;
     // reaberto para o filtro e o idet vê um progressivo: da próxima vez o canal fica no direto
-    if (idet == false && _leiturasIdet >= 3 && compativel.paraFiltro(chave)) compativel.progressivo(chave);
+    if (idet == false && _leiturasIdet >= 3 && compativel.paraFiltro(chave)) compativel.progressivo(chave, _assinatura(m));
     switch (efeitoFiltro(_meio, m)) {
       case EfeitoFiltro.porSaber:
         return;

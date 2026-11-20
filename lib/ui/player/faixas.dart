@@ -1,4 +1,4 @@
-import 'package:media_kit/media_kit.dart';
+import 'motor_reproducao.dart';
 
 /// As opções de uma faixa para o painel (rótulos) e a que está escolhida.
 class EscolhaFaixa<T> {
@@ -39,17 +39,17 @@ EscolhaFaixa<T> _escolha<T>(List<T> todas, T atual, String Function(T) id, T pri
 }
 
 /// "Qualidade / faixa de vídeo": "Automática", "1080p", "720p · Backup".
-EscolhaFaixa<VideoTrack> escolhaVideo(List<VideoTrack> todas, VideoTrack atual) => _escolha(
-    todas, atual, (t) => t.id, VideoTrack.auto(), 'Automática',
-    (t, n) => _juntar([if ((t.h ?? 0) > 0) '${t.h}p', t.title], n));
+EscolhaFaixa<FaixaMotor> escolhaVideo(List<FaixaMotor> todas, FaixaMotor atual) => _escolha(
+    todas, atual, (t) => t.id, FaixaMotor.auto, 'Automática',
+    (t, n) => _juntar([if ((t.altura ?? 0) > 0) '${t.altura}p', t.titulo], n));
 
 /// "Automática", "Português · AAC".
-EscolhaFaixa<AudioTrack> escolhaAudio(List<AudioTrack> todas, AudioTrack atual) => _escolha(
-    todas, atual, (t) => t.id, AudioTrack.auto(), 'Automática',
-    (t, n) => _juntar([_idioma(t.language), t.title, t.codec?.toUpperCase()], n));
+EscolhaFaixa<FaixaMotor> escolhaAudio(List<FaixaMotor> todas, FaixaMotor atual) => _escolha(
+    todas, atual, (t) => t.id, FaixaMotor.auto, 'Automática',
+    (t, n) => _juntar([_idioma(t.lingua), t.titulo, t.codec?.toUpperCase()], n));
 
 /// "Desligadas", "Português". A escolha automática do mpv (sem legendas, num direto) conta
 /// como desligadas.
-EscolhaFaixa<SubtitleTrack> escolhaLegendas(List<SubtitleTrack> todas, SubtitleTrack atual) => _escolha(
-    todas, atual, (t) => t.id, SubtitleTrack.no(), 'Desligadas',
-    (t, n) => _juntar([_idioma(t.language), t.title], n));
+EscolhaFaixa<FaixaMotor> escolhaLegendas(List<FaixaMotor> todas, FaixaMotor atual) => _escolha(
+    todas, atual, (t) => t.id, FaixaMotor.nenhuma, 'Desligadas',
+    (t, n) => _juntar([_idioma(t.lingua), t.titulo], n));

@@ -148,4 +148,16 @@ void main() {
     expect(abriu, 1);
     expect(falhas, ['o canal não começou a tempo (sem imagem em 0.3 s)']);
   });
+
+  test('M2: a primeira imagem no ecrã (dita pelo motor) abre logo, sem esperar pela posição', () {
+    v.imagem(); // antes do open(): é do canal anterior
+    expect(abriu, 0);
+    v..comecar()..abrindo();
+    v.imagem();
+    expect(abriu, 1);
+    v.tempo(ms(0));
+    v.largura(1920);
+    v.tempo(ms(500));
+    expect(abriu, 1, reason: 'só uma vez');
+  });
 }

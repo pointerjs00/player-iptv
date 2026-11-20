@@ -58,6 +58,7 @@ class ControlosPlayer extends StatefulWidget {
     required this.definicoes,
     required this.child,
     this.comEcraInteiro = false,
+    this.comSaltos = true,
     this.lerInfoStream,
     this.lerProgresso,
     this.aoProcurar,
@@ -98,6 +99,9 @@ class ControlosPlayer extends StatefulWidget {
 
   /// Windows: botão de ecrã inteiro e duplo clique.
   final bool comEcraInteiro;
+
+  /// Os botões "Recuar 10 s" e "Avançar 10 s" (o motor sabe saltar no que já recebeu).
+  final bool comSaltos;
   final Duration esconderApos;
   final Widget child;
 
@@ -549,7 +553,7 @@ class ControlosPlayerState extends State<ControlosPlayer> {
                     runSpacing: Tokens.e8,
                     children: [
                       botao(Icons.skip_previous_rounded, 'Canal anterior', AcaoPlayer.canalAnterior),
-                      botao(Icons.replay_10_rounded, 'Recuar 10 s', AcaoPlayer.recuar),
+                      if (widget.comSaltos) botao(Icons.replay_10_rounded, 'Recuar 10 s', AcaoPlayer.recuar),
                       Tooltip(
                         message: e.aTocar ? 'Pausa' : 'Reproduzir',
                         child: FilledButton(
@@ -558,7 +562,7 @@ class ControlosPlayerState extends State<ControlosPlayer> {
                           child: Icon(e.aTocar ? Icons.pause_rounded : Icons.play_arrow_rounded, size: icone),
                         ),
                       ),
-                      botao(Icons.forward_10_rounded, 'Avançar 10 s', AcaoPlayer.avancar),
+                      if (widget.comSaltos) botao(Icons.forward_10_rounded, 'Avançar 10 s', AcaoPlayer.avancar),
                       botao(Icons.skip_next_rounded, 'Canal seguinte', AcaoPlayer.canalSeguinte),
                       if (e.podeAlternar) botao(Icons.swap_horiz_rounded, 'Canal visto antes', AcaoPlayer.alternarCanal),
                       const SizedBox(width: Tokens.e16),
