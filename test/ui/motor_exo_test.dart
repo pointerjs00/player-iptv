@@ -406,6 +406,24 @@ void main() {
       await m.descartar();
     });
 
+    test('M1: estatisticas traz o descodificador (hardware ou software) e se o túnel ficou ativo', () async {
+      _ExoFalso(estatisticas: {
+        'perdidas': 0,
+        'renderizadas': 10,
+        'descodificador': 'OMX.amlogic.avc.decoder.awesome',
+        'hardware': true,
+        'tunel': true,
+        'tunelAtivo': false,
+      });
+      final m = _motor();
+      final e = await m.estatisticas();
+      expect(e.descodificador, 'OMX.amlogic.avc.decoder.awesome');
+      expect(e.hardware, isTrue);
+      expect(e.tunelPedido, isTrue);
+      expect(e.tunelAtivo, isFalse);
+      await m.descartar();
+    });
+
     test('C1: o fps medido pelo nativo (evento fps) vale quando o formato não o diz, e recomeça a cada sessão', () async {
       final exo = _ExoFalso(estatisticas: {'perdidas': 0, 'renderizadas': 40, 'fps': null, 'largura': 1920, 'altura': 1080});
       final m = _motor();

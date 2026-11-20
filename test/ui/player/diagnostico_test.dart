@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:player_iptv/ui/player/diagnostico.dart';
+import 'package:player_iptv/ui/player/motor_reproducao.dart';
 
 AmostraMpv _a({double? buffer = 8, bool pausado = false, int dropsSaida = 0, int dropsDesc = 0,
         double? fps = 25, double? ecra = 50, String sync = 'audio'}) =>
@@ -199,6 +200,29 @@ void main() {
     });
     test('canal só de som (rádio): nunca houve vídeo, não é falha', () {
       expect(semImagemDireta(larguraVista: 0, propriedades: m(codec: '', hw: '', vo: 'no')), isFalse);
+    });
+  });
+
+  group('M1: linhasEstatisticasMotor (ExoPlayer)', () {
+    Map<String, String> l(EstatisticasMotor e) => {for (final (r, v) in linhasEstatisticasMotor(e)) r: v};
+
+    test('o descodificador de vídeo, com hardware ou software', () {
+      expect(l(const EstatisticasMotor(descodificador: 'OMX.amlogic.avc.decoder.awesome', hardware: true))['Descodificador'],
+          'OMX.amlogic.avc.decoder.awesome (hardware)');
+      expect(l(const EstatisticasMotor(descodificador: 'c2.android.avc.decoder', hardware: false))['Descodificador'],
+          'c2.android.avc.decoder (software)');
+      expect(l(const EstatisticasMotor())['Descodificador'], '—');
+    });
+
+    test('o modo túnel: se ficou mesmo ativo, e a nota das perdidas', () {
+      expect(l(const EstatisticasMotor(tunelPedido: false, tunelAtivo: false))['Modo túnel'], 'desligado');
+      expect(l(const EstatisticasMotor(tunelPedido: true, tunelAtivo: false))['Modo túnel'], 'pedido, mas não ficou ativo');
+      final ativo = l(const EstatisticasMotor(tunelPedido: true, tunelAtivo: true, perdidas: 0, renderizadas: 900));
+      expect(ativo['Modo túnel'], 'ativo');
+      expect(ativo['Imagens (perdidas · mostradas)'], '0 · 900 (em túnel as perdidas não são contadas)');
+      final semTunel = l(const EstatisticasMotor(tunelPedido: false, tunelAtivo: false, perdidas: 2, renderizadas: 900));
+      expect(semTunel['Imagens (perdidas · mostradas)'], '2 · 900');
+      expect(l(const EstatisticasMotor()).containsKey('Modo túnel'), isFalse, reason: 'o motor não disse nada');
     });
   });
 }

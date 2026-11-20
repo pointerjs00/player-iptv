@@ -204,12 +204,18 @@ AmostraMpv amostraDoMotor(EstatisticasMotor e) => AmostraMpv(
 List<(String, String)> linhasEstatisticasMotor(EstatisticasMotor e, {double? hzEcra}) {
   String fps(double? v) => v == null || v <= 0 ? '—' : v.toStringAsFixed(2);
   final r = e.resolucao, br = e.bitrate, buffer = e.buffer;
+  final hw = switch (e.hardware) { true => ' (hardware)', false => ' (software)', null => '' };
+  // em túnel o ExoPlayer não conta as imagens perdidas: o 0 não quer dizer que não as há
+  final notaTunel = e.tunelAtivo == true ? ' (em túnel as perdidas não são contadas)' : '';
   return [
     ('Codec', e.codec ?? '—'),
+    ('Descodificador', e.descodificador == null ? '—' : '${e.descodificador}$hw'),
     ('Resolução', r == null ? '—' : '${r.width.round()}×${r.height.round()}'),
     ('Imagens/s', fps(e.fps)),
     ('Ecrã (Hz)', hzEcra == null ? '—' : '${fps(hzEcra)} (sistema)'),
-    ('Imagens (perdidas · mostradas)', '${e.perdidas ?? '—'} · ${e.renderizadas ?? '—'}'),
+    ('Imagens (perdidas · mostradas)', '${e.perdidas ?? '—'} · ${e.renderizadas ?? '—'}$notaTunel'),
+    if (e.tunelPedido != null || e.tunelAtivo != null)
+      ('Modo túnel', e.tunelAtivo == true ? 'ativo' : (e.tunelPedido == true ? 'pedido, mas não ficou ativo' : 'desligado')),
     ('Buffer', buffer == null ? '—' : '${(buffer.inMilliseconds / 1000).toStringAsFixed(1)} s'),
     ('Débito do vídeo', br == null || br <= 0 ? '—' : '${(br / 1e6).toStringAsFixed(1)} Mb/s'),
   ];

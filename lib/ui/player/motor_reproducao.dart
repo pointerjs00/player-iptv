@@ -69,6 +69,10 @@ class EstatisticasMotor {
     this.renderizadas,
     this.bitrate,
     this.buffer,
+    this.descodificador,
+    this.hardware,
+    this.tunelPedido,
+    this.tunelAtivo,
   });
 
   final Size? resolucao;
@@ -86,6 +90,16 @@ class EstatisticasMotor {
 
   /// Quanto há no buffer à frente da posição.
   final Duration? buffer;
+
+  /// O nome do descodificador de vídeo (ex.: `OMX.amlogic.avc.decoder.awesome`).
+  final String? descodificador;
+
+  /// Se o [descodificador] é de hardware (false: software, ex.: `c2.android.*`, `OMX.google.*`).
+  final bool? hardware;
+
+  /// O modo túnel: pedido nas preferências, e se ficou mesmo ativo nas faixas escolhidas.
+  final bool? tunelPedido;
+  final bool? tunelAtivo;
 }
 
 /// Um erro do motor. `mensagem` pode trazer o link (quem a mostra tira os segredos); `formato`: o

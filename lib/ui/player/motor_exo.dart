@@ -256,6 +256,7 @@ class MotorExo implements MotorReproducao {
     final m = await _pedir<Map<Object?, Object?>>('estatisticas');
     if (m == null) return const EstatisticasMotor();
     double? n(String k) => switch (m[k]) { final num v => v.toDouble(), _ => null };
+    bool? b(String k) => switch (m[k]) { final bool v => v, _ => null };
     int? i(String k) => n(k)?.round();
     String? s(String k) => switch (m[k]) { final String v when v.trim().isNotEmpty => v.trim(), _ => null };
     Size? resolucao;
@@ -277,6 +278,10 @@ class MotorExo implements MotorReproducao {
       renderizadas: i('renderizadas'),
       bitrate: bitrate != null && bitrate > 0 ? bitrate : null,
       buffer: buffer == null ? null : Duration(milliseconds: buffer),
+      descodificador: s('descodificador'),
+      hardware: b('hardware'),
+      tunelPedido: b('tunel'),
+      tunelAtivo: b('tunelAtivo'),
     );
   }
 

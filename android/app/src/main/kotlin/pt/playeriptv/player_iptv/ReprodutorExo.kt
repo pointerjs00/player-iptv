@@ -2,7 +2,9 @@ package pt.playeriptv.player_iptv
 
 import android.app.Activity
 import android.graphics.Color
+import android.media.MediaCodecList
 import android.net.Uri
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -91,6 +93,7 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
     private var aCarregar = false
     private var ultimaPosicao = -1L
     private var descodificadorVideo: String? = null
+    private var descodificadorHardware: Boolean? = null
     private var pausadoPeloSistema = false
     private var pausadoEm = 0L
 
@@ -367,6 +370,7 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
         p.release()
         aCarregar = false
         descodificadorVideo = null
+        descodificadorHardware = null
         videoDesligado = false
         pausadoPeloSistema = false
         Log.i(TAG, "libertar: id=$idAtual")
@@ -418,6 +422,7 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
             "codec" to (v?.codecs ?: v?.sampleMimeType),
             "mime" to v?.sampleMimeType,
             "descodificador" to descodificadorVideo,
+            "hardware" to descodificadorHardware,
             "largura" to largura,
             "altura" to altura,
             "resolucao" to if (largura != null && altura != null) "${largura}x$altura" else null,
@@ -425,6 +430,8 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
             "audioCodec" to (a?.codecs ?: a?.sampleMimeType),
             "bufferMs" to p.totalBufferedDuration,
             "tunel" to tunel,
+            // pedido não quer dizer ativo: o seletor só o liga se o áudio e o vídeo o permitirem
+            "tunelAtivo" to p.isTunnelingEnabled,
             "visivel" to visivel,
         )
     }
@@ -664,6 +671,26 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
         }
     }
 
+    /**
+     * O descodificador é de hardware? No Android 10+ pergunta-se ao sistema; antes, pelo nome (os de
+     * software são os da Google/AOSP: `OMX.google.*`, `c2.android.*`, e os `*.sw.*`). Com o
+     * `setEnableDecoderFallback` o ExoPlayer pode passar ao software sem avisar: as estatísticas dizem-no.
+     */
+    private fun eHardware(nome: String): Boolean {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            try {
+                MediaCodecList(MediaCodecList.ALL_CODECS).codecInfos.firstOrNull { it.name == nome }?.let {
+                    return it.isHardwareAccelerated
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "lista de descodificadores: ${e.javaClass.simpleName}")
+            }
+        }
+        val n = nome.lowercase()
+        return !(n.startsWith("omx.google.") || n.startsWith("c2.android.") || n.startsWith("omx.ffmpeg.") ||
+            n.contains(".sw."))
+    }
+
     private fun rotuloDe(f: Format): String? {
         val partes = mutableListOf<String>()
         f.sampleMimeType?.let { partes.add(it.substringAfter('/')) }
@@ -679,7 +706,8 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
             initializationDurationMs: Long,
         ) {
             descodificadorVideo = decoderName
-            Log.i(TAG, "descodificador de vídeo: $decoderName (${initializationDurationMs} ms)")
+            descodificadorHardware = eHardware(decoderName)
+            Log.i(TAG, "descodificador de vídeo: $decoderName hardware=$descodificadorHardware (${initializationDurationMs} ms)")
         }
     }
 

@@ -1407,8 +1407,8 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
                   if (_android && !exo) ('Modo de descodificação', _rotuloModoAtual),
                   if (mk != null) ('Saída · hwdec pedido', '${mk.config.vo} · ${mk.config.hwdec}')
                   else ('Motor', _motor.nome),
-                  if (exo) ('Modo túnel', _prefs.modoTunel ? 'pedido' : 'desligado')
-                  else ('Desentrelaçamento', _textoDesentrelacamento),
+                  // com o ExoPlayer o modo túnel vem nas linhas do motor (se ficou mesmo ativo)
+                  if (!exo) ('Desentrelaçamento', _textoDesentrelacamento),
                   if (_android && (_linhasNoEcra.value ?? 0) > 0)
                     ('Linhas no ecrã · do vídeo', '${_linhasNoEcra.value!.round()} · ${_tamanhoAgora?.height.round() ?? 0}'),
                   if (_hzPedidos != null) ('Taxa do ecrã pedida', '${_hzPedidos!.toStringAsFixed(2)} Hz'),
