@@ -165,6 +165,16 @@ void main() {
       await m.descartar();
     });
 
+    test('o ecrã ligado em pausa (o direto gravado) vai ao nativo com o id', () async {
+      final exo = _ExoFalso();
+      final m = _motor();
+      await m.manterEcraLigado(true);
+      await m.manterEcraLigado(false);
+      final pedidos = [for (final c in exo.chamadas) if (c.method != 'criar') '${c.method} ${exo.args(c)}'];
+      expect(pedidos, ['ecraLigado {id: 7, sim: true}', 'ecraLigado {id: 7, sim: false}']);
+      await m.descartar();
+    });
+
     test('os comandos levam o id e os valores do protocolo', () async {
       final exo = _ExoFalso();
       final m = _motor();

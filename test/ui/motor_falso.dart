@@ -101,6 +101,15 @@ class MotorFalso implements MotorReproducao {
   Future<EstatisticasMotor> estatisticas() async => estatisticasFalsas;
   @override
   Widget video({required BoxFit ajuste, double? proporcao}) => const ColoredBox(color: Colors.black);
+  /// O ecrã fica ligado mesmo em pausa ([MotorReproducao.manterEcraLigado]).
+  bool ecraLigado = false;
+
+  @override
+  Future<void> manterEcraLigado(bool sim) async {
+    pedidos.add('ecraLigado $sim');
+    ecraLigado = sim;
+  }
+
   @override
   Future<void> descartar() async {
     registo?.add('$nome: descartar');

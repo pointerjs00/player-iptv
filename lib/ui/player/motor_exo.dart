@@ -232,6 +232,9 @@ class MotorExo implements MotorReproducao, MotorComProcura {
   Future<void> pausar() => _pedir<void>('pausar');
 
   @override
+  Future<void> manterEcraLigado(bool sim) => _pedir<void>('ecraLigado', {'sim': sim});
+
+  @override
   Future<void> parar() async {
     if (_descartado) return;
     _tamanho.add(null);

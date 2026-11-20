@@ -36,6 +36,10 @@ class MotorMediaKit implements MotorReproducao {
   /// A configuração do mpv posta ([aplicarConfiguracao]): espera-se por ela antes de abrir.
   late final Future<void> configurado;
   late final VideoController _video;
+
+  /// O ecrã ligado em pausa ([manterEcraLigado]): o mesmo wakelock que o `Video` pede a tocar
+  /// (contado: o ecrã só apaga quando nenhum o pede).
+  final _ecraLigado = Wakelock();
   final _tamanho = StreamController<Size?>.broadcast();
   final _subs = <StreamSubscription<Object?>>[];
 
@@ -177,6 +181,9 @@ class MotorMediaKit implements MotorReproducao {
   }
 
   @override
+  Future<void> manterEcraLigado(bool sim) async => sim ? _ecraLigado.enable() : _ecraLigado.disable();
+
+  @override
   Widget video({required BoxFit ajuste, double? proporcao}) => videoMpv(ajuste: ajuste, proporcao: proporcao);
 
   /// O vídeo, com `envolverTextura` à volta da textura (o shader de desentrelaçamento do Android).
@@ -195,6 +202,7 @@ class MotorMediaKit implements MotorReproducao {
   /// por destruir, nunca toca por trás), depois destrói-o quando for seguro.
   @override
   Future<void> descartar() {
+    _ecraLigado.disable();
     for (final s in _subs) {
       s.cancel();
     }

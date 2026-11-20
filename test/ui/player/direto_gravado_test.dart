@@ -223,6 +223,22 @@ Future<void> _sair(WidgetTester t) async {
   await t.pump(const Duration(seconds: 5));
 }
 
+/// A app vai para segundo plano (Home, ou a proteção de ecrã do Fire TV) e volta.
+Future<void> _paraOFundo(WidgetTester t) async {
+  addTearDown(() => t.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed));
+  for (final e in [AppLifecycleState.inactive, AppLifecycleState.hidden, AppLifecycleState.paused]) {
+    t.binding.handleAppLifecycleStateChanged(e);
+  }
+  await _reabrir(t);
+}
+
+Future<void> _voltar(WidgetTester t) async {
+  for (final e in [AppLifecycleState.hidden, AppLifecycleState.inactive, AppLifecycleState.resumed]) {
+    t.binding.handleAppLifecycleStateChanged(e);
+  }
+  await _reabrir(t);
+}
+
 int _desde(String url) => int.parse(Uri.parse(url).queryParameters['desde']!);
 
 /// Toca `segundos` com o gravado a crescer (o relógio do teste anda; a posição do motor também).
@@ -625,6 +641,117 @@ void main() {
       await m.montar(t);
       expect(m.sessoes, hasLength(1));
       expect(m.sessao.memoria, isFalse);
+      await _sair(t);
+    });
+  });
+
+  group('segundo plano', () {
+    testWidgets('paused fecha a sessão (o motor pára antes) e não fica nenhuma pasta', (t) async {
+      final tmp = Directory.systemTemp.createTempSync('direto_fundo_');
+      addTearDown(() {
+        if (tmp.existsSync()) tmp.deleteSync(recursive: true);
+      });
+      final m = _Montagem()..pastas = tmp;
+      await m.montar(t);
+      await _abrirComImagem(t, m.motor);
+      expect(tmp.listSync(), hasLength(1));
+      await _paraOFundo(t);
+      expect(m.sessao.fechada, isTrue, reason: 'o gravado apaga-se ao sair da app');
+      expect(tmp.listSync(), isEmpty);
+      final parou = m.registo.lastIndexOf('exo1: parou');
+      expect(parou, greaterThanOrEqualTo(0));
+      expect(parou, lessThan(m.registo.indexOf('sessao1: fechar')), reason: 'o motor larga o URL local antes');
+      // em segundo plano nada volta a abrir
+      await t.pump(const Duration(minutes: 1));
+      expect(m.sessoes, hasLength(1));
+      expect(m.motor.aberturas, hasLength(1));
+      await _voltar(t);
+      await _sair(t);
+    });
+
+    testWidgets('resumed reabre o canal no direto, numa sessão nova', (t) async {
+      final m = _Montagem();
+      await m.montar(t);
+      await _abrirComImagem(t, m.motor);
+      // estava 10 s atrás e em pausa
+      await t.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+      await _reabrir(t);
+      await _abrirComImagem(t, m.motor);
+      await _paraOFundo(t);
+      await t.pump(const Duration(minutes: 2));
+      await _voltar(t);
+      expect(m.sessoes, hasLength(2));
+      expect(m.sessoes.first.fechada, isTrue);
+      expect(m.sessao.fechada, isFalse);
+      expect(m.sessao.fontes.single.url, _origem(_canais[0]), reason: 'o mesmo canal');
+      expect(m.motor.aberturas.last.url, m.sessao.urlDireto.toString(), reason: 'no direto');
+      expect(m.motores, hasLength(1));
+      await _sair(t);
+    });
+
+    testWidgets('a app vai para o fundo a meio do arranque da sessão: fecha-a e reabre ao voltar', (t) async {
+      final m = _Montagem();
+      final espera = Completer<void>();
+      m.preparar = (s) => s.espera = espera.future;
+      await m.montar(t);
+      await _paraOFundo(t);
+      espera.complete();
+      await _reabrir(t);
+      expect(m.sessoes.every((s) => s.fechada), isTrue);
+      expect(m.motor.aberturas, isEmpty, reason: 'nada abre em segundo plano');
+      m.preparar = null;
+      await _voltar(t);
+      expect(m.sessoes, hasLength(2));
+      expect(m.sessao.fechada, isFalse);
+      expect(m.motor.aberturas.single.url, m.sessao.urlDireto.toString());
+      await _sair(t);
+    });
+  });
+
+  group('ecrã ligado na pausa do gravado', () {
+    Future<void> pausar(WidgetTester t) async {
+      await t.sendKeyEvent(LogicalKeyboardKey.select);
+      await t.pumpAndSettle();
+      await t.tap(find.byTooltip('Pausa'));
+      await t.pump();
+    }
+
+    testWidgets('em pausa o ecrã fica ligado e solta-se aos 30 minutos', (t) async {
+      final m = _Montagem();
+      await m.montar(t);
+      await _abrirComImagem(t, m.motor);
+      expect(m.motor.ecraLigado, isFalse);
+      await pausar(t);
+      expect(m.motor.ecraLigado, isTrue, reason: 'a proteção de ecrã não põe a app em segundo plano');
+      await t.pump(const Duration(minutes: 29, seconds: 59));
+      expect(m.motor.ecraLigado, isTrue);
+      await t.pump(const Duration(seconds: 2));
+      expect(m.motor.ecraLigado, isFalse, reason: 'passados 30 min o ecrã pode apagar');
+      expect(m.sessao.fechada, isFalse, reason: 'a pausa continua (só fecha se a app for para o fundo)');
+      await _sair(t);
+    });
+
+    testWidgets('retomar solta o ecrã (a tocar, o motor já o mantém ligado)', (t) async {
+      final m = _Montagem();
+      await m.montar(t);
+      await _abrirComImagem(t, m.motor);
+      await pausar(t);
+      expect(m.motor.ecraLigado, isTrue);
+      await t.tap(find.byTooltip('Reproduzir'));
+      await t.pump();
+      expect(m.motor.ecraLigado, isFalse);
+      // e não volta a mudar aos 30 min
+      await t.pump(const Duration(minutes: 31));
+      expect(m.motor.pedidos.where((p) => p.startsWith('ecraLigado')), ['ecraLigado true', 'ecraLigado false']);
+      await _sair(t);
+    });
+
+    testWidgets('sem gravado a pausa não mexe no ecrã', (t) async {
+      final m = _Montagem();
+      await m.montar(t, comSessao: false);
+      await _abrirComImagem(t, m.motor);
+      await pausar(t);
+      expect(m.motor.ecraLigado, isFalse);
       await _sair(t);
     });
   });

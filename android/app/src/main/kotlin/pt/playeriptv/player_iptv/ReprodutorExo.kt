@@ -98,6 +98,10 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
     private var pausadoEm = 0L
     // a Activity está pausada (entre aoPausar e aoRetomar): um abrir nesse intervalo não toca
     private var emSegundoPlano = false
+    // o Dart pediu o ecrã ligado mesmo em pausa (o direto gravado em pausa, até 30 min)
+    private var manterEcra = false
+    // o canal aberto é o direto gravado (o servidor local em 127.0.0.1): nunca procurável
+    private var urlLocal = false
 
     // O fps medido nas imagens (o TS do Media3 nunca põe Format.frameRate e o HLS das listas não traz
     // FRAME-RATE): sem ele a TV não muda para 50 Hz. Medido na thread do player pelos PTS das imagens
@@ -180,6 +184,11 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
                 "pausar" -> {
                     pausadoPeloSistema = false
                     p.pause()
+                    result.success(null)
+                }
+                "ecraLigado" -> {
+                    manterEcra = call.argument<Boolean>("sim") == true
+                    atualizarEcraLigado()
                     result.success(null)
                 }
                 "parar" -> {
@@ -327,6 +336,7 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
         if (!agente.isNullOrEmpty()) http.setUserAgent(agente)
 
         val uri = Uri.parse(url)
+        urlLocal = uri.host == "127.0.0.1"
         val hls = eHls(url, uri, mime)
         // TS em direto: aceitar imagens-chave sem IDR (muitos canais IPTV) e detetar as unidades de
         // acesso (H.264 sem AUD), para começar no 1.º I-frame em vez de esperar por um IDR
@@ -384,6 +394,8 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
         }
         val p = player ?: return
         player = null
+        manterEcra = false
+        urlLocal = false
         atualizarEcraLigado()
         p.removeListener(ouvinte)
         p.removeAnalyticsListener(analise)
@@ -807,15 +819,17 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
 
     /**
      * O ecrã fica ligado (sem proteção de ecrã nem suspensão do Fire TV) enquanto o vídeo está à
-     * vista e a tocar (ou à espera de dados para continuar); em pausa, escondido, parado, no fim ou
-     * largado volta a poder apagar. Com o mpv era o `Video` do media_kit que pedia o wakelock.
+     * vista e a tocar (ou à espera de dados para continuar), ou quando o Dart o pede em pausa
+     * ([manterEcra]: o direto gravado em pausa, que se apagava se a proteção de ecrã pusesse a app em
+     * segundo plano); em pausa, escondido, parado, no fim ou largado volta a poder apagar. Com o mpv
+     * era o `Video` do media_kit que pedia o wakelock.
      */
     private fun atualizarEcraLigado() {
         val sv = superficie ?: return
         val p = player
         val aTocar = p != null && p.playWhenReady &&
             (p.playbackState == Player.STATE_READY || p.playbackState == Player.STATE_BUFFERING)
-        val ligado = visivel && aTocar
+        val ligado = visivel && p != null && (aTocar || manterEcra)
         if (sv.keepScreenOn != ligado) sv.keepScreenOn = ligado
     }
 
@@ -866,7 +880,9 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
 
     /**
      * onResume: retoma o que o sistema pausou. Num direto parado há mais de 10 s volta à ponta
-     * (o buffer guardado já está velho); a primeira imagem nova vai para a Surface recriada.
+     * (o buffer guardado já está velho); a primeira imagem nova vai para a Surface recriada. O
+     * direto gravado (URL local) não: não é procurável (o seek recomeçava o pedido no `desde` com
+     * que abriu) e quem decide é o Dart (fecha a sessão em segundo plano e reabre no direto).
      */
     fun aoRetomar() {
         emSegundoPlano = false
@@ -874,7 +890,7 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
         if (!pausadoPeloSistema) return
         pausadoPeloSistema = false
         val direto = p.isCurrentMediaItemLive || !p.isCurrentMediaItemSeekable
-        if (direto && SystemClock.elapsedRealtime() - pausadoEm > 10_000) {
+        if (direto && !urlLocal && SystemClock.elapsedRealtime() - pausadoEm > 10_000) {
             p.seekToDefaultPosition()
             if (p.playbackState == Player.STATE_IDLE) p.prepare()
         }

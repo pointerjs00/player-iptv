@@ -178,6 +178,11 @@ abstract interface class MotorReproducao {
   /// O vídeo, com o ajuste à caixa e, se dada, uma proporção forçada.
   Widget video({required BoxFit ajuste, double? proporcao});
 
+  /// O ecrã fica ligado mesmo em pausa (`sim`), ou volta ao normal: ligado só a tocar. O direto
+  /// gravado em pausa: sem isto a proteção de ecrã do Fire TV punha a app em segundo plano, e aí o
+  /// gravado apaga-se.
+  Future<void> manterEcraLigado(bool sim);
+
   /// Pára e larga o motor (nunca toca por trás depois disto).
   Future<void> descartar();
 }

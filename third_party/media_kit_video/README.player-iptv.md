@@ -21,6 +21,10 @@ junto com a cópia local do media_kit (`third_party/media_kit`).
   (`lib/ui/player/filtro_desentrelacamento.dart`): com o `mediacodec_embed` as imagens nunca passam
   pelo mpv, por isso é o Flutter que as filtra.
 
+- `lib/media_kit_video.dart`: exporta o `Wakelock` (`lib/src/utils/wakelock.dart`), para o player
+  manter o ecrã ligado com o direto gravado em pausa, contado com o wakelock que o `Video` pede a
+  tocar (`MotorMediaKit.manterEcraLigado`).
+
 ## Porquê
 
 No Android a UI do Flutter corre na thread principal. Estas chamadas esperam pelo núcleo do mpv;

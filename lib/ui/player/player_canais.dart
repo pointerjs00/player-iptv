@@ -201,6 +201,14 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
 
   /// O armazenamento acabou com a app escondida: ao voltar, o canal reabre em memória.
   bool _reabrirSemGravar = false;
+
+  /// A app foi para segundo plano com o direto gravado: a sessão fechou (o gravado apagou-se) e,
+  /// ao voltar, o canal abre no direto, como um canal novo.
+  bool _reabrirAoVoltar = false;
+
+  /// O ecrã fica ligado com o gravado em pausa ([_ecraEmPausa]), até [limiteEcraEmPausa].
+  bool _ecraPreso = false;
+  Timer? _soltarEcra;
   final _subsSessao = <StreamSubscription>[];
 
   /// O fecho das sessões anteriores (a seguinte só abre depois dele: nunca duas).
@@ -295,6 +303,10 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   /// Um stop que não acaba neste tempo é de um mpv que deixou de responder.
   static const _limiteStop = Duration(seconds: 5);
 
+  /// Quanto tempo o ecrã fica ligado com o direto gravado em pausa (depois pode apagar; se a
+  /// proteção de ecrã puser a app em segundo plano, o gravado apaga-se).
+  static const limiteEcraEmPausa = Duration(minutes: 30);
+
   late final _vigia = VigiaAbertura(
     aoAbrir: () {
       if (!mounted) return;
@@ -363,6 +375,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
 
   void _criarPlayer(TipoMotor tipo) {
     _tipo = tipo;
+    _ecraPreso = false; // um motor novo não tem o ecrã preso
     // um motor novo só tem erros do canal para que foi criado
     _chaveDoMotor = _chave(_canais[_i]);
     _motor = tipo == TipoMotor.exoplayer
@@ -504,12 +517,16 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       case AppLifecycleState.paused || AppLifecycleState.hidden || AppLifecycleState.detached:
         _taxa.repor(); // a TV volta ao modo normal fora do player
         _pararVigiaSemDados(); // em segundo plano a espera por dados não conta
+        if (state != AppLifecycleState.hidden) _fecharNoFundo();
       case AppLifecycleState.resumed:
         if (!_aAbrir && _erro == null) _ajustarTaxa(_pedido);
         // o corte que chegou com a app escondida reabre agora; uma paragem volta a contar
         final pendente = _cortePendente;
         _cortePendente = null;
-        if (_reabrirSemGravar) {
+        if (_reabrirAoVoltar) {
+          _reabrirAoVoltar = false;
+          _abrir(mesmoCanal: true); // o gravado apagou-se: o canal abre no direto
+        } else if (_reabrirSemGravar) {
           _abrir(mesmoCanal: true); // o armazenamento acabou: o canal passa à memória
         } else if (pendente != null) {
           _corteSemMpv(retomavel: pendente);
@@ -519,6 +536,47 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       case AppLifecycleState.inactive:
         break;
     }
+  }
+
+  /// A app está em segundo plano (`paused`: Home, outra app, a proteção de ecrã do Fire TV).
+  bool get _noFundo => switch (WidgetsBinding.instance.lifecycleState) {
+        AppLifecycleState.paused || AppLifecycleState.detached => true,
+        _ => false,
+      };
+
+  /// A app foi para segundo plano com o direto gravado: o motor pára, a sessão fecha (o gravado
+  /// apaga-se e a origem fica livre) e o canal reabre no direto ao voltar. O que estava a abrir
+  /// deixa de valer.
+  void _fecharNoFundo() {
+    if (_sessaoDireto == null) return;
+    debugPrint('direto gravado: a app foi para segundo plano; o gravado apaga-se');
+    _pedido++;
+    _vigia.parar();
+    _continuar.reiniciar();
+    _cortePendente = null;
+    _reabrirSemGravar = false;
+    _reabrirAoVoltar = true;
+    _ecraEmPausa(false);
+    final parar = _motor.parar().timeout(_limiteStop).catchError((Object e) {
+      debugPrint('player: o motor não parou a tempo antes de fechar o gravado (${e.runtimeType})');
+    });
+    unawaited(_fecharSessao(depoisDe: parar));
+  }
+
+  /// O ecrã ligado com o direto gravado em pausa (a proteção de ecrã do Fire TV punha a app em
+  /// segundo plano, e o gravado apagava-se), até [limiteEcraEmPausa]; `false` solta-o.
+  void _ecraEmPausa(bool sim) {
+    _soltarEcra?.cancel();
+    _soltarEcra = null;
+    if (sim) {
+      _soltarEcra = Timer(limiteEcraEmPausa, () {
+        _soltarEcra = null;
+        if (mounted) _ecraEmPausa(false);
+      });
+    }
+    if (sim == _ecraPreso) return;
+    _ecraPreso = sim;
+    unawaited(_motor.manterEcraLigado(sim));
   }
 
   @override
@@ -708,6 +766,8 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     }
     // o aviso do mpv é só do recurso, quando for ele a abrir
     _reabrirSemGravar = false;
+    _reabrirAoVoltar = false;
+    _ecraEmPausa(false);
     if (!repetido) {
       _avisarMpv = false;
       _soMemoria = null; // outro canal: volta a tentar o disco
@@ -934,6 +994,8 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     // nunca duas: a anterior acabou de fechar (ou ainda fecha)
     await _fecharSessao();
     if (!valido()) return null;
+    // em segundo plano não se grava: o canal abre ao voltar
+    if (_noFundo) return _adiarParaAoVoltar();
     final s = criar(memoria: recuo == RecuoDireto.memoria || _soMemoria == _chave(canal));
     _sessaoDireto = s;
     _chaveSessao = _chave(canal);
@@ -949,6 +1011,10 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     }
     // outro canal entretanto (quem o abriu já fechou esta sessão) ou a sessão acabou
     if (!valido() || !identical(_sessaoDireto, s)) return null;
+    if (_noFundo) {
+      unawaited(_fecharSessao());
+      return _adiarParaAoVoltar();
+    }
     final aviso = s.aviso;
     if (local == null) {
       // não é um MPEG-TS (uma playlist, um ficheiro) ou a gravação não começou: a origem, com um
@@ -968,6 +1034,14 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     final p = s.posicaoDireto;
     _abrirNoGravado(s, p);
     return (url: s.urlDesde(p).toString(), cabecalhos: const <String, String>{}, gravado: true);
+  }
+
+  /// A app está em segundo plano a meio da abertura de um canal gravado: não abre (nem grava) até
+  /// voltar. Devolve null (o [_fonte] não abre nada).
+  Null _adiarParaAoVoltar() {
+    _vigia.parar();
+    _reabrirAoVoltar = true;
+    return null;
   }
 
   /// Onde se está agora no gravado (para reabrir o motor sem mudar de ponto).
@@ -1032,9 +1106,11 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     });
   }
 
-  /// Pára o gravador, apaga a pasta e fecha o servidor da sessão aberta. A seguinte espera por isto.
-  Future<void> _fecharSessao() {
+  /// Pára o gravador, apaga a pasta e fecha o servidor da sessão aberta (depois de `depoisDe`: o
+  /// motor a parar). A seguinte espera por isto.
+  Future<void> _fecharSessao({Future<void>? depoisDe}) {
     final s = _sessaoDireto;
+    if (s != null) _ecraEmPausa(false);
     _sessaoDireto = null;
     _chaveSessao = null;
     _sessaoEsgotada = false;
@@ -1049,7 +1125,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     _subsSessao.clear();
     if (s != null) {
       final antes = _fechoSessao;
-      final fecho = s.fechar().catchError((Object e) {
+      final fecho = (depoisDe ?? Future<void>.value()).then((_) => s.fechar()).catchError((Object e) {
         debugPrint('direto gravado: a sessão não fechou bem (${e.runtimeType})');
       });
       _fechoSessao = Future.wait([antes, fecho]).then((_) {});
@@ -1423,11 +1499,14 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     if (tocar == _aTocar) return;
     setState(() => _aTocar = tocar);
     if (tocar) {
+      _ecraEmPausa(false);
       _relogio.retomou();
       await _motor.play();
     } else {
       _pararVigiaSemDados(); // em pausa a espera não conta
       _relogio.pausou(); // o direto continua: fica-se para trás
+      // o gravado em pausa: o ecrã fica ligado (sem a proteção de ecrã a pôr a app no fundo)
+      if (_gravado) _ecraEmPausa(true);
       await _motor.pausar();
     }
   }
@@ -1747,6 +1826,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     _continuar.reiniciar(); // nenhuma reabertura marcada depois de sair
     _pararVigiaSemDados();
     _esconderAviso?.cancel();
+    _soltarEcra?.cancel();
     _vigiaEntrelacamento?.cancel();
     _ultima.largar();
     _linhasNoEcra.dispose();
