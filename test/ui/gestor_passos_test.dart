@@ -106,6 +106,20 @@ void main() {
     expect(find.text('2 marcadas · OK marca/desmarca uma lista'), findsOneWidget);
   });
 
+  testWidgets('entrar no passo 3 só com listas «Por verificar»: o foco fica em «Por verificar (N)»', (t) async {
+    ecraTvTeste(t);
+    t.view.physicalSize = const Size(1200, 2400);
+    await t.runAsync(() => area.adicionar([
+          Importada(contaDeLinha('http://a.com/l.m3u')!),
+          Importada(contaDeLinha('http://b.com/l.m3u')!),
+        ]));
+    await t.pumpWidget(appTeste(gestor()));
+    await t.pump();
+    await abrir(t, 'Enviar ou exportar');
+    expect(find.text('Funcionam (0)'), findsOneWidget);
+    expect(textosFocados(), 'Por verificar (2)');
+  });
+
   testWidgets('Gestor vazio: os passos 2 e 3 dizem o que falta', (t) async {
     ecraTvTeste(t);
     t.view.physicalSize = const Size(1200, 2400);

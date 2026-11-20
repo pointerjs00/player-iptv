@@ -36,10 +36,10 @@ class PassoEnviar extends StatefulWidget {
   final FocusNode? focoInicial;
 
   @override
-  State<PassoEnviar> createState() => _PassoEnviarState();
+  State<PassoEnviar> createState() => PassoEnviarState();
 }
 
-class _PassoEnviarState extends State<PassoEnviar> {
+class PassoEnviarState extends State<PassoEnviar> {
   final _focoFuncionam = FocusNode(debugLabel: 'Funcionam');
   final _focoInconclusivas = FocusNode(debugLabel: 'Inconclusivas');
   final _focoNaoFuncionam = FocusNode(debugLabel: 'Não funcionam');
@@ -62,8 +62,48 @@ class _PassoEnviarState extends State<PassoEnviar> {
     super.initState();
     _focoEnviar.addListener(() => _seDesligou(_focoEnviar));
     _focoExportar.addListener(() => _seDesligou(_focoExportar));
+    for (final f in _focosChips) {
+      f.addListener(() => _seChipDesligou(f));
+    }
     // aberto sem listas que funcionam, o chip inicial está desativado: o foco não se perde
     _focarUmChip();
+  }
+
+  /// Os chips de marcar pela ordem do ecrã (o primeiro é o «Funcionam»).
+  List<FocusNode> get _focosChips =>
+      [_focoChip, _focoInconclusivas, _focoNaoFuncionam, _focoPorVerificar, _focoTodas, _focoNenhuma];
+
+  /// Quais chips estão ativos (têm listas desse estado); «Todas» com listas; «Nenhuma» sempre.
+  List<bool> get _chipsAtivos {
+    final porEstado = [
+      for (final e in [EstadoLista.funciona, EstadoLista.inconclusiva, EstadoLista.naoFunciona, EstadoLista.porVerificar])
+        _g.listas.any((l) => estadoDe(l) == e),
+    ];
+    return [...porEstado, _g.listas.isNotEmpty, true];
+  }
+
+  /// Onde o foco entra no passo: o primeiro chip ativo («Funcionam», «Inconclusivas», «Não
+  /// funcionam», «Por verificar», «Todas») ou, sem nenhum, «Nenhuma». Um chip desativado não
+  /// aceita o foco (o pedido perdia-se).
+  FocusNode get focoInicio {
+    final ativos = _chipsAtivos;
+    final i = ativos.indexOf(true);
+    return _focosChips[i < 0 ? _focosChips.length - 1 : i];
+  }
+
+  /// O chip com o foco ficou desativado (a verificação esvaziou esse estado): o foco passa ao
+  /// próximo chip ativo (ou ao anterior, ou a «Nenhuma»); senão perdia-se.
+  void _seChipDesligou(FocusNode no) {
+    if (no.hasFocus || no.canRequestFocus) return;
+    final i = _focosChips.indexOf(no);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final atual = FocusManager.instance.primaryFocus;
+      if (!mounted || !(atual == null || atual is FocusScopeNode)) return;
+      final ativos = _chipsAtivos;
+      final j = [for (var k = i + 1; k < ativos.length; k++) k, for (var k = i - 1; k >= 0; k--) k]
+          .firstWhere((k) => ativos[k], orElse: () => ativos.length - 1);
+      _focosChips[j].requestFocus();
+    });
   }
 
   /// O botão com o foco ficou desativado (já não há marcadas): o foco passa ao chip "As que

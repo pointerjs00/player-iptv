@@ -87,6 +87,7 @@ class _TelaGestorState extends State<TelaGestor> {
 
   /// O passo 2 ("Verificar mais (fila)" abre-o já filtrado).
   final _passoVerificar = GlobalKey<PassoVerificarState>();
+  final _passoEnviar = GlobalKey<PassoEnviarState>();
 
   /// Os cartões do resumo (o foco volta ao cartão do passo de onde se veio).
   final _focosCartoes = [for (final p in _nomesPassos) FocusNode(debugLabel: 'Cartão $p')];
@@ -229,7 +230,8 @@ class _TelaGestorState extends State<TelaGestor> {
         final f = antes == EcraGestor.verificacao ? _ultimoFoco[EcraGestor.verificar] : null;
         return f != null && f.context != null && f.canRequestFocus ? f : _focoPesquisa;
       case EcraGestor.enviar:
-        return _focoFuncionam;
+        // o primeiro chip ativo (sem listas que funcionam, «Funcionam» está desativado)
+        return _passoEnviar.currentState?.focoInicio ?? _focoFuncionam;
       case EcraGestor.verificacao:
         return _focoVerificarMais;
     }
@@ -482,6 +484,7 @@ class _TelaGestorState extends State<TelaGestor> {
               focoInicial: _focoPesquisa,
             ),
             PassoEnviar(
+              key: _passoEnviar,
               area: _g,
               marcadas: _marcadas,
               // o resumo não mostra as marcadas: nada a reconstruir aqui

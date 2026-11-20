@@ -157,6 +157,24 @@ void main() {
     expect(find.text('2 marcadas · OK marca/desmarca uma lista'), findsOneWidget);
   });
 
+  testWidgets('o chip com o foco fica sem listas: o foco passa a um chip ativo e visível', (t) async {
+    ecraTvTeste(t, largura: 1200, altura: 900);
+    await abrir(t);
+    final inc = find.text('Inconclusivas (1)');
+    await t.ensureVisible(inc);
+    FocusManager.instance.primaryFocus?.unfocus();
+    Focus.of(t.element(inc)).requestFocus();
+    await t.pump();
+    expect(textosFocados(), 'Inconclusivas (1)');
+    // a verificação em curso: a única inconclusiva passa a funcionar
+    await t.runAsync(() => area.registarVerificacao(area.listas[2].id, _u('funciona')));
+    await t.pump();
+    await t.pump();
+    expect(find.text('Inconclusivas (0)'), findsOneWidget);
+    expect(textosFocados(), 'Não funcionam (1)', reason: 'o próximo chip ativo');
+    expect(FocusManager.instance.primaryFocus!.context!.findRenderObject()!.attached, isTrue);
+  });
+
   testWidgets('Todas liga tudo e fica ligado; Nenhuma desmarca tudo', (t) async {
     await abrir(t);
     expect(ligadoChip(t, 'Todas (5)'), isFalse);
