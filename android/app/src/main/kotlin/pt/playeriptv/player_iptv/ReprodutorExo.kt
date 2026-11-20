@@ -358,6 +358,7 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
         }
         val p = player ?: return
         player = null
+        atualizarEcraLigado()
         p.removeListener(ouvinte)
         p.removeAnalyticsListener(analise)
         p.clearVideoFrameMetadataListener(ouvinteImagens)
@@ -529,6 +530,11 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
                 }
                 Player.STATE_IDLE -> definirACarregar(false)
             }
+            atualizarEcraLigado()
+        }
+
+        override fun onPlayWhenReadyChanged(tocar: Boolean, razao: Int) {
+            atualizarEcraLigado()
         }
 
         override fun onPlayerError(erro: PlaybackException) {
@@ -695,6 +701,7 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
         prepararSuperficie()
         visivel = sim
         superficie?.visibility = if (sim) View.VISIBLE else View.GONE
+        atualizarEcraLigado()
         // escondido: desliga o vídeo para o MediaCodec ser largado (sem Surface o ExoPlayer
         // continuaria a descodificar para uma Surface de reserva); volta ao mostrar
         if (!sim && !videoDesligado) {
@@ -707,6 +714,20 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
                 .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, false).build()
         }
         if (sim) aplicarAjuste()
+    }
+
+    /**
+     * O ecrã fica ligado (sem proteção de ecrã nem suspensão do Fire TV) enquanto o vídeo está à
+     * vista e a tocar (ou à espera de dados para continuar); em pausa, escondido, parado, no fim ou
+     * largado volta a poder apagar. Com o mpv era o `Video` do media_kit que pedia o wakelock.
+     */
+    private fun atualizarEcraLigado() {
+        val sv = superficie ?: return
+        val p = player
+        val aTocar = p != null && p.playWhenReady &&
+            (p.playbackState == Player.STATE_READY || p.playbackState == Player.STATE_BUFFERING)
+        val ligado = visivel && aTocar
+        if (sv.keepScreenOn != ligado) sv.keepScreenOn = ligado
     }
 
     /** Tamanho do `SurfaceView` dentro da caixa: ajustar (barras), preencher (corta) ou esticar. */
