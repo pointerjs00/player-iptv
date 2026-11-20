@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:ui' show FramePhase, FrameTiming;
+import 'dart:ui' show FrameTiming;
 
 import 'package:flutter/scheduler.dart';
 import 'package:material_ui/material_ui.dart';
@@ -12,33 +12,36 @@ import 'motor_reproducao.dart';
 /// e quanto custa cada um (construção + rasterização). Conta pelos tempos das próprias imagens, não
 /// pelo relógio da app.
 class MedidorDesenho {
-  /// Quantas imagens se guardam (mais do que as de um segundo a 120 Hz).
+  /// Quantas imagens se guardam para o tempo médio.
   static const maximo = 240;
 
-  final _imagens = <({int inicio, int duracao})>[];
+  final _imagens = <int>[];
+  int _novas = 0;
+  double? _porSegundo;
 
   int get amostras => _imagens.length;
 
   void registar(List<FrameTiming> tempos) {
     for (final t in tempos) {
-      _imagens.add((
-        inicio: t.timestampInMicroseconds(FramePhase.vsyncStart),
-        duracao: (t.buildDuration + t.rasterDuration).inMicroseconds,
-      ));
+      _imagens.add((t.buildDuration + t.rasterDuration).inMicroseconds);
     }
+    _novas += tempos.length;
     if (_imagens.length > maximo) _imagens.removeRange(0, _imagens.length - maximo);
   }
 
-  /// Imagens desenhadas no último segundo (contado a partir da mais recente); null sem desenhos.
-  double? get imagensPorSegundo {
-    if (_imagens.isEmpty) return null;
-    final fim = _imagens.last.inicio;
-    return _imagens.where((i) => fim - i.inicio < 1000000).length.toDouble();
+  /// Fecha uma janela de `segundos` (o ritmo do painel): as imagens desenhadas desde a anterior
+  /// dividem-se por ela. Com a interface parada o valor cai para 0, em vez de ficar no último pico.
+  void fecharJanela(double segundos) {
+    if (segundos <= 0) return;
+    _porSegundo = _novas / segundos;
+    _novas = 0;
   }
 
+  /// Imagens desenhadas por segundo na última janela; null antes da primeira.
+  double? get imagensPorSegundo => _porSegundo;
+
   /// O tempo médio de desenho de cada imagem, em ms; null sem desenhos.
-  double? get tempoMedioMs =>
-      _imagens.isEmpty ? null : _imagens.fold<int>(0, (a, i) => a + i.duracao) / _imagens.length / 1000;
+  double? get tempoMedioMs => _imagens.isEmpty ? null : _imagens.fold<int>(0, (a, i) => a + i) / _imagens.length / 1000;
 }
 
 /// As duas linhas do desenho da interface. `soInterface` (ExoPlayer): o vídeo vai direto para uma
@@ -103,7 +106,10 @@ class _PainelEstatisticasState extends State<PainelEstatisticas> {
     super.initState();
     SchedulerBinding.instance.addTimingsCallback(_tempos);
     _ler();
-    _timer = Timer.periodic(widget.intervalo, (_) => _ler());
+    _timer = Timer.periodic(widget.intervalo, (_) {
+      _desenho.fecharJanela(widget.intervalo.inMicroseconds / 1e6);
+      _ler();
+    });
   }
 
   Future<void> _ler() async {

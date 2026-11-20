@@ -114,28 +114,39 @@ void main() {
       expect(m.tempoMedioMs, isNull);
     });
 
-    test('60 desenhos num segundo (os tempos das próprias imagens): 60/s e o tempo médio', () {
+    test('60 desenhos numa janela de 1 s: 60/s e o tempo médio', () {
       final m = MedidorDesenho();
       m.registar([for (var i = 0; i < 60; i++) desenho(i * 1000 ~/ 60 + 5000)]);
-      expect(m.imagensPorSegundo, closeTo(60, 1));
+      m.fecharJanela(1);
+      expect(m.imagensPorSegundo, 60);
       expect(m.tempoMedioMs, closeTo(5, 0.01));
     });
 
-    test('só conta o último segundo e guarda poucas amostras', () {
+    test('a interface parada: a janela seguinte sem desenhos cai para 0 (não fica no último pico)', () {
       final m = MedidorDesenho();
-      m.registar([for (var i = 0; i < 500; i++) desenho(i * 100)]); // 10/s durante 50 s
-      expect(m.imagensPorSegundo, closeTo(10, 1));
+      m.registar([for (var i = 0; i < 60; i++) desenho(i * 16)]);
+      m.fecharJanela(1);
+      expect(m.imagensPorSegundo, 60);
+      m.fecharJanela(1);
+      expect(m.imagensPorSegundo, 0);
+    });
+
+    test('guarda poucas amostras', () {
+      final m = MedidorDesenho();
+      m.registar([for (var i = 0; i < 500; i++) desenho(i * 100)]);
       expect(m.amostras, lessThanOrEqualTo(MedidorDesenho.maximo));
     });
   });
 
   group('linhas do desenho', () {
     test('mpv: as duas linhas, sem nota', () {
-      final m = MedidorDesenho()..registar([for (var i = 0; i < 30; i++) desenho(i * 33)]);
+      final m = MedidorDesenho()
+        ..registar([for (var i = 0; i < 30; i++) desenho(i * 33)])
+        ..fecharJanela(1);
       final l = linhasDesenho(m);
       expect(l.map((e) => e.$1), ['Imagens desenhadas/s (interface)', 'Tempo de desenho']);
       expect(l[1].$2, '5.0 ms');
-      expect(l[0].$2, isNot(contains('interface')));
+      expect(l[0].$2, '30');
     });
 
     test('ExoPlayer: a nota diz que só se mede a interface por cima do vídeo', () {

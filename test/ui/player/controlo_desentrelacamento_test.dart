@@ -84,16 +84,16 @@ String _idet({required int tff, required int prog}) =>
     '"lavfi.idet.multiple.progressive":"$prog.00","lavfi.idet.multiple.undetermined":"0.00"}';
 
 void main() {
+  var agora = DateTime(2026, 11, 18, 20);
   late FiltrosNaSessao sessao;
   late CompativelNaSessao compativel;
   setUp(() {
     sessao = FiltrosNaSessao();
-    compativel = CompativelNaSessao();
+    compativel = CompativelNaSessao(relogio: () => agora);
   });
 
   ControloDesentrelacamento windows() =>
       ControloDesentrelacamento(PlataformaVideo.windows, sessao: sessao, compativel: compativel);
-  var agora = DateTime(2026, 11, 18, 20);
   ControloDesentrelacamento android({bool armv7 = false}) => ControloDesentrelacamento(PlataformaVideo.android,
       sessao: sessao, compativel: compativel, armv7: armv7, relogio: () => agora);
 
@@ -430,6 +430,28 @@ void main() {
       expect(compativel.modoPara('lista|9', ModoDescodificacao.direto), ModoDescodificacao.direto);
     });
 
+    test('o canal muda para outro formato (720p50 -> 1080i25): sai da memória e o shader/Compatível voltam', () async {
+      final mpv = _Mpv();
+      final c = android();
+      // visto progressivo a 720p50 (altura e imagens/s guardadas)
+      compativel.progressivo('lista|9', '720@50');
+      c.abrir(continuar: false, playerNovo: true);
+      expect(c.ler(_leitura(hwdec: 'mediacodec', interlaced: '', altura: '720', fps: '50.000000'), ligado: true, direto: true, chave: 'lista|9'), isFalse);
+      expect(c.entrelacada, isFalse, reason: 'mesmo formato: continua progressivo');
+      // passa a 1080 a 25: a memória deixa de valer
+      expect(c.ler(direto(), ligado: true, direto: true, chave: 'lista|9'), isTrue, reason: 'volta o Compatível');
+      expect(compativel.eProgressivo('lista|9'), isFalse);
+      await aplicar(c, mpv, direto: true);
+    });
+
+    test('o mpv volta a ler entrelaçado (a descodificar, com marca): sai da memória e leva o filtro', () {
+      compativel.progressivo('lista|9', '1080@25');
+      final c = windows();
+      c.ler(_leitura(hwdec: 'd3d11va-copy', interlaced: 'yes'), ligado: true, direto: false, chave: 'lista|9');
+      expect(compativel.eProgressivo('lista|9'), isFalse);
+      expect(c.entrelacada, isTrue);
+    });
+
     test('outro canal não é afetado', () {
       compativel.progressivo('lista|9');
       final c = android();
@@ -461,7 +483,9 @@ void main() {
       final mpv = _Mpv();
       final c = await confirmado(mpv);
       agora = agora.add(const Duration(seconds: 10));
-      expect(await passo(c, mpv, aDobrar(40), chave: k), isTrue);
+      expect(await passo(c, mpv, aDobrar(40), chave: k), isFalse, reason: 'a 1.ª janela má não chega');
+      agora = agora.add(const Duration(seconds: 10));
+      expect(await passo(c, mpv, aDobrar(80), chave: k), isTrue);
       expect(c.avisoReabrir, contains('Direta'));
       expect(compativel.modoPara(k, ModoDescodificacao.direto), ModoDescodificacao.direto);
       expect(android().ler(direto(), ligado: true, direto: true, chave: k), isFalse,
@@ -476,7 +500,35 @@ void main() {
       final mpv = _Mpv();
       final c = await confirmado(mpv);
       agora = agora.add(const Duration(seconds: 10));
-      expect(await passo(c, mpv, aDobrar(6), chave: k), isTrue);
+      expect(await passo(c, mpv, aDobrar(6), chave: k), isFalse);
+      agora = agora.add(const Duration(seconds: 10));
+      expect(await passo(c, mpv, aDobrar(12), chave: k), isTrue);
+    });
+
+    test('uma janela má isolada (soluço) não desiste: as seguintes limpas zeram a contagem', () async {
+      final mpv = _Mpv();
+      final c = await confirmado(mpv);
+      var perdidas = 0;
+      for (final mas in [true, false, true, false, true, false]) {
+        agora = agora.add(const Duration(seconds: 10));
+        perdidas += mas ? 40 : 0;
+        expect(await passo(c, mpv, aDobrar(perdidas), chave: k), isFalse);
+      }
+      expect(c.meio, MeioDesentrelacamento.filtroMpv);
+    });
+
+    test('duas janelas más seguidas desistem; passados 10 minutos o canal pode voltar ao Compatível', () async {
+      final mpv = _Mpv();
+      final c = await confirmado(mpv);
+      agora = agora.add(const Duration(seconds: 10));
+      await passo(c, mpv, aDobrar(40), chave: k);
+      agora = agora.add(const Duration(seconds: 10));
+      expect(await passo(c, mpv, aDobrar(80), chave: k), isTrue);
+      expect(android().ler(direto(), ligado: true, direto: true, chave: k), isFalse, reason: 'ainda de castigo');
+      agora = agora.add(const Duration(minutes: 9));
+      expect(android().ler(direto(), ligado: true, direto: true, chave: k), isFalse);
+      agora = agora.add(const Duration(minutes: 1, seconds: 1));
+      expect(android().ler(direto(), ligado: true, direto: true, chave: k), isTrue, reason: 'passaram 10 minutos');
     });
 
     test('0,4 imagens perdidas por segundo (4 em 10 s) ainda aguenta', () async {
