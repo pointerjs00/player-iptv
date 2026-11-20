@@ -59,6 +59,8 @@ class _Montagem {
           nomeLista: 'Lista A',
           aoSair: () {},
           plataforma: plataforma,
+          // o relógio do teste (anda com os pump), nunca o de parede
+          agora: () => t.binding.clock.now(),
           resolver: (c, {continuar = false}) async {
             final espera = resolverEspera;
             if (espera != null) await espera;
@@ -363,8 +365,8 @@ void main() {
       await t.pumpAndSettle();
       await t.tap(find.byTooltip('Pausa'));
       await t.pump();
-      // o relógio do direto é o de parede: deixa-se passar mais do que o limiar (2 s)
-      await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 2200)));
+      // o relógio do direto é o do teste: passa mais do que o limiar (2 s) sem tempo de parede
+      await t.pump(const Duration(milliseconds: 2200));
       await t.pump(const Duration(seconds: 1));
       expect(m.exos.single.pedidos, contains('pausar'));
       final voltar = find.text('Voltar ao direto');

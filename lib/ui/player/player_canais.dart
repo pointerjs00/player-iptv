@@ -82,7 +82,8 @@ const soNoMpv = 'só no motor mpv';
 class PlayerCanais extends StatefulWidget {
   const PlayerCanais({super.key, required this.canais, required this.indice, required this.resolver,
       required this.nomeLista, required this.aoSair, this.alternarEcraInteiro, this.aoMudarCanal,
-      this.criarMotor = criarMotorMpv, this.criarMotorExo = novoMotorExo, @visibleForTesting this.plataforma});
+      this.criarMotor = criarMotorMpv, this.criarMotorExo = novoMotorExo, @visibleForTesting this.plataforma,
+      @visibleForTesting this.agora});
 
   final List<Canal> canais;
   final int indice;
@@ -106,6 +107,10 @@ class PlayerCanais extends StatefulWidget {
   /// Só para os testes: a plataforma (por omissão a deste aparelho).
   final PlataformaVideo? plataforma;
 
+  /// Só para os testes: o relógio (por omissão o de parede). O do direto, o do proveito de uma
+  /// ligação e o das paragens a meio do canal.
+  final DateTime Function()? agora;
+
   @override
   State<PlayerCanais> createState() => PlayerCanaisState();
 }
@@ -116,7 +121,8 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
 
   final _prefs = Preferencias.atual;
   final _sessao = SessaoPlayer();
-  final _relogio = RelogioDireto();
+  late final DateTime Function() _agora = widget.agora ?? DateTime.now;
+  late final _relogio = RelogioDireto(agora: _agora);
   final _controlos = GlobalKey<ControlosPlayerState>();
 
   // a configuração do mpv para direto (buffer, reconexão, descodificação por plataforma); no
@@ -234,7 +240,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     aoAbrir: () {
       if (!mounted) return;
       final retomou = _aRetomar;
-      _abriuEm = DateTime.now();
+      _abriuEm = _agora();
       _continuar.abriu();
       _ligacao.abriu((_mk?.player.state.position ?? _posicao).inMicroseconds / 1e6);
       _porMudo(_mudo.primeiraImagem(silencio: _sessao.silencio));
@@ -460,7 +466,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     // o que a ligação deu de imagem nova (com os saltos à mão para o fim do buffer; sem o ponto do
     // filme nem o salto automático depois de reabrir), ou a parede
     final tocou = _ligacao.proveito(
-        parede: abriu == null ? Duration.zero : DateTime.now().difference(abriu), posicaoNoCorte: posCorte);
+        parede: abriu == null ? Duration.zero : _agora().difference(abriu), posicaoNoCorte: posCorte);
     if (!_continuar.permitir(tocou: tocou)) {
       _vigia.parar();
       _taxa.repor();
