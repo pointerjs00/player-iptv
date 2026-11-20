@@ -210,6 +210,10 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   bool _aRetomar = false;
   final _continuar = ContinuarDireto();
 
+  /// Sem mpv (ExoPlayer): parado à espera de dados com o canal aberto; ao fim de
+  /// [ContinuarDireto.limiteSemDados] a ligação conta como cortada ([_corteSemMpv]).
+  Timer? _semDados;
+
   /// Quando o canal deu imagem pela última vez (para saber se uma reabertura valeu a pena).
   DateTime? _abriuEm;
 
@@ -327,6 +331,11 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
         _passarAoMpv(chave, aviso: true);
         return;
       }
+      // sem mpv (ExoPlayer): uma falha de rede com o canal já aberto é um corte do servidor, como o
+      // fim do buffer no mpv; a reabrir segue a recuperação de baixo
+      if (erro.rede && _mk == null && !_aAbrir && !_aRetomar && _erro == null && _corteSemMpv(retomavel: true)) {
+        return;
+      }
       final e = erro.mensagem;
       if (e.isNotEmpty && erroFatalPlayer(e)) {
         // a reabrir depois de um corte: uma falha passageira (rede, 401) tenta-se outra vez
@@ -340,6 +349,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     _subsPlayer.add(_motor.aCarregar.listen((b) {
       _vigia.buffering(b);
       if (!mounted) return;
+      _vigiarSemDados(b);
       if (b != _buffering || (!b && _percentagemBuffer != null)) {
         // o % de uma paragem não passa para a seguinte
         setState(() { _buffering = b; if (!b) _percentagemBuffer = null; });
@@ -458,8 +468,12 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   /// pede o canal de novo, com "A carregar…", nunca em ciclo.
   Future<void> _fimDoBuffer() async {
     final mk = _mk;
-    // sem mpv não se sabe se é um direto nem onde parou (o motor trata do fim)
-    if (!mounted || mk == null) return;
+    if (!mounted) return;
+    // sem mpv: o que o motor diz do canal ([_corteSemMpv])
+    if (mk == null) {
+      _corteSemMpv();
+      return;
+    }
     final pedido = _pedido;
     // um ficheiro com fim (filme de uma lista M3U) acaba: só os diretos se pedem de novo
     final p = await mk.mpv.getProperties(const ['seekable', 'partially-seekable', 'demuxer-start-time', 'time-pos']);
@@ -484,7 +498,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       _vigia.parar();
       _taxa.repor();
       setState(() {
-        _erro = 'o servidor está sempre a cortar a ligação a este canal';
+        _erro = ContinuarDireto.desistencia;
         _ultima.largar();
       });
       return;
@@ -501,6 +515,60 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       return;
     }
     _abrir(continuar: true);
+  }
+
+  /// Sem mpv: uma paragem à espera de dados com o canal aberto e a tocar que dura mais do que
+  /// [ContinuarDireto.limiteSemDados] é um corte (o ExoPlayer num progressivo fica à espera para
+  /// sempre).
+  void _vigiarSemDados(bool aCarregar) {
+    if (aCarregar && _mk == null && !_aAbrir && _erro == null && _aTocar) {
+      _semDados ??= Timer(ContinuarDireto.limiteSemDados, () {
+        _semDados = null;
+        if (!mounted) return;
+        debugPrint('player: sem dados há ${ContinuarDireto.limiteSemDados.inSeconds} s; a reabrir');
+        _corteSemMpv(retomavel: true);
+      });
+    } else if (!aCarregar) {
+      _pararVigiaSemDados();
+    }
+  }
+
+  void _pararVigiaSemDados() {
+    _semDados?.cancel();
+    _semDados = null;
+  }
+
+  /// Sem mpv (ExoPlayer): o servidor cortou a ligação (o stream acabou, ficou sem dados mais do que
+  /// [ContinuarDireto.limiteSemDados], ou uma falha de rede com o canal aberto). Como o
+  /// [_fimDoBuffer] do mpv: um direto reabre-se ("A carregar…"), com o mesmo limite de reaberturas
+  /// sem proveito e a mesma mensagem ao desistir. `retomavel`: a ligação parou a meio (não é o fim do
+  /// stream), por isso um ficheiro também se reabre, no ponto onde estava. Devolve se tratou o corte.
+  bool _corteSemMpv({bool retomavel = false}) {
+    _pararVigiaSemDados();
+    if (!mounted || _mk != null) return false;
+    final direto = _motor.direto ?? true;
+    if (!ContinuarDireto.deve(
+        fimDoBuffer: true, aAbrir: _aAbrir, erro: _erro != null, aTocar: _aTocar, direto: direto || retomavel)) {
+      return false;
+    }
+    final abriu = _abriuEm;
+    final tocou = _ligacao.proveito(
+        parede: abriu == null ? Duration.zero : _agora().difference(abriu),
+        posicaoNoCorte: _posicao.inMicroseconds / 1e6);
+    if (!_continuar.permitir(tocou: tocou)) {
+      _vigia.parar();
+      _taxa.repor();
+      setState(() {
+        _erro = ContinuarDireto.desistencia;
+        _ultima.largar();
+      });
+      return true;
+    }
+    debugPrint('player: o servidor cortou a ligação (motor ${_motor.nome}); a reabrir o canal');
+    _retomarEm = direto ? null : _posicao;
+    _continuarDe = null;
+    _abrir(continuar: true);
+    return true;
   }
 
   /// Uma reabertura (depois de um corte) falhou: tenta outra vez daqui a um pouco, com "A
@@ -552,6 +620,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       _continuarDe = null;
     }
     _saltoPendente = false;
+    _pararVigiaSemDados();
     _mudo.reiniciar();
     _ligacao = LigacaoDireto();
     _vigiaEntrelacamento?.cancel();
@@ -894,6 +963,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       _relogio.retomou();
       await _motor.play();
     } else {
+      _pararVigiaSemDados(); // em pausa a espera não conta
       _relogio.pausou(); // o direto continua: fica-se para trás
       await _motor.pausar();
     }
@@ -1210,6 +1280,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _continuar.reiniciar(); // nenhuma reabertura marcada depois de sair
+    _pararVigiaSemDados();
     _esconderAviso?.cancel();
     _vigiaEntrelacamento?.cancel();
     _ultima.largar();

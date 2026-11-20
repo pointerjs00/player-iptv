@@ -317,6 +317,101 @@ void main() {
     });
   });
 
+  group('C3: corte do servidor com o ExoPlayer', () {
+    const sempreACortar = 'RTP 1: o servidor está sempre a cortar a ligação a este canal';
+
+    testWidgets('o fim de um direto reabre o mesmo canal, com "A carregar…" e sem cartão de erro', (t) async {
+      final m = _Montagem();
+      await m.montar(t);
+      final exo = m.exos.single;
+      await _abrirComImagem(t, exo);
+      await t.pump(const Duration(seconds: 30)); // um bom bocado de canal
+      exo.acabar();
+      await _reabrir(t);
+      expect(exo.aberturas, hasLength(2), reason: 'o mesmo canal outra vez, no mesmo motor');
+      expect(exo.aberturas.last.url, 'http://exemplo.invalid/1.ts');
+      expect(exo.aberturas.last.inicio, isNull, reason: 'num direto vai para o direto');
+      expect(m.exos, hasLength(1));
+      expect(m.mpvs, isEmpty);
+      await t.pump(const Duration(milliseconds: 400)); // o aviso só aparece passado um pouco
+      expect(find.text('A carregar…'), findsOneWidget);
+      expect(find.textContaining('o canal não abriu'), findsNothing);
+      await _abrirComImagem(t, exo);
+      expect(find.text('A carregar…'), findsNothing);
+      await _sair(t);
+    });
+
+    testWidgets('cortes seguidos sem proveito: desiste com a mensagem do mpv', (t) async {
+      final m = _Montagem();
+      await m.montar(t);
+      final exo = m.exos.single;
+      // cada ligação dá menos do que o proveito (5 s): ao fim de 3 reaberturas, o cartão
+      for (var i = 0; i < 4; i++) {
+        await _abrirComImagem(t, exo);
+        await t.pump(const Duration(seconds: 1));
+        exo.acabar();
+        await _reabrir(t);
+      }
+      expect(exo.aberturas, hasLength(4), reason: 'três reaberturas, a quarta já não');
+      expect(find.text(sempreACortar), findsOneWidget);
+      await _sair(t);
+    });
+
+    testWidgets('o fim de um ficheiro (não direto) não reabre', (t) async {
+      final m = _Montagem();
+      await m.montar(t);
+      final exo = m.exos.single..direto = false;
+      await _abrirComImagem(t, exo);
+      exo.acabar();
+      await _reabrir(t);
+      expect(exo.aberturas, hasLength(1));
+      expect(find.textContaining('o servidor'), findsNothing);
+      await _sair(t);
+    });
+
+    testWidgets('parado à espera de dados mais do que o network-timeout do mpv (15 s): reabre', (t) async {
+      final m = _Montagem();
+      await m.montar(t);
+      final exo = m.exos.single;
+      await _abrirComImagem(t, exo);
+      await t.pump(const Duration(seconds: 20));
+      // uma paragem curta não reabre
+      exo.carregar(true);
+      await t.pump(const Duration(seconds: 10));
+      exo.carregar(false);
+      await t.pump(const Duration(seconds: 10));
+      expect(exo.aberturas, hasLength(1));
+      // uma que não acaba, sim
+      exo.carregar(true);
+      await t.pump(const Duration(seconds: 14));
+      expect(exo.aberturas, hasLength(1));
+      await t.pump(const Duration(seconds: 2));
+      await _reabrir(t);
+      expect(exo.aberturas, hasLength(2));
+      expect(find.textContaining('o canal não abriu'), findsNothing);
+      await _sair(t);
+    });
+
+    testWidgets('um erro de rede com o canal já aberto reabre-o (como o fim do buffer no mpv)', (t) async {
+      final m = _Montagem();
+      await m.montar(t);
+      final exo = m.exos.single;
+      await _abrirComImagem(t, exo);
+      await t.pump(const Duration(seconds: 30));
+      exo.erro('Falha de rede ao abrir o canal', rede: true);
+      await _reabrir(t);
+      expect(exo.aberturas, hasLength(2));
+      expect(find.textContaining('o canal não abriu'), findsNothing);
+      // a reabrir, uma falha de rede passageira tenta-se outra vez (a recuperação que já existe)
+      exo.erro('Falha de rede ao abrir o canal', rede: true);
+      await t.pump(const Duration(seconds: 1));
+      await _reabrir(t);
+      expect(exo.aberturas, hasLength(3));
+      expect(find.textContaining('o canal não abriu'), findsNothing);
+      await _sair(t);
+    });
+  });
+
   group('com o ExoPlayer', () {
     testWidgets('o painel: as opções só do mpv aparecem desativadas com "só no motor mpv"', (t) async {
       final m = _Montagem();

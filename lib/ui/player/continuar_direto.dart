@@ -34,6 +34,14 @@ class ContinuarDireto {
   /// Reaberturas seguidas sem [proveito] antes de desistir (canal morto: cartão de erro).
   static const maximoSemProveito = 3;
 
+  /// O que o cartão de erro diz quando se desiste ([permitir] falso).
+  static const desistencia = 'o servidor está sempre a cortar a ligação a este canal';
+
+  /// Sem dados há este tempo (parado à espera deles), a ligação conta como cortada: o
+  /// `network-timeout` do mpv (`configuracao_mpv.dart`), com que o mpv dá o stream por acabado. Num
+  /// motor que fica à espera para sempre (o ExoPlayer num progressivo), o ecrã reabre o canal.
+  static const limiteSemDados = Duration(seconds: 15);
+
   /// As esperas antes de tentar outra vez uma reabertura que falhou (rede, link, 401 passageiro).
   static const esperas = [Duration(seconds: 1), Duration(seconds: 2), Duration(seconds: 4)];
 

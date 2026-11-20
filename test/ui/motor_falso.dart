@@ -28,7 +28,10 @@ class MotorFalso implements MotorReproducao {
   final _faixaAtual = StreamController<FaixaAtual>.broadcast();
   final _fps = StreamController<double>.broadcast();
 
-  void erro(String e, {bool formato = false}) => _erros.add(ErroMotor(e, formato: formato));
+  void erro(String e, {bool formato = false, bool rede = false}) =>
+      _erros.add(ErroMotor(e, formato: formato, rede: rede));
+  /// O stream acabou (num direto: o servidor fechou a ligação).
+  void acabar() => _fim.add(null);
   void carregar(bool b) => _aCarregar.add(b);
   void percentagem(double p) => _percentagem.add(p);
   void tamanho(Size? s) => _tamanho.add(s);
@@ -59,6 +62,8 @@ class MotorFalso implements MotorReproducao {
   Stream<FaixaAtual> get faixaAtual => _faixaAtual.stream;
   @override
   Stream<double> get fps => _fps.stream;
+  @override
+  bool? direto = true;
 
   @override
   Future<void> abrir(String url, Map<String, String> cabecalhos, {Duration? inicio}) async {

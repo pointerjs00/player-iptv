@@ -74,6 +74,10 @@ class MotorMediaKit implements MotorReproducao {
   @override
   Stream<double> get fps => const Stream.empty();
 
+  /// O ecrã sabe-o pelas propriedades `seekable` e `partially-seekable` ([ContinuarDireto.eDireto]).
+  @override
+  bool? get direto => null;
+
   @override
   Stream<void> get fim => player.stream.completed.where((c) => c).map<void>((_) {});
 

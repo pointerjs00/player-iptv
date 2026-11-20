@@ -134,6 +134,12 @@ class MotorExo implements MotorReproducao {
   @override
   Stream<double> get fps => _fps.stream;
 
+  @override
+  bool? get direto => _direto;
+
+  /// O que o nativo disse do canal aberto (no `pronto` e no `fim`); null até lá.
+  bool? _direto;
+
   // ---------------------------------------------------------------- pedidos
 
   Future<int?> _criar() async {
@@ -179,6 +185,7 @@ class MotorExo implements MotorReproducao {
     _url = url;
     // a medição do fps recomeça com o canal
     _fpsMedido = null;
+    _direto = null;
     // a imagem do canal anterior deixa de contar (como o stop do mpv)
     _tamanho.add(null);
     legenda.value = '';
@@ -337,14 +344,14 @@ class MotorExo implements MotorReproducao {
   // ---------------------------------------------------------------- eventos
 
   /// A mensagem nunca leva o link (nem o deste canal, nem outro qualquer).
-  void _erro(String mensagem, {bool formato = false}) {
+  void _erro(String mensagem, {bool formato = false, bool rede = false}) {
     if (_descartado || _erros.isClosed) return;
     var m = mensagem;
     final url = _url;
     if (url != null && url.isNotEmpty) m = m.replaceAll(url, '');
     m = semSegredos(m);
     if (m.replaceAll(RegExp(r'[^\p{L}\p{N}]', unicode: true), '').isEmpty) m = 'o ExoPlayer não conseguiu tocar o canal';
-    _erros.add(ErroMotor(m, formato: formato));
+    _erros.add(ErroMotor(m, formato: formato, rede: rede));
   }
 
   void _aoEvento(Object? e) {
@@ -367,6 +374,7 @@ class MotorExo implements MotorReproducao {
       case 'posicao':
         if (e['ms'] case final num ms) _posicao.add(Duration(milliseconds: ms.round()));
       case 'fim':
+        if (e['direto'] case final bool d) _direto = d;
         _fim.add(null);
       case 'fps':
         if (e['valor'] case final num v when v > 0) {
@@ -375,7 +383,8 @@ class MotorExo implements MotorReproducao {
         }
       case 'erro':
         if (e['codigo'] case final String codigo) debugPrint('exoplayer: erro $codigo (${e['numero']})');
-        _erro(e['mensagem'] is String ? e['mensagem'] as String : '', formato: e['formato'] == true);
+        _erro(e['mensagem'] is String ? e['mensagem'] as String : '',
+            formato: e['formato'] == true, rede: e['rede'] == true);
       case 'faixas':
         _porId.clear();
         List<FaixaMotor> lista(Object? l) => [
@@ -402,7 +411,8 @@ class MotorExo implements MotorReproducao {
       case 'legendaTexto':
         legenda.value = e['texto'] is String ? e['texto'] as String : '';
       case 'pronto':
-        break; // o ecrã sabe que abriu pela imagem e pela posição
+        // o ecrã sabe que abriu pela imagem e pela posição; aqui só se é um direto
+        if (e['direto'] case final bool d) _direto = d;
     }
   }
 }

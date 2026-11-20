@@ -93,13 +93,16 @@ class EstatisticasMotor {
 /// de um erro de rede.
 @immutable
 class ErroMotor {
-  const ErroMotor(this.mensagem, {this.formato = false});
+  const ErroMotor(this.mensagem, {this.formato = false, this.rede = false});
 
   final String mensagem;
   final bool formato;
 
+  /// Uma falha de rede (ligação, tempo esgotado, código HTTP), que pode passar ao reabrir.
+  final bool rede;
+
   @override
-  String toString() => 'ErroMotor($mensagem, formato: $formato)';
+  String toString() => 'ErroMotor($mensagem, formato: $formato, rede: $rede)';
 }
 
 /// O que reproduz o vídeo de um canal. O ecrã do player ([PlayerCanais]) fala só com isto: o mpv
@@ -134,6 +137,10 @@ abstract interface class MotorReproducao {
   /// As imagens por segundo que o motor mediu no vídeo deste canal, quando o formato não as diz
   /// (TS e HLS no ExoPlayer). O mpv não manda nada aqui: o ecrã lê as propriedades dele.
   Stream<double> get fps;
+
+  /// Se o canal aberto é um direto (sem fim conhecido), segundo o motor; null se não sabe (o mpv:
+  /// o ecrã lê as propriedades dele).
+  bool? get direto;
 
   /// Abre o canal (`inicio`: num ficheiro, onde começar).
   Future<void> abrir(String url, Map<String, String> cabecalhos, {Duration? inicio});

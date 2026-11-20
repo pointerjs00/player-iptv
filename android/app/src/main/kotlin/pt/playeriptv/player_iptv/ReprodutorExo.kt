@@ -431,6 +431,12 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
 
     // ---------------------------------------------------------------- eventos
 
+    /** Um direto (sem fim conhecido): HLS em direto ou um progressivo que não se pode procurar. */
+    private fun eDireto(): Boolean {
+        val p = player ?: return true
+        return p.isCurrentMediaItemLive || !p.isCurrentMediaItemSeekable
+    }
+
     /** Canal novo (ou player largado): a medição do fps recomeça. */
     private fun recomecarFps() {
         geracaoFps += 1
@@ -521,12 +527,13 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
                     jaTocou = true
                     if (!prontoEnviado) {
                         prontoEnviado = true
-                        enviar("pronto")
+                        enviar("pronto", mapOf("direto" to eDireto()))
                     }
                 }
                 Player.STATE_ENDED -> {
                     definirACarregar(false)
-                    enviar("fim")
+                    // num direto é um corte do servidor: o Dart reabre o canal (como no mpv)
+                    enviar("fim", mapOf("direto" to eDireto()))
                 }
                 Player.STATE_IDLE -> definirACarregar(false)
             }
@@ -566,7 +573,14 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
             Log.w(TAG, "erro: id=$idAtual ${erro.errorCodeName}${if (http != null) " HTTP $http" else ""} causa=${erro.cause?.javaClass?.simpleName}")
             enviar(
                 "erro",
-                mapOf("codigo" to erro.errorCodeName, "numero" to erro.errorCode, "mensagem" to mensagem, "formato" to formato),
+                mapOf(
+                    "codigo" to erro.errorCodeName,
+                    "numero" to erro.errorCode,
+                    "mensagem" to mensagem,
+                    "formato" to formato,
+                    // rede (IO, HTTP): com o canal aberto, o Dart trata-a como um corte e reabre
+                    "rede" to (!formato && erro.errorCode in 2000..2999),
+                ),
             )
         }
 

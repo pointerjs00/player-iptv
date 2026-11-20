@@ -432,6 +432,27 @@ void main() {
       await m.descartar();
     });
 
+    test('C3: o nativo diz se é um direto (pronto e fim) e se um erro é de rede', () async {
+      final exo = _ExoFalso();
+      final m = _motor();
+      final erros = <ErroMotor>[];
+      m.erros.listen(erros.add);
+      await m.abrir('http://exemplo.invalid/1.ts', const {});
+      await _esperar();
+      expect(m.direto, isNull, reason: 'ainda não se sabe');
+      exo.evento('pronto', {'direto': false});
+      await _esperar();
+      expect(m.direto, isFalse);
+      exo.evento('fim', {'direto': true});
+      exo.evento('erro', {'codigo': 'ERROR_CODE_IO_NETWORK_CONNECTION_FAILED', 'numero': 2001, 'mensagem': 'Falha de rede ao abrir o canal', 'formato': false, 'rede': true});
+      await _esperar();
+      expect(m.direto, isTrue);
+      expect(erros.single.rede, isTrue);
+      await m.abrir('http://exemplo.invalid/2.ts', const {});
+      expect(m.direto, isNull, reason: 'canal novo: por saber outra vez');
+      await m.descartar();
+    });
+
     test('estatisticas sem vídeo: nulls, não lança', () async {
       _ExoFalso(estatisticas: {'perdidas': 0, 'renderizadas': 0, 'fps': null, 'codec': null, 'resolucao': null});
       final m = _motor();
