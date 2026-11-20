@@ -37,8 +37,9 @@ class ErroSessaoDireto implements Exception, ErroLegivel {
 abstract interface class SessaoDireto {
   /// Começa a gravar `fonte` e devolve o URL local do direto; null se o stream não é um MPEG-TS
   /// (uma playlist HLS, um ficheiro) ou a gravação não pôde começar: o player abre a origem. Lança
-  /// [ErroSessaoDireto] se o gravador desistir antes de haver dados.
-  Future<Uri?> abrir(FonteVideo fonte);
+  /// [ErroSessaoDireto] se o gravador desistir antes de haver dados. `renovar`: o link para cada
+  /// religação do gravador (no Stalker um link novo; sem ele, o mesmo `fonte`).
+  Future<Uri?> abrir(FonteVideo fonte, {Future<FonteVideo> Function()? renovar});
 
   /// O URL para ver a partir de `posicao` (bytes desde o início da sessão).
   Uri urlDesde(int posicao);
@@ -79,11 +80,14 @@ bool gravavel(String url) {
   final u = Uri.tryParse(url.trim());
   if (u == null || (u.scheme != 'http' && u.scheme != 'https') || u.host.isEmpty) return false;
   final caminho = u.path.toLowerCase();
-  if (caminho.endsWith('.m3u8') || caminho.endsWith('.m3u')) return false;
-  const ficheiros = ['.mp4', '.mkv', '.avi', '.mov', '.m4v', '.webm', '.flv', '.wmv', '.mp3', '.aac'];
+  if (caminho.endsWith('.m3u8') || caminho.endsWith('.m3u') || caminho.endsWith('.mpd')) return false;
+  const ficheiros = [
+    '.mp4', '.mkv', '.avi', '.mov', '.m4v', '.webm', '.flv', '.wmv', '.mpg', '.mpeg', '.mp3', '.aac', '.m4a', '.ogg',
+  ];
   if (ficheiros.any(caminho.endsWith)) return false;
+  // filmes, séries e o timeshift do Xtream (também com um prefixo no caminho)
   final seg = u.pathSegments.map((s) => s.toLowerCase()).toList();
-  if (seg.isNotEmpty && (seg.first == 'movie' || seg.first == 'series')) return false;
+  if (seg.any((s) => s == 'movie' || s == 'series' || s == 'timeshift')) return false;
   for (final v in u.queryParameters.entries) {
     final k = v.key.toLowerCase(), valor = v.value.toLowerCase();
     if ((k == 'extension' || k == 'output' || k == 'type') && (valor == 'm3u8' || valor == 'hls')) return false;
@@ -137,16 +141,23 @@ class SessaoGravada implements SessaoDireto {
   }
 
   @override
-  Future<Uri?> abrir(FonteVideo fonte) async {
+  Future<Uri?> abrir(FonteVideo fonte, {Future<FonteVideo> Function()? renovar}) async {
     if (_g != null) throw StateError('a sessão já foi aberta');
     if (_fechada) return null;
     final GravadorDireto g;
     try {
       final base = await pastaBase();
       if (_fechada) return null;
+      var primeira = true;
       g = GravadorDireto(
         origem: Uri.parse(fonte.url),
         cabecalhos: fonte.headers,
+        // a primeira ligação usa o link já pedido; cada religação pede outro
+        obterOrigem: () async {
+          final f = primeira || renovar == null ? fonte : await renovar();
+          primeira = false;
+          return (Uri.parse(f.url), f.headers);
+        },
         pasta: Directory('${base.path}${Platform.pathSeparator}${_nomeSessao()}'),
         reservaBytes: reservaBytes,
         tamanhoBloco: tamanhoBloco,

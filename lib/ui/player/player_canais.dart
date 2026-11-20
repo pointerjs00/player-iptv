@@ -200,6 +200,11 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   /// menos o que o motor tocou).
   DateTime? _chegadaGravada;
 
+  /// O que o motor tocou desde a abertura no gravado: só conta a posição do motor a tocar depois da
+  /// primeira imagem ([_contarTocado]), e nunca desce (o `stop` do mpv põe a posição a 0).
+  Duration _tocado = Duration.zero;
+  bool _contarTocado = false;
+
   /// O último crescimento do gravado: [ContinuarDireto.limiteSemDados] sem ele conta como corte.
   DateTime? _cresceuEm;
   Timer? _semCrescimento;
@@ -286,6 +291,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       final retomou = _aRetomar;
       _abriuEm = _agora();
       _continuar.abriu();
+      _contarTocado = _gravado;
       _ligacao.abriu((_mk?.player.state.position ?? _posicao).inMicroseconds / 1e6);
       _porMudo(_mudo.primeiraImagem(silencio: _sessao.silencio));
       setState(() {
@@ -374,6 +380,10 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       }
       final e = erro.mensagem;
       if (e.isNotEmpty && erroFatalPlayer(e)) {
+        // um erro atrasado do canal anterior (o servidor local fechou-lhe a ligação ao mudar de
+        // canal), ou já há um cartão (a desistência do gravador fica): não é deste canal
+        final chave = _chaveDoMotor;
+        if (chave == null || chave != _chave(_canais[_i]) || _erro != null) return;
         // a reabrir depois de um corte: uma falha passageira (rede, 401) tenta-se outra vez
         if (_aRetomar && _tentarContinuarDepois(_pedido)) return;
         _vigia.parar();
@@ -408,6 +418,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     _subsPlayer.add(_motor.posicao.listen((p) {
       _posicao = p;
       _vigia.tempo(p);
+      if (_contarTocado && _aTocar && p > _tocado) _tocado = p;
     }));
     _subsPlayer.add(_motor.faixas.listen((t) {
       if (mounted) setState(() => _faixas = t);
@@ -674,6 +685,15 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     final pedido = ++_pedido;
     final canal = _canais[_i];
     final repetido = continuar || mesmoCanal;
+    // o ponto no gravado fixa-se já, antes de qualquer parar ou reabertura (o mpv põe a posição a 0
+    // no stop): onde se está agora, ou o alvo pedido
+    final sessao = _sessaoDireto;
+    if (sessao != null && _mesmaSessao(canal)) {
+      gravado ??= _aquiNoGravado(sessao);
+      _abrirNoGravado(sessao, gravado.desde);
+    } else {
+      gravado = null;
+    }
     // o aviso do mpv é só do recurso, quando for ele a abrir
     if (!repetido) {
       _avisarMpv = false;
@@ -715,8 +735,15 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     }
     try {
       _vigia.comecar(); // o prazo conta desde o pedido do link
-      // outro canal (ou a sessão acabou): a sessão anterior fecha antes de tudo (o gravado apaga-se)
-      if (!_mesmaSessao(canal)) {
+      // outro canal (ou a sessão acabou): primeiro pára o motor (o servidor local não lhe corta a
+      // ligação a meio), depois fecha a sessão anterior (o gravado apaga-se)
+      if (!_mesmaSessao(canal) && _sessaoDireto != null) {
+        try {
+          await _motor.parar().timeout(_limiteStop);
+        } catch (e) {
+          debugPrint('player: o motor não parou a tempo antes de fechar o gravado (${e.runtimeType})');
+        }
+        if (!mounted) return;
         await _fecharSessao();
         if (!mounted || pedido != _pedido) return;
       }
@@ -846,10 +873,10 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     } else if (mpv == null || saltos == null) {
       // sem mpv: o seek do motor, se ele procura sozinho (HLS, filmes)
       final m = _motor;
-      if (m is! MotorComProcura) return;
+      if (m is! MotorComProcura || _aAbrir || !_exoProcuravel) return;
       final d = _segundos(alvo - janela.posicao);
       await (m as MotorComProcura).seekTo(_segundos(alvo));
-      if (janela.direto) d.isNegative ? _relogio.recuou(-d) : _relogio.avancou(d);
+      if (janela.direto && mounted && pedido == _pedido) d.isNegative ? _relogio.recuou(-d) : _relogio.avancou(d);
     } else if (janela.direto) {
       aviso = await saltos.irPara(alvo);
     } else if (pedido == _pedido) {
@@ -880,8 +907,8 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     bool valido() => mounted && pedido == _pedido;
     final atual = _sessaoDireto;
     if (atual != null && _mesmaSessao(canal)) {
+      // o ponto fixou-se no começo do _abrir ([_abrirNoGravado])
       final g = gravado ?? _aquiNoGravado(atual);
-      _abrirNoGravado(atual, g.desde);
       return (url: g.url.toString(), cabecalhos: const <String, String>{}, gravado: true);
     }
     var f = await widget.resolver(canal, continuar: repetido);
@@ -897,7 +924,8 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     _sessaoPronta = false;
     final Uri? local;
     try {
-      local = await s.abrir(f);
+      // cada religação do gravador pede o link outra vez (no Stalker só serve uma vez)
+      local = await s.abrir(f, renovar: () => widget.resolver(canal, continuar: true));
     } catch (e) {
       if (identical(_sessaoDireto, s)) unawaited(_fecharSessao());
       if (!valido()) return null;
@@ -930,7 +958,8 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   /// O motor vai abrir o gravado em `desde`: o atraso conta a partir daí.
   void _abrirNoGravado(SessaoDireto s, int desde) {
     _chegadaGravada = _agora().subtract(s.recuoDe(desde));
-    _posicao = Duration.zero;
+    _tocado = Duration.zero;
+    _contarTocado = false;
   }
 
   void _ouvirSessao(SessaoDireto s) {
@@ -988,6 +1017,11 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
 
   /// Sair do player: o gravado apaga-se antes (no Windows a janela sai do processo).
   Future<void> _sair() async {
+    if (_sessaoDireto != null) {
+      try {
+        await _motor.parar().timeout(_limiteStop);
+      } catch (_) {}
+    }
     await _fecharSessao();
     widget.aoSair();
   }
@@ -1007,8 +1041,10 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     if (!mounted || !_gravado) return;
     final c = _cresceuEm;
     if (c == null || _agora().difference(c) >= ContinuarDireto.limiteSemDados) {
+      // ainda há gravado por tocar à frente: o motor não está à espera de nada
+      final aFrente = c == null ? Duration.zero : _atrasoBruto - _agora().difference(c);
       _cresceuEm = _agora(); // o próximo conta daqui
-      if (_aVista && _aTocar && !_aAbrir && _erro == null) {
+      if (_aVista && _aTocar && !_aAbrir && _erro == null && aFrente < atrasoDireto + const Duration(seconds: 2)) {
         debugPrint('player: o gravado não cresce há ${ContinuarDireto.limiteSemDados.inSeconds} s; a reabrir o motor');
         _corteGravado();
       }
@@ -1032,7 +1068,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     }
     final abriu = _abriuEm;
     final tocou = _ligacao.proveito(
-        parede: abriu == null ? Duration.zero : _agora().difference(abriu), posicaoNoCorte: _emSegundos(_posicao));
+        parede: abriu == null ? Duration.zero : _agora().difference(abriu), posicaoNoCorte: _emSegundos(_tocado));
     if (!_continuar.permitir(tocou: tocou)) {
       _desistirGravado(ContinuarDireto.desistencia);
       return true;
@@ -1046,7 +1082,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   Duration get _atrasoBruto {
     final s = _sessaoDireto, c = _chegadaGravada;
     if (s == null || c == null) return Duration.zero;
-    var a = _agora().difference(c) - (_posicao.isNegative ? Duration.zero : _posicao);
+    var a = _agora().difference(c) - _tocado;
     final j = s.janela;
     if (a > j) a = j;
     return a.isNegative ? Duration.zero : a;
@@ -1667,7 +1703,6 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _continuar.reiniciar(); // nenhuma reabertura marcada depois de sair
-    unawaited(_fecharSessao()); // sair do player apaga o gravado
     _pararVigiaSemDados();
     _esconderAviso?.cancel();
     _vigiaEntrelacamento?.cancel();
@@ -1678,8 +1713,16 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     for (final s in _subsPlayer) {
       s.cancel();
     }
-    // o mpv só se destrói depois dos pedidos que ainda lá estão
-    unawaited(_motor.descartar());
+    // o mpv só se destrói depois dos pedidos que ainda lá estão; o gravado apaga-se depois de o
+    // motor o largar (o servidor local não lhe corta a ligação a meio)
+    final sessao = _sessaoDireto;
+    final largar = _motor.descartar();
+    if (sessao != null) {
+      _semCrescimento?.cancel();
+      unawaited(largar.timeout(_limiteStop).catchError((Object _) {}).whenComplete(_fecharSessao));
+    } else {
+      unawaited(largar);
+    }
     super.dispose();
   }
 

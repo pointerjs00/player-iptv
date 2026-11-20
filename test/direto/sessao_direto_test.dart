@@ -18,6 +18,10 @@ class _Origem {
   final pedidos = <(Uri, Map<String, String>)>[];
   final _ligou = StreamController<StreamController<List<int>>>.broadcast();
 
+  /// As ligações abertas agora (o gravador a ler) e o máximo ao mesmo tempo.
+  int abertas = 0;
+  int maximoAbertas = 0;
+
   /// Se dado, a ligação falha com isto.
   Object? falha;
 
@@ -25,7 +29,10 @@ class _Origem {
     pedidos.add((u, c));
     final f = falha;
     if (f != null) throw f;
-    final s = StreamController<List<int>>();
+    final s = StreamController<List<int>>(onListen: () {
+      abertas++;
+      if (abertas > maximoAbertas) maximoAbertas = abertas;
+    }, onCancel: () => abertas--);
     ligacoes.add(s);
     _ligou.add(s);
     return s.stream;
@@ -67,6 +74,9 @@ void main() {
       expect(gravavel('http://h/movie/u/p/1.mp4'), isFalse, reason: 'filme Xtream');
       expect(gravavel('http://h/series/u/p/2.ts'), isFalse, reason: 'série Xtream');
       expect(gravavel('http://h/filmes/a.mkv'), isFalse);
+      expect(gravavel('http://h/canal/manifest.mpd'), isFalse, reason: 'DASH');
+      expect(gravavel('http://h/timeshift/u/p/60/2026-11-20:20-00/1.ts'), isFalse, reason: 'timeshift');
+      expect(gravavel('http://h/xc/movie/u/p/1.ts'), isFalse, reason: 'filme com prefixo');
       expect(gravavel('rtmp://h/live'), isFalse);
       expect(gravavel(''), isFalse);
     });
@@ -158,5 +168,36 @@ void main() {
     await l.close(); // a origem fechou: o gravador volta a ligar
     expect((await erro).desistiu, isFalse);
     await s.fechar();
+  });
+
+  test('cada religação do gravador pede um link novo (renovar)', () async {
+    final s = nova();
+    var renovados = 0;
+    final aberta = s.abrir(const FonteVideo(_origem, {'User-Agent': 'Teste'}), renovar: () async {
+      renovados++;
+      return FonteVideo('http://exemplo.invalid/play/novo$renovados.ts', const {'Cookie': 'novo'});
+    });
+    final l = await origem.proxima();
+    l.add(_ts(188 * 4));
+    await aberta;
+    final religou = origem._ligou.stream.first;
+    await l.close(); // a origem cortou
+    await religou;
+    expect(renovados, 1);
+    expect(origem.pedidos.map((p) => p.$1.path), ['/live/utilizador/segredo/1.ts', '/play/novo1.ts']);
+    expect(origem.pedidos.last.$2, {'Cookie': 'novo'});
+    await s.fechar();
+  });
+
+  test('quando não serve, a ligação do gravador já fechou ao devolver null (nunca duas na origem)', () async {
+    final s = nova();
+    final aberta = s.abrir(const FonteVideo('http://h/live/u/p/1'));
+    final l = await origem.proxima();
+    // um ficheiro MP4 que não acaba: a ligação fica aberta até o gravador a largar
+    l.add([0, 0, 0, 0x20, ...'ftypisom'.codeUnits, ...List<int>.filled(1000, 1)]);
+    expect(await aberta, isNull);
+    expect(origem.abertas, 0, reason: 'o player pode abrir a origem: o gravador já a largou');
+    expect(origem.maximoAbertas, 1);
+    expect(tmp.listSync(), isEmpty);
   });
 }

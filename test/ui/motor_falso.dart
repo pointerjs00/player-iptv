@@ -18,6 +18,9 @@ class MotorFalso implements MotorReproducao {
   /// Se dado, o `parar` só acaba quando isto acabar (um mpv lento a largar o descodificador).
   Future<void>? pararDemora;
 
+  /// O `parar` manda a posição 0 (como o `stop` do mpv no media_kit).
+  bool zeroAoParar = false;
+
   final _erros = StreamController<ErroMotor>.broadcast();
   final _aCarregar = StreamController<bool>.broadcast();
   final _percentagem = StreamController<double>.broadcast();
@@ -81,6 +84,7 @@ class MotorFalso implements MotorReproducao {
   @override
   Future<void> parar() async {
     pedidos.add('parar');
+    if (zeroAoParar) _posicao.add(Duration.zero);
     final espera = pararDemora;
     if (espera != null) await espera;
     registo?.add('$nome: parou');

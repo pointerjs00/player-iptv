@@ -35,6 +35,13 @@ class _SessaoFalsa implements SessaoDireto {
   final Directory? pasta;
   late final DateTime _t0 = agora().subtract(const Duration(minutes: 10));
   final fontes = <FonteVideo>[];
+  Future<FonteVideo> Function()? renovar;
+
+  /// Se dado, o `abrir` só acaba quando isto acabar (a sessão a meio do arranque).
+  Future<void>? espera;
+
+  /// O stream não é MPEG-TS: `abrir` dá null.
+  bool naoServe = false;
   final recuos = <Duration>[];
   bool fechada = false;
   final _erros = StreamController<ErroGravador>.broadcast();
@@ -42,14 +49,23 @@ class _SessaoFalsa implements SessaoDireto {
 
   int get fim => agora().difference(_t0).inMilliseconds;
 
-  void erro(ErroGravador e) => _erros.add(e);
-  void crescer() => _crescimento.add(fim);
+  void erro(ErroGravador e) {
+    if (!_erros.isClosed) _erros.add(e);
+  }
+
+  void crescer() {
+    if (!_crescimento.isClosed) _crescimento.add(fim);
+  }
 
   @override
-  Future<Uri?> abrir(FonteVideo fonte) async {
+  Future<Uri?> abrir(FonteVideo fonte, {Future<FonteVideo> Function()? renovar}) async {
     registo.add('sessao$n: abrir');
     fontes.add(fonte);
+    this.renovar = renovar;
     pasta?.createSync(recursive: true);
+    final e = espera;
+    if (e != null) await e;
+    if (fechada || naoServe) return null;
     return urlDireto;
   }
 
@@ -114,6 +130,12 @@ class _Montagem {
   Directory? pastas;
   String Function(Canal c) url = _origem;
 
+  /// Aplicado a cada sessão criada (antes de abrir).
+  void Function(_SessaoFalsa s)? preparar;
+
+  /// Os motores mandam a posição 0 ao parar (como o mpv).
+  bool zeroAoParar = false;
+
   MotorFalso get motor => motores.last;
   _SessaoFalsa get sessao => sessoes.last;
 
@@ -129,7 +151,7 @@ class _Montagem {
     DateTime agora() => t.binding.clock.now();
     MotorFalso novo(String nome) {
       registo.add('criar $nome');
-      final m = _MotorProcura(nome: '$nome${motores.length + 1}', registo: registo);
+      final m = _MotorProcura(nome: '$nome${motores.length + 1}', registo: registo)..zeroAoParar = zeroAoParar;
       motores.add(m);
       return m;
     }
@@ -144,7 +166,10 @@ class _Montagem {
           aoSair: () {},
           plataforma: PlataformaVideo.android,
           agora: agora,
-          resolver: (c, {continuar = false}) async => FonteVideo(url(c), const {'User-Agent': 'Teste'}),
+          resolver: (c, {continuar = false}) async {
+            registo.add('resolver ${c.id} continuar=$continuar');
+            return FonteVideo(url(c), const {'User-Agent': 'Teste'});
+          },
           criarMotor: (ModoDescodificacao modo, bool hardware) => novo('mpv'),
           criarMotorExo: ({required bool tunel}) => novo('exo'),
           criarSessao: comSessao
@@ -152,6 +177,7 @@ class _Montagem {
                   final n = sessoes.length + 1;
                   final p = pastas;
                   final s = _SessaoFalsa(agora, registo, n, pasta: p == null ? null : Directory('${p.path}/s$n'));
+                  preparar?.call(s);
                   sessoes.add(s);
                   return s;
                 }
@@ -181,6 +207,16 @@ Future<void> _sair(WidgetTester t) async {
 }
 
 int _desde(String url) => int.parse(Uri.parse(url).queryParameters['desde']!);
+
+/// Toca `segundos` com o gravado a crescer (o relógio do teste anda; a posição do motor também).
+Future<void> _tocar(WidgetTester t, _Montagem m, int segundos) async {
+  for (var i = 1; i <= segundos; i++) {
+    await t.pump(const Duration(seconds: 1));
+    m.sessao.crescer();
+    m.motor.tempo(Duration(seconds: i));
+  }
+  await t.pump();
+}
 
 void main() {
   testWidgets('um direto TS abre pela sessão: o motor toca o URL local, sem os cabeçalhos da origem', (t) async {
@@ -354,6 +390,112 @@ void main() {
     expect(m.sessoes, hasLength(1));
     expect(m.sessao.fechada, isFalse);
     expect(m.motor.aberturas.single.url, startsWith('http://127.0.0.1:4567/codigo1/'));
+    await _sair(t);
+  });
+
+  for (final zero in [false, true]) {
+    final como = zero ? ' (a posição vai a 0 no parar, como no mpv)' : '';
+    testWidgets('um corte aos 40 s de reprodução reabre no ponto dos 40 s$como', (t) async {
+      final m = _Montagem()..zeroAoParar = zero;
+      await m.montar(t);
+      await _abrirComImagem(t, m.motor);
+      await _tocar(t, m, 40);
+      expect(m.motor.aberturas, hasLength(1));
+      // a reprodução está 2 s atrás do fim (o direto local), como quando abriu
+      final esperado = m.sessao.fim - 2000;
+      m.motor.erro('a ligação caiu', rede: true);
+      await _reabrir(t);
+      expect(m.motor.aberturas, hasLength(2));
+      expect(_desde(m.motor.aberturas.last.url), esperado);
+      // e outro corte logo a seguir (sem nada tocado) fica no mesmo ponto
+      await _abrirComImagem(t, m.motor);
+      m.motor.erro('a ligação caiu outra vez', rede: true);
+      await _reabrir(t);
+      expect(_desde(m.motor.aberturas.last.url), esperado);
+      await _sair(t);
+    });
+
+    testWidgets('dois «recuar 10 s» seguidos dão −20 s$como', (t) async {
+      final m = _Montagem()..zeroAoParar = zero;
+      await m.montar(t);
+      await _abrirComImagem(t, m.motor);
+      await _tocar(t, m, 30);
+      final fim = m.sessao.fim;
+      await t.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+      await t.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+      await _reabrir(t);
+      expect(_desde(m.motor.aberturas.last.url), fim - 22000, reason: '20 s atrás do direto local (2 s antes do fim)');
+      // tocar 5 s não muda o atraso; um terceiro recuo dá −30 s
+      await _abrirComImagem(t, m.motor);
+      await _tocar(t, m, 5);
+      await t.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+      await _reabrir(t);
+      expect(_desde(m.motor.aberturas.last.url), m.sessao.fim - 32000);
+      await _sair(t);
+    });
+  }
+
+  testWidgets('no zapping, um erro atrasado do canal anterior não põe cartão no canal novo', (t) async {
+    final m = _Montagem();
+    await m.montar(t);
+    await _abrirComImagem(t, m.motor);
+    await t.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+    // o servidor local do canal 1 cortou a ligação ao motor: o erro chega já com o canal 2 a abrir
+    // (depois de o motor abrir o canal 2, o MotorExo já larga os eventos da sessão anterior)
+    m.motor.erro('Source error: HttpDataSourceException');
+    m.motor.erro('Source error: HttpDataSourceException', rede: true);
+    await _reabrir(t);
+    expect(find.textContaining('o canal não abriu'), findsNothing);
+    expect(m.sessoes, hasLength(2));
+    expect(m.sessoes.first.fechada, isTrue);
+    expect(m.sessoes.last.fechada, isFalse, reason: 'a sessão nova fica aberta');
+    expect(m.motor.aberturas.last.url, startsWith('http://127.0.0.1:4567/codigo2/'));
+    // o motor parou antes de a sessão anterior fechar
+    expect(m.registo.indexOf('exo1: parou'), lessThan(m.registo.indexOf('sessao1: fechar')));
+    await _sair(t);
+  });
+
+  testWidgets('zapping rápido com as sessões a meio do arranque: só a última fica aberta', (t) async {
+    final m = _Montagem();
+    await m.montar(t);
+    final espera = Completer<void>();
+    m.preparar = (s) => s.espera = espera.future;
+    for (var i = 0; i < 3; i++) {
+      await t.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      await t.pump();
+    }
+    espera.complete();
+    await _reabrir(t);
+    final abertas = m.sessoes.where((s) => !s.fechada).toList();
+    expect(abertas, hasLength(1));
+    expect(abertas.single, same(m.sessoes.last));
+    expect(abertas.single.fontes.single.url, _origem(_canais[3]));
+    expect(m.motor.aberturas.last.url, abertas.single.urlDireto.toString());
+    await _sair(t);
+    expect(m.sessoes.every((s) => s.fechada), isTrue);
+  });
+
+  testWidgets('quando a gravação não serve, a sessão fecha antes de o motor abrir a origem (link novo)', (t) async {
+    final m = _Montagem()..preparar = (s) => s.naoServe = true;
+    await m.montar(t);
+    final fechou = m.registo.indexOf('sessao1: fechar');
+    final pediu = m.registo.indexOf('resolver 1 continuar=true');
+    final abriu = m.registo.lastIndexOf('exo1: abrir');
+    expect(fechou, greaterThan(m.registo.indexOf('sessao1: abrir')));
+    expect(pediu, greaterThan(fechou));
+    expect(abriu, greaterThan(pediu));
+    expect(m.motor.aberturas.single.url, _origem(_canais[0]));
+    await _sair(t);
+  });
+
+  testWidgets('o gravador recebe como renovar o link: pede-o de novo ao resolver (Stalker)', (t) async {
+    final m = _Montagem();
+    await m.montar(t);
+    final renovar = m.sessao.renovar;
+    expect(renovar, isNotNull);
+    final f = await renovar!();
+    expect(f.url, _origem(_canais[0]));
+    expect(m.registo.last, 'resolver 1 continuar=true');
     await _sair(t);
   });
 }

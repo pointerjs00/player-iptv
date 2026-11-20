@@ -215,7 +215,7 @@ class MotorExo implements MotorReproducao, MotorComProcura {
     return JanelaMotor(
       posicao: posicao,
       duracao: ms('duracaoMs'),
-      bufferAte: ms('bufferMs'),
+      bufferAte: ms('bufferAteMs'),
       procuravel: m['procuravel'] == true,
       direto: m['direto'] != false,
     );

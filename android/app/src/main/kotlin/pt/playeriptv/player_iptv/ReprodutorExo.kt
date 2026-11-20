@@ -225,9 +225,13 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
                 "estatisticas" -> result.success(estatisticas(p))
                 "janela" -> result.success(janela(p))
                 "seekTo" -> {
+                    val ms = (call.argument<Any>("ms") as? Number)?.toLong()
+                    if (ms == null) {
+                        result.error("argumentos", "Falta a posição", null)
+                        return
+                    }
                     // HLS na janela do direto ou um ficheiro: um progressivo em direto não procura
                     if (p.isCurrentMediaItemSeekable) {
-                        val ms = (call.argument<Any>("ms") as? Number)?.toLong() ?: 0L
                         val d = p.duration
                         p.seekTo(if (d == C.TIME_UNSET) ms.coerceAtLeast(0L) else ms.coerceIn(0L, d))
                     }
@@ -463,7 +467,7 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
         return mapOf(
             "posicaoMs" to p.currentPosition,
             "duracaoMs" to if (d == C.TIME_UNSET) null else d,
-            "bufferMs" to p.bufferedPosition,
+            "bufferAteMs" to p.bufferedPosition,
             "procuravel" to p.isCurrentMediaItemSeekable,
             "direto" to eDireto(),
         )

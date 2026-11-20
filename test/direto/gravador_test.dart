@@ -347,4 +347,43 @@ void main() {
     }
     await g.parar();
   });
+
+  test('obterOrigem: cada ligação (a primeira e as religações) pede a origem de novo', () async {
+    var pedidas = 0;
+    final vistos = <(Uri, Map<String, String>)>[];
+    final segunda = StreamController<List<int>>();
+    final g = GravadorDireto(
+        origem: _origem,
+        cabecalhos: const {},
+        obterOrigem: () async {
+          pedidas++;
+          return (Uri.parse('http://exemplo.invalid/play/$pedidas.ts'), {'Cookie': 'link=$pedidas'});
+        },
+        pasta: pasta,
+        reservaBytes: _reserva,
+        tamanhoBloco: _bloco,
+        agora: agora,
+        esperar: nada,
+        abrir: (u, c) async {
+          vistos.add((u, c));
+          // um link de uso único (Stalker): o mesmo link outra vez é recusado
+          if (vistos.where((v) => v.$1 == u).length > 1) throw const HttpException('link gasto');
+          if (vistos.length == 1) return Stream.fromIterable([_bytes(0, 1000)]);
+          return segunda.stream;
+        });
+    await g.iniciar();
+    await g.crescimento.firstWhere((f) => f == 1000);
+    final alvo = g.crescimento.firstWhere((f) => f == 3000);
+    // espera pela 2.ª ligação antes de enviar
+    while (vistos.length < 2) {
+      await Future<void>.delayed(Duration.zero);
+    }
+    segunda.add(_bytes(1000, 2000));
+    await alvo;
+    expect(pedidas, 2);
+    expect(vistos.map((v) => v.$1.path), ['/play/1.ts', '/play/2.ts']);
+    expect(vistos.map((v) => v.$2['Cookie']), ['link=1', 'link=2']);
+    expect(await g.ler(0, 3000), _bytes(0, 3000));
+    await g.parar();
+  });
 }

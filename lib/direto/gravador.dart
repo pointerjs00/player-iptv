@@ -49,6 +49,7 @@ class GravadorDireto {
   GravadorDireto({
     required this.origem,
     required this.cabecalhos,
+    this.obterOrigem,
     required this.pasta,
     required this.reservaBytes,
     this.tamanhoBloco = 16 << 20,
@@ -66,6 +67,11 @@ class GravadorDireto {
 
   final Uri origem;
   final Map<String, String> cabecalhos;
+
+  /// Se dado, a origem de cada ligação (a primeira e cada religação) vem daqui, em vez de
+  /// [origem] e [cabecalhos]: os links do Stalker só servem uma vez. Uma falha conta como uma
+  /// ligação falhada.
+  final Future<(Uri, Map<String, String>)> Function()? obterOrigem;
   final Directory pasta;
   final int reservaBytes;
   final int tamanhoBloco;
@@ -265,7 +271,10 @@ class GravadorDireto {
       DateTime? primeiraChegada, ultimaChegada;
       Object? falha;
       try {
-        final stream = await _abrir(origem, cabecalhos);
+        final obter = obterOrigem;
+        final (uri, cab) = obter == null ? (origem, cabecalhos) : await obter();
+        if (_parado) break;
+        final stream = await _abrir(uri, cab);
         if (_parado) {
           unawaited(stream.listen(null).cancel().catchError((_) {}));
           break;
