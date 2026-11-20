@@ -12,6 +12,7 @@ import 'package:player_iptv/rede/http.dart';
 import 'package:player_iptv/tarefas/servico_tarefas.dart';
 import 'package:player_iptv/ui/adicionar.dart';
 import 'package:player_iptv/ui/design/componentes.dart';
+import 'package:player_iptv/ui/design/tokens.dart';
 import 'package:player_iptv/ui/gestor/indicador_atividade.dart';
 import 'package:player_iptv/ui/gestor/tela_gestor.dart';
 import 'package:player_iptv/ui/tema.dart';
@@ -153,6 +154,25 @@ void main() {
       expect(find.text('Resultado'), findsNothing, reason: 'sem importações ainda');
       await escolherStb(t);
       expect(find.text('Junta as listas publicadas no blog entre duas datas, sem duplicar.'), findsOneWidget);
+    });
+
+    testWidgets('a origem escolhida não usa a cor do anel do foco quando não tem o foco', (t) async {
+      await abrir(t, base: () => 'http://127.0.0.1:1/');
+      FocusManager.instance.primaryFocus?.unfocus();
+      await t.pumpAndSettle();
+      // sem foco nenhum, nada pode pintar o contorno ou o brilho do foco (a escolha tem outro sinal)
+      bool corDoFoco(Color c) => c.withValues(alpha: 1) == Tokens.anelFoco;
+      final comAnel = t.widgetList<DecoratedBox>(find.byType(DecoratedBox)).where((d) {
+        final dec = d.decoration;
+        if (dec is! BoxDecoration) return false;
+        final b = dec.border;
+        final borda = b is Border && b.top.width > 0 && corDoFoco(b.top.color);
+        final brilho = (dec.boxShadow ?? const []).any((s) => corDoFoco(s.color));
+        return borda || brilho;
+      });
+      expect(comAnel, isEmpty);
+      // a origem escolhida continua a ver-se como escolhida
+      expect(find.byKey(const Key('origem-escolhida')), findsOneWidget);
     });
 
     testWidgets('Colar texto: cria uma tarefa e o resultado mostra os números', (t) async {

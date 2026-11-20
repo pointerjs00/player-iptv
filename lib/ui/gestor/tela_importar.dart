@@ -474,10 +474,11 @@ class _CartaoOrigem extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Semantics(
         selected: escolhida,
+        // a escolhida tem fundo azul e um ✓; o contorno azul-claro é só do foco (do CartaoModerno)
         child: DecoratedBox(
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(Tokens.raioBotao + 2),
-            border: Border.all(color: escolhida ? Tokens.anelFoco : Colors.transparent, width: 2),
+            color: escolhida ? Tokens.superficie3 : null,
+            borderRadius: BorderRadius.circular(Tokens.raioBotao),
           ),
           child: CartaoModerno(
             focusNode: focusNode,
@@ -486,7 +487,13 @@ class _CartaoOrigem extends StatelessWidget {
             padding: const EdgeInsets.all(Tokens.e12),
             onTap: aoEscolher,
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-              Icon(icone, color: escolhida ? Tokens.anelFoco : Tokens.texto2),
+              Row(children: [
+                Icon(icone, color: escolhida ? Tokens.acento : Tokens.texto2),
+                const Spacer(),
+                if (escolhida)
+                  const Icon(Icons.check_circle, key: Key('origem-escolhida'), size: 18, color: Tokens.acento,
+                      semanticLabel: 'escolhida'),
+              ]),
               const SizedBox(height: Tokens.e8),
               Text(titulo,
                   maxLines: 2,
