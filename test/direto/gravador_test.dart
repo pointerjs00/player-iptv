@@ -270,6 +270,19 @@ void main() {
     await g.parar();
   });
 
+  test('o bloqueio da sessão falhou: o ficheiro não fica aberto e a pasta apaga-se toda', () async {
+    // outro handle já tem o ficheiro de bloqueio bloqueado: o lock desta sessão falha
+    pasta.createSync(recursive: true);
+    final outro = File('${pasta.path}${Platform.pathSeparator}${ArmazemDisco.nomeBloqueio}').openSync(mode: FileMode.append);
+    outro.lockSync(FileLock.exclusive);
+    final armazem = ArmazemDisco(pasta);
+    await armazem.preparar();
+    outro.unlockSync();
+    outro.closeSync();
+    await armazem.fechar(apagar: true);
+    expect(pasta.existsSync(), isFalse, reason: 'no Windows um handle aberto impedia de apagar a pasta');
+  });
+
   test('parar() apaga a pasta e os blocos; parar(apagar: false) deixa-os', () async {
     final (:g, :origem) = comOrigemManual();
     await g.iniciar();

@@ -53,11 +53,16 @@ class ArmazemDisco implements ArmazemBlocos {
   @override
   Future<void> preparar() async {
     await pasta.create(recursive: true);
+    RandomAccessFile? b;
     try {
-      final b = await File('${pasta.path}${Platform.pathSeparator}$nomeBloqueio').open(mode: FileMode.write);
+      b = await File('${pasta.path}${Platform.pathSeparator}$nomeBloqueio').open(mode: FileMode.write);
       await b.lock(FileLock.exclusive);
       _bloqueio = b;
     } on FileSystemException catch (e) {
+      // o ficheiro não fica aberto (no Windows impedia de apagar a pasta da sessão)
+      try {
+        await b?.close();
+      } catch (_) {}
       // sem bloqueio grava-se na mesma (só a limpeza de outro processo a podia apanhar)
       debugPrint('gravador do direto: sem o bloqueio da sessão (código ${e.osError?.errorCode ?? '?'})');
     }
