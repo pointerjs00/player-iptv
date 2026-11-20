@@ -48,7 +48,8 @@ Future<ConteudoLista> _abrirPeloProtocolo(Conta conta, {Cancelamento? cancelamen
 /// dos canais, «Pesquisar canais ou número» procura em todos os grupos (sem acentos nem maiúsculas).
 class TelaConteudo extends StatefulWidget {
   const TelaConteudo({super.key, required this.biblioteca, required this.lista, this.abrir,
-      this.atualizar = false, AbrirLista? abrirLista, this.dns = resolverDns, this.continuar})
+      this.atualizar = false, AbrirLista? abrirLista, this.dns = resolverDns, this.continuar,
+      this.indexar})
       : abrirLista = abrirLista ?? _abrirPeloProtocolo;
 
   final Biblioteca biblioteca;
@@ -68,6 +69,9 @@ class TelaConteudo extends StatefulWidget {
 
   /// "Continuar a ver": o id do canal a abrir no player logo que os canais estejam à vista.
   final String? continuar;
+
+  /// Para testes: em vez do isolate, indexa os nomes de uma lista grande (5000 canais ou mais).
+  final Future<IndiceNomes> Function(List<String> nomes)? indexar;
 
   @override
   State<TelaConteudo> createState() => _TelaConteudoState();
@@ -297,12 +301,23 @@ class _TelaConteudoState extends State<TelaConteudo> {
   /// interface. Até estarem prontos, a lista A–Z mostra-se pela ordem original ("A ordenar…").
   Future<void> _indexarNomes(ConteudoLista c) async {
     final nomes = [for (final x in c.canais) x.nome];
-    final r = nomes.length < 5000 ? _indexar(nomes) : await _indexarNumIsolate(nomes);
+    final r = nomes.length < 5000 ? indexarNomes(nomes) : await (widget.indexar ?? _indexarNumIsolate)(nomes);
     if (!mounted || !identical(c, _conteudo)) return;
     _nomes = r.nomes;
     _ordemAz = r.ordem;
     _lugarAz = r.lugar;
-    if (_pesquisaCanais || _aOrdenar) setState(() => _chaveVisiveis = null);
+    if (!_pesquisaCanais && !_aOrdenar) return;
+    // a lista troca de ordem: o canal com o foco (as linhas não têm chave: o foco ficava na mesma
+    // posição, já com outro canal) continua com ele, na posição nova
+    final antes = _visiveis;
+    final focado = _focoColunaCanais.hasFocus && _indice < antes.length ? antes[_indice] : null;
+    setState(() => _chaveVisiveis = null);
+    if (focado == null) return;
+    final canais = _canaisVisiveis();
+    final i = canais.indexWhere((x) => identical(x, focado));
+    if (i < 0) return;
+    _indice = i;
+    _focarNoCanal(canais, i);
   }
 
   /// O grupo escolhido ainda existe (depois de mudar o conteúdo ou os favoritos)? Senão (ou
@@ -1378,7 +1393,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
     if (!noGrupoFav || agora) return;
     final restantes = _canaisVisiveis();
     if (saiu || restantes.isEmpty) {
-      setState(() => _grupo = null);
+      if (!saiu) setState(() => _grupo = null);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _focoEscolhido?.requestFocus();
       });
@@ -1436,12 +1451,13 @@ class _Logo extends StatelessWidget {
 }
 
 // função de topo: a closure mandada para o isolate não pode levar o estado do ecrã
-Future<_Indice> _indexarNumIsolate(List<String> nomes) => Isolate.run(() => _indexar(nomes));
-
-typedef _Indice = ({List<String> nomes, Int32List ordem, Int32List lugar});
+Future<IndiceNomes> _indexarNumIsolate(List<String> nomes) => Isolate.run(() => indexarNomes(nomes));
 
 /// Os nomes sem acentos, as posições por ordem A–Z e o lugar de cada posição nessa ordem.
-_Indice _indexar(List<String> nomes) {
+typedef IndiceNomes = ({List<String> nomes, Int32List ordem, Int32List lugar});
+
+/// Indexa os `nomes` (ver [IndiceNomes]).
+IndiceNomes indexarNomes(List<String> nomes) {
   final normal = [for (final n in nomes) semAcentos(n)];
   final ordem = Int32List.fromList(List<int>.generate(normal.length, (i) => i)
     ..sort((a, b) {

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/services.dart';
@@ -437,6 +438,73 @@ void main() {
     expect(find.text('$grupoFavoritos · 1'), findsOneWidget);
     await escrever(t, 'filme');
     expect(find.text('$grupoFavoritos · 0'), findsOneWidget);
+  });
+
+  testWidgets('a ordem A–Z que chega com o foco num canal: o foco fica nesse canal, na nova posição', (t) async {
+    // 6000 (indexados à parte); os nomes ao contrário: na ordem da lista o 3.º é «Canal 05997»
+    final conteudo = ConteudoLista(['G'], [
+      for (var i = 0; i < 6000; i++) Canal(id: '$i', nome: 'Canal ${(5999 - i).toString().padLeft(5, '0')}', grupo: 'G'),
+    ]);
+    final l = await t.runAsync(() async {
+      await bib.adicionar([Importada(contaDeLinha('http://x.com/l.m3u')!)]);
+      await bib.guardarCanais(bib.listas.single.id, conteudo);
+      await bib.definirOrdem(bib.listas.single.id, OrdemCanais.az);
+      return bib.listas.single;
+    });
+    // a ordem só chega quando o teste quiser
+    final pronto = Completer<IndiceNomes>();
+    List<String>? pedidos;
+    ecraTvTeste(t, largura: 960, altura: 540);
+    await t.runAsync(() async {
+      await t.pumpWidget(appTeste(TelaConteudo(biblioteca: bib, lista: l!, abrir: (c, i) => null, indexar: (n) {
+        pedidos = n;
+        return pronto.future;
+      })));
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+    });
+    await t.pumpAndSettle();
+    expect(find.text('A ordenar…'), findsOneWidget);
+    expect(_nomes(t, _canais).take(3), ['Canal 05999', 'Canal 05998', 'Canal 05997']);
+    await focar(t, 'Canal 05997');
+    expect(t.widget<Text>(find.byKey(const Key('contador-canais'))).data, '3 de 6000');
+
+    pronto.complete(indexarNomes(pedidos!));
+    await t.pumpAndSettle();
+    expect(find.text('A ordenar…'), findsNothing);
+    expect(_focado(), 'Canal 05997', reason: textosFocados());
+    expect(t.widget<Text>(find.byKey(const Key('contador-canais'))).data, '5998 de 6000');
+    // o ↑ sobe uma linha (não vai à pesquisa)
+    await teclaDpad(t, LogicalKeyboardKey.arrowUp);
+    expect(_focado(), 'Canal 05996');
+    expect(t.widget<Text>(find.byKey(const Key('contador-canais'))).data, '5997 de 6000');
+  });
+
+  testWidgets('a ordem A–Z que chega sem o foco nos canais não mexe no foco', (t) async {
+    final conteudo = ConteudoLista(['G'], [
+      for (var i = 0; i < 6000; i++) Canal(id: '$i', nome: 'Canal ${(5999 - i).toString().padLeft(5, '0')}', grupo: 'G'),
+    ]);
+    final l = await t.runAsync(() async {
+      await bib.adicionar([Importada(contaDeLinha('http://x.com/l.m3u')!)]);
+      await bib.guardarCanais(bib.listas.single.id, conteudo);
+      await bib.definirOrdem(bib.listas.single.id, OrdemCanais.az);
+      return bib.listas.single;
+    });
+    final pronto = Completer<IndiceNomes>();
+    List<String>? pedidos;
+    ecraTvTeste(t, largura: 960, altura: 540);
+    await t.runAsync(() async {
+      await t.pumpWidget(appTeste(TelaConteudo(biblioteca: bib, lista: l!, abrir: (c, i) => null, indexar: (n) {
+        pedidos = n;
+        return pronto.future;
+      })));
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+    });
+    await t.pumpAndSettle();
+    expect(_focado(), 'Todos os canais');
+    pronto.complete(indexarNomes(pedidos!));
+    await t.pumpAndSettle();
+    expect(_focado(), 'Todos os canais');
+    expect(_nomes(t, _canais).first, 'Canal 00000');
   });
 
   testWidgets('100 mil canais em A–Z: o 1.º frame mostra os canais e, já ordenados, ficam A–Z', (t) async {
