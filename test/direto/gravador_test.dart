@@ -29,6 +29,33 @@ List<int> _ts(int desde, int n) => List<int>.generate(n, (i) {
 List<File> _blocosNoDisco(Directory d) =>
     d.listSync().whereType<File>().where((f) => f.uri.pathSegments.last.startsWith('bloco_')).toList();
 
+/// Um armazém em memória cuja escrita falha quando o teste quiser (a pasta apagada pelo sistema,
+/// um erro do armazenamento que não é falta de espaço).
+class _ArmazemQueFalha implements ArmazemBlocos {
+  _ArmazemQueFalha(int bloco) : _m = ArmazemMemoria(bloco);
+  final ArmazemMemoria _m;
+  bool falhar = false;
+
+  @override
+  Future<void> preparar() => _m.preparar();
+  @override
+  Future<void> abrir(int n) => _m.abrir(n);
+  @override
+  Future<void> escrever(List<int> dados, int de, int ate) {
+    if (falhar) throw const FileSystemException('a pasta desapareceu', '/cache/direto/s1/bloco_0.ts');
+    return _m.escrever(dados, de, ate);
+  }
+
+  @override
+  Future<void> fecharAberto() => _m.fecharAberto();
+  @override
+  Future<int> apagar(int n) => _m.apagar(n);
+  @override
+  Future<List<int>> ler(int n, int posicao, int quanto) => _m.ler(n, posicao, quanto);
+  @override
+  Future<void> fechar({required bool apagar}) => _m.fechar(apagar: apagar);
+}
+
 int _alinharAcima(int p) => (p + 187) ~/ 188 * 188;
 
 void main() {
@@ -465,6 +492,27 @@ void main() {
       expect(_blocosNoDisco(pasta), hasLength(1), reason: 'apagou até restar 1 bloco');
       await g.parar();
       expect(pasta.existsSync(), isFalse);
+    });
+
+    test('um erro de escrita que não é falta de espaço também passa ao anel em RAM (semEspaco)', () async {
+      final c = StreamController<List<int>>();
+      final armazem = _ArmazemQueFalha(_bloco);
+      final g = GravadorDireto(
+          origem: _origem, cabecalhos: const {}, armazem: armazem, reservaBytes: _reserva, tamanhoBloco: _bloco,
+          agora: agora, esperar: nada, abrir: (_, _) async => c.stream);
+      final erros = <ErroGravador>[];
+      g.erros.listen(erros.add);
+      await g.iniciar();
+      await enviar(g, c, _bytes(0, 1000));
+      armazem.falhar = true;
+      c.add(_bytes(1000, 100));
+      await g.erros.first;
+      await pumpEventQueue();
+      expect(erros, hasLength(1));
+      expect(erros.single.desistiu, isTrue, reason: 'não adianta voltar a ligar');
+      expect(erros.single.semEspaco, isTrue, reason: 'a origem está boa: o player passa ao anel em RAM');
+      expect(erros.single.mensagem, isNot(contains('/cache')));
+      await g.parar();
     });
 
     test('em memória: a soma dos blocos nunca passa da reserva e nada vai para o disco', () async {

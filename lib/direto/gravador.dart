@@ -39,8 +39,8 @@ class ErroGravador {
   final bool desistiu;
   final String mensagem;
 
-  /// Deixou de gravar por falta de espaço no aparelho (com [desistiu]): a origem está boa, o canal
-  /// pode continuar sem o gravado.
+  /// Deixou de gravar por falta de espaço no aparelho, ou por outro erro do armazenamento (com
+  /// [desistiu]): a origem está boa, o canal pode continuar sem o gravado (no anel em RAM).
   final bool semEspaco;
 
   @override
@@ -287,10 +287,18 @@ class GravadorDireto {
       _aSincronizar = null;
       if (_parado) break;
       if (falha is _ErroEscrita) {
-        _avisar(falha.causa is _SemEspaco
-            ? const ErroGravador(
-                desistiu: true, semEspaco: true, mensagem: 'não há espaço no armazenamento para continuar a gravar')
-            : const ErroGravador(desistiu: true, mensagem: 'não foi possível gravar no armazenamento'));
+        // qualquer erro do armazenamento (sem espaço, a pasta apagada pelo sistema) conta como sem
+        // espaço: a origem está boa e o player passa ao anel em RAM
+        final semEspaco = falha.causa is _SemEspaco;
+        if (!semEspaco) {
+          debugPrint('gravador do direto: erro a escrever (${falha.causa.runtimeType}); o recuo passa à memória');
+        }
+        _avisar(ErroGravador(
+            desistiu: true,
+            semEspaco: true,
+            mensagem: semEspaco
+                ? 'não há espaço no armazenamento para continuar a gravar'
+                : 'não foi possível gravar no armazenamento'));
         break;
       }
       final primeira = primeiraChegada, ultima = ultimaChegada;
