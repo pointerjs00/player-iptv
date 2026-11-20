@@ -9,6 +9,10 @@
 /// Quando a ligação à origem cai, volta a ligar e continua no mesmo ponto (o `fim` não salta), com a
 /// regra de desistência do [ContinuarDireto]. [GravadorDireto.parar] apaga a pasta.
 ///
+/// Com [GravadorDireto.espacoLivre], a cada bloco novo vê-se o espaço livre do aparelho: abaixo de
+/// [margemEspaco] apagam-se os blocos mais antigos até voltar a ela (ou até restar um); se nem
+/// assim chegar, deixa de gravar e larga a origem ([ErroGravador.semEspaco]).
+///
 /// Nunca se regista o URL nem os cabeçalhos (levam utilizador, password, MAC ou token).
 library;
 
@@ -23,14 +27,19 @@ import '../protocolos/protocolo.dart' show uaListas;
 import '../rede/http.dart';
 import '../ui/player/continuar_direto.dart';
 import '../verificar/video.dart' show syncTs;
+import 'espaco.dart' show margemEspaco;
 
 /// Um problema do gravador, para o player. A mensagem já é para o utilizador e não tem o URL.
 class ErroGravador {
-  const ErroGravador({required this.desistiu, required this.mensagem});
+  const ErroGravador({required this.desistiu, required this.mensagem, this.semEspaco = false});
 
   /// O gravador deixou de tentar: o canal acabou para o player.
   final bool desistiu;
   final String mensagem;
+
+  /// Deixou de gravar por falta de espaço no aparelho (com [desistiu]): a origem está boa, o canal
+  /// pode continuar sem o gravado.
+  final bool semEspaco;
 
   @override
   String toString() => mensagem;
@@ -41,6 +50,9 @@ class _ErroEscrita implements Exception {
   _ErroEscrita(this.causa);
   final Object causa;
 }
+
+/// O aparelho ficou sem a margem de espaço livre, mesmo depois de apagar os blocos antigos.
+class _SemEspaco implements Exception {}
 
 /// Um ponto do índice de tempo: o byte em `posicao` chegou em `instante`.
 typedef _Marca = ({DateTime instante, int posicao});
@@ -56,6 +68,7 @@ class GravadorDireto {
     DateTime Function()? agora,
     Future<Stream<List<int>>> Function(Uri, Map<String, String>)? abrir,
     Future<void> Function(Duration)? esperar,
+    this.espacoLivre,
   })  : maximoBlocos = tamanhoBloco > 0 ? reservaBytes ~/ tamanhoBloco : 0,
         _agora = agora ?? DateTime.now,
         _esperar = esperar ?? Future<void>.delayed {
@@ -78,6 +91,9 @@ class GravadorDireto {
 
   /// Quantos blocos cabem na reserva (contando o que está em escrita).
   final int maximoBlocos;
+
+  /// O espaço livre do aparelho (null: não se sabe), visto a cada bloco novo; sem ele, só a reserva.
+  final Future<int?> Function()? espacoLivre;
 
   final DateTime Function() _agora;
   final Future<void> Function(Duration) _esperar;
@@ -293,7 +309,10 @@ class GravadorDireto {
       _aSincronizar = null;
       if (_parado) break;
       if (falha is _ErroEscrita) {
-        _avisar(const ErroGravador(desistiu: true, mensagem: 'não foi possível gravar no armazenamento'));
+        _avisar(falha.causa is _SemEspaco
+            ? const ErroGravador(
+                desistiu: true, semEspaco: true, mensagem: 'não há espaço no armazenamento para continuar a gravar')
+            : const ErroGravador(desistiu: true, mensagem: 'não foi possível gravar no armazenamento'));
         break;
       }
       final primeira = primeiraChegada, ultima = ultimaChegada;
@@ -440,23 +459,59 @@ class GravadorDireto {
   }
 
   /// Fecha o bloco em escrita, apaga os mais antigos até haver lugar e só então abre o novo:
-  /// em nenhum momento há mais de [maximoBlocos] blocos no disco.
+  /// em nenhum momento há mais de [maximoBlocos] blocos no disco. Com pouco espaço livre no
+  /// aparelho apaga mais ([_guardarMargem]); lança [_SemEspaco] se nem assim chegar.
   Future<void> _novoBloco() => _exclusivo(() async {
         final anterior = _aberto;
         _aberto = null;
         await anterior?.close();
         if (_parado) return;
         while (_blocos.length >= maximoBlocos) {
-          final n = _blocos.removeAt(0); // o início avança antes de o ficheiro desaparecer
-          final f = _ficheiro(n);
-          if (await f.exists()) await f.delete();
+          await _apagarMaisAntigo();
         }
-        _podarIndice();
+        try {
+          await _guardarMargem();
+        } finally {
+          _podarIndice();
+        }
         final n = _fim ~/ tamanhoBloco;
         _aberto = await _ficheiro(n).open(mode: FileMode.writeOnly);
         _blocos.add(n);
         _noBloco = _fim - n * tamanhoBloco;
       });
+
+  /// Apaga o bloco mais antigo; devolve quanto ocupava.
+  Future<int> _apagarMaisAntigo() async {
+    final n = _blocos.removeAt(0); // o início avança antes de o ficheiro desaparecer
+    final f = _ficheiro(n);
+    if (!await f.exists()) return 0;
+    final tamanho = await f.length();
+    await f.delete();
+    return tamanho;
+  }
+
+  /// Abaixo de [margemEspaco] livres no aparelho, apaga os blocos mais antigos até voltar a ela
+  /// ou até restar um (o que o motor está a ler, perto do direto); se nem assim chegar, lança
+  /// [_SemEspaco]. Sem saber o espaço, não faz nada.
+  Future<void> _guardarMargem() async {
+    final medir = espacoLivre;
+    if (medir == null) return;
+    int? livre;
+    try {
+      livre = await medir();
+    } catch (e) {
+      debugPrint('gravador do direto: o espaço livre não se soube (${e.runtimeType})');
+    }
+    if (livre == null || livre >= margemEspaco) return;
+    var l = livre;
+    while (l < margemEspaco && _blocos.length > 1) {
+      l += await _apagarMaisAntigo();
+    }
+    if (l < margemEspaco) {
+      debugPrint('gravador do direto: sem espaço no armazenamento; deixa de gravar');
+      throw _SemEspaco();
+    }
+  }
 
   /// Tira do índice e das ligações o que ficou antes do [inicio], menos a última marca (precisa-se
   /// dela para saber quando chegou o próprio início).

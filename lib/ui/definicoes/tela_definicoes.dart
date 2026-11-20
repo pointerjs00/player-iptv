@@ -392,6 +392,17 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
                   value: _p.volume,
                   texto: '${_p.volume.round()} %',
                   aoMudar: (v) => _mudou(() => _p.volume = v, player: true))),
+          _opcao('Recuar no direto', 'Grava o canal para poderes recuar e pausar. Apagado ao mudar de canal.',
+              controlo: _escolhas(RecuoDireto.values, (r) => r.rotulo, _p.recuoDireto,
+                  (r) => _mudou(() => _p.recuoDireto = r, player: true))),
+          // só o Armazenamento grava
+          if (_p.recuoDireto == RecuoDireto.armazenamento)
+            _opcao('Espaço reservado', 'Quanto do armazenamento interno se usa, no máximo.',
+                controlo: _escolhas(
+                    [for (var g = Preferencias.minReservaDiretoGb; g <= Preferencias.maxReservaDiretoGb; g++) g],
+                    (g) => '$g GB',
+                    _p.reservaDiretoGb,
+                    (g) => _mudou(() => _p.reservaDiretoGb = g, player: true))),
         ];
       case _Categoria.verificacao:
         return [

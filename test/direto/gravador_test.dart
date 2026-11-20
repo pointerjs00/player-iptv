@@ -386,4 +386,95 @@ void main() {
     expect(await g.ler(0, 3000), _bytes(0, 3000));
     await g.parar();
   });
+
+  group('espaço livre do aparelho durante a gravação', () {
+    const gb = 1 << 30;
+
+    /// Um gravador de 16 blocos (1 MiB) com o espaço livre falso: `livreSemPasta` menos o que a
+    /// pasta ocupa agora (cada bloco apagado devolve o seu espaço).
+    ({GravadorDireto g, StreamController<List<int>> origem, List<int> medicoes}) comEspaco(
+        int Function() livreSemPasta) {
+      final c = StreamController<List<int>>();
+      final medicoes = <int>[];
+      final g = GravadorDireto(
+          origem: _origem,
+          cabecalhos: const {},
+          pasta: pasta,
+          reservaBytes: 16 * _bloco,
+          tamanhoBloco: _bloco,
+          agora: agora,
+          esperar: nada,
+          abrir: (_, _) async => c.stream,
+          espacoLivre: () async {
+            final l = livreSemPasta() - _ocupado(pasta);
+            medicoes.add(l);
+            return l;
+          });
+      return (g: g, origem: c, medicoes: medicoes);
+    }
+
+    test('abaixo de 1 GB livre, a cada bloco novo apagam-se os mais antigos até voltar a 1 GB', () async {
+      var livre = gb + 100 * _bloco;
+      final (:g, :origem, :medicoes) = comEspaco(() => livre);
+      await g.iniciar();
+      await enviar(g, origem, _bytes(0, 8 * _bloco)); // 8 blocos (o 8.º ainda aberto, cheio)
+      expect(medicoes, hasLength(8), reason: 'mede-se a cada bloco novo');
+      expect(g.inicio, 0, reason: 'com espaço não se apaga nada');
+      // outra app ocupou espaço: agora faltam 3 blocos e meio para a margem de 1 GB
+      livre = gb + 8 * _bloco - (3 * _bloco + _bloco ~/ 2);
+      await enviar(g, origem, _bytes(g.fim, 100));
+      // o 8.º fechou (8 no disco): apagam-se os 4 mais antigos (3,5 blocos arredondados para cima)
+      expect(g.inicio, 4 * _bloco);
+      expect(pasta.listSync().whereType<File>(), hasLength(5), reason: '4 antigos + o novo');
+      expect(livre - _ocupado(pasta), greaterThanOrEqualTo(gb - _bloco),
+          reason: 'só o bloco novo (ainda a encher) fica abaixo da margem');
+      expect(await g.ler(4 * _bloco, 10), _bytes(4 * _bloco, 10));
+      expect(await g.ler(0, 10), isNull, reason: 'apagado');
+      // continua a gravar
+      await enviar(g, origem, _bytes(g.fim, 2 * _bloco));
+      expect(g.fim, 10 * _bloco + 100);
+      await g.parar();
+    });
+
+    test('se nem a apagar até restar 1 bloco chega a 1 GB: pára de gravar, larga a origem e avisa', () async {
+      var livre = gb + 100 * _bloco;
+      final (:g, :origem, medicoes: _) = comEspaco(() => livre);
+      final erros = <ErroGravador>[];
+      g.erros.listen(erros.add);
+      var cancelada = false;
+      origem.onCancel = () => cancelada = true;
+      await g.iniciar();
+      await enviar(g, origem, _bytes(0, 6 * _bloco));
+      livre = gb; // com os 6 blocos na pasta, ficam 6 abaixo da margem; apagar 5 não chega
+      origem.add(_bytes(g.fim, 100));
+      await g.erros.first;
+      await pumpEventQueue();
+      expect(erros, hasLength(1));
+      expect(erros.single.semEspaco, isTrue);
+      expect(erros.single.desistiu, isTrue, reason: 'o gravador não volta a ligar');
+      expect(erros.single.mensagem, isNot(contains('exemplo.invalid')));
+      expect(cancelada, isTrue, reason: 'a ligação à origem fecha: o canal pode reabrir na origem');
+      expect(g.fim, 6 * _bloco, reason: 'nada mais se grava');
+      expect(pasta.listSync().whereType<File>(), hasLength(1), reason: 'apagou até restar 1 bloco');
+      await g.parar();
+      expect(pasta.existsSync(), isFalse);
+    });
+
+    test('sem saber o espaço (null) não se apaga nada além da reserva', () async {
+      final c = StreamController<List<int>>();
+      var medidas = 0;
+      final g = GravadorDireto(
+          origem: _origem, cabecalhos: const {}, pasta: pasta, reservaBytes: 4 * _bloco, tamanhoBloco: _bloco,
+          agora: agora, esperar: nada, abrir: (_, _) async => c.stream,
+          espacoLivre: () async {
+            medidas++;
+            return null;
+          });
+      await g.iniciar();
+      await enviar(g, c, _bytes(0, 6 * _bloco + 1));
+      expect(medidas, 7);
+      expect(g.inicio, 3 * _bloco, reason: 'só a rotação da reserva (4 blocos)');
+      await g.parar();
+    });
+  });
 }

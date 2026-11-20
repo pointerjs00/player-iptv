@@ -12,6 +12,7 @@ import 'package:player_iptv/dados/guardar_ficheiro.dart';
 import 'package:player_iptv/dados/preferencias.dart';
 import 'package:player_iptv/importar/importar.dart';
 import 'package:player_iptv/modelo/conta.dart';
+import 'package:player_iptv/ui/definicoes/linha_opcao.dart';
 import 'package:player_iptv/ui/definicoes/tela_definicoes.dart';
 import 'package:player_iptv/ui/inicio/tela_inicio.dart';
 import 'package:player_iptv/ui/principal/tela_principal.dart';
@@ -52,6 +53,10 @@ bool _focoEm(WidgetTester t, Finder finder) {
   });
   return dentro;
 }
+
+/// O chip `rotulo` da linha `linha` (há "Desligado" em mais de uma linha).
+Finder _chip(String linha, String rotulo) => find.descendant(
+    of: find.widgetWithText(LinhaOpcao, linha), matching: find.widgetWithText(ChoiceChip, rotulo));
 
 /// Fica preso até ao fim do teste: o serviço continua ocupado.
 class _Preso extends Verificador {
@@ -125,7 +130,7 @@ void main() {
     expect(find.text('Vale para todos os canais'), findsOneWidget);
     expect(find.text('Ajustar a taxa do ecrã ao canal'), findsNothing);
     for (final m in ['Automático', 'Ligado', 'Desligado']) {
-      expect(find.text(m), findsOneWidget);
+      expect(_chip('Desentrelaçamento', m), findsOneWidget);
     }
     await t.pumpWidget(_app(TelaDefinicoes(biblioteca: bib, area: area, preferencias: prefs, android: true)));
     await t.pump();
@@ -162,12 +167,15 @@ void main() {
     await t.pumpWidget(_app(TelaDefinicoes(biblioteca: bib, area: area, preferencias: prefs, android: true)));
     await t.pump();
     expect(find.text('só no motor mpv'), findsNWidgets(3));
-    for (final m in ['Automático', 'Ligado', 'Desligado', 'Direta (recomendada)', 'Compatível']) {
+    for (final m in ['Automático', 'Ligado', 'Desligado']) {
+      expect(t.widget<ChoiceChip>(_chip('Desentrelaçamento', m)).onSelected, isNull, reason: m);
+    }
+    for (final m in ['Direta (recomendada)', 'Compatível']) {
       expect(t.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, m)).onSelected, isNull, reason: m);
     }
     expect(t.widget<SwitchListTile>(find.widgetWithText(SwitchListTile, 'Descodificação por hardware')).onChanged,
         isNull);
-    await t.tap(find.widgetWithText(ChoiceChip, 'Desligado'));
+    await t.tap(_chip('Desentrelaçamento', 'Desligado'));
     await t.pump();
     expect(prefs.modoDesentrelacamento, ModoDesentrelacamento.automatico, reason: 'desativada: não muda');
     // com o mpv voltam a estar ativas
@@ -179,9 +187,42 @@ void main() {
         isNotNull);
   });
 
+  testWidgets('Imagem e som: «Recuar no direto» e «Espaço reservado» (só com Armazenamento), em linhas', (t) async {
+    await abrir(t);
+    expect(find.widgetWithText(LinhaOpcao, 'Recuar no direto'), findsOneWidget);
+    expect(find.text('Grava o canal para poderes recuar e pausar. Apagado ao mudar de canal.'), findsOneWidget);
+    expect(find.widgetWithText(LinhaOpcao, 'Espaço reservado'), findsOneWidget);
+    expect(find.text('Quanto do armazenamento interno se usa, no máximo.'), findsOneWidget);
+    for (final r in ['Armazenamento', 'Memória', 'Desligado']) {
+      expect(_chip('Recuar no direto', r), findsOneWidget, reason: r);
+    }
+    expect(t.widget<ChoiceChip>(_chip('Recuar no direto', 'Armazenamento')).selected, isTrue, reason: 'a omissão');
+    for (final g in ['1 GB', '2 GB', '3 GB']) {
+      expect(_chip('Espaço reservado', g), findsOneWidget, reason: g);
+    }
+    expect(t.widget<ChoiceChip>(_chip('Espaço reservado', '2 GB')).selected, isTrue, reason: 'a omissão');
+    await t.tap(_chip('Espaço reservado', '3 GB'));
+    await t.pump();
+    expect(prefs.reservaDiretoGb, 3);
+    expect(find.text('Guardado · vale a partir do próximo canal'), findsOneWidget);
+    // Memória e Desligado não gravam: o espaço reservado sai
+    await t.tap(_chip('Recuar no direto', 'Memória'));
+    await t.pump();
+    expect(prefs.recuoDireto, RecuoDireto.memoria);
+    expect(find.text('Espaço reservado'), findsNothing);
+    await t.tap(_chip('Recuar no direto', 'Desligado'));
+    await t.pump();
+    expect(prefs.recuoDireto, RecuoDireto.desligado);
+    expect(find.text('Espaço reservado'), findsNothing);
+    await t.tap(_chip('Recuar no direto', 'Armazenamento'));
+    await t.pump();
+    expect(find.text('Espaço reservado'), findsOneWidget);
+    expect((prefs.recuoDireto, prefs.reservaDiretoGb), (RecuoDireto.armazenamento, 3));
+  });
+
   testWidgets('mudar uma opção confirma: "Guardado" (e, no player, que vale a partir do próximo canal)', (t) async {
     await abrir(t);
-    await t.tap(find.text('Desligado'));
+    await t.tap(_chip('Desentrelaçamento', 'Desligado'));
     await t.pump();
     expect(prefs.modoDesentrelacamento, ModoDesentrelacamento.desligado);
     expect(find.text('Guardado · vale a partir do próximo canal'), findsOneWidget);
@@ -218,7 +259,7 @@ void main() {
     await t.pump();
     expect(prefs.modoDesentrelacamento, ModoDesentrelacamento.desligado);
     expect(find.text('Guardado · vale a partir do próximo canal'), findsOneWidget);
-    expect(_focoEm(t, find.widgetWithText(ChoiceChip, 'Desligado')), isTrue);
+    expect(_focoEm(t, _chip('Desentrelaçamento', 'Desligado')), isTrue);
   });
 
   testWidgets('no telemóvel: uma lista de categorias e cada uma abre a sua página', (t) async {

@@ -72,7 +72,7 @@ class _Montagem {
             mpvs.add(m);
             return m;
           },
-          criarMotorExo: ({required bool tunel}) {
+          criarMotorExo: ({required bool tunel, required bool memoria}) {
             registo.add('criar exo');
             tuneis.add(tunel);
             final m = MotorFalso(nome: 'exo${exos.length + 1}', registo: registo, estatisticasFalsas: estatisticas);
@@ -237,7 +237,7 @@ void main() {
               n.registo.add('criar mpv');
               return MotorFalso(nome: 'mpv', registo: n.registo);
             },
-            criarMotorExo: ({required bool tunel}) {
+            criarMotorExo: ({required bool tunel, required bool memoria}) {
               n.registo.add('criar exo');
               return MotorFalso(nome: 'exo', registo: n.registo);
             },

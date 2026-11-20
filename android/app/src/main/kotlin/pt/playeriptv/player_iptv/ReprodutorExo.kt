@@ -138,7 +138,7 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         if (call.method == "criar") {
-            result.success(criar(call.argument<Boolean>("tunel") ?: false))
+            result.success(criar(call.argument<Boolean>("tunel") ?: false, call.argument<Boolean>("memoria") ?: false))
             return
         }
         val id = (call.argument<Any>("id") as? Number)?.toInt()
@@ -252,7 +252,7 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
 
     // ---------------------------------------------------------------- player
 
-    private fun criar(comTunel: Boolean): Int {
+    private fun criar(comTunel: Boolean, memoria: Boolean): Int {
         libertar()
         tunel = comTunel
         val renderizadores = DefaultRenderersFactory(activity)
@@ -261,10 +261,19 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
         val seletor = DefaultTrackSelector(activity)
         seletor.setParameters(seletor.buildUponParameters().setTunnelingEnabled(comTunel))
         // Direto: começa depressa (1,5 s) e retoma com 2,5 s; guarda até 30 s à frente.
-        val carga = DefaultLoadControl.Builder()
+        val construtor = DefaultLoadControl.Builder()
             .setBufferDurationsMs(15_000, 30_000, 1_500, 2_500)
             .setPrioritizeTimeOverSizeThresholds(true)
-            .build()
+        if (memoria) {
+            // o recuo em Memória: o que já tocou fica para trás (a partir de uma imagem-chave) para
+            // recuar sem voltar ao servidor. O back buffer conta-se em tempo: 2 min são ~128 MiB a
+            // 8 Mbit/s; o total (para trás e à frente) para de carregar à frente ao passar os bytes
+            // alvo, depois dos 15 s mínimos
+            construtor
+                .setBackBuffer(BACK_BUFFER_MS, true)
+                .setTargetBufferBytes(BACK_BUFFER_BYTES + ALVO_A_FRENTE_BYTES)
+        }
+        val carga = construtor.build()
         val p = ExoPlayer.Builder(activity, renderizadores)
             .setTrackSelector(seletor)
             .setLoadControl(carga)
@@ -290,7 +299,7 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
         superficie?.let { p.setVideoSurfaceHolder(it.holder) }
         principal.removeCallbacks(relogio)
         principal.postDelayed(relogio, INTERVALO_POSICAO_MS)
-        Log.i(TAG, "criar: id=$idAtual tunel=$comTunel")
+        Log.i(TAG, "criar: id=$idAtual tunel=$comTunel memoria=$memoria")
         return idAtual
     }
 
@@ -896,6 +905,15 @@ class ReprodutorExo(private val activity: Activity, mensageiro: BinaryMessenger)
         private const val TAG = "ReprodutorExo"
         private const val INTERVALO_POSICAO_MS = 500L
         private const val JANELA_TUNEL_MS = 4_000L
+
+        /** O recuo em Memória: quanto tempo fica para trás (~128 MiB a 8 Mbit/s). */
+        private const val BACK_BUFFER_MS = 120_000
+
+        /** O back buffer do modo Memória, em bytes (128 MiB). */
+        private const val BACK_BUFFER_BYTES = 128 * 1024 * 1024
+
+        /** O que se carrega à frente além do back buffer antes de parar (depois dos 15 s mínimos). */
+        private const val ALVO_A_FRENTE_BYTES = 32 * 1024 * 1024
 
         /**
          * Erros de descodificador/formato: o Dart pode passar ao mpv. O resto (rede, HTTP…) não, exceto

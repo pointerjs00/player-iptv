@@ -398,4 +398,44 @@ void main() {
       expect((p.motorAndroid, p.modoTunel), (MotorAndroid.mpv, true));
     });
   });
+
+  group('recuar no direto', () {
+    test('por omissão: Armazenamento com 2 GB reservados', () async {
+      final p = await Preferencias.abrir(pasta);
+      expect(p.recuoDireto, RecuoDireto.armazenamento);
+      expect(p.reservaDiretoGb, 2);
+    });
+
+    test('guardam-se, voltam a ler-se e avisam quem ouve; a reserva fica entre 1 e 3 GB', () async {
+      final p = await Preferencias.abrir(pasta);
+      var avisos = 0;
+      p.addListener(() => avisos++);
+      p
+        ..recuoDireto = RecuoDireto.memoria
+        ..reservaDiretoGb = 3
+        ..reservaDiretoGb = 3;
+      expect(avisos, 2, reason: 'o mesmo valor não avisa');
+      await p.guardar();
+      final m = jsonDecode(ficheiro().readAsStringSync()) as Map;
+      expect((m['recuoDireto'], m['reservaDiretoGb']), ('memoria', 3));
+      final q = await Preferencias.abrir(pasta);
+      expect((q.recuoDireto, q.reservaDiretoGb), (RecuoDireto.memoria, 3));
+      q.reservaDiretoGb = 9;
+      expect(q.reservaDiretoGb, 3);
+      q.reservaDiretoGb = 0;
+      expect(q.reservaDiretoGb, 1);
+      ficheiro().writeAsStringSync('{"recuoDireto": "fita", "reservaDiretoGb": 50}');
+      final r = await Preferencias.abrir(pasta);
+      expect((r.recuoDireto, r.reservaDiretoGb), (RecuoDireto.armazenamento, 3));
+    });
+
+    test('nomes e rótulos; a cópia de segurança leva-os e aplicar repõe-nos', () async {
+      expect(RecuoDireto.values.map((r) => r.rotulo), ['Armazenamento', 'Memória', 'Desligado']);
+      final p = await Preferencias.abrir(pasta);
+      expect(p.paraJson(), containsPair('recuoDireto', 'armazenamento'));
+      expect(p.paraJson(), containsPair('reservaDiretoGb', 2));
+      p.aplicar({'recuoDireto': 'desligado', 'reservaDiretoGb': 1});
+      expect((p.recuoDireto, p.reservaDiretoGb), (RecuoDireto.desligado, 1));
+    });
+  });
 }

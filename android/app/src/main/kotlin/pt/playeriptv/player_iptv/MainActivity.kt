@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.os.StatFs
 import android.provider.MediaStore
 import android.view.Display
 import io.flutter.embedding.android.FlutterActivity
@@ -144,6 +145,19 @@ class MainActivity : FlutterActivity() {
                             } catch (e: Exception) {
                                 result.error("io", e.message ?: e.javaClass.simpleName, null)
                             }
+                        }
+                    }
+                }
+                // o espaço livre (bytes) no disco da pasta, para o direto gravado (não precisa de permissão)
+                "espacoLivre" -> {
+                    val pasta = call.argument<String>("pasta")
+                    if (pasta == null) {
+                        result.error("io", "Pedido inválido", null)
+                    } else {
+                        try {
+                            result.success(StatFs(pasta).availableBytes)
+                        } catch (e: Exception) {
+                            result.error("io", e.javaClass.simpleName, null)
                         }
                     }
                 }

@@ -127,8 +127,8 @@ Future<void> _esperar() => pumpEventQueue();
 
 /// Um motor que é sempre descartado no fim do teste (mesmo a falhar: senão a escuta partilhada
 /// dos eventos ficava presa a ele).
-MotorExo _motor({bool tunel = false}) {
-  final m = MotorExo(tunel: tunel);
+MotorExo _motor({bool tunel = false, bool memoria = false}) {
+  final m = MotorExo(tunel: tunel, memoria: memoria);
   addTearDown(m.descartar);
   return m;
 }
@@ -145,13 +145,20 @@ void main() {
       await m.descartar();
     });
 
+    test('o modo Memória pede ao criar o back buffer do ExoPlayer', () async {
+      final exo = _ExoFalso();
+      final m = _motor(memoria: true);
+      await m.abrir('http://exemplo.invalid/canal.ts', const {});
+      expect(exo.args(exo.de('criar').single), {'tunel': false, 'memoria': true});
+    });
+
     test('abrir manda criar uma vez e abrir com o link, os cabeçalhos e o início', () async {
       final exo = _ExoFalso();
       final m = _motor(tunel: true);
       await m.abrir('http://exemplo.invalid/canal.ts', {'User-Agent': 'Teste'});
       await m.abrir('http://exemplo.invalid/filme.mp4', const {}, inicio: const Duration(seconds: 90));
       expect(exo.de('criar'), hasLength(1));
-      expect(exo.args(exo.de('criar').single), {'tunel': true});
+      expect(exo.args(exo.de('criar').single), {'tunel': true, 'memoria': false});
       final abrir = exo.de('abrir');
       expect(abrir, hasLength(2));
       expect(exo.args(abrir[0]), {
@@ -666,7 +673,7 @@ void main() {
             resolver: (c, {continuar = false}) async =>
                 FonteVideo('http://exemplo.invalid/${c.id}.ts', const {'User-Agent': 'Teste'}),
             criarMotor: (_, _) => exo.motor(),
-            criarMotorExo: ({required bool tunel}) => exo.motor(),
+            criarMotorExo: ({required bool tunel, required bool memoria}) => exo.motor(),
             plataforma: android ? PlataformaVideo.android : null,
             agora: () => t.binding.clock.now(),
           ),

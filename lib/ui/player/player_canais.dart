@@ -68,12 +68,15 @@ typedef CriarMotor = MotorReproducao Function(ModoDescodificacao modo, bool hard
 MotorReproducao criarMotorMpv(ModoDescodificacao modo, bool hardware) =>
     MotorMediaKit(ConfiguracaoMpv.para(PlataformaVideo.atual, modo: modo, hardware: hardware));
 
-/// Cria o ExoPlayer de um player (Android; `tunel`: o modo túnel das preferências). Os testes dão
-/// um motor falso.
-typedef CriarMotorExo = MotorReproducao Function({required bool tunel});
+/// Cria o ExoPlayer de um player (Android; `tunel`: o modo túnel das preferências; `memoria`: o
+/// back buffer do recuo em Memória). Os testes dão um motor falso.
+typedef CriarMotorExo = MotorReproducao Function({required bool tunel, required bool memoria});
 
 /// O aviso quando o ExoPlayer não conseguiu tocar um canal e ele abriu no mpv.
 const avisoMotorMpv = 'Este canal abriu com o motor mpv';
+
+/// O aviso quando o armazenamento acaba a meio do direto gravado.
+const avisoSemEspacoAMeio = 'Pouco espaço no armazenamento: o canal continua sem recuo';
 
 /// A nota das opções que só existem no mpv, com o ExoPlayer.
 const soNoMpv = 'só no motor mpv';
@@ -191,6 +194,13 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   SessaoDireto? _sessaoDireto;
   String? _chaveSessao;
   bool _sessaoPronta = false;
+
+  /// O canal (chave) que não se grava enquanto estiver aberto: o armazenamento não chegou. Outro
+  /// canal volta a tentar.
+  String? _semGravar;
+
+  /// O armazenamento acabou com a app escondida: ao voltar, o canal reabre na origem.
+  bool _reabrirSemGravar = false;
   final _subsSessao = <StreamSubscription>[];
 
   /// O fecho das sessões anteriores (a seguinte só abre depois dele: nunca duas).
@@ -356,7 +366,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     // um motor novo só tem erros do canal para que foi criado
     _chaveDoMotor = _chave(_canais[_i]);
     _motor = tipo == TipoMotor.exoplayer
-        ? widget.criarMotorExo(tunel: _prefs.modoTunel)
+        ? widget.criarMotorExo(tunel: _prefs.modoTunel, memoria: _prefs.recuoDireto == RecuoDireto.memoria)
         : widget.criarMotor(_modo, _hardware);
     final mpv = _mpv;
     _saltos = mpv == null ? null : SaltosDireto(mpv, _relogio);
@@ -499,7 +509,9 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
         // o corte que chegou com a app escondida reabre agora; uma paragem volta a contar
         final pendente = _cortePendente;
         _cortePendente = null;
-        if (pendente != null) {
+        if (_reabrirSemGravar) {
+          _abrir(mesmoCanal: true); // o gravado acabou por falta de espaço: a origem
+        } else if (pendente != null) {
           _corteSemMpv(retomavel: pendente);
         } else if (_buffering) {
           _vigiarSemDados(true);
@@ -695,8 +707,10 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       gravado = null;
     }
     // o aviso do mpv é só do recurso, quando for ele a abrir
+    _reabrirSemGravar = false;
     if (!repetido) {
       _avisarMpv = false;
+      _semGravar = null; // outro canal: volta a tentar gravar
       // os erros que o motor mandar até abrir o canal novo são do anterior
       _chaveDoMotor = null;
     }
@@ -897,7 +911,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   bool get _gravado => _sessaoDireto != null && _sessaoPronta;
 
   /// O canal continua na sessão que está aberta (a do mesmo canal, já pronta).
-  bool _mesmaSessao(Canal canal) => _gravado && _chaveSessao == _chave(canal);
+  bool _mesmaSessao(Canal canal) => _gravado && _chaveSessao == _chave(canal) && _semGravar != _chaveSessao;
 
   /// O que o motor abre: o URL local da sessão (sem cabeçalhos: são só da origem, que o gravador
   /// abre), ou a origem quando não há gravação (HLS, filmes, sem sessão, ou não é MPEG-TS).
@@ -913,7 +927,10 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     }
     var f = await widget.resolver(canal, continuar: repetido);
     if (!valido()) return null;
-    final criar = widget.criarSessao;
+    // só o recuo em Armazenamento grava (Memória e Desligado ficam com o que o motor tem)
+    final criar = _prefs.recuoDireto == RecuoDireto.armazenamento && _semGravar != _chave(canal)
+        ? widget.criarSessao
+        : null;
     if (criar == null || !gravavel(f.url)) return (url: f.url, cabecalhos: f.headers, gravado: false);
     // nunca duas: a anterior acabou de fechar (ou ainda fecha)
     await _fecharSessao();
@@ -933,15 +950,24 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     }
     // outro canal entretanto (quem o abriu já fechou esta sessão) ou a sessão acabou
     if (!valido() || !identical(_sessaoDireto, s)) return null;
+    final aviso = s.aviso;
     if (local == null) {
-      // não é um MPEG-TS (uma playlist, um ficheiro) ou a gravação não começou: a origem, com um link
-      // novo (o gravador já usou este)
+      // não é um MPEG-TS (uma playlist, um ficheiro), a gravação não começou ou não há espaço: a
+      // origem, com um link novo se o gravador já usou este
+      final ligou = s.ligouOrigem;
+      if (aviso != null) {
+        _semGravar = _chave(canal); // sem espaço: o canal fica sem gravar (nem volta a avisar)
+        _mostrarAviso(aviso);
+      }
       await _fecharSessao();
       if (!valido()) return null;
-      f = await widget.resolver(canal, continuar: true);
-      if (!valido()) return null;
+      if (ligou) {
+        f = await widget.resolver(canal, continuar: true);
+        if (!valido()) return null;
+      }
       return (url: f.url, cabecalhos: f.headers, gravado: false);
     }
+    if (aviso != null) _mostrarAviso(aviso); // a reserva baixou por falta de espaço
     _sessaoPronta = true;
     _ouvirSessao(s);
     final p = s.posicaoDireto;
@@ -965,6 +991,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   void _ouvirSessao(SessaoDireto s) {
     _subsSessao.add(s.erros.listen((e) {
       if (!mounted || !identical(s, _sessaoDireto)) return;
+      if (e.semEspaco) return _gravadoSemEspaco();
       // a origem falhou: o gravador volta a ligar sozinho; o player só vê a desistência
       if (!e.desistiu) {
         debugPrint('direto gravado: a origem falhou; o gravador volta a ligar');
@@ -975,6 +1002,22 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     _subsSessao.add(s.crescimento.listen((_) => _cresceuEm = _agora()));
     _cresceuEm = _agora();
     _armarCrescimento();
+  }
+
+  /// O armazenamento acabou a meio: o gravador já parou e largou a origem. O motor passa à origem
+  /// (o [_abrir] pára-o e fecha a sessão antes de pedir o link: uma só ligação) e este canal deixa
+  /// de gravar. Com a app escondida fica para quando voltar.
+  void _gravadoSemEspaco() {
+    final chave = _chaveSessao;
+    if (chave == null) return;
+    debugPrint('direto gravado: sem espaço no armazenamento; o canal continua na origem');
+    _semGravar = chave;
+    _mostrarAviso(avisoSemEspacoAMeio);
+    if (!_aVista) {
+      _reabrirSemGravar = true;
+      return;
+    }
+    _abrir(mesmoCanal: true);
   }
 
   /// O gravador desistiu: o cartão de erro (nada toca por baixo) e o gravado apaga-se.

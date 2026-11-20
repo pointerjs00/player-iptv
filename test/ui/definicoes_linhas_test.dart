@@ -50,7 +50,7 @@ void main() {
           definicoes: definicoes(android: android)));
 
   testWidgets('sem caixa à volta de cada opção e com separadores entre as linhas', (t) async {
-    ecraTvTeste(t);
+    ecraTvTeste(t, altura: 1080); // alto o bastante para a lista construir todas as linhas
     await t.pumpWidget(casca());
     await t.pump();
     for (final categoria in ['Imagem e som', 'Verificação', 'Ligação', 'Cópia de segurança', 'Sobre e licenças']) {
@@ -61,8 +61,8 @@ void main() {
     }
     await t.tap(find.text('Imagem e som'));
     await t.pumpAndSettle();
-    // 5 opções = 4 separadores
-    expect(find.byType(Divider), findsNWidgets(4));
+    // 7 opções (com «Recuar no direto» e «Espaço reservado») = 6 separadores
+    expect(find.byType(Divider), findsNWidgets(6));
   });
 
   testWidgets('título e descrição à esquerda, o controlo à direita; os chips largos vão para baixo', (t) async {

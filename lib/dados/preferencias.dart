@@ -95,6 +95,30 @@ enum MotorAndroid {
   static MotorAndroid deNome(String? n) => values.firstWhere((m) => m.nome == n, orElse: () => exoplayer);
 }
 
+/// Como se recua no direto (Definições › Imagem e som › «Recuar no direto»).
+enum RecuoDireto {
+  /// O canal grava-se no armazenamento (até [Preferencias.reservaDiretoGb]) e apaga-se ao mudar de
+  /// canal: recua-se e pausa-se minutos.
+  armazenamento('armazenamento', 'Armazenamento'),
+
+  /// Só o que o motor guarda em memória (o mpv, o seu cache; o ExoPlayer, um back buffer).
+  memoria('memoria', 'Memória'),
+
+  /// Sem gravar e sem back buffer no ExoPlayer (o mpv fica como sempre).
+  desligado('desligado', 'Desligado');
+
+  const RecuoDireto(this.nome, this.rotulo);
+
+  /// O nome guardado nas preferências.
+  final String nome;
+
+  /// O texto mostrado.
+  final String rotulo;
+
+  /// Um nome desconhecido dá Armazenamento (a omissão).
+  static RecuoDireto deNome(String? n) => values.firstWhere((r) => r.nome == n, orElse: () => armazenamento);
+}
+
 /// As preferências da app (`preferencias.json`), partilhadas pelo player (aqui), pela
 /// verificação e pelo ecrã de Definições. Valem para todos os canais, no Android e no Windows.
 ///
@@ -125,6 +149,9 @@ class Preferencias extends ChangeNotifier {
   /// O tempo limite de cada lista (todos os canais de teste), em segundos (omissão e limites).
   static const padraoTempoLimiteLista = 30, minTempoLimiteLista = 10, maxTempoLimiteLista = 300;
 
+  /// O espaço reservado para o direto gravado, em GB (omissão e limites).
+  static const padraoReservaDiretoGb = 2, minReservaDiretoGb = 1, maxReservaDiretoGb = 3;
+
   /// O ficheiro da v1 (só tinha a descodificação e a taxa do ecrã): lido se não houver o novo.
   static const _antigo = 'preferencias_player.json';
 
@@ -143,6 +170,8 @@ class Preferencias extends ChangeNotifier {
   int _tempoLimiteLista = padraoTempoLimiteLista;
   String _userAgent = '';
   TamanhoInterface _tamanhoInterface = TamanhoInterface.compacto;
+  RecuoDireto _recuoDireto = RecuoDireto.armazenamento;
+  int _reservaDiretoGb = padraoReservaDiretoGb;
 
   /// As chaves mudadas aqui e ainda não gravadas: só essas se escrevem (as outras são da outra janela).
   final _sujas = <String>{};
@@ -232,6 +261,18 @@ class Preferencias extends ChangeNotifier {
   set tamanhoInterface(TamanhoInterface v) =>
       _mudar('tamanhoInterface', _tamanhoInterface != v, () => _tamanhoInterface = v);
 
+  /// Como se recua no direto (Armazenamento por omissão).
+  RecuoDireto get recuoDireto => _recuoDireto;
+  set recuoDireto(RecuoDireto v) => _mudar('recuoDireto', _recuoDireto != v, () => _recuoDireto = v);
+
+  /// O espaço reservado para o direto gravado, em GB (1–3; 2 por omissão). O gravado nunca passa
+  /// disto (e baixa se o aparelho tiver pouco espaço livre).
+  int get reservaDiretoGb => _reservaDiretoGb;
+  set reservaDiretoGb(int v) {
+    final n = v.clamp(minReservaDiretoGb, maxReservaDiretoGb);
+    _mudar('reservaDiretoGb', _reservaDiretoGb != n, () => _reservaDiretoGb = n);
+  }
+
   void _mudar(String chave, bool mudou, VoidCallback f) {
     if (!mudou) return;
     f();
@@ -316,6 +357,10 @@ class Preferencias extends ChangeNotifier {
     if (ua != null) _userAgent = (Preferencias.omissao()..userAgent = ua)._userAgent;
     final tamanho = campo<String>('tamanhoInterface');
     if (tamanho != null) _tamanhoInterface = TamanhoInterface.deNome(tamanho);
+    final recuo = campo<String>('recuoDireto');
+    if (recuo != null) _recuoDireto = RecuoDireto.deNome(recuo);
+    final reserva = campo<num>('reservaDiretoGb');
+    if (reserva != null) _reservaDiretoGb = reserva.toInt().clamp(minReservaDiretoGb, maxReservaDiretoGb);
     return ok;
   }
 
@@ -334,6 +379,8 @@ class Preferencias extends ChangeNotifier {
         'tempoLimiteLista': _tempoLimiteLista,
         'userAgent': _userAgent,
         'tamanhoInterface': _tamanhoInterface.name,
+        'recuoDireto': _recuoDireto.nome,
+        'reservaDiretoGb': _reservaDiretoGb,
       };
 
   /// Todas as definições, para a cópia de segurança.
@@ -359,6 +406,8 @@ class Preferencias extends ChangeNotifier {
     if (lidas.contains('tempoLimiteLista')) tempoLimiteLista = outro._tempoLimiteLista;
     if (lidas.contains('userAgent')) userAgent = outro._userAgent;
     if (lidas.contains('tamanhoInterface')) tamanhoInterface = outro._tamanhoInterface;
+    if (lidas.contains('recuoDireto')) recuoDireto = outro._recuoDireto;
+    if (lidas.contains('reservaDiretoGb')) reservaDiretoGb = outro._reservaDiretoGb;
   }
 
   /// O mapa do ficheiro: vazio se não existe, null se existe mas está estragado (não é um mapa

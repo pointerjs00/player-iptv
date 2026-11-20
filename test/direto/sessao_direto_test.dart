@@ -200,4 +200,99 @@ void main() {
     expect(origem.maximoAbertas, 1);
     expect(tmp.listSync(), isEmpty);
   });
+
+  group('espaço reservado conforme o espaço livre', () {
+    const gb = 1 << 30, mb = 1 << 20;
+
+    SessaoGravada comLivre(int? livre, {int reserva = 2 * gb, List<Directory>? medidas}) => SessaoGravada(
+          pastaBase: () async => tmp,
+          reservaBytes: reserva,
+          tamanhoBloco: 64 * 1024,
+          abrirOrigem: origem.abrir,
+          esperar: (_) async {},
+          espacoLivre: (d) async {
+            medidas?.add(d);
+            return livre;
+          },
+        );
+
+    test('com espaço para a reserva e 1 GB de margem: a reserva toda, sem aviso', () async {
+      final medidas = <Directory>[];
+      final s = comLivre(4 * gb, medidas: medidas);
+      final aberta = s.abrir(const FonteVideo(_origem));
+      (await origem.proxima()).add(_ts(188 * 4));
+      expect(await aberta, isNotNull);
+      expect(s.reservaEfetiva, 2 * gb);
+      expect(s.aviso, isNull);
+      expect(medidas.first.path, tmp.path, reason: 'mede-se onde se grava');
+      await s.fechar();
+    });
+
+    test('espaço livre < reserva + 1 GB: a reserva baixa para o que couber e avisa quanto', () async {
+      final s = comLivre(gb + 700 * mb);
+      final aberta = s.abrir(const FonteVideo(_origem));
+      (await origem.proxima()).add(_ts(188 * 4));
+      expect(await aberta, isNotNull);
+      expect(s.reservaEfetiva, 700 * mb);
+      expect(s.aviso, 'Pouco espaço: o recuo fica com 700 MB');
+      await s.fechar();
+    });
+
+    test('o mínimo de 256 MiB ainda grava', () async {
+      final s = comLivre(gb + 256 * mb);
+      final aberta = s.abrir(const FonteVideo(_origem));
+      (await origem.proxima()).add(_ts(188 * 4));
+      expect(await aberta, isNotNull);
+      expect(s.reservaEfetiva, 256 * mb);
+      expect(s.aviso, 'Pouco espaço: o recuo fica com 256 MB');
+      await s.fechar();
+    });
+
+    test('sem espaço nem para 256 MiB: não grava nem liga à origem (o recuo fica em memória)', () async {
+      final s = comLivre(gb + 200 * mb);
+      expect(await s.abrir(const FonteVideo(_origem)), isNull);
+      expect(s.aviso, 'Sem espaço para gravar o direto: o recuo fica em memória');
+      expect(s.ligouOrigem, isFalse, reason: 'o link ainda serve para o player');
+      expect(origem.pedidos, isEmpty);
+      expect(tmp.listSync(), isEmpty);
+      await s.fechar();
+    });
+
+    test('não se sabe o espaço (null): a reserva toda', () async {
+      final s = comLivre(null);
+      final aberta = s.abrir(const FonteVideo(_origem));
+      (await origem.proxima()).add(_ts(188 * 4));
+      expect(await aberta, isNotNull);
+      expect(s.reservaEfetiva, 2 * gb);
+      expect(s.aviso, isNull);
+      expect(s.ligouOrigem, isTrue);
+      await s.fechar();
+    });
+
+    test('o espaço acaba a meio: o erro semEspaco chega pela sessão', () async {
+      var livre = 4 * gb;
+      final s = SessaoGravada(
+        pastaBase: () async => tmp,
+        reservaBytes: 256 * 1024,
+        tamanhoBloco: 64 * 1024,
+        abrirOrigem: origem.abrir,
+        esperar: (_) async {},
+        espacoLivre: (_) async => livre,
+      );
+      final aberta = s.abrir(const FonteVideo(_origem));
+      final l = await origem.proxima();
+      l.add(_ts(188 * 4));
+      expect(await aberta, isNotNull);
+      livre = 100 * mb;
+      final erro = s.erros.first;
+      l.add(_ts(64 * 1024));
+      final e = await erro;
+      expect(e.semEspaco, isTrue);
+      expect(e.desistiu, isTrue);
+      await pumpEventQueue();
+      expect(origem.abertas, 0, reason: 'o gravador larga a origem');
+      await s.fechar();
+      expect(tmp.listSync(), isEmpty);
+    });
+  });
 }

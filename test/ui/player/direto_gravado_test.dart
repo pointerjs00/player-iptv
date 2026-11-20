@@ -42,6 +42,13 @@ class _SessaoFalsa implements SessaoDireto {
 
   /// O stream não é MPEG-TS: `abrir` dá null.
   bool naoServe = false;
+
+  /// Sem espaço para gravar: `abrir` dá null sem ligar à origem, com o aviso.
+  bool semEspaco = false;
+  @override
+  String? aviso;
+  @override
+  bool ligouOrigem = false;
   final recuos = <Duration>[];
   bool fechada = false;
   final _erros = StreamController<ErroGravador>.broadcast();
@@ -65,6 +72,11 @@ class _SessaoFalsa implements SessaoDireto {
     pasta?.createSync(recursive: true);
     final e = espera;
     if (e != null) await e;
+    if (semEspaco) {
+      aviso = 'Sem espaço para gravar o direto: o recuo fica em memória';
+      return null;
+    }
+    ligouOrigem = true;
     if (fechada || naoServe) return null;
     return urlDireto;
   }
@@ -136,15 +148,23 @@ class _Montagem {
   /// Os motores mandam a posição 0 ao parar (como o mpv).
   bool zeroAoParar = false;
 
+  /// O `memoria` de cada ExoPlayer criado (o back buffer do modo Memória).
+  final memoriaExo = <bool>[];
+
   MotorFalso get motor => motores.last;
   _SessaoFalsa get sessao => sessoes.last;
 
-  Future<void> montar(WidgetTester t, {bool comSessao = true, MotorAndroid motor = MotorAndroid.exoplayer}) async {
+  Future<void> montar(WidgetTester t,
+      {bool comSessao = true,
+      MotorAndroid motor = MotorAndroid.exoplayer,
+      RecuoDireto recuo = RecuoDireto.armazenamento}) async {
     t.view.physicalSize = const Size(1920, 1080);
     t.view.devicePixelRatio = 1;
     addTearDown(t.view.reset);
     final antes = Preferencias.atual;
-    Preferencias.atual = Preferencias.omissao()..motorAndroid = motor;
+    Preferencias.atual = Preferencias.omissao()
+      ..motorAndroid = motor
+      ..recuoDireto = recuo;
     addTearDown(() => Preferencias.atual = antes);
     MotorNaSessao.instancia.esquecer();
     addTearDown(MotorNaSessao.instancia.esquecer);
@@ -171,7 +191,10 @@ class _Montagem {
             return FonteVideo(url(c), const {'User-Agent': 'Teste'});
           },
           criarMotor: (ModoDescodificacao modo, bool hardware) => novo('mpv'),
-          criarMotorExo: ({required bool tunel}) => novo('exo'),
+          criarMotorExo: ({required bool tunel, required bool memoria}) {
+            memoriaExo.add(memoria);
+            return novo('exo');
+          },
           criarSessao: comSessao
               ? () {
                   final n = sessoes.length + 1;
@@ -497,5 +520,90 @@ void main() {
     expect(f.url, _origem(_canais[0]));
     expect(m.registo.last, 'resolver 1 continuar=true');
     await _sair(t);
+  });
+
+  group('espaço e modos do recuo', () {
+    testWidgets('a reserva baixou por falta de espaço: o player diz com quanto fica o recuo', (t) async {
+      final m = _Montagem()..preparar = (s) => s.aviso = 'Pouco espaço: o recuo fica com 700 MB';
+      await m.montar(t);
+      expect(find.text('Pouco espaço: o recuo fica com 700 MB'), findsOneWidget);
+      expect(m.motor.aberturas.single.url, startsWith('http://127.0.0.1:4567/codigo1/'), reason: 'grava na mesma');
+      await t.pump(const Duration(seconds: 5));
+      expect(find.text('Pouco espaço: o recuo fica com 700 MB'), findsNothing);
+      await _sair(t);
+    });
+
+    testWidgets('sem espaço nem para 256 MiB: avisa, toca a origem com o mesmo link e não volta a tentar gravar',
+        (t) async {
+      final m = _Montagem()..preparar = (s) => s.semEspaco = true;
+      await m.montar(t);
+      expect(find.text('Sem espaço para gravar o direto: o recuo fica em memória'), findsOneWidget);
+      expect(m.motor.aberturas.single.url, _origem(_canais[0]));
+      expect(m.motor.aberturas.single.cabecalhos, {'User-Agent': 'Teste'});
+      expect(m.registo.where((r) => r.startsWith('resolver')), ['resolver 1 continuar=false'],
+          reason: 'o link não foi usado: não se pede outro');
+      expect(m.sessao.fechada, isTrue);
+      // um corte do mesmo canal reabre na origem, sem outra sessão (nem outro aviso)
+      await _abrirComImagem(t, m.motor);
+      m.motor.erro('Falha a ler', rede: true);
+      await _reabrir(t);
+      expect(m.sessoes, hasLength(1));
+      expect(m.motor.aberturas.last.url, _origem(_canais[0]));
+      // outro canal volta a tentar gravar
+      await t.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      await _reabrir(t);
+      expect(m.sessoes, hasLength(2));
+      await _sair(t);
+    });
+
+    testWidgets('o espaço acaba a meio: avisa, fecha a sessão e reabre o motor na origem (uma só ligação)',
+        (t) async {
+      final m = _Montagem();
+      await m.montar(t);
+      await _abrirComImagem(t, m.motor);
+      m.registo.clear();
+      m.sessao.erro(const ErroGravador(
+          desistiu: true, semEspaco: true, mensagem: 'não há espaço no armazenamento para continuar a gravar'));
+      await _reabrir(t);
+      expect(find.text('Pouco espaço no armazenamento: o canal continua sem recuo'), findsOneWidget);
+      expect(find.textContaining('não há espaço'), findsNothing, reason: 'não é o cartão de erro');
+      expect(m.sessao.fechada, isTrue);
+      final parou = m.registo.indexOf('exo1: parou');
+      final fechou = m.registo.indexOf('sessao1: fechar');
+      final pediu = m.registo.indexOf('resolver 1 continuar=true');
+      final abriu = m.registo.lastIndexOf('exo1: abrir');
+      expect(parou, greaterThanOrEqualTo(0));
+      expect(fechou, greaterThan(parou), reason: 'o motor larga o URL local antes de a sessão fechar');
+      expect(pediu, greaterThan(fechou), reason: 'o gravador já largou a origem');
+      expect(abriu, greaterThan(pediu));
+      expect(m.motor.aberturas.last.url, _origem(_canais[0]));
+      expect(m.sessoes, hasLength(1), reason: 'não volta a gravar este canal');
+      await _sair(t);
+    });
+
+    testWidgets('modo Memória: sem sessão e o ExoPlayer com o back buffer', (t) async {
+      final m = _Montagem();
+      await m.montar(t, recuo: RecuoDireto.memoria);
+      expect(m.sessoes, isEmpty);
+      expect(m.memoriaExo, [true]);
+      expect(m.motor.aberturas.single.url, _origem(_canais[0]));
+      await _sair(t);
+    });
+
+    testWidgets('modo Desligado: sem sessão e o ExoPlayer sem back buffer', (t) async {
+      final m = _Montagem();
+      await m.montar(t, recuo: RecuoDireto.desligado);
+      expect(m.sessoes, isEmpty);
+      expect(m.memoriaExo, [false]);
+      await _sair(t);
+    });
+
+    testWidgets('modo Armazenamento: o ExoPlayer sem back buffer (recua pelo gravado)', (t) async {
+      final m = _Montagem();
+      await m.montar(t);
+      expect(m.sessoes, hasLength(1));
+      expect(m.memoriaExo, [false]);
+      await _sair(t);
+    });
   });
 }

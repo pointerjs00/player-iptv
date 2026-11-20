@@ -34,7 +34,9 @@ Future<void> main(List<String> args) async {
   registarLicencasLibmpv(); // GPLv3 do libmpv/ffmpeg: Definições -> Licenças
   final i = args.indexOf('--player');
   if (Platform.isWindows && i >= 0 && i + 1 < args.length) {
-    // esta é a janela do player (Windows): liga-se à janela principal
+    // esta é a janela do player (Windows): antes de tudo, as sobras do direto gravado (um fecho
+    // pelo X não passa pela limpeza da sessão); depois liga-se à janela principal
+    await limparDireto();
     final porta = int.parse(args[i + 1]);
     final ligacao =
         await LigacaoPrincipal.ligar(porta, token: Platform.environment[JanelaPlayer.variavelToken] ?? '');
@@ -52,6 +54,9 @@ Future<void> main(List<String> args) async {
     runApp(const _Aviso('A app já está aberta noutra janela. Feche esta e use a outra.'));
     return;
   }
+  // só com o bloqueio (outra instância podia estar a gravar): o direto gravado que ficou de um
+  // fecho à força apaga-se antes de qualquer player abrir
+  await limparDireto();
   final Biblioteca biblioteca;
   final AreaGestor area;
   try {

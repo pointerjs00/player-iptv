@@ -15,9 +15,11 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart' show debugPrint, visibleForTesting;
 import 'package:path_provider/path_provider.dart';
 
+import '../dados/preferencias.dart';
 import '../modelo/canal.dart';
 import '../rede/http.dart';
 import '../verificar/video.dart' show syncTs;
+import 'espaco.dart';
 import 'gravador.dart';
 import 'servidor.dart';
 
@@ -40,6 +42,14 @@ abstract interface class SessaoDireto {
   /// [ErroSessaoDireto] se o gravador desistir antes de haver dados. `renovar`: o link para cada
   /// religação do gravador (no Stalker um link novo; sem ele, o mesmo `fonte`).
   Future<Uri?> abrir(FonteVideo fonte, {Future<FonteVideo> Function()? renovar});
+
+  /// Depois do [abrir], o aviso do espaço para o utilizador: a reserva baixou («Pouco espaço: o
+  /// recuo fica com N MB»), ou não há espaço e [abrir] deu null (o recuo fica em memória).
+  String? get aviso;
+
+  /// O [abrir] chegou a ligar à origem. Falso quando deu null sem ligar (sem espaço): o link
+  /// ainda está por usar.
+  bool get ligouOrigem;
 
   /// O URL para ver a partir de `posicao` (bytes desde o início da sessão).
   Uri urlDesde(int posicao);
@@ -71,8 +81,8 @@ abstract interface class SessaoDireto {
 /// Quanto atrás do fim começa o direto local.
 const atrasoDireto = ServidorDireto.atrasoDireto;
 
-/// A reserva por omissão (até a preferência existir): 2 GB.
-const reservaPorOmissao = 2 << 30;
+/// O aviso quando nem a [reservaMinima] cabe.
+const avisoSemEspaco = 'Sem espaço para gravar o direto: o recuo fica em memória';
 
 /// Só os diretos progressivos passam pelo gravador: nem HLS (`.m3u8`, `extension=m3u8`), nem
 /// filmes e séries (Xtream `/movie/`, `/series/`, extensões de ficheiro).
@@ -95,11 +105,28 @@ bool gravavel(String url) {
   return true;
 }
 
-/// A sessão de produção: grava em `getApplicationCacheDirectory()/direto/<sessão>`, com a reserva
-/// por omissão (a preferência e o espaço livre vêm depois).
+/// A pasta de todas as sessões: `direto/` na cache da app (o Android também a pode limpar e
+/// apaga-a ao desinstalar).
+Future<Directory> pastaDireto({Directory? cache}) async =>
+    Directory('${(cache ?? await getApplicationCacheDirectory()).path}${Platform.pathSeparator}direto');
+
+/// No arranque, antes de tudo: apaga a pasta `direto/` inteira (sobras de um fecho à força). Nunca
+/// lança.
+Future<void> limparDireto({Directory? cache}) async {
+  try {
+    final d = await pastaDireto(cache: cache);
+    if (await d.exists()) await d.delete(recursive: true);
+  } catch (e) {
+    debugPrint('direto gravado: a pasta não foi limpa no arranque (${e.runtimeType})');
+  }
+}
+
+/// A sessão de produção: grava em `direto/<sessão>` na cache, com a reserva das Definições
+/// ([Preferencias.reservaDiretoGb]) ajustada ao espaço livre do aparelho.
 SessaoDireto criarSessaoArmazenamento() => SessaoGravada(
-      pastaBase: () async => Directory('${(await getApplicationCacheDirectory()).path}${Platform.pathSeparator}direto'),
-      reservaBytes: reservaPorOmissao,
+      pastaBase: pastaDireto,
+      reservaBytes: Preferencias.atual.reservaDiretoGb << 30,
+      espacoLivre: espacoLivre,
     );
 
 class SessaoGravada implements SessaoDireto {
@@ -108,13 +135,20 @@ class SessaoGravada implements SessaoDireto {
     required this.reservaBytes,
     this.tamanhoBloco = 16 << 20,
     this.agora,
+    this.espacoLivre,
     @visibleForTesting this.abrirOrigem,
     @visibleForTesting this.esperar,
   });
 
   final Future<Directory> Function() pastaBase;
+
+  /// A reserva pedida (a das Definições); a usada é [reservaEfetiva].
   final int reservaBytes;
   final int tamanhoBloco;
+
+  /// O espaço livre do aparelho: ajusta a reserva ao começar ([reservaPara]) e protege a margem a
+  /// cada bloco. null: não se mede (a reserva toda).
+  final EspacoLivre? espacoLivre;
   /// O relógio do índice de tempo (por omissão o de parede).
   final DateTime Function()? agora;
 
@@ -125,6 +159,19 @@ class SessaoGravada implements SessaoDireto {
   GravadorDireto? _g;
   ServidorDireto? _s;
   bool _fechada = false;
+  String? _aviso;
+  bool _ligou = false;
+  int? _reserva;
+
+  @override
+  String? get aviso => _aviso;
+
+  @override
+  bool get ligouOrigem => _ligou;
+
+  /// A reserva que o gravador usa (a pedida, ou menos por falta de espaço).
+  @visibleForTesting
+  int? get reservaEfetiva => _reserva;
   Future<void>? _fecho;
   final _erros = StreamController<ErroGravador>.broadcast();
   final _crescimento = StreamController<int>.broadcast();
@@ -148,6 +195,21 @@ class SessaoGravada implements SessaoDireto {
     try {
       final base = await pastaBase();
       if (_fechada) return null;
+      final medir = espacoLivre;
+      var reserva = reservaBytes;
+      if (medir != null) {
+        final r = reservaPara(reservaBytes, await medir(base), tamanhoBloco: tamanhoBloco);
+        if (_fechada) return null;
+        if (r == null) {
+          debugPrint('direto gravado: sem espaço para a reserva mínima; o recuo fica em memória');
+          _aviso = avisoSemEspaco;
+          return null;
+        }
+        if (r < reservaBytes) _aviso = 'Pouco espaço: o recuo fica com ${r >> 20} MB';
+        reserva = r;
+      }
+      _reserva = reserva;
+      final pasta = Directory('${base.path}${Platform.pathSeparator}${_nomeSessao()}');
       var primeira = true;
       g = GravadorDireto(
         origem: Uri.parse(fonte.url),
@@ -158,12 +220,13 @@ class SessaoGravada implements SessaoDireto {
           primeira = false;
           return (Uri.parse(f.url), f.headers);
         },
-        pasta: Directory('${base.path}${Platform.pathSeparator}${_nomeSessao()}'),
-        reservaBytes: reservaBytes,
+        pasta: pasta,
+        reservaBytes: reserva,
         tamanhoBloco: tamanhoBloco,
         agora: agora,
         abrir: abrirOrigem,
         esperar: esperar,
+        espacoLivre: medir == null ? null : () => medir(pasta),
       );
     } catch (e) {
       debugPrint('direto gravado: a sessão não começou (${e.runtimeType}); toca a origem');
@@ -189,12 +252,16 @@ class SessaoGravada implements SessaoDireto {
     }));
     _subs.add(g.erros.listen((e) {
       if (!_erros.isClosed) _erros.add(e);
-      if (e.desistiu && !decisao.isCompleted) {
+      if (e.semEspaco && !decisao.isCompleted) {
+        _aviso = avisoSemEspaco; // a origem está boa: o player toca-a
+        decisao.complete(null);
+      } else if (e.desistiu && !decisao.isCompleted) {
         decisao.completeError(ErroSessaoDireto(semSegredos(e.mensagem)));
       } else if (!e.desistiu && g.fim > 0) {
         decidir(); // a ligação acabou com menos do que a amostra (uma playlist é pequena)
       }
     }));
+    _ligou = true;
     try {
       await g.iniciar();
     } catch (e) {
