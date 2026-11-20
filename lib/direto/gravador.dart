@@ -14,6 +14,12 @@
 /// depois de cada um) até chegar (ou até restar um); se nem assim chegar, deixa de gravar e larga a
 /// origem ([ErroGravador.semEspaco]).
 ///
+/// Cada religação cose-se à anterior ([ProcuraCostura], em `costura.dart`): há servidores que, em
+/// cada ligação nova, voltam a mandar 10–30 s que já tinham mandado. Enquanto se procura o ponto
+/// da costura não se grava nada; os bytes recebidos entretanto ficam em memória (no máximo
+/// [limiteCostura] mais um pedaço, cerca de 8 MiB) e não contam para a reserva, porque não estão no
+/// armazém. Grava-se logo que se decide.
+///
 /// Nunca se regista o URL nem os cabeçalhos (levam utilizador, password, MAC ou token).
 library;
 
@@ -29,6 +35,7 @@ import '../rede/http.dart';
 import '../ui/player/continuar_direto.dart';
 import '../verificar/video.dart' show syncTs;
 import 'armazem.dart';
+import 'costura.dart';
 import 'espaco.dart' show margemEspaco;
 
 /// Um problema do gravador, para o player. A mensagem já é para o utilizador e não tem o URL.
@@ -72,6 +79,7 @@ class GravadorDireto {
     Future<Stream<List<int>>> Function(Uri, Map<String, String>)? abrir,
     Future<void> Function(Duration)? esperar,
     this.espacoLivre,
+    this.limiteCostura = limiteProcura,
   })  : maximoBlocos = tamanhoBloco > 0 ? reservaBytes ~/ tamanhoBloco : 0,
         _agora = agora ?? DateTime.now,
         _esperar = esperar ?? Future<void>.delayed,
@@ -100,6 +108,10 @@ class GravadorDireto {
 
   /// O espaço livre do aparelho (null: não se sabe), visto a cada bloco novo; sem ele, só a reserva.
   final Future<int?> Function()? espacoLivre;
+
+  /// Até onde se procura, no começo de uma religação, o fim do que já está gravado (depois disso,
+  /// só pelo PCR). É também, mais ou menos, o máximo que fica em memória enquanto se procura.
+  final int limiteCostura;
 
   final DateTime Function() _agora;
   final Future<void> Function(Duration) _esperar;
@@ -137,6 +149,20 @@ class GravadorDireto {
 
   /// Até onde se procura o primeiro pacote de uma ligação.
   static const _limiteSincronizar = 4 * pacote;
+
+  /// O que já está gravado, lido como TS: o PID do PCR e do vídeo e o último PCR, para a costura.
+  final _gravado = LeitorTs();
+
+  /// Os últimos [tamanhoCauda] bytes gravados (a procurar na ligação seguinte).
+  Uint8List _cauda = Uint8List(0);
+
+  /// A procura da costura na ligação atual (null: não há, ou já se decidiu).
+  ProcuraCostura? _procura;
+
+  /// O que chegou da ligação atual enquanto se procura (fora do armazém), a partir de
+  /// [_pendenteDesde] (uma posição na ligação).
+  final _pendente = <List<int>>[];
+  int _pendenteDesde = 0;
 
   /// A regra de desistência do player ([ContinuarDireto.permitir]).
   final _regra = ContinuarDireto();
@@ -181,6 +207,8 @@ class GravadorDireto {
   /// Pára de gravar e fecha a ligação; com `apagar` (o normal) apaga a pasta da sessão.
   Future<void> parar({bool apagar = true}) async {
     _parado = true;
+    _procura = null;
+    _pendente.clear();
     final ligacao = _ligacao;
     if (ligacao != null && !ligacao.isCompleted) ligacao.complete();
     final leitura = _leitura;
@@ -273,10 +301,23 @@ class GravadorDireto {
           unawaited(stream.listen(null).cancel().catchError((_) {}));
           break;
         }
-        if (_ligacoes.isNotEmpty && _ligacoes.last.inicio == _fim) _ligacoes.removeLast();
-        _ligacoes.add((inicio: _fim, base: _fim));
-        _aSincronizar = BytesBuilder();
         _novaLigacao = true;
+        final ultimoPcr = _gravado.ultimoPcr;
+        if (_gravado.pacotes > 0 && (_cauda.length == tamanhoCauda || ultimoPcr != null)) {
+          // há um TS gravado: cose-se a ligação nova ao fim dele
+          _procura = ProcuraCostura(
+              cauda: _cauda,
+              ultimoPcr: ultimoPcr,
+              pidPcr: _gravado.pidPcr,
+              pidVideo: _gravado.pidVideo,
+              pidPmt: _gravado.pidPmt,
+              limite: limiteCostura);
+          _pendente.clear();
+          _pendenteDesde = 0;
+        } else {
+          _novaLigacaoNoAlinhamento(0);
+          _aSincronizar = BytesBuilder();
+        }
         await _consumir(stream, () {
           ultimaChegada = _agora();
           primeiraChegada ??= ultimaChegada;
@@ -285,6 +326,16 @@ class GravadorDireto {
         falha = e;
       }
       _aSincronizar = null;
+      if (!_parado && falha is! _ErroEscrita) {
+        // a ligação acabou a meio da procura: decide-se com o que veio
+        try {
+          await _terminarProcura();
+        } catch (e) {
+          falha = _ErroEscrita(e);
+        }
+      }
+      _procura = null;
+      _pendente.clear();
       if (_parado) break;
       if (falha is _ErroEscrita) {
         // qualquer erro do armazenamento (sem espaço, a pasta apagada pelo sistema) conta como sem
@@ -345,7 +396,7 @@ class GravadorDireto {
       if (_parado) return;
       chegou();
       leitura.pause();
-      _escrita = _escrever(dados).then((_) {
+      _escrita = _receber(dados).then((_) {
         if (!_parado) leitura.resume();
       }, onError: (Object e) {
         unawaited(leitura.cancel().catchError((_) {}));
@@ -380,6 +431,68 @@ class GravadorDireto {
     return r;
   }
 
+  // ---- costura ----
+
+  /// Um pedaço da ligação: com a procura da costura em curso, guarda-o até ela decidir.
+  Future<void> _receber(List<int> dados) async {
+    final procura = _procura;
+    if (procura == null) return _escrever(dados);
+    _pendente.add(dados);
+    final d = procura.receber(dados);
+    if (d != null) return _decidir(d);
+    // o que já se sabe que não se grava sai da memória
+    while (_pendente.isNotEmpty && _pendenteDesde + _pendente.first.length <= procura.descartavelAte) {
+      _pendenteDesde += _pendente.removeAt(0).length;
+    }
+  }
+
+  Future<void> _terminarProcura() async {
+    final procura = _procura;
+    if (procura == null) return;
+    try {
+      await _escrita; // o último pedaço já passou pela procura
+    } catch (_) {}
+    if (_parado || !identical(_procura, procura)) return;
+    await _decidir(procura.terminar());
+  }
+
+  /// Grava o que vem depois do ponto da costura.
+  Future<void> _decidir(DecisaoCostura d) async {
+    _procura = null;
+    final pendente = List.of(_pendente);
+    var pos = _pendenteDesde;
+    _pendente.clear();
+    final recebidos = pendente.fold<int>(pos, (s, p) => s + p.length);
+    switch (d.modo) {
+      case ModoCostura.bytes:
+        break; // os bytes continuam os da ligação anterior: o alinhamento também
+      case ModoCostura.pcr when d.desde >= recebidos:
+        break; // toda velha: não se grava nada, e a seguinte ainda pode continuar a anterior
+      case ModoCostura.pcr:
+        _novaLigacaoNoAlinhamento(0); // começa num pacote
+      case ModoCostura.salto || ModoCostura.inteira:
+        _novaLigacaoNoAlinhamento(d.sincronia ?? 0);
+    }
+    if (d.motivo != null) {
+      debugPrint('gravador do direto: religação sem costura (${d.motivo}); grava-se inteira');
+    }
+    for (final p in pendente) {
+      final de = math.max(0, d.desde - pos);
+      pos += p.length;
+      if (de >= p.length) continue;
+      if (_parado) return;
+      await _escrever(de == 0 ? p : p.sublist(de));
+    }
+  }
+
+  /// A ligação atual começa no [fim] (o primeiro pacote `sincronia` bytes depois): os pacotes dela
+  /// não continuam os da anterior.
+  void _novaLigacaoNoAlinhamento(int sincronia) {
+    if (_ligacoes.isNotEmpty && _ligacoes.last.inicio == _fim) _ligacoes.removeLast();
+    _ligacoes.add((inicio: _fim, base: _fim + sincronia));
+    _gravado.novaLigacao();
+  }
+
   // ---- escrita ----
 
   Future<void> _escrever(List<int> dados) async {
@@ -412,14 +525,31 @@ class GravadorDireto {
       _noBloco += cabe;
       _fim += cabe;
     }
-    if (!_parado && !_crescimento.isClosed) _crescimento.add(_fim);
+    if (_parado) return;
+    _gravado.ler(dados);
+    _guardarCauda(dados);
+    if (!_crescimento.isClosed) _crescimento.add(_fim);
+  }
+
+  void _guardarCauda(List<int> dados) {
+    if (dados.length >= tamanhoCauda) {
+      _cauda = Uint8List.fromList(dados.sublist(dados.length - tamanhoCauda));
+      return;
+    }
+    final fica = math.min(_cauda.length, tamanhoCauda - dados.length);
+    _cauda = Uint8List(fica + dados.length)
+      ..setRange(0, fica, _cauda, _cauda.length - fica)
+      ..setRange(fica, fica + dados.length, dados);
   }
 
   /// Duas marcas na mesma posição só quando a segunda é mais tarde: o fim de uma ligação e o
-  /// começo da seguinte (o byte nessa posição chegou com a ligação nova).
+  /// começo da seguinte (o byte nessa posição chegou com a ligação nova). O tempo nunca anda para
+  /// trás (o que se grava depois de uma procura chegou antes de ser gravado).
   void _marcar(DateTime instante, int posicao) {
-    if (_indice.isNotEmpty && _indice.last.posicao == posicao && !instante.isAfter(_indice.last.instante)) {
-      return;
+    if (_indice.isNotEmpty) {
+      final ultima = _indice.last;
+      if (instante.isBefore(ultima.instante)) instante = ultima.instante;
+      if (ultima.posicao == posicao && !instante.isAfter(ultima.instante)) return;
     }
     _indice.add((instante: instante, posicao: posicao));
   }

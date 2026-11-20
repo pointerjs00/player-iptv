@@ -3,8 +3,11 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:player_iptv/direto/armazem.dart';
+import 'package:player_iptv/direto/costura.dart';
 import 'package:player_iptv/direto/gravador.dart';
 import 'package:player_iptv/ui/player/continuar_direto.dart';
+
+import 'ts_sintetico.dart';
 
 const _bloco = 64 * 1024;
 const _reserva = 256 * 1024;
@@ -573,6 +576,231 @@ void main() {
       expect(medidas, 7);
       expect(g.inicio, 3 * _bloco, reason: 'só a rotação da reserva (4 blocos)');
       await g.parar();
+    });
+  });
+
+  group('costura das religações (TS sintético)', () {
+    /// Um gravador em memória cujas ligações são `ligacoes` (cada uma, os pedaços que manda; cada
+    /// pedaço avança 1 s no relógio); depois delas, uma ligação que nunca fecha (`ultima`).
+    ({GravadorDireto g, ArmazemMemoria armazem, StreamController<List<int>> ultima, Future<void> todas})
+        comLigacoes(List<List<List<int>>> ligacoes, {int limite = limiteProcura}) {
+      final ultima = StreamController<List<int>>();
+      final todas = Completer<void>();
+      final armazem = ArmazemMemoria(_bloco);
+      var n = 0;
+      final g = GravadorDireto(
+          origem: _origem,
+          cabecalhos: const {},
+          armazem: armazem,
+          reservaBytes: 64 * _bloco, // 4 MiB
+          tamanhoBloco: _bloco,
+          agora: agora,
+          esperar: nada,
+          limiteCostura: limite,
+          abrir: (_, _) async {
+            if (n < ligacoes.length) {
+              return Stream.fromIterable(ligacoes[n++]).map((p) {
+                relogio = relogio.add(const Duration(seconds: 1));
+                return p;
+              });
+            }
+            n++;
+            if (!todas.isCompleted) todas.complete();
+            return ultima.stream;
+          });
+      return (g: g, armazem: armazem, ultima: ultima, todas: todas.future);
+    }
+
+    Future<List<int>> tudo(GravadorDireto g) async => (await g.ler(g.inicio, g.fim - g.inicio))!;
+
+    /// Os PCR do gravado sobem sempre (nunca andam para trás nem se repetem).
+    void pcrSempreASubir(List<int> gravado) {
+      final pcrs = <int>[];
+      LeitorTs().ler(gravado, (p) {
+        if (p.pcr != null) pcrs.add(p.pcr!);
+        return false;
+      });
+      expect(pcrs.length, greaterThan(100));
+      for (var i = 1; i < pcrs.length; i++) {
+        expect(pcrs[i], greaterThan(pcrs[i - 1]), reason: 'PCR n.º $i');
+      }
+    }
+
+    /// O índice de tempo: quanto mais para trás, mais antiga a posição (e vice-versa).
+    void indiceMonotono(GravadorDireto g) {
+      var antes = g.inicio;
+      for (var s = 600; s >= 0; s--) {
+        final p = g.posicaoHa(Duration(seconds: s));
+        expect(p, greaterThanOrEqualTo(antes), reason: 'posicaoHa(${s}s)');
+        antes = p;
+      }
+      var recuo = g.recuoDe(g.inicio);
+      for (var p = g.inicio; p <= g.fim; p += 188 * 37) {
+        final r = g.recuoDe(p);
+        expect(r, lessThanOrEqualTo(recuo), reason: 'recuoDe($p)');
+        recuo = r;
+      }
+    }
+
+    test('a ligação nova repete os últimos 25 s com os mesmos bytes: continua no byte seguinte', () async {
+      // a 1.ª acaba a meio de um pacote; a 2.ª recomeça 25 s (2500 pacotes) antes
+      final primeira = tsSintetico(0, 4000).sublist(0, 3999 * 188 + 100);
+      final (:g, armazem: _, :ultima, :todas) = comLigacoes([
+        emPedacos(primeira, 7000),
+        emPedacos(tsSintetico(1500, 6000), 65536),
+      ]);
+      final crescimentos = <int>[];
+      g.crescimento.listen(crescimentos.add);
+      await g.iniciar();
+      await todas;
+      await pumpEventQueue();
+      expect(g.fim, 6000 * 188);
+      final gravado = await tudo(g);
+      expect(gravado, tsSintetico(0, 6000), reason: 'sem duplicados nem buracos');
+      pcrSempreASubir(gravado);
+      for (var i = 1; i < crescimentos.length; i++) {
+        expect(crescimentos[i], greaterThan(crescimentos[i - 1]));
+      }
+      indiceMonotono(g);
+      // o pacote cortado no fim da 1.ª completou-se: o alinhamento continua o da 1.ª
+      for (final p in [0, 3999 * 188 + 50, 4500 * 188 + 3]) {
+        expect((await g.ler(g.alinhar(p), 1))!.single, 0x47);
+      }
+      await ultima.close();
+      await g.parar();
+    });
+
+    test('sem sobreposição nos bytes mas com o PCR contínuo: cose pelo PCR num início de PES', () async {
+      final (:g, armazem: _, :ultima, :todas) = comLigacoes([
+        emPedacos(tsSintetico(0, 4000), 65536),
+        emPedacos(tsSintetico(1500, 6000, variante: 1), 65536), // outros bytes, os mesmos tempos
+      ]);
+      await g.iniciar();
+      await todas;
+      await pumpEventQueue();
+      // o último PCR gravado é o do 3999; o seguinte é o do 4003; o 1.º PES a partir dele, o 4005
+      final gravado = await tudo(g);
+      expect(gravado, [...tsSintetico(0, 4000), ...tsSintetico(4005, 6000, variante: 1)]);
+      pcrSempreASubir(gravado);
+      indiceMonotono(g);
+      expect(g.alinhar(4000 * 188 - 5), 4000 * 188);
+      await ultima.close();
+      await g.parar();
+    });
+
+    test('a cauda só depois do limite da procura: cose pelo PCR', () async {
+      final (:g, armazem: _, :ultima, :todas) = comLigacoes([
+        emPedacos(tsSintetico(0, 4000), 65536),
+        emPedacos(tsSintetico(1500, 6000), 65536),
+      ], limite: 1000 * 188);
+      await g.iniciar();
+      await todas;
+      await pumpEventQueue();
+      final gravado = await tudo(g);
+      expect(gravado, [...tsSintetico(0, 4000), ...tsSintetico(4005, 6000)]);
+      pcrSempreASubir(gravado);
+      await ultima.close();
+      await g.parar();
+    });
+
+    test('uma ligação toda velha não grava nada; a seguinte cose-se pelos bytes', () async {
+      final (:g, armazem: _, :ultima, :todas) = comLigacoes([
+        emPedacos(tsSintetico(0, 4000).sublist(0, 3999 * 188 + 100), 65536), // acaba a meio de um pacote
+        emPedacos(tsSintetico(1000, 3000, variante: 1), 65536),
+        emPedacos(tsSintetico(2000, 6000), 65536),
+      ]);
+      await g.iniciar();
+      await todas;
+      await pumpEventQueue();
+      final gravado = await tudo(g);
+      expect(gravado, tsSintetico(0, 6000));
+      indiceMonotono(g);
+      // a ligação velha não partiu o alinhamento: o pacote cortado completou-se na 3.ª
+      for (final p in [3999 * 188 + 50, 4000 * 188, 5000 * 188 + 7]) {
+        expect((await g.ler(g.alinhar(p), 1))!.single, 0x47, reason: 'alinhar($p)');
+      }
+      await ultima.close();
+      await g.parar();
+    });
+
+    test('sem PCR legível na ligação nova: grava-a inteira, como antes', () async {
+      final nova = tsSintetico(1500, 3000, variante: 1, comPcr: false);
+      final (:g, armazem: _, :ultima, :todas) = comLigacoes([
+        emPedacos(tsSintetico(0, 4000), 65536),
+        emPedacos(nova, 65536),
+      ]);
+      await g.iniciar();
+      await todas;
+      await pumpEventQueue();
+      expect(await tudo(g), [...tsSintetico(0, 4000), ...nova]);
+      await ultima.close();
+      await g.parar();
+    });
+
+    test('a ligação nova começa à frente (salto): grava-a desde o início, logo no 1.º pedaço', () async {
+      final (:g, :armazem, :ultima, :todas) = comLigacoes([emPedacos(tsSintetico(0, 4000), 65536)]);
+      await g.iniciar();
+      await todas;
+      await pumpEventQueue();
+      expect(g.fim, 4000 * 188);
+      final nova = emPedacos(tsSintetico(5000, 6000), 65536);
+      ultima.add(nova.first);
+      await pumpEventQueue();
+      expect(g.fim, 4000 * 188 + 65536, reason: 'decide-se no 1.º pedaço: o direto não espera');
+      for (final p in nova.skip(1)) {
+        ultima.add(p);
+      }
+      await pumpEventQueue();
+      final gravado = await tudo(g);
+      expect(gravado, [...tsSintetico(0, 4000), ...tsSintetico(5000, 6000)]);
+      pcrSempreASubir(gravado);
+      expect(armazem.bytesEmUso, lessThanOrEqualTo(64 * _bloco));
+      await ultima.close();
+      await g.parar();
+    });
+
+    test('enquanto procura não grava nada (nem conta para a reserva); grava logo que decide', () async {
+      final (:g, :armazem, :ultima, :todas) = comLigacoes([emPedacos(tsSintetico(0, 4000), 65536)]);
+      final crescimentos = <int>[];
+      g.crescimento.listen(crescimentos.add);
+      await g.iniciar();
+      await todas;
+      await pumpEventQueue();
+      final antes = g.fim, emUso = armazem.bytesEmUso, quantos = crescimentos.length;
+      final nova = emPedacos(tsSintetico(1500, 6000), 65536);
+      // 2500 pacotes repetidos = 470 000 bytes: os primeiros 7 pedaços são só repetição
+      for (final p in nova.take(7)) {
+        ultima.add(p);
+      }
+      await pumpEventQueue();
+      expect(g.fim, antes, reason: 'nada escrito enquanto procura');
+      expect(armazem.bytesEmUso, emUso, reason: 'o que se guarda para procurar fica fora do armazém');
+      expect(crescimentos, hasLength(quantos));
+      ultima.add(nova[7]); // traz o fim da cauda
+      await pumpEventQueue();
+      expect(g.fim, 8 * 65536 + 1500 * 188, reason: 'decidiu e escreveu o que vinha depois da cauda');
+      for (final p in nova.skip(8)) {
+        ultima.add(p);
+      }
+      await pumpEventQueue();
+      expect(await tudo(g), tsSintetico(0, 6000));
+      await ultima.close();
+      await g.parar();
+      expect(armazem.bytesEmUso, 0);
+    });
+
+    test('parar() a meio da procura larga o que estava guardado e não escreve nada', () async {
+      final (:g, :armazem, :ultima, :todas) = comLigacoes([emPedacos(tsSintetico(0, 4000), 65536)]);
+      await g.iniciar();
+      await todas;
+      await pumpEventQueue();
+      final antes = g.fim;
+      ultima.add(tsSintetico(1500, 2000));
+      await pumpEventQueue();
+      expect(g.fim, antes);
+      await g.parar();
+      expect(armazem.bytesEmUso, 0);
+      expect(await g.ler(0, 10), isNull);
     });
   });
 }
