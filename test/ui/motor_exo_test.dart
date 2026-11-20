@@ -6,6 +6,8 @@ import 'package:material_ui/material_ui.dart';
 import 'package:player_iptv/dados/preferencias.dart';
 import 'package:player_iptv/modelo/canal.dart';
 import 'package:player_iptv/ui/design/componentes.dart';
+import 'package:player_iptv/ui/design/ecra.dart';
+import 'package:player_iptv/ui/design/escala_interface.dart';
 import 'package:player_iptv/ui/player/motor_exo.dart';
 import 'package:player_iptv/ui/player/motor_reproducao.dart';
 import 'package:player_iptv/ui/player/configuracao_mpv.dart';
@@ -638,8 +640,9 @@ void main() {
     const canal = Canal(id: '1', nome: 'RTP 1', grupo: 'Generalistas');
     const canal2 = Canal(id: '2', nome: 'RTP 2', grupo: 'Generalistas');
 
+    /// [escala]: como no main.dart, a escala da interface (Compacto) por dentro do [FundoCinema].
     Future<void> montarPlayer(WidgetTester t, _ExoFalso exo,
-        {FormatoImagem formato = FormatoImagem.ajustar, bool android = false}) async {
+        {FormatoImagem formato = FormatoImagem.ajustar, bool android = false, bool escala = false}) async {
       t.view.physicalSize = const Size(1920, 1080);
       t.view.devicePixelRatio = 1;
       addTearDown(t.view.reset);
@@ -651,7 +654,8 @@ void main() {
       addTearDown(() => Preferencias.atual = antes);
       await t.pumpWidget(MaterialApp(
         theme: temaApp(),
-        builder: (_, w) => FundoCinema(child: w!),
+        builder: (_, w) => FundoCinema(
+            child: escala ? EscalaConformePreferencias(preferencias: Preferencias.atual, child: w!) : w!),
         home: Scaffold(
           backgroundColor: Colors.transparent,
           body: PlayerCanais(
@@ -719,6 +723,46 @@ void main() {
       expect(opacosPorCima, findsNothing);
       expect(FundoCinema.videoPorBaixo.value, 1, reason: 'o fundo da app não se pinta por baixo do vídeo');
       await t.pumpWidget(const SizedBox());
+      await t.pump(const Duration(seconds: 1));
+    });
+
+    testWidgets('na TV a 80 % (Compacto): o vídeo é transparente, enche o ecrã e o fundo não se pinta', (t) async {
+      EcraTv.nativo = true;
+      addTearDown(() => EcraTv.nativo = false);
+      final exo = _ExoFalso();
+      await montarPlayer(t, exo, escala: true);
+      expect(Preferencias.atual.tamanhoInterface, TamanhoInterface.compacto);
+      expect(
+          find.byWidgetPredicate((w) => w is Transform && (w.transform.storage[0] - escalaCompacto).abs() < .001),
+          findsOneWidget,
+          reason: 'a interface está a 80 %');
+      final video = find.byWidgetPredicate((w) => w.key is ObjectKey && (w.key! as ObjectKey).value is MotorExo);
+      expect(video, findsOneWidget);
+      // a área transparente (no ecrã, depois da redução) cobre a janela toda: a SurfaceView vê-se toda
+      expect(t.getRect(video), const Rect.fromLTWH(0, 0, 1920, 1080));
+      final opacosPorCima = find.ancestor(
+          of: video,
+          matching: find.byWidgetPredicate((w) =>
+              (w is ColoredBox && w.color.a > 0) ||
+              (w is Material && w.type != MaterialType.transparency && (w.color?.a ?? 0) > 0)));
+      expect(opacosPorCima, findsNothing);
+      expect(FundoCinema.videoPorBaixo.value, 1, reason: 'o fundo da app não se pinta por baixo do vídeo');
+      expect(find.byType(FundoCinema), isNot(paints..rect(rect: const Rect.fromLTWH(0, 0, 1920, 1080))),
+          reason: 'o gradiente do fundo não se pinta');
+
+      // mudar para Normal com o vídeo a tocar: o mesmo player, o fundo continua sem pintar
+      Preferencias.atual.tamanhoInterface = TamanhoInterface.normal;
+      await t.pump();
+      await t.pump();
+      expect(t.getRect(video), const Rect.fromLTWH(0, 0, 1920, 1080));
+      expect(FundoCinema.videoPorBaixo.value, 1);
+      expect(exo.de('criar'), hasLength(1), reason: 'a escala não recria o player');
+      expect(exo.args(exo.de('mostrar').last)['visivel'], isTrue, reason: 'o vídeo não se esconde');
+
+      // ao sair, o fundo volta
+      await t.pumpWidget(FundoCinema(child: const SizedBox.expand()));
+      expect(FundoCinema.videoPorBaixo.value, 0);
+      expect(find.byType(FundoCinema), paints..rect(rect: const Rect.fromLTWH(0, 0, 1920, 1080)));
       await t.pump(const Duration(seconds: 1));
     });
 

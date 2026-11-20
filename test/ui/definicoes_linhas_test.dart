@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:player_iptv/dados/area_gestor.dart';
@@ -118,6 +119,46 @@ void main() {
       await t.pumpAndSettle();
       expect(t.takeException(), isNull, reason: categoria);
     }
+  });
+
+  testWidgets('Android TV a 80 %: «Motor do player» e «Modo túnel» são linhas e as desativadas recebem o foco',
+      (t) async {
+    ecraTvTeste(t);
+    await t.pumpWidget(casca(android: true));
+    await t.pump();
+    expect(t.takeException(), isNull);
+    expect(find.byType(SuperficieVidro), findsNothing, reason: 'sem caixas, também nas opções do motor');
+    expect(find.byType(Divider), findsWidgets, reason: 'separadores entre as linhas');
+
+    // o motor em linha: os 2 chips à direita do título
+    final titulo = t.getRect(find.text('Motor do player'));
+    final exo = t.getRect(find.widgetWithText(ChoiceChip, 'ExoPlayer'));
+    expect(exo.left, greaterThan(titulo.right), reason: 'os chips do motor à direita do título');
+    expect(exo.center.dy, lessThan(t.getRect(find.text('Modo túnel')).top), reason: 'na linha do motor');
+    expect(find.text('só no motor mpv'), findsWidgets, reason: 'as opções só do mpv, com a nota');
+
+    // D-pad: BAIXO passa por todas, as desativadas incluídas, até ao volume
+    Focus.of(t.element(find.text('ExoPlayer'))).requestFocus();
+    await t.pump();
+    // o deslizador do volume (o último) não tem texto: vê-se pelo widget com o foco
+    bool noVolume() {
+      final ctx = FocusManager.instance.primaryFocus?.context;
+      return ctx != null && (ctx.widget is DeslizadorTv || ctx.findAncestorWidgetOfExactType<DeslizadorTv>() != null);
+    }
+
+    final vistos = <String>[textosFocados()];
+    for (var i = 0; i < 12 && !noVolume(); i++) {
+      await teclaDpad(t, LogicalKeyboardKey.arrowDown);
+      vistos.add(textosFocados());
+    }
+    String? onde(String x) => vistos.where((v) => v.contains(x)).firstOrNull;
+    for (final x in ['Modo túnel', 'Desentrelaçamento', 'Descodificação por hardware', 'Descodificação no Android']) {
+      expect(onde(x), isNotNull, reason: '$x recebe o foco: $vistos');
+    }
+    for (final x in ['Desentrelaçamento', 'Descodificação por hardware', 'Descodificação no Android']) {
+      expect(onde(x), contains('só no motor mpv'), reason: '$x: lê-se a nota');
+    }
+    expect(noVolume(), isTrue, reason: 'chega ao volume, sem buracos: $vistos');
   });
 
   group('«Tamanho da interface»', () {
