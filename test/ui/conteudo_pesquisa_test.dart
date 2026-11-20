@@ -418,6 +418,55 @@ void main() {
     expect(find.byTooltip('Tirar dos favoritos'), findsOneWidget);
     expect(find.text('Canais · 10000'), findsOneWidget);
     expect(find.descendant(of: _grupos, matching: find.text('Filmes 12')), findsOneWidget);
+
+    // a pesquisa dentro de um grupo (só as posições dele)
+    await filtrar(t, 'desporto');
+    await t.tap(find.descendant(of: _grupos, matching: find.text('Desporto')));
+    await t.pumpAndSettle();
+    await escrever(t, 'filme');
+    expect(find.text('Desporto · 0'), findsOneWidget, reason: 'os 90 mil «Filme N» são de outros grupos');
+    // Desporto 10, 100–190, 1000–1990 e 10000–19990
+    await escrever(t, 'desporto 1');
+    expect(find.text('Desporto · 1111'), findsOneWidget);
+    expect(find.descendant(of: _canais, matching: find.byType(ListTile)).evaluate().length, lessThan(40));
+    // e nos favoritos (só «Desporto 0», das alternâncias de cima)
+    await filtrar(t, '');
+    await t.tap(find.descendant(of: _grupos, matching: find.text(grupoFavoritos)));
+    await t.pumpAndSettle();
+    await escrever(t, 'desporto');
+    expect(find.text('$grupoFavoritos · 1'), findsOneWidget);
+    await escrever(t, 'filme');
+    expect(find.text('$grupoFavoritos · 0'), findsOneWidget);
+  });
+
+  testWidgets('100 mil canais em A–Z: o 1.º frame mostra os canais e, já ordenados, ficam A–Z', (t) async {
+    // os nomes ao contrário: na ordem da lista o primeiro é «Canal 99999»
+    final grande = ConteudoLista(['G'], [
+      for (var i = 0; i < 100000; i++)
+        Canal(id: '$i', nome: 'Canal ${(99999 - i).toString().padLeft(5, '0')}', grupo: 'G'),
+    ]);
+    final l = await t.runAsync(() async {
+      await bib.adicionar([Importada(contaDeLinha('http://x.com/l.m3u')!)]);
+      await bib.guardarCanais(bib.listas.single.id, grande);
+      await bib.definirOrdem(bib.listas.single.id, OrdemCanais.az);
+      return bib.listas.single;
+    });
+    ecraTvTeste(t, largura: 960, altura: 540);
+    await t.runAsync(() async {
+      await t.pumpWidget(appTeste(TelaConteudo(biblioteca: bib, lista: l!, abrir: (c, i) => null)));
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+    });
+    await t.pump();
+    // o primeiro frame com canais já tem a lista (ordenada ou ainda pela ordem original)
+    expect(find.descendant(of: _canais, matching: find.byType(ListTile)), findsWidgets);
+    await t.runAsync(() => Future<void>.delayed(const Duration(seconds: 3)));
+    await t.pumpAndSettle();
+    expect(_nomes(t, _canais).take(3), ['Canal 00000', 'Canal 00001', 'Canal 00002']);
+    expect(find.text('A ordenar…'), findsNothing);
+    // o grupo também (com as posições já ordenadas)
+    await t.tap(find.descendant(of: _grupos, matching: find.text('G')));
+    await t.pumpAndSettle();
+    expect(_nomes(t, _canais).first, 'Canal 00000');
   });
 
   /// A dica (hintText) da pesquisa dos canais.
@@ -513,6 +562,52 @@ void main() {
       expect(_noCampo(t, _filtro), isTrue, reason: textosFocados());
       await filtrar(t, 'zzz');
       expect(_nomes(t, _grupos), ['Todos os canais']);
+    });
+
+    testWidgets('atualizar a lista sem o grupo escolhido volta a «Todos os canais»', (t) async {
+      ecraTvTeste(t, largura: 960, altura: 540);
+      await t.runAsync(() async {
+        await bib.adicionar([Importada(contaDeLinha('http://x.com/l.m3u')!)]);
+        await bib.guardarCanais(bib.listas.single.id, _conteudo);
+      });
+      final novo = ConteudoLista(['Desporto'], [
+        for (var i = 1; i <= 3; i++) Canal(id: 'd$i', nome: 'Desporto $i', grupo: 'Desporto'),
+      ]);
+      await t.runAsync(() async {
+        await t.pumpWidget(appTeste(TelaConteudo(biblioteca: bib, lista: bib.listas.single, abrir: (c, i) => null,
+            abrirLista: (c, {cancelamento, aviso}) async => novo)));
+        await Future<void>.delayed(const Duration(milliseconds: 300));
+      });
+      await t.pumpAndSettle();
+      await t.tap(find.descendant(of: _grupos, matching: find.text('Notícias')));
+      await t.pumpAndSettle();
+      expect(dica(t), 'Pesquisar em Notícias');
+      await t.tap(find.byTooltip('Atualizar a lista de canais'));
+      // a gravação da cache é IO real: pumps pelo meio até o loader fechar
+      for (var i = 0; i < 40 && find.text('A atualizar os canais').evaluate().isNotEmpty || i == 0; i++) {
+        await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+        await t.pump(const Duration(milliseconds: 50));
+      }
+      await t.pumpAndSettle();
+      expect(find.descendant(of: _grupos, matching: find.text('Notícias')), findsNothing);
+      expect(dica(t), 'Pesquisar canais ou número');
+      // a linha e o cabeçalho
+      expect(find.text('Todos os canais'), findsNWidgets(2));
+      expect(find.text('1 de 3'), findsOneWidget);
+    });
+
+    testWidgets('tirar o último favorito com Favoritos escolhido e pesquisa volta a «Todos os canais»', (t) async {
+      await abrir(t, favoritos: ['d1']);
+      await t.tap(find.descendant(of: _grupos, matching: find.text(grupoFavoritos)));
+      await t.pumpAndSettle();
+      await escrever(t, 'desporto');
+      expect(find.text('$grupoFavoritos · 1'), findsOneWidget);
+      await t.tap(find.byTooltip('Tirar dos favoritos'));
+      await t.pumpAndSettle();
+      expect(find.descendant(of: _grupos, matching: find.text(grupoFavoritos)), findsNothing);
+      expect(dica(t), 'Pesquisar canais ou número');
+      // a pesquisa fica, agora em todos
+      expect(find.text('Canais · 20'), findsOneWidget);
     });
   });
 

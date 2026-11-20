@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:isolate';
+import 'dart:typed_data';
 
 import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
@@ -110,6 +111,11 @@ class _TelaConteudoState extends State<TelaConteudo> {
   Map<String, List<int>> _posicoesPorGrupo = const {}; // as posições em `canais` (para os nomes sem acentos)
   Map<String, String> _gruposSemAcentos = const {}; // para a pesquisa nos grupos
   List<String>? _nomes; // os nomes sem acentos, pela ordem de `canais`
+  Int32List? _ordemAz; // as posições em `canais` por ordem A–Z (dos nomes sem acentos)
+  Int32List? _lugarAz; // o lugar de cada posição na ordem A–Z (para ordenar um grupo sem refazer nomes)
+
+  /// A lista à vista devia estar A–Z mas a ordem ainda não está feita: mostra-se a original.
+  bool _aOrdenar = false;
   Timer? _atrasoPesquisa;
   Timer? _atrasoFiltro;
   int _versaoFavoritos = 0;
@@ -208,9 +214,12 @@ class _TelaConteudoState extends State<TelaConteudo> {
       _posicoesPorGrupo = posicoes;
       _gruposSemAcentos = {for (final g in c.grupos) g: semAcentos(g)};
       _nomes = null;
+      _ordemAz = null;
+      _lugarAz = null;
       _chaveVisiveis = null;
       _erro = null;
-      // abre sem grupo ("Todos os canais"); ao atualizar, o grupo escolhido fica
+      // abre sem grupo ("Todos os canais"); ao atualizar, o grupo escolhido fica (se ainda existir)
+      _validarGrupo();
     });
     _indexarNomes(c);
     if (widget.continuar != null && !_continuou) {
@@ -284,18 +293,33 @@ class _TelaConteudoState extends State<TelaConteudo> {
     }
   }
 
-  /// Os nomes sem acentos, para a pesquisa: numa lista grande, fora da thread da interface.
+  /// Os nomes sem acentos (para a pesquisa) e a ordem A–Z: numa lista grande, fora da thread da
+  /// interface. Até estarem prontos, a lista A–Z mostra-se pela ordem original ("A ordenar…").
   Future<void> _indexarNomes(ConteudoLista c) async {
     final nomes = [for (final x in c.canais) x.nome];
-    final List<String> r;
-    if (nomes.length < 5000) {
-      r = [for (final n in nomes) semAcentos(n)];
-    } else {
-      r = await _normalizarNumIsolate(nomes);
-    }
+    final r = nomes.length < 5000 ? _indexar(nomes) : await _indexarNumIsolate(nomes);
     if (!mounted || !identical(c, _conteudo)) return;
-    _nomes = r;
-    if (_pesquisaCanais) setState(() => _chaveVisiveis = null);
+    _nomes = r.nomes;
+    _ordemAz = r.ordem;
+    _lugarAz = r.lugar;
+    if (_pesquisaCanais || _aOrdenar) setState(() => _chaveVisiveis = null);
+  }
+
+  /// O grupo escolhido ainda existe (depois de mudar o conteúdo ou os favoritos)? Senão (ou
+  /// Favoritos/Vistos vazios), passa a "Todos os canais". Diz se mudou.
+  bool _validarGrupo() {
+    final g = _grupo;
+    final c = _conteudo;
+    if (g == null || c == null) return false;
+    final existe = g == grupoFavoritos
+        ? widget.lista.favoritos.isNotEmpty
+        : g == grupoVistos
+            ? _vistosExistentes(c).isNotEmpty
+            : _porGrupo.containsKey(g) || c.grupos.contains(g);
+    if (existe) return false;
+    _grupo = null;
+    _chaveVisiveis = null;
+    return true;
   }
 
   void _pesquisar(String v) {
@@ -534,49 +558,68 @@ class _TelaConteudoState extends State<TelaConteudo> {
     if (chave == _chaveVisiveis) return _visiveis;
     _chaveVisiveis = chave;
     _indice = 0;
+    _aOrdenar = false;
     // sem grupo, os grupos escondidos ficam de fora (também da pesquisa)
     final semEscondidos = _verEscondidos || escondidos.isEmpty;
-    final List<Canal> r;
-    if (q.isNotEmpty) {
+    bool visivel(int i) => semEscondidos || !escondidos.contains(c.canais[i].grupo);
+    final favoritos = widget.lista.favoritos;
+    final numero = int.tryParse(q); // um número escrito também encontra o canal com esse número
+
+    if (_grupo == grupoVistos) {
+      // poucos (até maxVistos), pela ordem em que se viram
+      final vistos = _vistosExistentes(c);
+      return _visiveis = q.isEmpty
+          ? vistos
+          : [
+              for (final x in vistos)
+                if (semAcentos(x.nome).contains(q) || (numero != null && x.numero == numero)) x,
+            ];
+    }
+    final az = ordem == OrdemCanais.az;
+    if (q.isEmpty && !az) {
+      // pela ordem da lista: as listas já feitas, sem copiar
+      if (_grupo == grupoFavoritos) return _visiveis = [for (final x in c.canais) if (favoritos.contains(x.id)) x];
+      if (_grupo != null) return _visiveis = _porGrupo[_grupo] ?? const [];
+      return _visiveis = semEscondidos ? c.canais : [for (final x in c.canais) if (!escondidos.contains(x.grupo)) x];
+    }
+
+    // as posições em `canais` do que fica à vista
+    final List<int> pos;
+    var jaAz = false;
+    if (q.isEmpty) {
+      if (_grupo == grupoFavoritos) {
+        pos = [for (var i = 0; i < c.canais.length; i++) if (favoritos.contains(c.canais[i].id)) i];
+      } else if (_grupo != null) {
+        pos = List.of(_posicoesPorGrupo[_grupo] ?? const <int>[]);
+      } else if (_ordemAz != null) {
+        // "Todos os canais" A–Z: a ordem já feita (com 100 mil, ordenar aqui congelava a TV)
+        pos = [for (final i in _ordemAz!) if (visivel(i)) i];
+        jaAz = true;
+      } else {
+        pos = [for (var i = 0; i < c.canais.length; i++) if (visivel(i)) i];
+      }
+    } else {
       final nomes = _nomes ??= [for (final x in c.canais) semAcentos(x.nome)];
-      // um número escrito também encontra o canal com esse número
-      final numero = int.tryParse(q);
       bool encontra(int i) => nomes[i].contains(q) || (numero != null && c.canais[i].numero == numero);
-      if (_grupo == grupoVistos) {
-        // poucos (até maxVistos), pela ordem em que se viram
-        _visiveis = [
-          for (final x in _vistosExistentes(c))
-            if (semAcentos(x.nome).contains(q) || (numero != null && x.numero == numero)) x,
-        ];
-        return _visiveis;
-      } else if (_grupo == grupoFavoritos) {
-        final favoritos = widget.lista.favoritos;
-        r = [
-          for (var i = 0; i < c.canais.length; i++)
-            if (favoritos.contains(c.canais[i].id) && encontra(i)) c.canais[i],
-        ];
+      if (_grupo == grupoFavoritos) {
+        pos = [for (var i = 0; i < c.canais.length; i++) if (favoritos.contains(c.canais[i].id) && encontra(i)) i];
       } else if (_grupo != null) {
         // só as posições do grupo: com 100 mil canais não se percorre a lista toda
-        r = [for (final i in _posicoesPorGrupo[_grupo] ?? const <int>[]) if (encontra(i)) c.canais[i]];
+        pos = [for (final i in _posicoesPorGrupo[_grupo] ?? const <int>[]) if (encontra(i)) i];
       } else {
-        r = [
-          for (var i = 0; i < c.canais.length; i++)
-            if (encontra(i) && (semEscondidos || !escondidos.contains(c.canais[i].grupo))) c.canais[i],
-        ];
+        pos = [for (var i = 0; i < c.canais.length; i++) if (encontra(i) && visivel(i)) i];
       }
-    } else if (_grupo == grupoVistos) {
-      // pela ordem em que se viram, não pela ordem dos canais
-      _visiveis = _vistosExistentes(c);
-      return _visiveis;
-    } else if (_grupo == grupoFavoritos) {
-      r = [for (final x in c.canais) if (widget.lista.favoritos.contains(x.id)) x];
-    } else if (_grupo != null) {
-      r = _porGrupo[_grupo] ?? const [];
-    } else {
-      r = semEscondidos ? c.canais : [for (final x in c.canais) if (!escondidos.contains(x.grupo)) x];
     }
-    _visiveis = ordenarCanais(r, ordem);
-    return _visiveis;
+    if (az && !jaAz) {
+      final lugar = _lugarAz;
+      if (lugar != null) {
+        // pelo lugar na ordem A–Z já feita: sem refazer os nomes sem acentos
+        pos.sort((a, b) => lugar[a] - lugar[b]);
+      } else {
+        _aOrdenar = true; // ainda não está pronta: a ordem original, troca-se depois
+      }
+    }
+    return _visiveis = [for (final i in pos) c.canais[i]];
   }
 
   /// Quantos canais tem "Todos os canais" (sem os dos grupos escondidos, se não estão à vista).
@@ -1046,6 +1089,10 @@ class _TelaConteudoState extends State<TelaConteudo> {
             style: estilo,
           ),
         ),
+        if (_aOrdenar) ...[
+          const SizedBox(width: Tokens.e12),
+          Text('A ordenar…', style: estilo.copyWith(fontWeight: FontWeight.w400)),
+        ],
         if (n > 0) ...[
           const SizedBox(width: Tokens.e12),
           Text('${_indice.clamp(0, n - 1) + 1} de $n', key: const Key('contador-canais'), style: estilo),
@@ -1306,7 +1353,10 @@ class _TelaConteudoState extends State<TelaConteudo> {
   void _desfazerFavorito(String id, bool tinhaPassadoAFavorito) {
     if (!mounted || widget.lista.favoritos.contains(id) != tinhaPassadoAFavorito) return;
     widget.biblioteca.alternarFavorito(widget.lista.id, id);
-    setState(() => _versaoFavoritos++);
+    setState(() {
+      _versaoFavoritos++;
+      _validarGrupo();
+    });
   }
 
   /// Põe/tira o canal `i` dos favoritos (o conjunto muda logo; a gravação em disco segue em
@@ -1317,12 +1367,17 @@ class _TelaConteudoState extends State<TelaConteudo> {
     final agora = !widget.lista.favoritos.contains(c.id);
     widget.biblioteca.alternarFavorito(widget.lista.id, c.id);
     final noGrupoFav = _grupo == grupoFavoritos && !_pesquisaCanais;
-    setState(() => _versaoFavoritos++);
+    var saiu = false;
+    setState(() {
+      _versaoFavoritos++;
+      // o último favorito: os Favoritos desaparecem (também com pesquisa) e fica "Todos os canais"
+      saiu = _validarGrupo();
+    });
     mostrarMensagem(context, agora ? '${c.nome} está nos favoritos' : '${c.nome} saiu dos favoritos',
         acao: 'Desfazer', aoAcao: () => _desfazerFavorito(c.id, agora));
     if (!noGrupoFav || agora) return;
     final restantes = _canaisVisiveis();
-    if (restantes.isEmpty) {
+    if (saiu || restantes.isEmpty) {
       setState(() => _grupo = null);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _focoEscolhido?.requestFocus();
@@ -1381,5 +1436,21 @@ class _Logo extends StatelessWidget {
 }
 
 // função de topo: a closure mandada para o isolate não pode levar o estado do ecrã
-Future<List<String>> _normalizarNumIsolate(List<String> nomes) =>
-    Isolate.run(() => [for (final n in nomes) semAcentos(n)]);
+Future<_Indice> _indexarNumIsolate(List<String> nomes) => Isolate.run(() => _indexar(nomes));
+
+typedef _Indice = ({List<String> nomes, Int32List ordem, Int32List lugar});
+
+/// Os nomes sem acentos, as posições por ordem A–Z e o lugar de cada posição nessa ordem.
+_Indice _indexar(List<String> nomes) {
+  final normal = [for (final n in nomes) semAcentos(n)];
+  final ordem = Int32List.fromList(List<int>.generate(normal.length, (i) => i)
+    ..sort((a, b) {
+      final r = normal[a].compareTo(normal[b]);
+      return r != 0 ? r : a - b;
+    }));
+  final lugar = Int32List(normal.length);
+  for (var k = 0; k < ordem.length; k++) {
+    lugar[ordem[k]] = k;
+  }
+  return (nomes: normal, ordem: ordem, lugar: lugar);
+}

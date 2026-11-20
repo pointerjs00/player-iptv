@@ -284,6 +284,21 @@ void main() {
     expect(find.text('1 de 2'), findsOneWidget);
   });
 
+  testWidgets('"Continuar a ver" escolhe o grupo do canal e, ao voltar do player, o canal fica com o foco',
+      (t) async {
+    final l = await preparar(t);
+    await mostrar(t, l, continuar: '5', abrir: (c, i) => i); // volta no mesmo canal
+    await t.pumpAndSettle();
+    // abriu-se no grupo do canal (Desporto), não em «Todos os canais»
+    final desporto = t.widget<ListTile>(find.ancestor(of: grupo('Desporto'), matching: find.byType(ListTile)));
+    expect(desporto.selected, isTrue);
+    final todos = t.widget<ListTile>(find.ancestor(of: grupo('Todos os canais'), matching: find.byType(ListTile)));
+    expect(todos.selected, isFalse);
+    expect(_nomesCanais(t), ['Sport TV 1', 'Eleven']);
+    expect(_focado(), 'Eleven');
+    expect(find.text('2 de 2'), findsOneWidget);
+  });
+
   testWidgets('"Continuar a ver" com um canal que já não existe avisa', (t) async {
     final l = await preparar(t);
     var abriu = false;
