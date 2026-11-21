@@ -172,8 +172,34 @@ class _DialogoEnvioState extends State<_DialogoEnvio> {
     return 'Ver TV fica com estas e com $juntas.';
   }
 
+  /// O que o diálogo devolve com a escolha de agora.
+  (ModoEnvio, Set<ManterAoSubstituir>) get _escolha =>
+      _substituir ? (ModoEnvio.substituir, {..._manter}) : (ModoEnvio.adicionar, <ManterAoSubstituir>{});
+
+  /// Os filtros «manter» (ao substituir).
+  List<Widget> _chipsManter() => [
+        FilterChip(
+          label: const Text('Nenhuma'),
+          selected: _manter.isEmpty,
+          showCheckmark: true,
+          onSelected: (_) => setState(_manter.clear),
+        ),
+        for (final (m, rotulo) in [
+          (ManterAoSubstituir.favoritas, 'Favoritas'),
+          (ManterAoSubstituir.funcionam, 'As que funcionam'),
+          (ManterAoSubstituir.inconclusivas, 'As inconclusivas'),
+        ])
+          FilterChip(
+            label: Text(rotulo),
+            selected: _manter.contains(m),
+            showCheckmark: true,
+            onSelected: (_) => _alternar(m),
+          ),
+      ];
+
   @override
   Widget build(BuildContext context) {
+    if (ecraTelemovel(context)) return _ecraInteiro(context);
     final n = widget.n;
     final baixo = MediaQuery.sizeOf(context).height < 640;
     final espaco = SizedBox(height: baixo ? Tokens.e8 : Tokens.e12);
@@ -207,25 +233,7 @@ class _DialogoEnvioState extends State<_DialogoEnvio> {
               espaco,
               const Text('Das listas que já estão em Ver TV, manter:', style: TextStyle(fontWeight: FontWeight.w600)),
               const SizedBox(height: Tokens.e8),
-              Wrap(spacing: Tokens.e8, runSpacing: Tokens.e8, children: [
-                FilterChip(
-                  label: const Text('Nenhuma'),
-                  selected: _manter.isEmpty,
-                  showCheckmark: true,
-                  onSelected: (_) => setState(_manter.clear),
-                ),
-                for (final (m, rotulo) in [
-                  (ManterAoSubstituir.favoritas, 'Favoritas'),
-                  (ManterAoSubstituir.funcionam, 'As que funcionam'),
-                  (ManterAoSubstituir.inconclusivas, 'As inconclusivas'),
-                ])
-                  FilterChip(
-                    label: Text(rotulo),
-                    selected: _manter.contains(m),
-                    showCheckmark: true,
-                    onSelected: (_) => _alternar(m),
-                  ),
-              ]),
+              Wrap(spacing: Tokens.e8, runSpacing: Tokens.e8, children: _chipsManter()),
             ],
           ]),
         ),
@@ -233,13 +241,78 @@ class _DialogoEnvioState extends State<_DialogoEnvio> {
       actions: [
         TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
         FilledButton(
-          onPressed: () => Navigator.pop(
-            context,
-            _substituir ? (ModoEnvio.substituir, {..._manter}) : (ModoEnvio.adicionar, <ManterAoSubstituir>{}),
-          ),
+          onPressed: () => Navigator.pop(context, _escolha),
           child: Text('Enviar ${_listas(n)}'),
         ),
       ],
+    );
+  }
+
+  /// No telemóvel, em ecrã inteiro (no diálogo pequeno os «manter» ficavam escondidos por baixo
+  /// do deslizar): ✕ e o título em cima, as duas opções como botões de rádio, os «manter» à vista
+  /// e «Enviar N listas» fixo em baixo.
+  Widget _ecraInteiro(BuildContext context) {
+    final n = widget.n;
+    const fraco = TextStyle(color: Tokens.texto2);
+    return Dialog.fullscreen(
+      backgroundColor: Tokens.superficie,
+      child: SafeArea(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(Tokens.e4, Tokens.e4, Tokens.e16, 0),
+            child: Row(children: [
+              IconButton(tooltip: 'Cancelar', icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
+              const SizedBox(width: Tokens.e4),
+              Expanded(
+                child: Text('Enviar ${_listas(n)} para Ver TV',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Tokens.texto)),
+              ),
+            ]),
+          ),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(vertical: Tokens.e8),
+              child: RadioGroup<bool>(
+                groupValue: _substituir,
+                onChanged: (v) => setState(() => _substituir = v ?? false),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  RadioListTile<bool>(
+                    value: false,
+                    autofocus: true,
+                    title: const Text('Adicionar às listas de Ver TV'),
+                    subtitle: const Text('As que já lá estão ficam. Repetidas não se duplicam.', style: fraco),
+                  ),
+                  RadioListTile<bool>(
+                    value: true,
+                    title: const Text('Substituir as listas de Ver TV'),
+                    subtitle: Text(_descricaoSubstituir, style: fraco),
+                  ),
+                  if (_substituir)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(Tokens.e16, Tokens.e8, Tokens.e16, 0),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        const Text('Das listas que já estão em Ver TV, manter:',
+                            style: TextStyle(fontWeight: FontWeight.w600)),
+                        const SizedBox(height: Tokens.e4),
+                        Wrap(spacing: Tokens.e8, children: _chipsManter()),
+                      ]),
+                    ),
+                ]),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(Tokens.e16),
+            child: FilledButton(
+              style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(Tokens.alvoToque)),
+              onPressed: () => Navigator.pop(context, _escolha),
+              child: Text('Enviar ${_listas(n)}'),
+            ),
+          ),
+        ]),
+      ),
     );
   }
 }

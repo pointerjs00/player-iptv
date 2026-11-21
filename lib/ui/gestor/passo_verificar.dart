@@ -320,59 +320,107 @@ class PassoVerificarState extends State<PassoVerificar> {
             final visiveis = _visiveis();
             _vigiarLinhaFocada(visiveis);
             final largo = caixa.maxWidth >= 560;
+            // no telemóvel cada lista ocupa duas linhas e não há cabeçalho de colunas (a ☐ das
+            // visíveis passa para a barra de Ações)
+            final telemovel = ecraTelemovel(context);
             final agora = _agora;
+            const semListas = Padding(
+              padding: EdgeInsets.all(Tokens.e16),
+              child: Text('Ainda não há listas. Comece pelo passo 1: importe as listas.',
+                  style: TextStyle(color: Tokens.texto2)),
+            );
+            const semVisiveis = Padding(
+              padding: EdgeInsets.all(Tokens.e16),
+              child: Text('Nenhuma lista com estes estados.', style: TextStyle(color: Tokens.texto2)),
+            );
+            final lado = telemovel ? Tokens.e8 : Tokens.e16;
+            final linhas = SliverPadding(
+              padding: EdgeInsets.fromLTRB(lado, 0, lado, Tokens.e8),
+              sliver: SliverList.builder(
+                itemCount: visiveis.length,
+                itemBuilder: (_, i) => Padding(
+                  padding: const EdgeInsets.only(bottom: 2),
+                  child: Material(
+                    type: MaterialType.transparency,
+                    child: _linha(visiveis[i], largo, agora, telemovel: telemovel),
+                  ),
+                ),
+              ),
+            );
+            if (telemovel) {
+              // no telemóvel a pesquisa e os estados deslizam com as listas (no ecrã baixo deixam
+              // espaço às listas); a barra da seleção e de Ações fica presa em cima, sempre à mão
+              return CustomScrollView(slivers: [
+                SliverToBoxAdapter(child: _linhaDeCima(caixa.maxWidth, contagens, telemovel: true)),
+                PinnedHeaderSliver(child: _barraSelecao(visiveis)),
+                if (listas.isEmpty)
+                  const SliverToBoxAdapter(child: semListas)
+                else if (visiveis.isEmpty)
+                  const SliverToBoxAdapter(child: semVisiveis),
+                linhas,
+              ]);
+            }
             // a linha de cima e o cabeçalho ficam fixos (Ações sempre à vista e montado); só a
             // tabela desliza, e as linhas continuam preguiçosas
             return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              _linhaDeCima(caixa.maxWidth, contagens),
+              _linhaDeCima(caixa.maxWidth, contagens, telemovel: false),
               if (listas.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.all(Tokens.e16),
-                  child: Text('Ainda não há listas. Comece pelo passo 1: importe as listas.',
-                      style: TextStyle(color: Tokens.texto2)),
-                )
+                semListas
               else ...[
                 _cabecalho(largo, visiveis),
-                if (visiveis.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.all(Tokens.e16),
-                    child: Text('Nenhuma lista com estes estados.', style: TextStyle(color: Tokens.texto2)),
-                  ),
+                if (visiveis.isEmpty) semVisiveis,
               ],
-              Expanded(
-                child: CustomScrollView(slivers: [
-                  SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(Tokens.e16, 0, Tokens.e16, Tokens.e8),
-                    sliver: SliverList.builder(
-                      itemCount: visiveis.length,
-                      itemBuilder: (_, i) => Padding(
-                        padding: const EdgeInsets.only(bottom: 2),
-                        child: Material(
-                          type: MaterialType.transparency,
-                          child: _linha(visiveis[i], largo, agora),
-                        ),
-                      ),
-                    ),
-                  ),
-                ]),
-              ),
+              Expanded(child: CustomScrollView(slivers: [linhas])),
             ]);
           }),
         ),
       );
 
+  /// `Ações (N)`: o menu das ações (no telemóvel com o alvo de toque de 48).
+  Widget _botaoAcoes({required bool telemovel}) => FilledButton(
+        key: const ValueKey('botaoAcoes'),
+        focusNode: _focoAcoes,
+        style: FilledButton.styleFrom(
+          minimumSize: Size(0, telemovel ? Tokens.alvoToque : 40),
+          tapTargetSize: telemovel ? MaterialTapTargetSize.padded : MaterialTapTargetSize.shrinkWrap,
+          padding: const EdgeInsets.symmetric(horizontal: Tokens.e16, vertical: Tokens.e8),
+        ),
+        onPressed: abrirAcoes,
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Text('Ações (${_selecionadas.length})'),
+          const SizedBox(width: Tokens.e4),
+          const Icon(Icons.arrow_drop_down, size: 20),
+        ]),
+      );
+
+  /// A barra presa do telemóvel: a ☐ «Selecionar visíveis» e `Ações (N)`, sobre o fundo (as
+  /// listas passam por baixo dela).
+  Widget _barraSelecao(List<Lista> visiveis) => Material(
+        color: Tokens.fundo,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(Tokens.e8, Tokens.e4, Tokens.e16, Tokens.e4),
+          child: Row(children: [
+            Expanded(child: _selecionarVisiveis(visiveis)),
+            const SizedBox(width: Tokens.e8),
+            _botaoAcoes(telemovel: true),
+          ]),
+        ),
+      );
+
   /// A pesquisa, os estados e, à direita, `Ações (N)`: numa só linha quando cabem (TV, Windows),
-  /// senão em várias.
-  Widget _linhaDeCima(double largura, Map<EstadoLista, int> contagens) {
+  /// senão em várias. No telemóvel só a pesquisa (com a largura toda) e os estados por baixo
+  /// (Ações vai para a [_barraSelecao]).
+  Widget _linhaDeCima(double largura, Map<EstadoLista, int> contagens, {required bool telemovel}) {
     final pesquisa = CampoTv(
       controller: _pesquisa,
       focusNode: widget.focoInicial,
-      // baixa (40), como os estados e Ações: a linha de cima não come linhas à tabela
-      decoration: const InputDecoration(
+      // baixa (40), como os estados e Ações: a linha de cima não come linhas à tabela; no
+      // telemóvel, com o alvo de toque de 48
+      decoration: InputDecoration(
         hintText: 'Pesquisar listas…',
-        prefixIcon: Icon(Icons.search),
-        prefixIconConstraints: BoxConstraints(minWidth: 40, minHeight: 36),
-        contentPadding: EdgeInsets.symmetric(horizontal: Tokens.e12, vertical: 10),
+        prefixIcon: const Icon(Icons.search),
+        prefixIconConstraints: const BoxConstraints(minWidth: 40, minHeight: 36),
+        contentPadding: EdgeInsets.symmetric(horizontal: Tokens.e12, vertical: telemovel ? 14 : 10),
         isDense: true,
       ),
     );
@@ -383,28 +431,24 @@ class PassoVerificarState extends State<PassoVerificar> {
           label: Text('$t · ${contagens[e] ?? 0}'),
           selected: _filtro.contains(e),
           showCheckmark: true,
-          visualDensity: VisualDensity.compact,
+          // no telemóvel, o alvo de toque de 48
+          visualDensity: telemovel ? null : VisualDensity.compact,
           onSelected: (v) => setState(() => v ? _filtro.add(e) : _filtro.remove(e)),
         ),
     ];
-    final n = _selecionadas.length;
-    final acoes = FilledButton(
-      key: const ValueKey('botaoAcoes'),
-      focusNode: _focoAcoes,
-      style: FilledButton.styleFrom(
-        minimumSize: const Size(0, 40),
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        padding: const EdgeInsets.symmetric(horizontal: Tokens.e16, vertical: Tokens.e8),
-      ),
-      onPressed: abrirAcoes,
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Text('Ações ($n)'),
-        const SizedBox(width: Tokens.e4),
-        const Icon(Icons.arrow_drop_down, size: 20),
-      ]),
-    );
+    final acoes = _botaoAcoes(telemovel: telemovel);
     const margem = EdgeInsets.fromLTRB(Tokens.e16, Tokens.e8, Tokens.e16, Tokens.e4);
-    // no telemóvel não cabe numa linha: em várias
+    if (telemovel) {
+      return Padding(
+        padding: margem,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          pesquisa,
+          const SizedBox(height: Tokens.e4),
+          Wrap(spacing: Tokens.e8, children: estados),
+        ]),
+      );
+    }
+    // estreito sem ser telemóvel (uma janela estreita no Windows): em várias linhas
     if (largura < 700) {
       return Padding(
         padding: margem,
@@ -492,55 +536,100 @@ class PassoVerificarState extends State<PassoVerificar> {
     );
   }
 
-  Widget _linha(Lista l, bool largo, DateTime agora) {
+  /// A ☐ «Selecionar visíveis» do telemóvel (na linha de cima, com o texto e o alvo de 48): faz
+  /// o mesmo que a do cabeçalho.
+  Widget _selecionarVisiveis(List<Lista> visiveis) => RealceFoco(
+        raio: 8,
+        construir: (_, aoMudarFoco) => CheckboxListTile(
+          key: const ValueKey('caixaCabecalho'),
+          focusNode: _focoCabecalho,
+          onFocusChange: aoMudarFoco,
+          tristate: true,
+          value: _estadoCabecalho(visiveis),
+          onChanged: visiveis.isEmpty ? null : (_) => _alternarVisiveis(),
+          title: const Text('Selecionar visíveis', maxLines: 1, overflow: TextOverflow.ellipsis),
+          contentPadding: EdgeInsets.zero,
+          horizontalTitleGap: Tokens.e4,
+          minTileHeight: Tokens.alvoToque,
+          materialTapTargetSize: MaterialTapTargetSize.padded,
+          controlAffinity: ListTileControlAffinity.leading,
+        ),
+      );
+
+  /// Uma lista: na TV e no Windows uma linha baixa com as colunas; no telemóvel duas linhas (o
+  /// nome inteiro, até duas linhas, com o teste à direita; por baixo o estado e o motivo).
+  Widget _linha(Lista l, bool largo, DateTime agora, {bool telemovel = false}) {
     final passo = _s.passos[l.id];
     final u = l.ultima;
     final motivo = u?.motivo ?? '';
+    final pilula = PilulaEstado(estadoDe(l));
     final Widget estado = passo == null
-        ? Align(alignment: Alignment.centerLeft, child: PilulaEstado(estadoDe(l)))
+        ? (telemovel ? pilula : Align(alignment: Alignment.centerLeft, child: pilula))
         : Text(passo == 'na fila' ? 'Na fila' : 'A verificar · $passo',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(color: Tokens.anelFoco, fontWeight: FontWeight.w600));
     const pequeno = TextStyle(color: Tokens.texto2, fontSize: 13);
+    final nome = Text(l.nomeMostrado,
+        maxLines: telemovel ? 2 : 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(fontWeight: FontWeight.w600));
+    final teste = Text(_teste(u?.data, agora), maxLines: 1, style: pequeno);
+    final linha = RealceFoco(
+      raio: 8,
+      construir: (_, aoMudarFoco) => CheckboxListTile(
+        focusNode: _focoLinha(l.id),
+        onFocusChange: (f) {
+          aoMudarFoco(f);
+          if (f) {
+            _linhaFocada = l.id;
+            _ordemVista = [for (final x in _visiveis()) x.id];
+          }
+        },
+        value: _selecao.contains(l.id),
+        onChanged: (v) => setState(() => v == true ? _selecao.add(l.id) : _selecao.remove(l.id)),
+        title: telemovel
+            ? Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Expanded(child: nome),
+                const SizedBox(width: Tokens.e8),
+                teste,
+              ])
+            : _colunas(
+                largo,
+                nome,
+                estado,
+                Text(motivo.isEmpty ? '—' : motivo, maxLines: 1, overflow: TextOverflow.ellipsis, style: pequeno),
+                teste,
+              ),
+        subtitle: telemovel
+            ? Padding(
+                padding: const EdgeInsets.only(top: Tokens.e4),
+                child: Row(children: [
+                  if (passo == null) estado else Flexible(child: estado),
+                  if (motivo.isNotEmpty) ...[
+                    const SizedBox(width: Tokens.e8),
+                    Expanded(child: Text(motivo, maxLines: 2, overflow: TextOverflow.ellipsis, style: pequeno)),
+                  ],
+                ]),
+              )
+            : null,
+        contentPadding: EdgeInsets.symmetric(horizontal: telemovel ? Tokens.e4 : _recuoTile),
+        horizontalTitleGap: telemovel ? Tokens.e4 : _espacoTitulo,
+        minVerticalPadding: telemovel ? Tokens.e8 : 0,
+        minTileHeight: telemovel ? Tokens.alturaLinhaTelemovel : alturaLinha,
+        visualDensity: telemovel ? null : _densidade,
+        materialTapTargetSize: telemovel ? MaterialTapTargetSize.padded : MaterialTapTargetSize.shrinkWrap,
+        controlAffinity: ListTileControlAffinity.leading,
+        dense: !telemovel,
+      ),
+    );
     return Focus(
       canRequestFocus: false,
       skipTraversal: true,
       includeSemantics: false,
       onKeyEvent: (_, e) => _teclaLinha(e),
-      child: SizedBox(
-        height: alturaLinha,
-        child: RealceFoco(
-          raio: 8,
-          construir: (_, aoMudarFoco) => CheckboxListTile(
-            focusNode: _focoLinha(l.id),
-            onFocusChange: (f) {
-              aoMudarFoco(f);
-              if (f) {
-                _linhaFocada = l.id;
-                _ordemVista = [for (final x in _visiveis()) x.id];
-              }
-            },
-            value: _selecao.contains(l.id),
-            onChanged: (v) => setState(() => v == true ? _selecao.add(l.id) : _selecao.remove(l.id)),
-            title: _colunas(
-              largo,
-              Text(l.nomeMostrado, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
-              estado,
-              Text(motivo.isEmpty ? '—' : motivo, maxLines: 1, overflow: TextOverflow.ellipsis, style: pequeno),
-              Text(_teste(u?.data, agora), maxLines: 1, style: pequeno),
-            ),
-            contentPadding: const EdgeInsets.symmetric(horizontal: _recuoTile),
-            horizontalTitleGap: _espacoTitulo,
-            minVerticalPadding: 0,
-            minTileHeight: alturaLinha,
-            visualDensity: _densidade,
-            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            controlAffinity: ListTileControlAffinity.leading,
-            dense: true,
-          ),
-        ),
-      ),
+      // na TV e no Windows a altura é fixa (cabem pelo menos 12); no telemóvel cresce com o nome
+      child: telemovel ? linha : SizedBox(height: alturaLinha, child: linha),
     );
   }
 }

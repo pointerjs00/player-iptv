@@ -68,6 +68,11 @@ abstract final class Tokens {
   /// menos 12).
   static const alturaLinhaTabela = 32.0;
 
+  /// No telemóvel (`ecraTelemovel`): a altura mínima de uma linha de duas linhas de texto nas
+  /// tabelas do Gestor, e o alvo de toque mínimo (o do Material).
+  static const alturaLinhaTelemovel = 56.0;
+  static const alvoToque = 48.0;
+
   // --- sombras (em camadas: uma curta e nítida + uma longa e difusa); pintadas só por fora
   // das superfícies de vidro (ver SombraExterior) ---
   static const sombra1 = [

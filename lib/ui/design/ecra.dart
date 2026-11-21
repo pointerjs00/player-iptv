@@ -15,6 +15,15 @@ bool ecraTv(BuildContext context) {
       MediaQuery.sizeOf(context).width >= 1200;
 }
 
+/// Abaixo desta largura (em lógicos), um ecrã que não é TV é um telemóvel ao alto.
+const larguraTelemovel = 600.0;
+
+/// É um telemóvel (ao alto)? Não é TV e o ecrã tem menos de [larguraTelemovel] de largura. Aí
+/// as filas únicas do D-pad passam a `Wrap`, os alvos de toque têm 48 e as dicas do comando
+/// saem; a TV e o Windows (largos) ficam como estão.
+bool ecraTelemovel(BuildContext context) =>
+    !ecraTv(context) && MediaQuery.sizeOf(context).width < larguraTelemovel;
+
 /// O maior fator da letra do sistema que as alturas fixas acompanham: acima dele, a letra
 /// dessas peças fica presa ([letraPresa]).
 const limiteEscalaTexto = 2.0;

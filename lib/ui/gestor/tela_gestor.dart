@@ -76,6 +76,9 @@ class _TelaGestorState extends State<TelaGestor> {
   static const _passos = [EcraGestor.importar, EcraGestor.verificar, EcraGestor.enviar];
   static const _nomesPassos = ['Importar', 'Verificar', 'Enviar ou exportar'];
 
+  /// Os nomes na faixa do telemóvel (curtos, para caberem inteiros os três).
+  static const _nomesCurtos = ['Importar', 'Verificar', 'Enviar'];
+
   /// As marcadas do passo 3 (ids): ficam ao mudar de passo; as que saem do Gestor saem daqui.
   final _marcadas = <String>{};
 
@@ -522,6 +525,13 @@ class _TelaGestorState extends State<TelaGestor> {
   }
 
   Widget _barraTopo() {
+    // no passo 2 é o indicador da verificação (OK abre o progresso, se houve uma); nos outros
+    // ecrãs, o de toda a atividade (OK abre o painel)
+    final indicador = _ecra == EcraGestor.verificar
+        ? IndicadorAtividade(
+            servico: _s, tarefas: widget.tarefas, foco: _focoIndicador, soVerificacao: true, aoAbrir: _verVerificacao)
+        : IndicadorAtividade(servico: _s, tarefas: widget.tarefas, foco: _focoIndicador, aoAbrir: _abrirAtividade);
+    if (ecraTelemovel(context)) return _barraTopoTelemovel(indicador);
     final titulo = switch (_ecra) {
       EcraGestor.resumo => 'Gestor de listas',
       EcraGestor.importar => 'Importar listas',
@@ -548,23 +558,44 @@ class _TelaGestorState extends State<TelaGestor> {
               style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Tokens.texto)),
         ),
         const SizedBox(width: Tokens.e12),
-        // no passo 2 é o indicador da verificação (OK abre o progresso, se houve uma); nos outros
-        // ecrãs, o de toda a atividade (OK abre o painel)
         // no canto direito: o indicador só encolhe se não couber
-        Flexible(
-          child: Align(
-            alignment: Alignment.centerRight,
-            child: _ecra == EcraGestor.verificar
-                ? IndicadorAtividade(
-                    servico: _s,
-                    tarefas: widget.tarefas,
-                    foco: _focoIndicador,
-                    soVerificacao: true,
-                    aoAbrir: _verVerificacao)
-                : IndicadorAtividade(
-                    servico: _s, tarefas: widget.tarefas, foco: _focoIndicador, aoAbrir: _abrirAtividade),
+        Flexible(child: Align(alignment: Alignment.centerRight, child: indicador)),
+      ]),
+    );
+  }
+
+  /// O topo no telemóvel, como uma barra de app: ← só com o ícone (48), o título só no resumo
+  /// e no progresso (num passo, a faixa já diz onde se está) e o indicador compacto à direita.
+  Widget _barraTopoTelemovel(Widget indicador) {
+    final titulo = switch (_ecra) {
+      EcraGestor.resumo => 'Gestor de listas',
+      EcraGestor.verificacao => 'Verificação',
+      _ => null,
+    };
+    final resumo = _ecra == EcraGestor.resumo;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(resumo ? Tokens.e16 : Tokens.e4, Tokens.e4, Tokens.e8, 0),
+      child: Row(children: [
+        if (!resumo)
+          IconButton(
+            focusNode: _focoVoltar,
+            onPressed: _voltar,
+            tooltip: 'Voltar',
+            icon: const Icon(Icons.arrow_back),
           ),
+        Expanded(
+          child: titulo == null
+              ? const SizedBox.shrink()
+              : Padding(
+                  padding: EdgeInsets.only(left: resumo ? 0 : Tokens.e4),
+                  child: Text(titulo,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Tokens.texto)),
+                ),
         ),
+        const SizedBox(width: Tokens.e8),
+        indicador,
       ]),
     );
   }
@@ -630,30 +661,37 @@ class _TelaGestorState extends State<TelaGestor> {
         _ => false,
       };
 
-  Widget _itemFaixa(int i, String nome, {required bool aberto, required bool focado}) => Semantics(
-        button: true,
-        selected: aberto,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () => _abrir(_passos[i], naFaixa: true),
-          child: Container(
-            key: ValueKey('faixa ${i + 1}'),
-            // compacta na TV e no Windows (a 80 %); no telemóvel, o alvo de toque de 48
-            height: _faixaCompacta(context) ? 36 : 48,
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            alignment: Alignment.centerLeft,
-            decoration: BoxDecoration(
-              color: aberto ? Tokens.acento : Tokens.superficie2,
-              borderRadius: BorderRadius.circular(Tokens.raioCampo),
-              border: focado ? Border.all(color: Tokens.anelFoco, width: 4) : null,
-            ),
-            child: Text('${i + 1} · $nome',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: aberto ? Tokens.texto : Tokens.texto2)),
+  Widget _itemFaixa(int i, String nome, {required bool aberto, required bool focado}) {
+    // no telemóvel o nome curto, centrado e sempre inteiro (encolhe se a letra for muito grande)
+    final telemovel = ecraTelemovel(context);
+    final estilo = TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: aberto ? Tokens.texto : Tokens.texto2);
+    return Semantics(
+      button: true,
+      selected: aberto,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => _abrir(_passos[i], naFaixa: true),
+        child: Container(
+          key: ValueKey('faixa ${i + 1}'),
+          // compacta na TV e no Windows (a 80 %); no telemóvel, o alvo de toque de 48
+          height: _faixaCompacta(context) ? 36 : Tokens.alvoToque,
+          padding: EdgeInsets.symmetric(horizontal: telemovel ? Tokens.e8 : 14),
+          alignment: telemovel ? Alignment.center : Alignment.centerLeft,
+          decoration: BoxDecoration(
+            color: aberto ? Tokens.acento : Tokens.superficie2,
+            borderRadius: BorderRadius.circular(Tokens.raioCampo),
+            border: focado ? Border.all(color: Tokens.anelFoco, width: 4) : null,
           ),
+          child: telemovel
+              ? FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(_nomesCurtos[i], maxLines: 1, softWrap: false, style: estilo),
+                )
+              : Text('${i + 1} · $nome', maxLines: 1, overflow: TextOverflow.ellipsis, style: estilo),
         ),
-      );
+      ),
+    );
+  }
 
   // ---------------------------------------------------------------- resumo
 
@@ -729,7 +767,10 @@ class _TelaGestorState extends State<TelaGestor> {
 
   /// Um cartão do resumo, baixo: o número e o nome do passo numa linha, o estado (o número
   /// grande com o rótulo ao lado e até duas linhas) e "OK: abrir →".
-  Widget _cartao(int i, bool largo, List<Widget> corpo) => CartaoModerno(
+  Widget _cartao(int i, bool largo, List<Widget> corpo) {
+    // a dica do comando só fora do telemóvel; aí, a seta › diz que o cartão abre
+    final telemovel = ecraTelemovel(context);
+    return CartaoModerno(
         focusNode: _focosCartoes[i],
         escalaFoco: 1.02,
         padding: const EdgeInsets.symmetric(horizontal: Tokens.e12, vertical: 10),
@@ -750,14 +791,19 @@ class _TelaGestorState extends State<TelaGestor> {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Tokens.texto)),
             ),
+            if (telemovel) const Icon(Icons.chevron_right, color: Tokens.texto2),
           ]),
           const SizedBox(height: 6),
           for (final w in corpo) Padding(padding: const EdgeInsets.only(bottom: 2), child: w),
-          // lado a lado (com a mesma altura), "OK: abrir →" fica em baixo em todos
-          if (largo) const Spacer() else const SizedBox(height: Tokens.e4),
-          const Text('OK: abrir →', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Tokens.anelFoco)),
+          if (!telemovel) ...[
+            // lado a lado (com a mesma altura), "OK: abrir →" fica em baixo em todos
+            if (largo) const Spacer() else const SizedBox(height: Tokens.e4),
+            const Text('OK: abrir →',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Tokens.anelFoco)),
+          ],
         ]),
       );
+  }
 
   /// O número grande com o rótulo ao lado ("5 por verificar").
   static Widget _numeroGrande(int n, Color cor, String rotulo) => Row(

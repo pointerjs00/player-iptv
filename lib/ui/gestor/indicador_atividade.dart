@@ -14,6 +14,9 @@ const tituloTarefaStb = 'Pesquisa no stbstalker';
 /// Com [soVerificacao] (no passo 2 do Gestor) só fala da verificação: "A verificar 2/5" a
 /// decorrer; "nada a decorrer · ver última" depois de uma ronda (o [aoAbrir] abre o progresso);
 /// "nada a decorrer" antes de qualquer verificação (e aí não é botão).
+///
+/// No telemóvel ([ecraTelemovel]) só mostra o ícone e o contador; o texto todo fica na dica
+/// (toque longo) e na leitura do ecrã.
 class IndicadorAtividade extends StatelessWidget {
   const IndicadorAtividade(
       {super.key, required this.servico, required this.tarefas, this.aoAbrir, this.foco, this.soVerificacao = false});
@@ -54,20 +57,44 @@ class IndicadorAtividade extends StatelessWidget {
               : houve
                   ? 'nada a decorrer · ver última'
                   : 'nada a decorrer';
+          final completo = ativo ? t : vazio;
+          final telemovel = ecraTelemovel(context);
+          // no telemóvel só o ícone e o contador ("2/5", ou o número de tarefas); o texto todo fica
+          // na dica (toque longo) e na leitura do ecrã
+          final contador = !telemovel
+              ? null
+              : servico.ocupado
+                  ? '${servico.feitas}/${servico.total}'
+                  : !soVerificacao && tarefas.emCurso.isNotEmpty
+                      ? '${tarefas.emCurso.length}'
+                      : '';
           final conteudo = Row(mainAxisSize: MainAxisSize.min, children: [
             // um ícone parado (uma roda a girar sempre à vista não deixava o ecrã sossegar)
             Icon(ativo ? Icons.autorenew : Icons.check_circle_outline,
-                size: 16, color: ativo ? Tokens.anelFoco : Tokens.texto2),
-            const SizedBox(width: Tokens.e8),
-            Flexible(
-              child: Text(ativo ? t : vazio,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: ativo ? Tokens.texto : Tokens.texto2, fontSize: 13)),
-            ),
+                size: telemovel ? 20 : 16, color: ativo ? Tokens.anelFoco : Tokens.texto2),
+            if (contador == null) ...[
+              const SizedBox(width: Tokens.e8),
+              Flexible(
+                child: Text(completo,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: ativo ? Tokens.texto : Tokens.texto2, fontSize: 13)),
+              ),
+            ] else if (contador.isNotEmpty) ...[
+              const SizedBox(width: Tokens.e4),
+              // (o rótulo já o diz)
+              ExcludeSemantics(
+                child: Text(contador,
+                    maxLines: 1,
+                    softWrap: false,
+                    style: const TextStyle(color: Tokens.texto, fontSize: 13, fontWeight: FontWeight.w600)),
+              ),
+            ],
           ]);
           final caixa = Container(
-            padding: const EdgeInsets.symmetric(horizontal: Tokens.e12, vertical: 6),
+            padding: telemovel
+                ? const EdgeInsets.symmetric(horizontal: Tokens.e8, vertical: Tokens.e4)
+                : const EdgeInsets.symmetric(horizontal: Tokens.e12, vertical: 6),
             decoration: BoxDecoration(
               color: ativo ? Tokens.superficie3 : Tokens.vidro,
               borderRadius: BorderRadius.circular(Tokens.raioPilula),
@@ -76,19 +103,30 @@ class IndicadorAtividade extends StatelessWidget {
             child: conteudo,
           );
           final abrir = soVerificacao && !houve ? null : aoAbrir;
+          final botao = abrir == null
+              ? (telemovel
+                  ? ConstrainedBox(
+                      constraints: const BoxConstraints(minWidth: Tokens.alvoToque, minHeight: Tokens.alvoToque),
+                      child: Center(widthFactor: 1, heightFactor: 1, child: caixa),
+                    )
+                  : caixa)
+              : TextButton(
+                  focusNode: foco,
+                  onPressed: abrir,
+                  style: TextButton.styleFrom(
+                    padding: EdgeInsets.zero,
+                    shape: const StadiumBorder(),
+                    minimumSize: telemovel ? const Size.square(Tokens.alvoToque) : null,
+                  ),
+                  child: caixa,
+                );
           return Semantics(
             liveRegion: true,
-            label: ativo ? t : vazio,
+            label: completo,
             hint: soVerificacao && abrir != null ? 'abre o progresso da verificação' : null,
             excludeSemantics: abrir == null,
-            child: abrir == null
-                ? caixa
-                : TextButton(
-                    focusNode: foco,
-                    onPressed: abrir,
-                    style: TextButton.styleFrom(padding: EdgeInsets.zero, shape: const StadiumBorder()),
-                    child: caixa,
-                  ),
+            // a dica repete o rótulo: fica fora da leitura do ecrã
+            child: telemovel ? Tooltip(message: completo, excludeFromSemantics: true, child: botao) : botao,
           );
         },
       );

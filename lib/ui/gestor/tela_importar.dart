@@ -234,9 +234,15 @@ class _TelaImportarState extends State<TelaImportar> {
         ),
       );
 
-  /// Os cartões das origens: quatro numa linha (ou dois e dois num ecrã estreito).
+  /// Os cartões das origens: quatro numa linha (ou dois e dois num ecrã estreito); no telemóvel,
+  /// uma por linha (ícone, título e descrição lado a lado: nada se parte a meio da palavra).
   Widget _origens() => LayoutBuilder(builder: (context, caixa) {
-        final colunas = caixa.maxWidth >= 560 ? 4 : 2;
+        final telemovel = ecraTelemovel(context);
+        final colunas = telemovel
+            ? 1
+            : caixa.maxWidth >= 560
+                ? 4
+                : 2;
         final nPlayer = _b.listas.length;
         final origens = <(OrigemImportacao, IconData, String, String)>[
           (OrigemImportacao.ficheiros, Icons.file_open_outlined, 'Ficheiros', 'Accounts.json, .ini, .m3u, .txt'),
@@ -255,6 +261,7 @@ class _TelaImportarState extends State<TelaImportar> {
               subtitulo: sub,
               escolhida: _origem == o,
               aoEscolher: () => setState(() => _origem = o),
+              deitado: telemovel,
             ),
         ];
         // linhas de cartões com a mesma altura (o comando trata-os como uma só linha)
@@ -418,6 +425,28 @@ class _TelaImportarState extends State<TelaImportar> {
     );
   }
 
+  /// «Limpar o Gestor»: no telemóvel uma ação secundária e destrutiva (texto vermelho, separada
+  /// por um traço, no fim do ecrã); na TV e no Windows o botão de contorno de sempre.
+  Widget _botaoLimpar() {
+    const icone = Icon(Icons.delete_sweep_outlined);
+    const rotulo = Text('Limpar o Gestor');
+    if (!ecraTelemovel(context)) {
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: OutlinedButton.icon(onPressed: _limpar, icon: icone, label: rotulo),
+      );
+    }
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const Divider(height: Tokens.e16, color: Tokens.bordaVidro),
+      TextButton.icon(
+        onPressed: _limpar,
+        style: TextButton.styleFrom(foregroundColor: Tokens.mau, minimumSize: const Size(0, Tokens.alvoToque)),
+        icon: icone,
+        label: rotulo,
+      ),
+    ]);
+  }
+
   @override
   Widget build(BuildContext context) => ListenableBuilder(
         listenable: Listenable.merge([_g, _b, widget.tarefas, widget.registo]),
@@ -436,17 +465,7 @@ class _TelaImportarState extends State<TelaImportar> {
                 _bloco(1, _painel()),
                 if (ultima != null) _bloco(2, _resultado(ultima)) else const SizedBox.shrink(),
                 // fica ligado com o Gestor vazio (um botão desligado perde o foco do comando)
-                _bloco(
-                    3,
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: OutlinedButton.icon(
-                        onPressed: _limpar,
-                        icon: const Icon(Icons.delete_sweep_outlined),
-                        label: const Text('Limpar o Gestor'),
-                      ),
-                    ),
-                    vidro: false),
+                _bloco(3, _botaoLimpar(), vidro: false),
               ]),
             ),
           );
@@ -463,6 +482,7 @@ class _CartaoOrigem extends StatelessWidget {
     required this.escolhida,
     required this.aoEscolher,
     this.focusNode,
+    this.deitado = false,
   });
 
   final IconData icone;
@@ -470,6 +490,25 @@ class _CartaoOrigem extends StatelessWidget {
   final bool escolhida;
   final VoidCallback aoEscolher;
   final FocusNode? focusNode;
+
+  /// Numa linha (telemóvel): o ícone à esquerda, o título e a descrição ao meio e o ✓ à direita.
+  final bool deitado;
+
+  Widget _textos({required int linhasSubtitulo}) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(titulo,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Tokens.texto)),
+          const SizedBox(height: 2),
+          Text(subtitulo,
+              maxLines: linhasSubtitulo,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 12.5, color: Tokens.texto2)),
+        ],
+      );
 
   @override
   Widget build(BuildContext context) => Semantics(
@@ -486,25 +525,39 @@ class _CartaoOrigem extends StatelessWidget {
             raio: Tokens.raioBotao,
             padding: const EdgeInsets.all(Tokens.e12),
             onTap: aoEscolher,
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-              Row(children: [
-                Icon(icone, color: escolhida ? Tokens.acento : Tokens.texto2),
-                const Spacer(),
-                if (escolhida)
-                  const Icon(Icons.check_circle, key: Key('origem-escolhida'), size: 18, color: Tokens.acento,
-                      semanticLabel: 'escolhida'),
-              ]),
-              const SizedBox(height: Tokens.e8),
-              Text(titulo,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Tokens.texto)),
-              const SizedBox(height: 2),
-              Text(subtitulo,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 12.5, color: Tokens.texto2)),
-            ]),
+            child: deitado
+                ? ConstrainedBox(
+                    // (com o padding de 12: 56 de altura, no mínimo)
+                    constraints: const BoxConstraints(minHeight: Tokens.alturaLinhaTelemovel - 2 * Tokens.e12),
+                    child: Row(children: [
+                      Icon(icone, color: escolhida ? Tokens.acento : Tokens.texto2),
+                      const SizedBox(width: Tokens.e12),
+                      Expanded(child: _textos(linhasSubtitulo: 2)),
+                      const SizedBox(width: Tokens.e8),
+                      // o ✓ ocupa sempre o seu lugar: escolher não mexe nos textos
+                      SizedBox(
+                        width: 18,
+                        child: escolhida
+                            ? const Icon(Icons.check_circle,
+                                key: Key('origem-escolhida'),
+                                size: 18,
+                                color: Tokens.acento,
+                                semanticLabel: 'escolhida')
+                            : null,
+                      ),
+                    ]),
+                  )
+                : Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                    Row(children: [
+                      Icon(icone, color: escolhida ? Tokens.acento : Tokens.texto2),
+                      const Spacer(),
+                      if (escolhida)
+                        const Icon(Icons.check_circle, key: Key('origem-escolhida'), size: 18, color: Tokens.acento,
+                            semanticLabel: 'escolhida'),
+                    ]),
+                    const SizedBox(height: Tokens.e8),
+                    _textos(linhasSubtitulo: 3),
+                  ]),
           ),
         ),
       );

@@ -198,16 +198,19 @@ class PassoEnviarState extends State<PassoEnviar> {
           widget.marcadas.removeWhere((id) => _g.porId(id) == null);
           final sel = [for (final l in listas) if (widget.marcadas.contains(l.id)) l];
           final largo = caixa.maxWidth >= 720;
+          // no telemóvel: os chips num Wrap, linhas de toque (≥ 48) e sem as dicas do comando
+          final telemovel = ecraTelemovel(context);
           final lista = SliverList.builder(
             itemCount: listas.length,
             itemBuilder: (_, i) => Padding(
               padding: const EdgeInsets.only(bottom: 2),
-              child: Material(type: MaterialType.transparency, child: _linha(listas[i])),
+              child: Material(type: MaterialType.transparency, child: _linha(listas[i], telemovel: telemovel)),
             ),
           );
+          final marcadas = _n(sel.length, 'marcada', 'marcadas');
           final rodape = Padding(
             padding: const EdgeInsets.only(top: Tokens.e8),
-            child: Text('${_n(sel.length, 'marcada', 'marcadas')} · OK marca/desmarca uma lista',
+            child: Text(telemovel ? marcadas : '$marcadas · OK marca/desmarca uma lista',
                 style: const TextStyle(color: Tokens.texto2, fontSize: 13, fontWeight: FontWeight.w500)),
           );
           final cartoes = _cartoes(sel);
@@ -239,7 +242,7 @@ class PassoEnviarState extends State<PassoEnviar> {
             Padding(
               padding: const EdgeInsets.fromLTRB(Tokens.e16, Tokens.e16, Tokens.e16, Tokens.e8),
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                _marcarBarra(listas),
+                _marcarBarra(listas, telemovel: telemovel),
                 const SizedBox(height: Tokens.e8),
                 _cartoes(sel, barra: true),
               ]),
@@ -257,7 +260,8 @@ class PassoEnviarState extends State<PassoEnviar> {
         }),
       );
 
-  Widget _marcarBarra(List<Lista> listas) {
+  Widget _marcarBarra(List<Lista> listas, {bool telemovel = false}) {
+    final alvo = telemovel ? MaterialTapTargetSize.padded : MaterialTapTargetSize.shrinkWrap;
     // um chip por estado, ligado quando todas as listas desse estado estão marcadas (calcula-se
     // das marcadas: marcar à mão a última que faltava liga-o); sem listas desse estado, desativado
     FilterChip chip(String nome, List<Lista> doEstado, {required FocusNode foco, VoidCallback? aoLigar, bool? ligado}) {
@@ -267,8 +271,8 @@ class PassoEnviarState extends State<PassoEnviar> {
         focusNode: foco,
         label: Text('$nome ($n)'),
         selected: ligado ?? todas,
-        visualDensity: VisualDensity.compact,
-        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        visualDensity: telemovel ? null : VisualDensity.compact,
+        materialTapTargetSize: alvo,
         onSelected: n == 0
             ? null
             : (v) => aoLigar != null ? aoLigar() : _marcarEstado([for (final l in doEstado) l.id], v),
@@ -289,15 +293,23 @@ class PassoEnviarState extends State<PassoEnviar> {
       ActionChip(
         focusNode: _focoNenhuma,
         label: const Text('Nenhuma'),
-        visualDensity: VisualDensity.compact,
-        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        visualDensity: telemovel ? null : VisualDensity.compact,
+        materialTapTargetSize: alvo,
         onPressed: () => _marcarEstado([for (final l in listas) l.id], false),
       ),
     ];
+    const rotulo = Text('Marcar:', style: TextStyle(color: Tokens.texto2, fontWeight: FontWeight.w500));
+    // no telemóvel todos à vista, em várias linhas (a fila única é para o D-pad)
+    if (telemovel) {
+      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        rotulo,
+        Wrap(spacing: Tokens.e8, children: chips),
+      ]);
+    }
     // numa só linha, com «Marcar:» fixo: se os chips não couberem, deslizam para o lado (o foco
     // leva-os à vista; com o rato há a barra)
     return Row(children: [
-      const Text('Marcar:', style: TextStyle(color: Tokens.texto2, fontWeight: FontWeight.w500)),
+      rotulo,
       const SizedBox(width: Tokens.e8),
       Expanded(
         child: Scrollbar(
@@ -317,42 +329,54 @@ class PassoEnviarState extends State<PassoEnviar> {
   /// Linhas baixas, como as do passo 2 (a mesma altura, [Tokens.alturaLinhaTabela]).
   static const _densidade = VisualDensity(vertical: VisualDensity.minimumDensity);
 
-  Widget _linha(Lista l) => Focus(
-        canRequestFocus: false,
-        skipTraversal: true,
-        onKeyEvent: (_, e) => _teclaLinha(e),
-        child: SizedBox(
-          height: Tokens.alturaLinhaTabela,
-          child: RealceFoco(
-            raio: 8,
-            construir: (_, aoMudarFoco) => CheckboxListTile(
-              focusNode: _focoLinha(l.id),
-              onFocusChange: (f) {
-                aoMudarFoco(f);
-                if (f) _linhaFocada = l.id;
-              },
-              value: widget.marcadas.contains(l.id),
-              onChanged: (v) => _alternar(l.id, v == true),
-              title: Row(children: [
-                Expanded(
-                    child: Text(l.nomeMostrado,
-                        maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600))),
+  /// Uma lista: na TV e no Windows uma linha baixa (o nome e a pílula compacta lado a lado); no
+  /// telemóvel o nome inteiro (até duas linhas) e a pílula por baixo, com o alvo de toque de 48.
+  Widget _linha(Lista l, {bool telemovel = false}) {
+    final nome = Text(l.nomeMostrado,
+        maxLines: telemovel ? 2 : 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(fontWeight: FontWeight.w600));
+    final linha = RealceFoco(
+      raio: 8,
+      construir: (_, aoMudarFoco) => CheckboxListTile(
+        focusNode: _focoLinha(l.id),
+        onFocusChange: (f) {
+          aoMudarFoco(f);
+          if (f) _linhaFocada = l.id;
+        },
+        value: widget.marcadas.contains(l.id),
+        onChanged: (v) => _alternar(l.id, v == true),
+        title: telemovel
+            ? nome
+            : Row(children: [
+                Expanded(child: nome),
                 const SizedBox(width: Tokens.e12),
                 // compacta: não passa a altura da linha, nem com a letra do sistema maior
                 PilulaEstado(estadoDe(l), compacta: true),
               ]),
-              contentPadding: const EdgeInsets.symmetric(horizontal: Tokens.e12),
-              horizontalTitleGap: Tokens.e12,
-              minVerticalPadding: 0,
-              minTileHeight: Tokens.alturaLinhaTabela,
-              visualDensity: _densidade,
-              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              controlAffinity: ListTileControlAffinity.leading,
-              dense: true,
-            ),
-          ),
-        ),
-      );
+        subtitle: telemovel
+            ? Padding(
+                padding: const EdgeInsets.only(top: Tokens.e4),
+                child: Row(children: [PilulaEstado(estadoDe(l))]),
+              )
+            : null,
+        contentPadding: EdgeInsets.symmetric(horizontal: telemovel ? Tokens.e4 : Tokens.e12),
+        horizontalTitleGap: telemovel ? Tokens.e4 : Tokens.e12,
+        minVerticalPadding: telemovel ? Tokens.e8 : 0,
+        minTileHeight: telemovel ? Tokens.alturaLinhaTelemovel : Tokens.alturaLinhaTabela,
+        visualDensity: telemovel ? null : _densidade,
+        materialTapTargetSize: telemovel ? MaterialTapTargetSize.padded : MaterialTapTargetSize.shrinkWrap,
+        controlAffinity: ListTileControlAffinity.leading,
+        dense: !telemovel,
+      ),
+    );
+    return Focus(
+      canRequestFocus: false,
+      skipTraversal: true,
+      onKeyEvent: (_, e) => _teclaLinha(e),
+      child: telemovel ? linha : SizedBox(height: Tokens.alturaLinhaTabela, child: linha),
+    );
+  }
 
   Widget _cartao({required String titulo, required String texto, required Widget botao}) => Container(
         padding: const EdgeInsets.all(Tokens.e12),
