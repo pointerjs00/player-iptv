@@ -380,8 +380,10 @@ void main() {
   testWidgets('ecrã estreito: uma barra fixa por cima da lista com Enviar e Exportar', (t) async {
     await abrir(t, largura: 420);
     final lista = t.getTopLeft(find.text('001ALFA 070927'));
-    final enviar = t.getRect(find.widgetWithText(FilledButton, 'Enviar 0 listas'));
-    final exportar = t.getRect(find.widgetWithText(OutlinedButton, 'Exportar 0 listas'));
+    // (com a letra quadrada dos testes «Enviar 0 listas» não cabe numa linha: o botão diz
+    // «Enviar (0)»; procuram-se os botões pelo tipo)
+    final enviar = t.getRect(find.byType(FilledButton));
+    final exportar = t.getRect(find.byType(OutlinedButton));
     expect(enviar.bottom, lessThanOrEqualTo(lista.dy), reason: 'Enviar fica por cima da lista');
     expect(exportar.bottom, lessThanOrEqualTo(lista.dy), reason: 'Exportar fica por cima da lista');
     // os textos explicativos saem no estreito
@@ -389,6 +391,6 @@ void main() {
     // a lista desliza por baixo: a barra não se mexe
     await t.drag(find.text('001ALFA 070927'), const Offset(0, -80));
     await t.pump();
-    expect(t.getRect(find.widgetWithText(FilledButton, 'Enviar 0 listas')), enviar);
+    expect(t.getRect(find.byType(FilledButton)), enviar);
   });
 }

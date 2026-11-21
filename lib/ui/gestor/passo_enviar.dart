@@ -238,18 +238,20 @@ class PassoEnviarState extends State<PassoEnviar> {
               ]),
             );
           }
-          // estreito (telemóvel): as ações ficam numa barra fixa por cima da lista, que desliza por baixo
+          // estreito (telemóvel): só Enviar e Exportar ficam presos em cima (fora do que desliza:
+          // nem o esticar do fim da lista os mexe); os chips deslizam com as listas (como no
+          // passo 2), para sobrar espaço às listas
           return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(Tokens.e16, Tokens.e16, Tokens.e16, Tokens.e8),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                _marcarBarra(listas, telemovel: telemovel),
-                const SizedBox(height: Tokens.e8),
-                _cartoes(sel, barra: true),
-              ]),
+              child: _cartoes(sel, barra: true),
             ),
             Expanded(
               child: CustomScrollView(slivers: [
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(Tokens.e16, 0, Tokens.e16, Tokens.e8),
+                  sliver: SliverToBoxAdapter(child: _marcarBarra(listas, telemovel: telemovel)),
+                ),
                 SliverPadding(padding: const EdgeInsets.symmetric(horizontal: Tokens.e16), sliver: lista),
                 SliverPadding(
                   padding: const EdgeInsets.fromLTRB(Tokens.e16, 0, Tokens.e16, Tokens.e16),
@@ -407,7 +409,7 @@ class PassoEnviarState extends State<PassoEnviar> {
                   child: FilledButton(
                     focusNode: _focoEnviar,
                     onPressed: n == 0 ? null : () => widget.aoEnviar(sel),
-                    child: Text('Enviar $listas'),
+                    child: _TextoQueCabe('Enviar $listas', curto: 'Enviar ($n)'),
                   ),
                 ),
                 const SizedBox(width: Tokens.e8),
@@ -415,7 +417,7 @@ class PassoEnviarState extends State<PassoEnviar> {
                   child: OutlinedButton(
                     focusNode: _focoExportar,
                     onPressed: n == 0 ? null : () => widget.aoExportar(sel),
-                    child: Text('Exportar $listas'),
+                    child: _TextoQueCabe('Exportar $listas', curto: 'Exportar ($n)'),
                   ),
                 ),
               ])
@@ -443,4 +445,29 @@ class PassoEnviarState extends State<PassoEnviar> {
       ),
     );
   }
+}
+
+/// O rótulo de um botão numa só linha: o [texto] inteiro quando cabe; senão o [curto] (lido
+/// como o [texto] inteiro pelos leitores de ecrã) e, se nem esse couber, encolhido.
+class _TextoQueCabe extends StatelessWidget {
+  const _TextoQueCabe(this.texto, {required this.curto});
+  final String texto;
+  final String curto;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(builder: (context, c) {
+        final tp = TextPainter(
+          text: TextSpan(text: texto, style: DefaultTextStyle.of(context).style),
+          textDirection: Directionality.of(context),
+          textScaler: MediaQuery.textScalerOf(context),
+          maxLines: 1,
+        )..layout();
+        final cabe = tp.width <= c.maxWidth;
+        tp.dispose();
+        if (cabe) return Text(texto, maxLines: 1, softWrap: false);
+        return FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(curto, maxLines: 1, softWrap: false, semanticsLabel: texto),
+        );
+      });
 }

@@ -387,13 +387,51 @@ void main() {
     expect(find.text('Enviar 1 lista'), findsOneWidget);
   });
 
+  noTelemovel('passo 3: os chips deslizam com as listas, Enviar e Exportar presos e numa linha', (t, ecra) async {
+    final sem = t.ensureSemantics();
+    await t.pumpWidget(casca());
+    await t.pumpAndSettle();
+    await abrirPasso(t, 'Enviar ou exportar');
+    await t.tap(noPasso3(find.textContaining('Funcionam (')));
+    await t.pump();
+    final enviar = noPasso3(find.byType(FilledButton));
+    final exportar = noPasso3(find.byType(OutlinedButton));
+    final antes = t.getRect(enviar);
+    // a primeira lista vai até ao topo: os chips saem de vista, Enviar e Exportar não se mexem
+    final primeira = noPasso3(find.text(area.listas.first.nomeMostrado));
+    await t.drag(primeira, Offset(0, -(t.getRect(primeira).top - antes.bottom)));
+    await t.pumpAndSettle();
+    expect(t.getRect(enviar), antes, reason: 'Enviar fica preso em cima');
+    expect(noPasso3(find.text('Marcar:')).hitTestable(), findsNothing, reason: 'os chips deslizaram');
+    final vistas = [
+      for (final l in area.listas)
+        if (noPasso3(find.text(l.nomeMostrado)).hitTestable().evaluate().isNotEmpty &&
+            t.getRect(linha(find.byType(PassoEnviar), l.nomeMostrado)).bottom <= ecra.height + .5)
+          l,
+    ];
+    expect(vistas.length, greaterThanOrEqualTo(5), reason: 'pelo menos 5 listas à vista');
+    // os textos dos botões numa só linha, e lidos por inteiro
+    for (final b in [enviar, exportar]) {
+      noEcra(t, b, ecra);
+      alvo48(t, b);
+      semReticencias(t, find.descendant(of: b, matching: find.byType(Text)));
+      // e com a letra do tamanho certo (sem precisar de encolher)
+      final txt = find.descendant(of: b, matching: find.byType(RichText));
+      expect(t.getRect(txt).width, closeTo(t.renderObject<RenderParagraph>(txt).size.width, .5));
+    }
+    expect(find.bySemanticsLabel(RegExp(r'^Enviar 10 listas$')), findsOneWidget);
+    expect(find.bySemanticsLabel(RegExp(r'^Exportar 10 listas$')), findsOneWidget);
+    sem.dispose();
+  });
+
   noTelemovel('diálogo de envio em ecrã inteiro, com os «manter» à vista sem deslizar', (t, ecra) async {
     await t.pumpWidget(casca());
     await t.pumpAndSettle();
     await abrirPasso(t, 'Enviar ou exportar');
     await t.tap(noPasso3(find.textContaining('Funcionam (')));
     await t.pump();
-    await t.tap(find.text('Enviar 10 listas'));
+    // (a 360 com a letra a 1,3 o botão diz «Enviar (10)»: procura-se pelo tipo)
+    await t.tap(noPasso3(find.byType(FilledButton)));
     await t.pumpAndSettle();
     final dialogo = find.byType(Dialog);
     expect(t.getRect(dialogo), Offset.zero & ecra, reason: 'ecrã inteiro');
