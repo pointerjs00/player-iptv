@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- o fundo do ícone adaptativo: a cor do fundo de ferramentas/marca/icone-origem.webp -->
+<resources>
+    <color name="ic_launcher_background">#001024</color>
+</resources>
