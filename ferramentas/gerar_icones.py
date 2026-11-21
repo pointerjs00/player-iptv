@@ -8,7 +8,7 @@ Precisa do Pillow. Corre com:
 """
 from pathlib import Path
 
-from PIL import Image, ImageChops, ImageDraw
+from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
 AQUI = Path(__file__).resolve().parent
 RAIZ = AQUI.parent
@@ -80,6 +80,42 @@ def reduzir(im: Image.Image, lado: int) -> Image.Image:
     return im.resize((lado, lado), Image.LANCZOS)
 
 
+# onde estão o cérebro e o nome em banner-origem.webp (x0, y0, x1, y1)
+CEREBRO_BANNER = (270, 241, 702, 629)
+NOME_BANNER = (740, 328, 1524, 511)
+
+
+def icone_tv(banner: Image.Image, fundo, lado: int = 1024) -> Image.Image:
+    """O ícone quadrado para TVs: o cérebro por cima do nome, tirados do banner.
+
+    A Fire TV ignora o android:banner nas apps instaladas fora da Appstore e mostra o ícone; com
+    o qualificador `television` só as TVs usam este (os telemóveis ficam com o ícone normal)."""
+    m = 30
+
+    def parte(caixa):
+        c = banner.crop((caixa[0] - m, caixa[1] - m, caixa[2] + m, caixa[3] + m))
+        o = sem_fundo(c, cor_do_fundo(c))
+        a = o.getchannel("A").point(lambda v: 0 if v < 20 else v)
+        # a borda do recorte esbate-se (o fundo do banner tem um degradé)
+        borda = Image.new("L", o.size, 0)
+        ImageDraw.Draw(borda).rectangle((m // 2, m // 2, o.width - 1 - m // 2, o.height - 1 - m // 2),
+                                        fill=255)
+        o.putalpha(ImageChops.multiply(a, borda.filter(ImageFilter.GaussianBlur(m // 4))))
+        return o
+
+    def largura(im, w):
+        return im.resize((w, round(im.height * w / im.width)), Image.LANCZOS)
+
+    cerebro = largura(parte(CEREBRO_BANNER), round(lado * 0.586))
+    nome = largura(parte(NOME_BANNER), round(lado * 0.84))
+    q = Image.new("RGBA", (lado, lado), (*fundo, 255))
+    espaco = round(lado * 0.01)
+    y = (lado - cerebro.height - espaco - nome.height) // 2
+    q.alpha_composite(cerebro, ((lado - cerebro.width) // 2, y))
+    q.alpha_composite(nome, ((lado - nome.width) // 2, y + cerebro.height + espaco))
+    return q
+
+
 def main() -> None:
     origem = Image.open(ICONE).convert("RGB")
     fundo = cor_do_fundo(origem)
@@ -108,6 +144,13 @@ def main() -> None:
 
     # banner 320x180 (16:9): o centro da imagem 2:1 (o ícone e o nome cabem com folga)
     b = Image.open(BANNER).convert("RGB")
+    # TVs (Fire TV): o ícone com o nome; maior que o normal porque o launcher estica-o num cartão
+    tv = icone_tv(b, fundo)
+    for nome, f in DENSIDADES.items():
+        pasta = RES / f"mipmap-television-{nome}"
+        pasta.mkdir(parents=True, exist_ok=True)
+        reduzir(tv, min(512, round(192 * f))).save(pasta / "ic_launcher.png")
+
     largura = round(b.height * 16 / 9)
     x = (b.width - largura) // 2
     (RES / "drawable-xhdpi").mkdir(exist_ok=True)
