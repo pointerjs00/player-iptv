@@ -6,6 +6,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:player_iptv/dados/biblioteca.dart';
 import 'package:player_iptv/importar/importar.dart';
 import 'package:player_iptv/modelo/conta.dart';
+import 'package:player_iptv/ui/inicio/cartao_lista.dart';
 import 'package:player_iptv/ui/inicio/tela_inicio.dart';
 
 import 'ajuda_dpad.dart';
@@ -120,5 +121,28 @@ void main() {
     expect(nele(), isTrue, reason: '→: $caminho');
     await teclaDpad(t, LogicalKeyboardKey.select);
     expect(t.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Favoritas')).selected, isTrue);
+  });
+
+  testWidgets('as favoritas vêm à frente e «Ordenar» muda a ordem (guardada)', (t) async {
+    ecraTvTeste(t);
+    await abrir(t);
+    final ultima = bib.listas.last;
+    await t.runAsync(() => bib.alternarFavorita(ultima.id));
+    await t.pumpAndSettle();
+    // a favorita passou para o primeiro cartão
+    final primeiro = find.byType(CartaoLista).first;
+    expect(find.descendant(of: primeiro, matching: find.text(ultima.nomeMostrado)), findsOneWidget);
+
+    await t.ensureVisible(find.byKey(const Key('ordenar-listas')));
+    await t.tap(find.byKey(const Key('ordenar-listas')));
+    await t.pumpAndSettle();
+    expect(find.text('Ordenar as listas'), findsOneWidget);
+    await t.tap(find.text('Nome A–Z'));
+    await t.pumpAndSettle();
+    expect(bib.ordemListas, OrdemListas.nome);
+    expect(find.text('Ordenar: Nome A–Z'), findsOneWidget);
+    // continua à frente com outra ordem
+    expect(find.descendant(of: find.byType(CartaoLista).first, matching: find.text(ultima.nomeMostrado)),
+        findsOneWidget);
   });
 }

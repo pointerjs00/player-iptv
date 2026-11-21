@@ -30,6 +30,57 @@ List<Canal> ordenarCanais(List<Canal> canais, OrdemCanais ordem) {
   return [...canais]..sort((a, b) => chaves[a]!.compareTo(chaves[b]!));
 }
 
+/// Como se ordenam as listas no «Ver TV» (as favoritas vêm sempre primeiro).
+enum OrdemListas {
+  /// Pela ordem em que foram adicionadas.
+  adicao('Adição', 'Pela ordem em que foram adicionadas'),
+
+  /// Por nome, A–Z (sem acentos nem maiúsculas).
+  nome('Nome A–Z', 'Pelo nome da lista'),
+
+  /// As que funcionam primeiro, depois as inconclusivas, as que não funcionam e as por verificar.
+  estado('Estado', 'As que funcionam primeiro'),
+
+  /// A verificação mais recente primeiro (as por verificar no fim).
+  verificacao('Verificação', 'A verificada há menos tempo primeiro'),
+
+  /// A que acaba mais tarde primeiro (sem limite à frente; sem data no fim).
+  validade('Validade', 'A que acaba mais tarde primeiro');
+
+  const OrdemListas(this.rotulo, this.explicacao);
+
+  /// O texto curto (no botão) e a explicação (na escolha).
+  final String rotulo, explicacao;
+}
+
+const _pesoEstado = {'funciona': 0, 'inconclusivo': 1, 'nao_funciona': 2};
+
+/// A validade (já normalizada: "AAAA-MM-DD", "sem limite" ou vazia) para ordenar: "sem limite"
+/// fica à frente das datas e a vazia no fim. As datas ISO ordenam-se como texto.
+String _chaveValidade(String v) => v == 'sem limite' ? '9999' : (v.isEmpty ? '' : v);
+
+/// As listas pela `ordem`, com as favoritas à frente (entre elas vale a mesma ordem); no empate,
+/// a ordem de adição.
+List<Lista> ordenarListas(Iterable<Lista> listas, OrdemListas ordem) {
+  final nomes = <Lista, String>{};
+  String nome(Lista l) => nomes[l] ??= semAcentos(l.nome); // sem a marca das INC
+  int criterio(Lista a, Lista b) => switch (ordem) {
+        OrdemListas.adicao => 0,
+        OrdemListas.nome => nome(a).compareTo(nome(b)),
+        OrdemListas.estado =>
+          (_pesoEstado[a.ultima?.estado] ?? 3).compareTo(_pesoEstado[b.ultima?.estado] ?? 3),
+        OrdemListas.verificacao => (b.ultima?.data.millisecondsSinceEpoch ?? -1)
+            .compareTo(a.ultima?.data.millisecondsSinceEpoch ?? -1),
+        OrdemListas.validade =>
+          _chaveValidade(b.ultima?.validade ?? '').compareTo(_chaveValidade(a.ultima?.validade ?? '')),
+      };
+  return [...listas]..sort((a, b) {
+      if (a.favorita != b.favorita) return a.favorita ? -1 : 1;
+      final c = criterio(a, b);
+      return c != 0 ? c : a.ordem.compareTo(b.ordem);
+    });
+}
+
 /// O último canal visto no Player ("Continuar a ver"): a lista e o que é preciso para o mostrar.
 class UltimoVisto {
   const UltimoVisto({required this.lista, required this.canal, required this.nome, this.grupo = '',
@@ -270,6 +321,9 @@ class Biblioteca extends ChangeNotifier implements ColecaoListas {
 
   UltimoVisto? _ultimoVisto;
 
+  /// Como se ordenam as listas no «Ver TV».
+  OrdemListas ordemListas = OrdemListas.adicao;
+
   /// O último canal visto ("Continuar a ver"); null se não há ou se a lista já não existe.
   UltimoVisto? get ultimoVisto {
     final u = _ultimoVisto;
@@ -309,6 +363,7 @@ class Biblioteca extends ChangeNotifier implements ColecaoListas {
         final ct = dados['canais_teste'];
         if (ct is List && ct.isNotEmpty) b.canaisTeste = [for (final c in ct) '$c'];
         b._ultimoVisto = UltimoVisto.deJson(dados['ultimo_visto']);
+        b.ordemListas = OrdemListas.values.asNameMap()[dados['ordem_listas']] ?? OrdemListas.adicao;
       } catch (_) {
         // o texto leu-se bem mas não é uma biblioteca (JSON inválido ou outra forma): estragado
         await b._ficheiro.copy('${b._ficheiro.path}.bak');
@@ -592,6 +647,13 @@ class Biblioteca extends ChangeNotifier implements ColecaoListas {
     await guardar();
   }
 
+  /// Muda a ordem das listas no «Ver TV».
+  Future<void> definirOrdemListas(OrdemListas ordem) async {
+    if (ordemListas == ordem) return;
+    ordemListas = ordem;
+    await guardar();
+  }
+
   /// Põe a lista nas favoritas, ou tira-a.
   Future<void> alternarFavorita(String id) async {
     final l = porId(id);
@@ -647,6 +709,7 @@ class Biblioteca extends ChangeNotifier implements ColecaoListas {
     final texto = const JsonEncoder.withIndent(' ').convert({
       'versao': 1, 'canais_teste': canaisTeste, 'listas': [for (final l in _listas) l.paraJson()],
       if (ultimoVisto != null) 'ultimo_visto': ultimoVisto!.paraJson(),
+      if (ordemListas != OrdemListas.adicao) 'ordem_listas': ordemListas.name,
     });
     notifyListeners();
     return _emFila(() => _escreverAtomico(_ficheiro, texto));

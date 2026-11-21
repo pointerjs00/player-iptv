@@ -121,7 +121,7 @@ const duracaoOkMantido = Duration(milliseconds: 500);
 class CartaoModerno extends StatefulWidget {
   const CartaoModerno({super.key, required this.child, this.onTap, this.onLongPress, this.autofocus = false,
       this.focusNode, this.padding = const EdgeInsets.all(Tokens.e16), this.raio = Tokens.raioCartao,
-      this.escalaFoco = 1.04});
+      this.escalaFoco = 1.04, this.destaque = false});
 
   final Widget child;
   final VoidCallback? onTap;
@@ -131,6 +131,9 @@ class CartaoModerno extends StatefulWidget {
   final EdgeInsetsGeometry padding;
   final double raio;
   final double escalaFoco;
+
+  /// Em destaque (por exemplo uma lista favorita): borda e reflexo dourados.
+  final bool destaque;
 
   @override
   State<CartaoModerno> createState() => _CartaoModernoState();
@@ -254,9 +257,21 @@ class _CartaoModernoState extends State<CartaoModerno> {
           duration: d,
           curve: Tokens.curva,
           decoration: BoxDecoration(
-            color: verFoco || _rato ? Tokens.vidroForte : Tokens.vidro,
+            color: widget.destaque ? null : (verFoco || _rato ? Tokens.vidroForte : Tokens.vidro),
+            gradient: widget.destaque
+                ? LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Tokens.aviso.withValues(alpha: verFoco || _rato ? .16 : .11),
+                      verFoco || _rato ? Tokens.vidroForte : Tokens.vidro,
+                    ],
+                  )
+                : null,
             borderRadius: r,
-            border: Border.all(color: Tokens.bordaVidro),
+            border: widget.destaque
+                ? Border.all(color: Tokens.aviso.withValues(alpha: .55), width: 1.5)
+                : Border.all(color: Tokens.bordaVidro),
           ),
           child: Material(
             type: MaterialType.transparency,

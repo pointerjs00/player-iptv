@@ -260,3 +260,48 @@ class _DialogoEditarState extends State<_DialogoEditar> {
         ],
       );
 }
+
+/// «Ordenar»: a escolha da ordem das listas (centrada, para o comando), com a atual marcada e o
+/// foco nela; devolve a escolhida (null = Voltar).
+Future<OrdemListas?> mostrarOrdemListas(BuildContext context, OrdemListas atual) => showDialog<OrdemListas>(
+      context: context,
+      builder: (ctx) {
+        final tv = ecraTv(ctx);
+        return Dialog(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: tv ? 440 : 380),
+            // num ecrã de TV (540 lógicos de altura) as cinco opções não cabem: desliza
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(Tokens.e16),
+              child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(Tokens.e8, Tokens.e4, Tokens.e8, Tokens.e4),
+                  child: Text('Ordenar as listas', style: TextStyle(fontSize: tv ? 20 : 18, fontWeight: FontWeight.w700)),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(Tokens.e8, 0, Tokens.e8, Tokens.e12),
+                  child: Text('As favoritas ficam sempre à frente.',
+                      style: TextStyle(color: Tokens.texto2, fontSize: tv ? 14 : 12.5)),
+                ),
+                for (final o in OrdemListas.values)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2),
+                    child: RealceFoco(
+                      construir: (_, aoMudarFoco) => ListTile(
+                        autofocus: o == atual,
+                        onFocusChange: aoMudarFoco,
+                        selected: o == atual,
+                        leading: Icon(o == atual ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+                            color: o == atual ? Tokens.acento : Tokens.texto2),
+                        title: Text(o.rotulo, style: TextStyle(fontSize: tv ? 17 : 15, fontWeight: FontWeight.w500)),
+                        subtitle: Text(o.explicacao, style: TextStyle(color: Tokens.texto2, fontSize: tv ? 13.5 : 12)),
+                        onTap: () => Navigator.pop(ctx, o),
+                      ),
+                    ),
+                  ),
+              ]),
+            ),
+          ),
+        );
+      },
+    );

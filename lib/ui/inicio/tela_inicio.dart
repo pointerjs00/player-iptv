@@ -138,15 +138,23 @@ class _TelaInicioState extends State<TelaInicio> {
 
   static const _filtroFavoritas = 'favoritas';
 
+  /// As listas filtradas, pela ordem escolhida (as favoritas primeiro).
   List<Lista> _visiveis() {
     final q = semAcentos(_q.trim());
-    return [
+    return ordenarListas([
       for (final l in widget.biblioteca.listas)
         if ((_filtro == null ||
                 (_filtro == _filtroFavoritas ? l.favorita : (l.ultima?.estado ?? 'por_verificar') == _filtro)) &&
             (q.isEmpty || semAcentos('${l.nomeMostrado} ${l.conta.endereco} ${l.conta.nome}').contains(q)))
           l,
-    ];
+    ], widget.biblioteca.ordemListas);
+  }
+
+  /// «Ordenar»: escolhe a ordem das listas (guardada; as favoritas ficam sempre à frente).
+  Future<void> _escolherOrdem() async {
+    final b = widget.biblioteca;
+    final o = await mostrarOrdemListas(context, b.ordemListas);
+    if (o != null) await b.definirOrdemListas(o);
   }
 
   void _avisar(String texto) {
@@ -359,6 +367,14 @@ class _TelaInicioState extends State<TelaInicio> {
           selected: _filtro == v,
           onSelected: (_) => setState(() => _filtro = v),
         ),
+      // a ordem: no fim da fila dos filtros (o comando chega lá com DIREITA)
+      ActionChip(
+        key: const Key('ordenar-listas'),
+        avatar: const Icon(Icons.sort_rounded, size: 18),
+        label: Text('Ordenar: ${widget.biblioteca.ordemListas.rotulo}'),
+        tooltip: 'Ordenar as listas',
+        onPressed: _escolherOrdem,
+      ),
     ];
     // no telemóvel (toque) todos à vista, em mais de uma linha; a fila única é para o D-pad
     final filtros = ecraTelemovel(context)

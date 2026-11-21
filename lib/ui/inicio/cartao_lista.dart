@@ -54,6 +54,8 @@ class CartaoLista extends StatelessWidget {
       focusNode: focusNode,
       onTap: aoAbrir,
       onLongPress: aoMenu,
+      // as favoritas em destaque (e à frente das outras: ver ordenarListas)
+      destaque: lista.favorita,
       padding: EdgeInsets.symmetric(horizontal: tv ? 14 : Tokens.e12, vertical: Tokens.e12),
       child: Column(
         mainAxisSize: emGrelha ? MainAxisSize.max : MainAxisSize.min,
