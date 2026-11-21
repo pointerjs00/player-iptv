@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
@@ -224,13 +225,18 @@ void main() {
       expect(bib.leiturasCache[b.id] ?? 0, lessThanOrEqualTo(1));
     });
 
-    testWidgets('a barra de teclas tem as três dicas', (t) async {
+    testWidgets('no computador, a barra de teclas tem as três dicas', (t) async {
       tamanho(t);
       await preparar(t);
-      await abrir(t);
-      expect(find.text('abrir'), findsOneWidget);
-      expect(find.text('opções da lista'), findsOneWidget);
-      expect(find.text('menu'), findsOneWidget);
+      debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+      try {
+        await abrir(t);
+        expect(find.text('abrir'), findsOneWidget);
+        expect(find.text('opções da lista'), findsOneWidget);
+        expect(find.text('menu'), findsOneWidget);
+      } finally {
+        debugDefaultTargetPlatformOverride = null;
+      }
     });
   });
 

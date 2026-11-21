@@ -14,6 +14,7 @@ import 'package:player_iptv/importar/importar.dart';
 import 'package:player_iptv/modelo/conta.dart';
 import 'package:player_iptv/ui/definicoes/linha_opcao.dart';
 import 'package:player_iptv/ui/definicoes/tela_definicoes.dart';
+import 'package:player_iptv/ui/design/ecra.dart';
 import 'package:player_iptv/ui/inicio/tela_inicio.dart';
 import 'package:player_iptv/ui/principal/tela_principal.dart';
 import 'package:player_iptv/ui/realce_foco.dart';
@@ -123,7 +124,7 @@ void main() {
     }
   });
 
-  testWidgets('Imagem e som: explica cada opção e a taxa do ecrã só aparece no Android', (t) async {
+  testWidgets('Imagem e som: explica cada opção e a taxa do ecrã só aparece na Android TV', (t) async {
     await abrir(t);
     expect(find.text('Evita riscas nos canais entrelaçados. Automático só o liga quando é preciso.'), findsOneWidget);
     expect(find.text('Mais leve. Desliga se a imagem falhar.'), findsOneWidget);
@@ -132,7 +133,14 @@ void main() {
     for (final m in ['Automático', 'Ligado', 'Desligado']) {
       expect(_chip('Desentrelaçamento', m), findsOneWidget);
     }
+    // Android, mas não TV (telemóvel, tablet): também não
     await t.pumpWidget(_app(TelaDefinicoes(biblioteca: bib, area: area, preferencias: prefs, android: true)));
+    await t.pump();
+    expect(find.text('Ajustar a taxa do ecrã ao canal'), findsNothing);
+    EcraTv.nativo = true;
+    addTearDown(() => EcraTv.nativo = false);
+    await t.pumpWidget(_app(TelaDefinicoes(
+        key: const ValueKey('tv'), biblioteca: bib, area: area, preferencias: prefs, android: true)));
     await t.pump();
     expect(find.text('Ajustar a taxa do ecrã ao canal'), findsOneWidget);
     expect(find.text('Evita soluços nas imagens (Android TV)'), findsOneWidget);

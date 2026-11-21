@@ -37,6 +37,10 @@ class SeletorNumero extends StatelessWidget {
   final FocusNode? focusNode;
   final bool autofocus;
 
+  /// Abaixo desta largura (da linha) o `− valor +` vai para baixo do título: ao lado, o título e a
+  /// descrição ficavam com menos de metade da linha.
+  static const larguraMinimaLado = 400.0;
+
   String _texto(int v) => formatar?.call(v) ?? '$v';
 
   void _mudar(int delta) {
@@ -71,31 +75,45 @@ class SeletorNumero extends StatelessWidget {
               includeSemantics: false,
               child: Padding(
                 padding: paddingLinhaOpcao,
-                child: Row(children: [
-                  Expanded(
-                    child: ExcludeSemantics(child: TextoOpcao(titulo, descricao)),
-                  ),
-                  const SizedBox(width: Tokens.e16),
-                  ExcludeSemantics(
+                child: LayoutBuilder(builder: (context, c) {
+                  final texto = ExcludeSemantics(child: TextoOpcao(titulo, descricao));
+                  // no telemóvel, botões de 48 (alvo de toque)
+                  final lado = ecraTelemovel(context) ? 48.0 : 40.0;
+                  final controlo = ExcludeSemantics(
                     child: DecoratedBox(
                       decoration:
                           BoxDecoration(color: Tokens.fundo, borderRadius: BorderRadius.circular(Tokens.raioCampo)),
                       child: Padding(
                         padding: const EdgeInsets.all(Tokens.e4),
                         child: Row(mainAxisSize: MainAxisSize.min, children: [
-                          _Botao('−', 'Menos', valor > min ? () => _mudar(-1) : null),
+                          _Botao('−', 'Menos', valor > min ? () => _mudar(-1) : null, lado: lado),
                           ConstrainedBox(
                             constraints: const BoxConstraints(minWidth: 72),
                             child: Text(_texto(valor),
                                 textAlign: TextAlign.center,
                                 style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Tokens.texto)),
                           ),
-                          _Botao('+', 'Mais', valor < max ? () => _mudar(1) : null),
+                          _Botao('+', 'Mais', valor < max ? () => _mudar(1) : null, lado: lado),
                         ]),
                       ),
                     ),
-                  ),
-                ]),
+                  );
+                  if (c.maxWidth < larguraMinimaLado) {
+                    return SizedBox(
+                      width: double.infinity,
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        texto,
+                        const SizedBox(height: Tokens.e8),
+                        controlo,
+                      ]),
+                    );
+                  }
+                  return Row(children: [
+                    Expanded(child: texto),
+                    const SizedBox(width: Tokens.e16),
+                    controlo,
+                  ]);
+                }),
               ),
             ),
           ),
@@ -103,10 +121,13 @@ class SeletorNumero extends StatelessWidget {
 }
 
 class _Botao extends StatelessWidget {
-  const _Botao(this.simbolo, this.dica, this.aoCarregar);
+  const _Botao(this.simbolo, this.dica, this.aoCarregar, {this.lado = 40});
   final String simbolo;
   final String dica;
   final VoidCallback? aoCarregar;
+
+  /// A largura e a altura do botão.
+  final double lado;
 
   @override
   Widget build(BuildContext context) => Material(
@@ -117,8 +138,8 @@ class _Botao extends StatelessWidget {
           canRequestFocus: false, // só toque/rato: o foco é da linha
           onTap: aoCarregar,
           child: SizedBox(
-            width: 40,
-            height: 40,
+            width: lado,
+            height: lado,
             child: Center(
               child: Text(simbolo,
                   style: TextStyle(

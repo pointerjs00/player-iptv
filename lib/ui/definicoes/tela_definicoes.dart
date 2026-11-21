@@ -371,8 +371,10 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
           _interruptor('Descodificação por hardware', 'Mais leve. Desliga se a imagem falhar.', _p.hardware,
               (v) => _p.hardware = v, nota: soMpv),
           if (_android) ...[
-            _interruptor('Ajustar a taxa do ecrã ao canal', 'Evita soluços nas imagens (Android TV)',
-                _p.ajustarTaxaEcra, (v) => _p.ajustarTaxaEcra = v),
+            // só na TV: no telemóvel não há taxa do ecrã a ajustar
+            if (ecraTv(context))
+              _interruptor('Ajustar a taxa do ecrã ao canal', 'Evita soluços nas imagens (Android TV)',
+                  _p.ajustarTaxaEcra, (v) => _p.ajustarTaxaEcra = v),
             _opcao('Descodificação no Android',
                 'Direta é a mais leve. Compatível serve se o direto mostrar ecrã preto ou cores erradas.',
                 nota: soMpv,
@@ -448,12 +450,13 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
                     },
                   ),
               ])),
-          const Padding(
-            padding: EdgeInsets.fromLTRB(Tokens.e8, Tokens.e12, Tokens.e8, 0),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(Tokens.e8, Tokens.e12, Tokens.e8, 0),
             child: Text(
-                'Com uma verificação a decorrer, as mudanças valem para as próximas listas. '
-                '← → mudam o valor; ↑ ↓ mudam de opção.',
-                style: TextStyle(fontSize: 13, color: Tokens.texto2)),
+                'Com uma verificação a decorrer, as mudanças valem para as próximas listas.'
+                // as teclas só na TV e no computador (no telemóvel não há setas)
+                '${mostrarDicasComando(context) ? ' ← → mudam o valor; ↑ ↓ mudam de opção.' : ''}',
+                style: const TextStyle(fontSize: 13, color: Tokens.texto2)),
           ),
         ];
       case _Categoria.ligacao:

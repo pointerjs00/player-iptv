@@ -1,19 +1,17 @@
-import 'dart:io';
-
 import 'package:material_ui/material_ui.dart';
 
 import 'ecra.dart';
 import 'tokens.dart';
 
 /// A barra de dicas de teclas ("OK ver", "Menu opções"...) em baixo. Só aparece na TV e no
-/// Windows (no telemóvel não há teclas).
+/// computador ([mostrarDicasComando]; no telemóvel e no tablet não há teclas).
 class BarraTeclas extends StatelessWidget {
   const BarraTeclas(this.itens, {super.key});
   final List<(String tecla, String acao)> itens;
 
   @override
   Widget build(BuildContext context) {
-    if (!ecraTv(context) && !Platform.isWindows) return const SizedBox.shrink();
+    if (!mostrarDicasComando(context)) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: Tokens.e16, vertical: Tokens.e8),
       child: Wrap(spacing: Tokens.e16, runSpacing: Tokens.e4, children: [

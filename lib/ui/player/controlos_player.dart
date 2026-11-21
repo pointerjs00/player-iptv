@@ -418,7 +418,7 @@ class ControlosPlayerState extends State<ControlosPlayer> {
                       cor: const Color(0xCC0B0F17),
                       raio: Tokens.raioBotao,
                       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                      child: _Titulo(estado: widget.estado),
+                      child: _Titulo(estado: widget.estado, linhas: ecraTelemovel(context) ? 2 : 1),
                     ),
                   ),
                 ),
@@ -457,12 +457,67 @@ class ControlosPlayerState extends State<ControlosPlayer> {
 
   Widget _camadaBarra(BuildContext context) {
     final tv = ecraTv(context);
+    // telemóvel ao alto: a pílula vai para baixo do nome, ⚙ / velocidade / canal visto antes sobem
+    // para a linha do ← e em baixo ficam só ⏮ ⏪ ⏯ ⏩ ⏭ (numa linha)
+    final alto = ecraTelemovel(context);
     final e = widget.estado;
     final atraso = widget.atraso();
     final emDireto = atraso < RelogioDireto.limiar;
     final icone = tv ? 32.0 : 26.0;
+    final margem = alto ? Tokens.e16 : Tokens.e24;
+    // ao toque, alvos de 48 (o tema é compacto)
+    final estiloIcone = alto ? IconButton.styleFrom(minimumSize: const Size.square(48)) : null;
     Widget botao(IconData i, String dica, AcaoPlayer a, {FocusNode? foco}) => IconButton(
-        focusNode: foco, icon: Icon(i, size: icone), tooltip: dica, color: Tokens.texto, onPressed: () => _botao(a));
+        focusNode: foco,
+        icon: Icon(i, size: icone),
+        tooltip: dica,
+        color: Tokens.texto,
+        style: estiloIcone,
+        onPressed: () => _botao(a));
+    final alternar =
+        e.podeAlternar ? botao(Icons.swap_horiz_rounded, 'Canal visto antes', AcaoPlayer.alternarCanal) : null;
+    final velocidade = Tooltip(
+      message: 'Velocidade',
+      child: TextButton(
+        onPressed: _velocidadeSeguinte,
+        // ao alto, na linha do ←: um alvo de toque de 48 como os outros
+        style: alto ? TextButton.styleFrom(minimumSize: const Size(56, 48)) : null,
+        child: Text(textoVelocidade(e.velocidade), style: TextStyle(fontSize: tv ? 18 : 15, color: Tokens.texto)),
+      ),
+    );
+    final definicoes = IconButton(
+      focusNode: _botaoDefinicoes,
+      icon: Icon(Icons.settings_rounded, size: icone),
+      tooltip: 'Definições',
+      color: Tokens.texto,
+      style: estiloIcone,
+      onPressed: _abrirPainel,
+    );
+    final voltarAoDireto = emDireto
+        ? null
+        : Tooltip(
+            message: 'Voltar ao direto',
+            child: TextButton.icon(
+              onPressed: () => _botao(AcaoPlayer.voltarAoDireto),
+              icon: const Icon(Icons.skip_next_rounded, color: Tokens.mau),
+              label: Text('Voltar ao direto', style: TextStyle(fontSize: tv ? 18 : 15, color: Tokens.texto)),
+            ),
+          );
+    final transporte = [
+      botao(Icons.skip_previous_rounded, 'Canal anterior', AcaoPlayer.canalAnterior),
+      if (widget.comSaltos) botao(Icons.replay_10_rounded, 'Recuar 10 s', AcaoPlayer.recuar),
+      Tooltip(
+        message: e.aTocar ? 'Pausa' : 'Reproduzir',
+        child: FilledButton(
+          focusNode: _play,
+          onPressed: () => _botao(AcaoPlayer.playPausa),
+          child: Icon(e.aTocar ? Icons.pause_rounded : Icons.play_arrow_rounded, size: icone),
+        ),
+      ),
+      if (widget.comSaltos) botao(Icons.forward_10_rounded, 'Avançar 10 s', AcaoPlayer.avancar),
+      botao(Icons.skip_next_rounded, 'Canal seguinte', AcaoPlayer.canalSeguinte),
+    ];
+    final indicador = _IndicadorDireto(emDireto: emDireto, atraso: atraso);
     return Stack(children: [
       // em cima: Voltar (fechar a janela/sair) e ecrã inteiro (Windows)
       Positioned(
@@ -483,6 +538,12 @@ class ControlosPlayerState extends State<ControlosPlayer> {
           child: Row(children: [
             _Vidro(child: botao(Icons.arrow_back, 'Voltar', AcaoPlayer.sair, foco: _botaoVoltar)),
             const Spacer(),
+            if (alto) ...[
+              if (alternar != null) ...[_Vidro(child: alternar), const SizedBox(width: Tokens.e8)],
+              _Vidro(circulo: false, child: velocidade),
+              const SizedBox(width: Tokens.e8),
+              _Vidro(child: definicoes),
+            ],
             if (widget.comEcraInteiro)
               _Vidro(child: botao(Icons.fullscreen, 'Ecrã inteiro (F11)', AcaoPlayer.ecraInteiro)),
           ]),
@@ -500,17 +561,18 @@ class ControlosPlayerState extends State<ControlosPlayer> {
             ),
           ),
           child: Padding(
-            padding: EdgeInsets.fromLTRB(Tokens.e24, Tokens.e32 * 2, Tokens.e24, tv ? Tokens.e32 : Tokens.e16),
+            padding: EdgeInsets.fromLTRB(margem, Tokens.e32 * 2, margem, tv ? Tokens.e32 : Tokens.e16),
             child: SuperficieVidro(
               cor: const Color(0xCC0B0F17),
               elevacao: 2,
-              padding: const EdgeInsets.fromLTRB(Tokens.e24, Tokens.e16, Tokens.e24, Tokens.e12),
+              padding: EdgeInsets.fromLTRB(margem, Tokens.e16, margem, Tokens.e12),
               child: FocusTraversalGroup(
                 child: Column(mainAxisSize: MainAxisSize.min, children: [
                   Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Expanded(
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        _Titulo(estado: e),
+                        _Titulo(estado: e, linhas: alto ? 2 : 1),
+                        if (alto) Padding(padding: const EdgeInsets.only(top: Tokens.e8), child: indicador),
                         if (widget.lerInfoStream != null)
                           Padding(
                             padding: const EdgeInsets.only(top: 4),
@@ -524,8 +586,7 @@ class ControlosPlayerState extends State<ControlosPlayer> {
                           ),
                       ]),
                     ),
-                    const SizedBox(width: Tokens.e16),
-                    _IndicadorDireto(emDireto: emDireto, atraso: atraso),
+                    if (!alto) ...[const SizedBox(width: Tokens.e16), indicador],
                   ]),
                   // sempre lá (mesmo sem nada lido): a barra não muda de altura
                   if (widget.lerProgresso != null) ...[
@@ -546,53 +607,33 @@ class ControlosPlayerState extends State<ControlosPlayer> {
                     ),
                   ],
                   const SizedBox(height: Tokens.e12),
-                  Wrap(
-                    alignment: WrapAlignment.center,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    spacing: Tokens.e8,
-                    runSpacing: Tokens.e8,
-                    children: [
-                      botao(Icons.skip_previous_rounded, 'Canal anterior', AcaoPlayer.canalAnterior),
-                      if (widget.comSaltos) botao(Icons.replay_10_rounded, 'Recuar 10 s', AcaoPlayer.recuar),
-                      Tooltip(
-                        message: e.aTocar ? 'Pausa' : 'Reproduzir',
-                        child: FilledButton(
-                          focusNode: _play,
-                          onPressed: () => _botao(AcaoPlayer.playPausa),
-                          child: Icon(e.aTocar ? Icons.pause_rounded : Icons.play_arrow_rounded, size: icone),
-                        ),
-                      ),
-                      if (widget.comSaltos) botao(Icons.forward_10_rounded, 'Avançar 10 s', AcaoPlayer.avancar),
-                      botao(Icons.skip_next_rounded, 'Canal seguinte', AcaoPlayer.canalSeguinte),
-                      if (e.podeAlternar) botao(Icons.swap_horiz_rounded, 'Canal visto antes', AcaoPlayer.alternarCanal),
-                      const SizedBox(width: Tokens.e16),
-                      Tooltip(
-                        message: 'Velocidade',
-                        child: TextButton(
-                          onPressed: _velocidadeSeguinte,
-                          child: Text(textoVelocidade(e.velocidade),
-                              style: TextStyle(fontSize: tv ? 18 : 15, color: Tokens.texto)),
-                        ),
-                      ),
-                      if (!emDireto)
-                        Tooltip(
-                          message: 'Voltar ao direto',
-                          child: TextButton.icon(
-                            onPressed: () => _botao(AcaoPlayer.voltarAoDireto),
-                            icon: const Icon(Icons.skip_next_rounded, color: Tokens.mau),
-                            label: Text('Voltar ao direto',
-                                style: TextStyle(fontSize: tv ? 18 : 15, color: Tokens.texto)),
-                          ),
-                        ),
-                      IconButton(
-                        focusNode: _botaoDefinicoes,
-                        icon: Icon(Icons.settings_rounded, size: icone),
-                        tooltip: 'Definições',
-                        color: Tokens.texto,
-                        onPressed: _abrirPainel,
-                      ),
-                    ],
-                  ),
+                  if (alto) ...[
+                    // ⏮ ⏪ ⏯ ⏩ ⏭ numa linha (encolhe só se não couber de todo)
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        for (var i = 0; i < transporte.length; i++) ...[
+                          if (i > 0) const SizedBox(width: Tokens.e4),
+                          transporte[i],
+                        ],
+                      ]),
+                    ),
+                    ?voltarAoDireto,
+                  ] else
+                    Wrap(
+                      alignment: WrapAlignment.center,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: Tokens.e8,
+                      runSpacing: Tokens.e8,
+                      children: [
+                        ...transporte,
+                        ?alternar,
+                        const SizedBox(width: Tokens.e16),
+                        velocidade,
+                        ?voltarAoDireto,
+                        definicoes,
+                      ],
+                    ),
                 ]),
               ),
             ),
@@ -604,8 +645,11 @@ class ControlosPlayerState extends State<ControlosPlayer> {
 }
 
 class _Titulo extends StatelessWidget {
-  const _Titulo({required this.estado});
+  const _Titulo({required this.estado, this.linhas = 1});
   final EstadoControlos estado;
+
+  /// Até quantas linhas vai o nome do canal (2 no telemóvel ao alto).
+  final int linhas;
 
   @override
   Widget build(BuildContext context) {
@@ -613,7 +657,7 @@ class _Titulo extends StatelessWidget {
     final numero = estado.numero;
     final nomeESubtitulo = Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text(estado.canal,
-          maxLines: 1,
+          maxLines: linhas,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(fontSize: tv ? 26 : 20, fontWeight: FontWeight.w700, color: Tokens.texto)),
       Text(estado.subtitulo,
@@ -667,14 +711,18 @@ class _IndicadorDireto extends StatelessWidget {
 
 /// Um botão redondo num círculo de vidro escuro (lê-se por cima de qualquer imagem).
 class _Vidro extends StatelessWidget {
-  const _Vidro({required this.child});
+  const _Vidro({required this.child, this.circulo = true});
   final Widget child;
+
+  /// false: uma pílula (para um botão com texto, como a velocidade).
+  final bool circulo;
 
   @override
   Widget build(BuildContext context) => DecoratedBox(
         decoration: BoxDecoration(
           color: const Color(0xB30B0F17),
-          shape: BoxShape.circle,
+          shape: circulo ? BoxShape.circle : BoxShape.rectangle,
+          borderRadius: circulo ? null : BorderRadius.circular(Tokens.raioPilula),
           border: Border.all(color: Tokens.bordaVidro),
         ),
         child: child,

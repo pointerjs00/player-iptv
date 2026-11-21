@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
@@ -99,8 +100,10 @@ void main() {
     expect(feito, 1);
   });
 
-  testWidgets('BarraTeclas mostra a tecla e a ação', (t) async {
+  testWidgets('BarraTeclas mostra a tecla e a ação (no computador)', (t) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
     await t.pumpWidget(const MaterialApp(home: Scaffold(body: BarraTeclas([('OK', 'ver')]))));
+    debugDefaultTargetPlatformOverride = null;
     expect(find.text('OK'), findsOneWidget);
     expect(find.text('ver'), findsOneWidget);
   });

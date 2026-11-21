@@ -11,6 +11,7 @@ import '../../modelo/canal.dart';
 import '../../protocolos/protocolo.dart';
 import '../../rede/http.dart';
 import '../design/componentes.dart';
+import '../design/ecra.dart';
 import 'aplicar_preferencias.dart';
 import 'aviso_buffering.dart';
 import 'cartao_erro.dart';
@@ -1891,7 +1892,8 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
           }),
           nota: 'Desligue se a imagem aparecer com defeitos',
         ),
-      if (_android)
+      // só na TV (é ela que muda de taxa; no telemóvel a opção não diz nada a quem a vê)
+      if (_android && ecraTv(context))
         DefinicaoInterruptor(
           'Ajustar a taxa do ecrã ao canal',
           valor: _prefs.ajustarTaxaEcra,

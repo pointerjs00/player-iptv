@@ -81,7 +81,7 @@ class PainelDefinicoes extends StatelessWidget {
     return Align(
       alignment: Alignment.centerRight,
       child: Padding(
-        padding: const EdgeInsets.all(Tokens.e24),
+        padding: EdgeInsets.all(ecraTelemovel(context) ? Tokens.e16 : Tokens.e24),
         child: ConstrainedBox(
           constraints: BoxConstraints(maxWidth: tv ? 520 : 440),
           child: SuperficieVidro(
@@ -174,6 +174,15 @@ class LinhaDefinicao extends StatelessWidget {
     final tv = ecraTv(context);
     final ativo = item.ativo;
     final corTexto = ativo ? Tokens.texto : Tokens.texto2;
+    final texto = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(item.titulo, style: TextStyle(fontSize: tv ? 17 : 15, fontWeight: FontWeight.w600, color: corTexto)),
+      if (item.nota != null)
+        Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Text(item.nota!, style: TextStyle(fontSize: tv ? 14 : 12, color: Tokens.texto2)),
+        ),
+    ]);
+    final valor = ExcludeFocus(child: _valor(tv, corTexto));
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Focus(
@@ -189,21 +198,18 @@ class LinhaDefinicao extends StatelessWidget {
             borderRadius: BorderRadius.circular(Tokens.raioCampo),
             child: Padding(
               padding: EdgeInsets.symmetric(horizontal: Tokens.e12, vertical: tv ? 12 : 10),
-              child: Row(children: [
-                Expanded(
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(item.titulo,
-                        style: TextStyle(fontSize: tv ? 17 : 15, fontWeight: FontWeight.w600, color: corTexto)),
-                    if (item.nota != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 2),
-                        child: Text(item.nota!, style: TextStyle(fontSize: tv ? 14 : 12, color: Tokens.texto2)),
-                      ),
-                  ]),
-                ),
-                const SizedBox(width: Tokens.e12),
-                ExcludeFocus(child: _valor(tv, corTexto)),
-              ]),
+              // telemóvel ao alto: o valor vai para baixo do rótulo (ao lado, o rótulo ficava tão
+              // estreito que partia as palavras a meio)
+              child: ecraTelemovel(context)
+                  ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                      texto,
+                      Align(alignment: Alignment.centerRight, child: valor),
+                    ])
+                  : Row(children: [
+                      Expanded(child: texto),
+                      const SizedBox(width: Tokens.e12),
+                      valor,
+                    ]),
             ),
           ),
         ),

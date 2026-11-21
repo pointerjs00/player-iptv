@@ -175,7 +175,8 @@ void main() {
       final voltar = find.byTooltip('Voltar');
       expect(voltar, findsOneWidget, reason: cartao);
       expect(find.widgetWithText(TextButton, 'Voltar'), findsNothing, reason: 'só o ícone');
-      expect(find.bySemanticsLabel('Voltar'), findsOneWidget);
+      // o leitor de ecrã diz «Voltar» (a dica do ←; a barra de teclas não aparece no telemóvel)
+      expect(t.getSemantics(voltar), isSemantics(tooltip: 'Voltar'));
       alvo48(t, find.ancestor(of: voltar, matching: find.byType(IconButton)));
       for (final titulo in ['Importar listas', 'Verificar listas', 'Enviar ou exportar listas']) {
         expect(find.text(titulo), findsNothing, reason: 'a faixa já diz o passo');
