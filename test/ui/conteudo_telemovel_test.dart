@@ -218,6 +218,11 @@ void main() {
     expect(find.byKey(const Key('contador-canais')), findsNothing);
     // a estrela dos favoritos continua a responder ao toque
     expect(find.byTooltip('Pôr nos favoritos').first, findsOneWidget);
+    // com um alvo de 48 × 48: o do próprio botão (o InkWell), sem contar com a margem que o
+    // Android junta (num computador, com a janela estreita, essa margem não existe)
+    alvo48(t, botao('Pôr nos favoritos').first, motivo: 'a estrela');
+    alvo48(t, find.descendant(of: botao('Pôr nos favoritos').first, matching: find.byType(InkWell)),
+        motivo: 'a estrela, sem a margem do Android');
     // e com pesquisa (o grupo por baixo do nome) também cabe
     await t.tap(find.byKey(const Key('pesquisa-canais')));
     await t.pump();

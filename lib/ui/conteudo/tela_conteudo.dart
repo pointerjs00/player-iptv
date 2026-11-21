@@ -1565,8 +1565,11 @@ class _TelaConteudoState extends State<TelaConteudo> {
                           icon: Icon(fav ? Icons.star_rounded : Icons.star_outline_rounded,
                               color: fav ? Tokens.aviso : Tokens.texto2, size: tv ? 28 : 24),
                           onPressed: favorito,
-                          // no telemóvel, 40 de largura (a linha toda já é um alvo de toque)
-                          constraints: telemovel ? const BoxConstraints(minWidth: 40, minHeight: Tokens.alvoToque) : null,
+                          // no telemóvel, um alvo de 48 × 48 (também numa janela estreita do
+                          // computador, onde o tema não junta a margem de toque)
+                          constraints: telemovel
+                              ? const BoxConstraints(minWidth: Tokens.alvoToque, minHeight: Tokens.alvoToque)
+                              : null,
                           padding: telemovel ? EdgeInsets.zero : null,
                         ),
                       ),
