@@ -5,6 +5,7 @@ Nunca altera definições do sistema.
 """
 import argparse
 import fnmatch
+import hashlib
 import os
 import shutil
 import subprocess
@@ -14,33 +15,61 @@ from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
 APKS = {
-    "app-arm64-v8a-release.apk": "PlayerIPTV-android-arm64.apk",
-    "app-armeabi-v7a-release.apk": "PlayerIPTV-android-armv7.apk",
+    "app-arm64-v8a-release.apk": "TVIntel-android-arm64.apk",
+    "app-armeabi-v7a-release.apk": "TVIntel-android-armv7.apk",
 }
 PASTA_APK = Path("build/app/outputs/flutter-apk")
 PASTA_WINDOWS = Path("build/windows/x64/runner/Release")
-RAIZ_ZIP = "PlayerIPTV"
+RAIZ_ZIP = "TVIntel"
 PROIBIDOS = ["Accounts*.json", "*.ini", "historico.json", "biblioteca.json"]
 MSG_SYMLINK = "Building with plugins requires symlink support"
+# o libmpv completo (com os filtros do ffmpeg: bwdif...) que o windows/libmpv_completo.cmake instala;
+# o do media_kit é mínimo e deixaria o desentrelaçamento só com o shader
+SHA256_LIBMPV = "88504ee5560942a955405e99dfb5971368e4cf851321f36565bf2a667271db1b"
+# os textos das licenças do libmpv/ffmpeg (GPLv3) que têm de ir com o pacote
+LICENCAS_WINDOWS = ["AVISOS-LICENCAS.txt", "licencas/GPL-3.0.txt", "licencas/LGPL-2.1.txt"]
+# no APK vão como assets da app (pubspec.yaml), mostrados em Definições -> Licenças
+LICENCAS_APK = [
+    "assets/flutter_assets/third_party/libmpv_completo/AVISOS-LICENCAS.txt",
+    "assets/flutter_assets/third_party/libmpv_completo/licencas/GPL-3.0.txt",
+    "assets/flutter_assets/third_party/libmpv_completo/licencas/LGPL-2.1.txt",
+]
+FICHEIRO_SHA256 = RAIZ / "third_party" / "libmpv_completo" / "SHA256.txt"
+
+
+def ler_sha256_libmpv_android(ficheiro: Path = FICHEIRO_SHA256) -> dict[str, str]:
+    """abi -> SHA-256 do libmpv.so do mpv-android (as linhas "<sha> <pasta>/x/lib/<abi>/libmpv.so")."""
+    r = {}
+    for linha in Path(ficheiro).read_text(encoding="utf-8").splitlines():
+        partes = linha.split()
+        if len(partes) == 2 and partes[1].endswith("/libmpv.so") and "/lib/" in partes[1]:
+            r[partes[1].split("/")[-2]] = partes[0]
+    return r
+
+
+# o libmpv completo de cada APK (android/libmpv_completo.gradle); o do media_kit é mínimo
+SHA256_LIBMPV_ANDROID = ler_sha256_libmpv_android()
+# o ABI de cada APK do Flutter
+ABI_APK = {"app-arm64-v8a-release.apk": "arm64-v8a", "app-armeabi-v7a-release.apk": "armeabi-v7a"}
 
 LEIA_ME = """\
-PLAYER IPTV - COMO INSTALAR
-===========================
+TVINTEL - COMO INSTALAR
+=======================
 
 Que ficheiro escolher
 ---------------------
-- Windows:  PlayerIPTV-windows.zip
+- Windows:  TVIntel-windows.zip
 - Android (telemóvel, tablet, Fire TV, Android TV):
-  * PlayerIPTV-android-arm64.apk  -> a escolha certa para a maioria dos
+  * TVIntel-android-arm64.apk  -> a escolha certa para a maioria dos
     telemóveis, tablets e boxes Android TV recentes.
-  * PlayerIPTV-android-armv7.apk  -> Fire TV e aparelhos mais antigos.
+  * TVIntel-android-armv7.apk  -> Fire TV e aparelhos mais antigos.
     No Fire TV Stick 4K Max use o armv7 (o Fire OS 7 só instala 32 bits).
     Se o arm64 não instalar ("App não instalada"), use este.
 
 Windows
 -------
-1. Descompacte o PlayerIPTV-windows.zip (botão direito -> Extrair tudo).
-2. Abra a pasta PlayerIPTV e execute player_iptv.exe.
+1. Descompacte o TVIntel-windows.zip (botão direito -> Extrair tudo).
+2. Abra a pasta TVIntel e execute TVIntel.exe.
    Não mova o .exe para fora da pasta: precisa dos restantes ficheiros.
 
 Telemóvel ou tablet Android
@@ -60,7 +89,7 @@ Opção A - app Downloader:
 Opção B - adb, a partir de um computador na mesma rede:
 1. Ative "Depuração ADB" nas opções de programador do aparelho.
 2. adb connect ENDEREÇO_IP_DO_APARELHO
-3. adb install PlayerIPTV-android-armv7.apk   (Fire TV; arm64 noutros aparelhos)
+3. adb install TVIntel-android-armv7.apk   (Fire TV; arm64 noutros aparelhos)
 
 Importar as listas
 ------------------
@@ -85,13 +114,49 @@ def verificar_conteudo(pasta: Path) -> None:
                 )
 
 
+def verificar_libmpv(pasta: Path) -> None:
+    """Recusa empacotar sem o libmpv completo (SHA-256 fixado) e sem os avisos de licença dele."""
+    dll = Path(pasta) / "libmpv-2.dll"
+    if not dll.is_file():
+        raise SystemExit("Empacotamento recusado: falta o libmpv-2.dll.")
+    if hashlib.sha256(dll.read_bytes()).hexdigest() != SHA256_LIBMPV:
+        raise SystemExit(
+            "Empacotamento recusado: o libmpv-2.dll não é o libmpv completo (windows/libmpv_completo.cmake)."
+        )
+    for nome in LICENCAS_WINDOWS:
+        if not (Path(pasta) / "licencas-libmpv" / nome).is_file():
+            raise SystemExit(f"Empacotamento recusado: falta licencas-libmpv/{nome} (licença do libmpv/ffmpeg).")
+
+
+def verificar_apk(apk: Path, abi: str) -> None:
+    """Recusa um APK sem o libmpv completo no ABI dele (SHA-256 fixado) ou sem os textos das licenças."""
+    with zipfile.ZipFile(apk) as z:
+        nomes = set(z.namelist())
+        lib = f"lib/{abi}/libmpv.so"
+        if lib not in nomes:
+            raise SystemExit(f"Empacotamento recusado: {Path(apk).name} sem {lib}.")
+        h = hashlib.sha256(z.read(lib)).hexdigest()
+        if h != SHA256_LIBMPV_ANDROID.get(abi):
+            raise SystemExit(
+                f"Empacotamento recusado: o {lib} de {Path(apk).name} não é o libmpv completo "
+                "(android/libmpv_completo.gradle; foi construído com libmpvMinimo?)."
+            )
+        for a in LICENCAS_APK:
+            if a not in nomes:
+                raise SystemExit(f"Empacotamento recusado: {Path(apk).name} sem {a} (licença do libmpv/ffmpeg).")
+
+
 def copiar_apks(origem: Path, dist: Path) -> list[Path]:
+    # todos verificados antes de copiar o primeiro: nunca fica um APK sem o libmpv completo em dist/
+    for nome_flutter in APKS:
+        src = Path(origem) / nome_flutter
+        if not src.is_file():
+            raise SystemExit(f"APK em falta: {src}")
+        verificar_apk(src, ABI_APK[nome_flutter])
     dist.mkdir(parents=True, exist_ok=True)
     feitos = []
     for nome_flutter, nome_final in APKS.items():
         src = Path(origem) / nome_flutter
-        if not src.is_file():
-            raise SystemExit(f"APK em falta: {src}")
         destino = dist / nome_final
         shutil.copy2(src, destino)
         feitos.append(destino)
@@ -101,6 +166,7 @@ def copiar_apks(origem: Path, dist: Path) -> list[Path]:
 def criar_zip_windows(pasta_release: Path, destino: Path) -> Path:
     pasta_release = Path(pasta_release)
     verificar_conteudo(pasta_release)
+    verificar_libmpv(pasta_release)
     destino = Path(destino)
     destino.parent.mkdir(parents=True, exist_ok=True)
     destino.unlink(missing_ok=True)
@@ -121,7 +187,7 @@ def limpar_saidas(dist: Path, android: bool, windows: bool) -> None:
     if android:
         nomes += list(APKS.values())
     if windows:
-        nomes.append("PlayerIPTV-windows.zip")
+        nomes.append("TVIntel-windows.zip")
     for n in nomes:
         (Path(dist) / n).unlink(missing_ok=True)
 
@@ -153,7 +219,7 @@ def construir_windows(dist: Path) -> Path | None:
         if falta_symlinks(saida):
             return None
         raise SystemExit("Falhou 'flutter build windows'.")
-    return criar_zip_windows(RAIZ / PASTA_WINDOWS, dist / "PlayerIPTV-windows.zip")
+    return criar_zip_windows(RAIZ / PASTA_WINDOWS, dist / "TVIntel-windows.zip")
 
 
 def main(argv=None) -> int:

@@ -17,7 +17,7 @@ enum EstadoV {
 
 class ResultadoVerificacao {
   const ResultadoVerificacao(this.estado, this.motivo,
-      {this.canal = '', this.validade = '', this.canais = const []});
+      {this.canal = '', this.validade = '', this.canais = const [], this.tempoEsgotado = false});
   final EstadoV estado;
   final String motivo;
 
@@ -28,8 +28,11 @@ class ResultadoVerificacao {
   /// Com vários canais de teste: [{"id","nome","estado","motivo"}].
   final List<Map<String, dynamic>> canais;
 
-  ResultadoVerificacao com({String? canal, String? validade}) => ResultadoVerificacao(
-      estado, motivo, canal: canal ?? this.canal, validade: validade ?? this.validade, canais: canais);
+  /// INC porque se esgotou o tempo limite (da lista ou da conta), não por uma resposta.
+  final bool tempoEsgotado;
+
+  ResultadoVerificacao com({String? canal, String? validade}) => ResultadoVerificacao(estado, motivo,
+      canal: canal ?? this.canal, validade: validade ?? this.validade, canais: canais, tempoEsgotado: tempoEsgotado);
 }
 
 const _httpDefinitivos = {

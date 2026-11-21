@@ -61,6 +61,91 @@ void main() {
     expect(await File('${pasta.path}/biblioteca.json.bak').exists(), isTrue);
   });
 
+  Canal canalN(int n) => Canal(id: 'c$n', nome: 'Canal $n', grupo: 'G');
+
+  test('vistos há pouco: 20 no máximo, mais recente primeiro, sem repetidos, e persistem', () async {
+    final b = await Biblioteca.abrir(pasta);
+    await b.adicionar([_imp('http://a.com/c/ 00:1A:79:00:00:01')]);
+    final id = b.listas.single.id;
+    for (var i = 1; i <= 25; i++) {
+      await b.registarVisto(id, canalN(i));
+    }
+    expect(b.listas.single.vistos, [for (var i = 25; i > 5; i--) 'c$i']);
+    // rever um canal antigo passa-o para a frente, sem o repetir
+    await b.registarVisto(id, canalN(10));
+    expect(b.listas.single.vistos.first, 'c10');
+    expect(b.listas.single.vistos.where((v) => v == 'c10'), hasLength(1));
+    expect(b.listas.single.vistos, hasLength(20));
+    // o mesmo canal outra vez (já à frente) não muda nada
+    await b.registarVisto(id, canalN(10));
+    expect(b.listas.single.vistos.first, 'c10');
+    final r = await Biblioteca.abrir(pasta);
+    expect(r.listas.single.vistos, b.listas.single.vistos);
+  });
+
+  test('JSON antigo sem "vistos" abre com a lista vazia', () {
+    final l = Lista.deJson({
+      'id': 'x', 'ordem': 1, 'conta': contaDeLinha('http://a.com/c/ 00:1A:79:00:00:01')!.paraJson(),
+    })!;
+    expect(l.vistos, isEmpty);
+    expect(l.paraJson().containsKey('vistos'), isFalse);
+  });
+
+  test('lista favorita: guarda e relê; JSON antigo sem o campo é false', () async {
+    var b = await Biblioteca.abrir(pasta);
+    await b.adicionar([_imp('http://a.com/l.m3u'), _imp('http://b.com/l.m3u')]);
+    final id = b.listas.first.id;
+    expect(b.listas.first.favorita, isFalse);
+    await b.alternarFavorita(id);
+    b = await Biblioteca.abrir(pasta);
+    expect(b.porId(id)!.favorita, isTrue);
+    expect(b.listas.where((l) => l.favorita), hasLength(1));
+    await b.alternarFavorita(id);
+    b = await Biblioteca.abrir(pasta);
+    expect(b.porId(id)!.favorita, isFalse);
+    final antiga = Lista.deJson({
+      'id': 'x', 'ordem': 1, 'conta': contaDeLinha('http://a.com/c/ 00:1A:79:00:00:01')!.paraJson(),
+    })!;
+    expect(antiga.favorita, isFalse);
+    expect(antiga.paraJson().containsKey('favorita'), isFalse);
+  });
+
+  test('a lista favorita passa pela cópia de segurança (juntar e substituir)', () {
+    final conta = contaDeLinha('http://a.com/c/ 00:1A:79:00:00:01')!;
+    final atual = Lista(id: 'a', ordem: 1, conta: conta);
+    final ficheiro = Lista(id: 'f', ordem: 1, conta: conta, favorita: true);
+    expect(planearRestauro([atual], [ficheiro], substituir: true).listas.single.favorita, isTrue);
+    expect(planearRestauro([atual], [ficheiro], substituir: false).listas.single.favorita, isTrue);
+    final jaFavorita = Lista(id: 'a', ordem: 1, conta: conta, favorita: true);
+    expect(planearRestauro([jaFavorita], [Lista(id: 'f', ordem: 1, conta: conta)], substituir: false)
+        .listas.single.favorita, isTrue);
+  });
+
+  test('vistos passam pela cópia de segurança (juntar e substituir)', () {
+    final conta = contaDeLinha('http://a.com/c/ 00:1A:79:00:00:01')!;
+    final atual = Lista(id: 'a', ordem: 1, conta: conta);
+    final ficheiro = Lista(id: 'f', ordem: 1, conta: conta, vistos: ['c2', 'c1']);
+    expect(planearRestauro([atual], [ficheiro], substituir: true).listas.single.vistos, ['c2', 'c1']);
+    expect(planearRestauro([atual], [ficheiro], substituir: false).listas.single.vistos, ['c2', 'c1']);
+    final comVistos = Lista(id: 'a', ordem: 1, conta: conta, vistos: ['c9']);
+    expect(planearRestauro([comVistos], [ficheiro], substituir: false).listas.single.vistos, ['c9']);
+  });
+
+  test('receber do Gestor mantém os vistos de uma lista que já existe', () async {
+    final b = await Biblioteca.abrir(pasta);
+    await b.adicionar([_imp('http://a.com/c/ 00:1A:79:00:00:01')]);
+    final id = b.listas.single.id;
+    await b.registarVisto(id, canalN(1));
+    final doGestor = Lista(
+        id: 'g', ordem: 7, conta: contaDeLinha('http://a.com/c/ 00:1A:79:00:00:01')!,
+        ultima: UltimaVerificacao(estado: 'funciona', data: DateTime(2026, 5, 1)));
+    await b.receber([doGestor], ModoEnvio.adicionar);
+    expect(b.listas.single.ultima!.estado, 'funciona');
+    expect(b.listas.single.vistos, ['c1']);
+    final r = await Biblioteca.abrir(pasta);
+    expect(r.listas.single.vistos, ['c1']);
+  });
+
   test('cache de canais', () async {
     final b = await Biblioteca.abrir(pasta);
     await b.adicionar([_imp('http://a.com/x.m3u')]);

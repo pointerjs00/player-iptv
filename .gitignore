@@ -9,3 +9,6 @@ historico.json
 dist/
 __pycache__/
 *.pyc
+
+# contas reais de teste (credenciais): nunca no repositório
+test.json

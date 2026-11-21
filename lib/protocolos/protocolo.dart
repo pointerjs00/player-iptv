@@ -1,12 +1,20 @@
 /// Abrir uma lista (grupos + canais) e obter o link de um canal, para os três tipos de lista.
 library;
 
+import '../dados/preferencias.dart';
 import '../modelo/canal.dart';
 import '../modelo/conta.dart';
 import '../rede/http.dart';
 import 'm3u_remoto.dart';
 import 'stalker.dart';
 import 'xtream.dart';
+
+/// O user-agent dos pedidos M3U e Xtream: o das Definições ou, sem ele, o do VLC. O Stalker
+/// mantém sempre o da box MAG.
+String uaListas() {
+  final ua = Preferencias.atual.userAgent;
+  return ua.isEmpty ? uaVlc : ua;
+}
 
 /// Progresso legível ("a pedir os canais · página 3/12").
 typedef Aviso = void Function(String texto);

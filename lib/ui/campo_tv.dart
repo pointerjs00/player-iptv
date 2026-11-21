@@ -13,6 +13,12 @@ class CampoTv extends StatefulWidget {
     this.controller,
     this.minLines,
     this.maxLines = 1,
+    this.autofocus = false,
+    this.obscureText = false,
+    this.focusNode,
+    this.onSubmitted,
+    this.textInputAction,
+    this.aoSeta,
   });
 
   final InputDecoration decoration;
@@ -20,26 +26,56 @@ class CampoTv extends StatefulWidget {
   final TextEditingController? controller;
   final int? minLines;
   final int? maxLines;
+  final bool autofocus;
+
+  /// Esconde o texto (passwords).
+  final bool obscureText;
+
+  /// O foco do campo, para o pôr nele de fora (sem ele, o campo tem um seu).
+  final FocusNode? focusNode;
+
+  /// Confirmado (Enter, OK do comando ou a ação do teclado no ecrã), com o texto do campo.
+  final ValueChanged<String>? onSubmitted;
+
+  /// A ação do teclado no ecrã («Concluído», «Pesquisar»…).
+  final TextInputAction? textInputAction;
+
+  /// ESQUERDA/DIREITA antes de o campo as tratar: recebe a tecla e se o campo está a escrever;
+  /// devolve true se já tratou (por exemplo, saltou para o campo ao lado).
+  final bool Function(LogicalKeyboardKey tecla, bool aEscrever)? aoSeta;
 
   @override
   State<CampoTv> createState() => _CampoTvState();
 }
 
 class _CampoTvState extends State<CampoTv> {
-  final _foco = FocusNode();
+  FocusNode? _proprio;
+  FocusNode get _foco => widget.focusNode ?? (_proprio ??= FocusNode());
   bool _aEscrever = false;
 
   @override
   void initState() {
     super.initState();
-    _foco.addListener(() {
-      if (!_foco.hasFocus && _aEscrever) setState(() => _aEscrever = false);
-    });
+    _foco.addListener(_mudouFoco);
+  }
+
+  @override
+  void didUpdateWidget(CampoTv old) {
+    super.didUpdateWidget(old);
+    if (old.focusNode != widget.focusNode) {
+      (old.focusNode ?? _proprio)?.removeListener(_mudouFoco);
+      _foco.addListener(_mudouFoco);
+    }
+  }
+
+  void _mudouFoco() {
+    if (!_foco.hasFocus && _aEscrever) setState(() => _aEscrever = false);
   }
 
   @override
   void dispose() {
-    _foco.dispose();
+    _foco.removeListener(_mudouFoco);
+    _proprio?.dispose();
     super.dispose();
   }
 
@@ -64,10 +100,33 @@ class _CampoTvState extends State<CampoTv> {
       _pararDeEscrever();
       return KeyEventResult.handled;
     }
-    final variasLinhas = widget.maxLines != 1;
-    if ((k == LogicalKeyboardKey.arrowDown || k == LogicalKeyboardKey.arrowUp) && !(variasLinhas && _aEscrever)) {
-      _foco.focusInDirection(k == LogicalKeyboardKey.arrowDown ? TraversalDirection.down : TraversalDirection.up);
+    if ((k == LogicalKeyboardKey.arrowLeft || k == LogicalKeyboardKey.arrowRight) &&
+        (widget.aoSeta?.call(k, _aEscrever) ?? false)) {
       return KeyEventResult.handled;
+    }
+    final variasLinhas = widget.maxLines != 1;
+    // Enter físico a escrever, num campo de uma linha: confirma (o teclado físico não manda a ação
+    // «Concluído»; no Windows é assim que se confirma)
+    if (_aEscrever &&
+        !variasLinhas &&
+        widget.onSubmitted != null &&
+        (k == LogicalKeyboardKey.enter || k == LogicalKeyboardKey.numpadEnter)) {
+      _pararDeEscrever();
+      widget.onSubmitted!(widget.controller?.text ?? '');
+      return KeyEventResult.handled;
+    }
+    if ((k == LogicalKeyboardKey.arrowDown || k == LogicalKeyboardKey.arrowUp) && !(variasLinhas && _aEscrever)) {
+      final moveu =
+          _foco.focusInDirection(k == LogicalKeyboardKey.arrowDown ? TraversalDirection.down : TraversalDirection.up);
+      // sem nada nessa direção, quem está à volta decide (por exemplo CIMA no topo de uma secção
+      // vai à barra das secções)
+      return moveu ? KeyEventResult.handled : KeyEventResult.ignored;
+    }
+    // sem estar a escrever, ESQUERDA/DIREITA também saem do campo (numa barra com botões ao lado)
+    if (!_aEscrever && (k == LogicalKeyboardKey.arrowLeft || k == LogicalKeyboardKey.arrowRight)) {
+      final moveu = _foco.focusInDirection(
+          k == LogicalKeyboardKey.arrowLeft ? TraversalDirection.left : TraversalDirection.right);
+      return moveu ? KeyEventResult.handled : KeyEventResult.ignored;
     }
     if (!_aEscrever &&
         (k == LogicalKeyboardKey.select || k == LogicalKeyboardKey.enter || k == LogicalKeyboardKey.gameButtonA)) {
@@ -95,13 +154,29 @@ class _CampoTvState extends State<CampoTv> {
           controller: widget.controller,
           minLines: widget.minLines,
           maxLines: widget.maxLines,
+          autofocus: widget.autofocus,
+          obscureText: widget.obscureText,
           readOnly: !_aEscrever,
           decoration: widget.decoration,
           onTap: _aEscrever ? null : _escrever,
           onChanged: widget.onChanged,
-          onSubmitted: (_) => setState(() => _aEscrever = false),
+          textInputAction: widget.textInputAction,
+          onSubmitted: (v) {
+            setState(() => _aEscrever = false);
+            widget.onSubmitted?.call(v);
+          },
         ),
       ),
     );
   }
+}
+
+/// O foco está num campo de texto a escrever (não só de leitura): as teclas do comando (Voltar,
+/// Menu) ficam para o campo.
+bool focoAEscrever() {
+  final contexto = FocusManager.instance.primaryFocus?.context;
+  final campo = contexto?.widget is EditableText
+      ? contexto!.widget as EditableText
+      : contexto?.findAncestorWidgetOfExactType<EditableText>();
+  return campo != null && !campo.readOnly;
 }

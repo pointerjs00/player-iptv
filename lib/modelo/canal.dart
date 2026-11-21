@@ -11,6 +11,7 @@ class Canal {
     this.cmd = '',
     this.userAgent,
     this.referer,
+    this.numero,
   });
 
   /// Identificador estável dentro da lista (id do portal ou o URL).
@@ -27,16 +28,21 @@ class Canal {
   final String? userAgent;
   final String? referer;
 
+  /// O número do canal no portal/lista (Stalker `number`, Xtream `num`, M3U `tvg-chno`); null = sem.
+  final int? numero;
+
   Map<String, dynamic> paraJson() => {
         'id': id, 'nome': nome, 'grupo': grupo, 'url': url, 'logo': logo, 'cmd': cmd,
         if (userAgent != null) 'ua': userAgent,
         if (referer != null) 'referer': referer,
+        if (numero != null) 'num': numero,
       };
 
   static Canal deJson(Map<String, dynamic> j) => Canal(
         id: '${j['id']}', nome: '${j['nome']}', grupo: '${j['grupo']}', url: '${j['url'] ?? ''}',
         logo: '${j['logo'] ?? ''}', cmd: '${j['cmd'] ?? ''}',
         userAgent: j['ua'] as String?, referer: j['referer'] as String?,
+        numero: numeroCanal(j['num']),
       );
 }
 
@@ -84,6 +90,12 @@ class FonteVideo {
   const FonteVideo(this.url, [this.headers = const {}]);
   final String url;
   final Map<String, String> headers;
+}
+
+/// Um número de canal vindo do portal ("7", 7, "007"); null se não for um número positivo.
+int? numeroCanal(Object? v) {
+  final n = v is num ? v.toInt() : int.tryParse('${v ?? ''}'.trim());
+  return n != null && n > 0 ? n : null;
 }
 
 /// Texto sem acentos e em minúsculas, para pesquisar ("joao" encontra "João").

@@ -1,21 +1,29 @@
 import 'dart:io';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
+import 'design/ecra.dart';
+import 'design/movimento.dart';
+import 'design/sombra.dart';
+import 'design/tokens.dart';
 import 'tema.dart';
 
-/// O realce do foco para o comando da TV: uma borda de 3 px na cor de acento e um fundo
-/// ligeiramente mais claro (e, nos cartões, um ligeiro aumento).
+/// O realce do foco para o comando da TV: uma borda de 3 px no azul claro do anel de foco com um
+/// brilho azul por fora, e um fundo ligeiramente mais claro (e, nos cartões, um aumento).
 abstract final class Realce {
-  static const borda = BorderSide(color: Cores.acento, width: 3);
+  static const borda = BorderSide(color: Tokens.anelFoco, width: 3);
 
   /// Nos botões cheios (já da cor de acento) a borda clara vê-se melhor.
   static const bordaClara = BorderSide(color: Cores.texto, width: 3);
 
   /// O fundo de quem tem o foco (o `focusColor` do tema e o overlay dos botões).
   static final fundo = Cores.acento.withValues(alpha: .22);
-  static const duracao = Duration(milliseconds: 120);
+  static const duracao = Tokens.duracaoRapida;
+
+  /// O brilho azul à volta de quem tem o foco (pintado só por fora: não tapa o conteúdo).
+  static final brilho = [BoxShadow(color: Tokens.anelFoco.withValues(alpha: .55), blurRadius: 16)];
 }
 
 const _canalTv = MethodChannel('player_iptv/tv');
@@ -26,19 +34,78 @@ Future<bool> _eTvAndroid() async =>
 
 /// Na TV o realce do foco fica sempre ligado: no modo automático, um toque (por exemplo no
 /// emulador ou num comando com rato) escondia-o e com as setas não voltava.
-Future<void> configurarRealceFoco({Future<bool> Function()? eTv}) async {
+/// `computador`: só para os testes (por omissão, Windows/Linux/macOS).
+Future<void> configurarRealceFoco({Future<bool> Function()? eTv, bool? computador}) async {
   bool tv;
   try {
     tv = await (eTv ?? _eTvAndroid)();
   } catch (_) {
     tv = false;
   }
+  EcraTv.nativo = tv; // ecraTv(): tamanhos maiores (vista de longe)
+  // no computador, o Flutter conta o rato como "teclado" (realce ligado): o cartão que tinha o
+  // foco ficava com o anel depois de se clicar noutro. O rato passa a contar como toque
+  final pc = !tv && (computador ?? (Platform.isWindows || Platform.isLinux || Platform.isMacOS));
+  if (!pc) {
+    _vigiaEntrada?.desinstalar();
+    _vigiaEntrada = null;
+  } else {
+    _vigiaEntrada ??= RealceConformeEntrada()..instalar();
+  }
   if (tv) FocusManager.instance.highlightStrategy = FocusHighlightStrategy.alwaysTraditional;
+}
+
+/// O vigia do computador (um só, mesmo que se configure mais de uma vez).
+RealceConformeEntrada? _vigiaEntrada;
+
+/// O modo de realce do foco conforme a última entrada: rato ou toque → sem realce; uma tecla de
+/// navegação → com realce. (No modo automático do Flutter, o rato também liga o realce.)
+class RealceConformeEntrada {
+  static final _teclas = {
+    LogicalKeyboardKey.arrowUp,
+    LogicalKeyboardKey.arrowDown,
+    LogicalKeyboardKey.arrowLeft,
+    LogicalKeyboardKey.arrowRight,
+    LogicalKeyboardKey.tab,
+    LogicalKeyboardKey.enter,
+    LogicalKeyboardKey.numpadEnter,
+    LogicalKeyboardKey.select,
+    LogicalKeyboardKey.space,
+    LogicalKeyboardKey.escape,
+    LogicalKeyboardKey.goBack,
+    LogicalKeyboardKey.contextMenu,
+  };
+
+  void _modo(FocusHighlightStrategy s) {
+    if (FocusManager.instance.highlightStrategy != s) FocusManager.instance.highlightStrategy = s;
+  }
+
+  void _ponteiro(PointerEvent e) {
+    if (e is PointerDownEvent) _modo(FocusHighlightStrategy.alwaysTouch);
+  }
+
+  bool _tecla(KeyEvent e) {
+    if (e is KeyDownEvent && _teclas.contains(e.logicalKey)) _modo(FocusHighlightStrategy.alwaysTraditional);
+    return false; // só observa: a tecla segue para quem a trata
+  }
+
+  void instalar() {
+    // ao abrir ainda não houve entrada: sem realce até uma tecla (o cartão com foco automático,
+    // como o "Continuar a ver", não brilha com o rato)
+    _modo(FocusHighlightStrategy.alwaysTouch);
+    GestureBinding.instance.pointerRouter.addGlobalRoute(_ponteiro);
+    HardwareKeyboard.instance.addHandler(_tecla);
+  }
+
+  void desinstalar() {
+    GestureBinding.instance.pointerRouter.removeGlobalRoute(_ponteiro);
+    HardwareKeyboard.instance.removeHandler(_tecla);
+  }
 }
 
 /// Mostra o realce à volta de `child` quando `focado` (e o modo de realce é o do teclado/comando).
 class MolduraFoco extends StatelessWidget {
-  const MolduraFoco({super.key, required this.focado, required this.child, this.raio = 10, this.escala = 1});
+  const MolduraFoco({super.key, required this.focado, required this.child, this.raio = 12, this.escala = 1});
 
   final bool focado;
   final Widget child;
@@ -49,19 +116,27 @@ class MolduraFoco extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    Theme.of(context); // reconstrói quando o modo de realce muda (TemaConformeRealce troca o tema)
     final ver = focado && FocusManager.instance.highlightMode == FocusHighlightMode.traditional;
     final r = BorderRadius.circular(raio);
     return AnimatedScale(
       scale: ver ? escala : 1,
-      duration: Realce.duracao,
-      child: DecoratedBox(
-        position: DecorationPosition.foreground,
-        decoration: ver
-            // só a borda: o fundo mais claro é o focusColor do tema (o InkWell pinta-o; uma cor
-            // aqui esconderia o ink do ListTile)
-            ? BoxDecoration(borderRadius: r, border: Border.fromBorderSide(Realce.borda))
-            : BoxDecoration(borderRadius: r),
-        child: child,
+      duration: duracaoAnimada(context, Realce.duracao),
+      curve: Tokens.curva,
+      // o brilho só por fora (por baixo pintaria de violeta um cartão de vidro)
+      child: SombraExterior(
+        duration: duracaoAnimada(context, Realce.duracao),
+        raio: raio,
+        sombras: ver ? Realce.brilho : const [],
+        child: DecoratedBox(
+          position: DecorationPosition.foreground,
+          decoration: ver
+              // só a borda: o fundo mais claro é o focusColor do tema (o InkWell pinta-o; uma cor
+              // aqui esconderia o ink do ListTile)
+              ? BoxDecoration(borderRadius: r, border: Border.fromBorderSide(Realce.borda))
+              : BoxDecoration(borderRadius: r),
+          child: child,
+        ),
       ),
     );
   }
@@ -70,7 +145,7 @@ class MolduraFoco extends StatelessWidget {
 /// Para widgets que dizem quando ganham/perdem o foco (`onFocusChange` do ListTile, InkWell...):
 /// `construir(context, aoMudarFoco)` passa `aoMudarFoco` ao widget e o realce fica à volta dele.
 class RealceFoco extends StatefulWidget {
-  const RealceFoco({super.key, required this.construir, this.raio = 10, this.escala = 1});
+  const RealceFoco({super.key, required this.construir, this.raio = 12, this.escala = 1});
 
   final Widget Function(BuildContext context, ValueChanged<bool> aoMudarFoco) construir;
   final double raio;

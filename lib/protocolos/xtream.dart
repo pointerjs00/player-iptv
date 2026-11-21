@@ -14,7 +14,7 @@ class Xtream implements Protocolo {
 
   Future<Object?> _api(Conta c, Map<String, String> extra, Cancelamento? cancelamento) {
     final q = Uri(queryParameters: {'username': c.utilizador, 'password': c.password, ...extra}).query;
-    return obterJson('${_raiz(c)}/player_api.php?$q', headers: const {'User-Agent': uaVlc},
+    return obterJson('${_raiz(c)}/player_api.php?$q', headers: {'User-Agent': uaListas()},
         timeout: const Duration(seconds: 30), cancelamento: cancelamento);
   }
 
@@ -103,7 +103,7 @@ class Xtream implements Protocolo {
       final grupo = nomes['${s['category_id']}'] ?? 'Sem grupo';
       if (vistos.add(grupo)) grupos.add(grupo);
       canais.add(Canal(id: '${s['stream_id']}', nome: '${s['name'] ?? ''}'.trim(), grupo: grupo,
-          logo: '${s['stream_icon'] ?? ''}'));
+          logo: '${s['stream_icon'] ?? ''}', numero: numeroCanal(s['num'])));
     }
     // a ordem das categorias do painel, com as que não têm canais no fim
     final ordem = [for (final n in nomes.values) if (vistos.contains(n)) n];
@@ -118,6 +118,6 @@ class Xtream implements Protocolo {
     final ext = _extensoes[chave(conta)] ?? 'ts';
     final u = Uri.encodeComponent(conta.utilizador), p = Uri.encodeComponent(conta.password);
     return FonteVideo('${_raiz(conta)}/live/$u/$p/${Uri.encodeComponent(canal.id)}.$ext',
-        const {'User-Agent': uaVlc});
+        {'User-Agent': uaListas()});
   }
 }

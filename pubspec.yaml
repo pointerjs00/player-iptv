@@ -43,6 +43,15 @@ dependencies:
   file_picker: ^13.4.0
   crypto: ^3.0.8
   window_manager: ^0.7.0
+  # já vinha com o media_kit (sem descargas novas): chamar o libmpv fora da thread da UI
+  ffi: ^2.2.0
+
+# media_kit 1.2.6 e media_kit_video 2.0.1 locais (ver os README.player-iptv.md em third_party/)
+dependency_overrides:
+  media_kit:
+    path: third_party/media_kit
+  media_kit_video:
+    path: third_party/media_kit_video
 
 dev_dependencies:
   flutter_test:
@@ -65,6 +74,18 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  # o desentrelaçamento do player no Android (por cima da textura do vídeo)
+  shaders:
+    - shaders/desentrelacar.frag
+
+  # o aviso e os textos das licenças do libmpv/ffmpeg (GPLv3) dentro da app (Definições -> Licenças)
+  # e o logótipo (ferramentas/gerar_icones.py)
+  assets:
+    - assets/marca/logo.png
+    - third_party/libmpv_completo/AVISOS-LICENCAS.txt
+    - third_party/libmpv_completo/licencas/GPL-3.0.txt
+    - third_party/libmpv_completo/licencas/LGPL-2.1.txt
 
   # To add assets to your application, add an assets section, like this:
   # assets:

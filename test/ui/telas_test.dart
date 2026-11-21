@@ -4,11 +4,17 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:player_iptv/dados/area_gestor.dart';
 import 'package:player_iptv/dados/biblioteca.dart';
 import 'package:player_iptv/importar/importar.dart';
 import 'package:player_iptv/modelo/canal.dart';
 import 'package:player_iptv/modelo/conta.dart';
+import 'package:player_iptv/tarefas/servico_tarefas.dart';
 import 'package:player_iptv/ui/conteudo/tela_conteudo.dart';
+import 'package:player_iptv/ui/design/design.dart';
+import 'package:player_iptv/ui/gestor/passo_enviar.dart';
+import 'package:player_iptv/ui/gestor/passo_verificar.dart';
+import 'package:player_iptv/ui/gestor/tela_gestor.dart';
 import 'package:player_iptv/ui/inicio/tela_inicio.dart';
 import 'package:player_iptv/ui/player/player_canais.dart';
 import 'package:player_iptv/ui/realce_foco.dart';
@@ -47,7 +53,7 @@ void main() {
     } on FileSystemException {/* o Windows ainda tem o ficheiro aberto */}
   });
 
-  testWidgets('Início: cartões com o último resultado e filtro por estado', (t) async {
+  testWidgets('Player: cartões com o último resultado e filtro por estado (sem verificar)', (t) async {
     await t.runAsync(() => bib.adicionar([
           Importada(contaDeLinha('http://nxtbox.uk/c/ 00:1A:79:00:00:01')!,
               UltimaVerificacao(estado: 'funciona', data: DateTime.now(), validade: '2027-10-16')),
@@ -56,16 +62,17 @@ void main() {
           Importada(contaDeLinha('http://novo.com/x.m3u')!),
         ]));
     _tamanho(t, 1200, 800);
-    await t.pumpWidget(_app(TelaInicio(biblioteca: bib, servico: ServicoVerificacao(bib))));
+    await t.pumpWidget(_app(TelaInicio(biblioteca: bib)));
     await t.pump();
     expect(find.text('001NXTBOX 161027'), findsOneWidget);
     expect(find.text('até 16/10/2027'), findsOneWidget);
     expect(find.text('INC 002OUTRO'), findsOneWidget);
     expect(find.text('tempo esgotado'), findsOneWidget);
     expect(find.text('Por verificar'), findsWidgets);
-    expect(find.text('Verificar de novo'), findsNWidgets(3));
+    // o Player não verifica (é no Gestor)
+    expect(find.text('Verificar de novo'), findsNothing);
 
-    await t.tap(find.widgetWithText(ChoiceChip, 'INC'));
+    await t.tap(find.widgetWithText(ChoiceChip, 'Inconclusivas'));
     await t.pump();
     expect(find.text('001NXTBOX 161027'), findsNothing);
     expect(find.text('INC 002OUTRO'), findsOneWidget);
@@ -82,10 +89,37 @@ void main() {
     expect(mensagemErroPlayer('http://h/live/u/p/1.ts'), 'o canal não abriu');
   });
 
-  testWidgets('Início vazio convida a adicionar listas', (t) async {
+  testWidgets('Ver TV vazio: explica o caminho pelo Gestor e não adiciona', (t) async {
     await t.pumpWidget(_app(TelaInicio(biblioteca: bib)));
-    expect(find.text('Ainda não há listas.'), findsOneWidget);
-    expect(find.text('Adicionar listas'), findsOneWidget);
+    expect(find.text('Ainda não há listas para ver'), findsOneWidget);
+    expect(find.text('Adicionar listas'), findsNothing);
+    expect(find.byTooltip('Adicionar listas'), findsNothing);
+    // só o conteúdo de Ver TV: sem separadores nem roda dentada (são da casca)
+    expect(find.byType(TabBar), findsNothing);
+    expect(find.byTooltip('Definições'), findsNothing);
+    // fora da casca não há Gestor para onde ir
+    expect(find.text('Ir para o Gestor'), findsNothing);
+  });
+
+  testWidgets('I3: Gestor com 300 listas só constrói as linhas visíveis (lista preguiçosa)', (t) async {
+    late AreaGestor area;
+    await t.runAsync(() async => area = await AreaGestor.abrir(pasta));
+    await t.runAsync(() => area.adicionar([
+          for (var i = 0; i < 300; i++) Importada(contaDeLinha('http://h$i.com/l.m3u')!),
+        ]));
+    _tamanho(t, 1200, 1600);
+    await t.pumpWidget(_app(Scaffold(
+        body: TelaGestor(
+            biblioteca: bib, area: area, servico: ServicoVerificacao(bib, colecao: area), tarefas: ServicoTarefas()))));
+    await t.pump();
+    // em cada passo (o 2 e o 3 ficam construídos, escondidos atrás do resumo), só as que cabem em 1600
+    for (final passo in [find.byType(PassoVerificar, skipOffstage: false), find.byType(PassoEnviar, skipOffstage: false)]) {
+      final linhas = find.descendant(
+          of: passo, matching: find.byType(CheckboxListTile, skipOffstage: false), skipOffstage: false);
+      final construidas = linhas.evaluate().length;
+      expect(construidas, greaterThan(0));
+      expect(construidas, lessThan(60), reason: '$construidas linhas construídas');
+    }
   });
 
   group('Conteúdo', () {
@@ -114,35 +148,46 @@ void main() {
       await t.pump();
     }
 
-    testWidgets('grupos à esquerda, canais do grupo à direita; pesquisa em todos os grupos', (t) async {
+    testWidgets('grupos à esquerda, canais do grupo à direita; sem grupo, pesquisa em todos', (t) async {
       _tamanho(t, 1200, 800);
       final l = await preparar(t);
       await mostrar(t, l);
-      expect(find.text('Portugal · 2 canais'), findsOneWidget);
+      // abre em «Todos os canais»
+      expect(find.text('1 de 5'), findsOneWidget);
+      await t.tap(find.text('Portugal'));
+      await t.pump();
+      expect(find.text('1 de 2'), findsOneWidget);
       expect(find.text('PT: RTP 1 HD'), findsOneWidget);
       expect(find.text('BBC One'), findsNothing);
 
       await t.tap(find.text('UK'));
       await t.pump();
       expect(find.text('BBC One'), findsOneWidget);
-
-      // a pesquisa ignora acentos e o grupo escolhido
-      await _escrever(t, find.byKey(const Key('pesquisa-canais')), 'rtp acores');
-      await t.pump(const Duration(milliseconds: 200));
-      expect(find.text('1 canal encontrado'), findsOneWidget);
-      await _escrever(t, find.byKey(const Key('pesquisa-canais')), 'cnn');
-      await t.pump(const Duration(milliseconds: 200));
-      expect(find.text('0 canais encontrados'), findsOneWidget);
+      // com um grupo escolhido, a pesquisa só procura nele
       await _escrever(t, find.byKey(const Key('pesquisa-canais')), 'rtp');
       await t.pump(const Duration(milliseconds: 200));
-      expect(find.text('2 canais encontrados'), findsOneWidget);
+      expect(find.text('UK · 0'), findsOneWidget);
+
+      // sem grupo, a pesquisa procura em todos e ignora acentos
+      await t.tap(find.descendant(of: find.byKey(const Key('lista-grupos')), matching: find.text('Todos os canais')));
+      await t.pumpAndSettle();
+      await _escrever(t, find.byKey(const Key('pesquisa-canais')), 'rtp acores');
+      await t.pump(const Duration(milliseconds: 200));
+      expect(find.text('Canais · 1'), findsOneWidget);
+      await _escrever(t, find.byKey(const Key('pesquisa-canais')), 'cnn');
+      await t.pump(const Duration(milliseconds: 200));
+      expect(find.text('Canais · 0'), findsOneWidget);
+      await _escrever(t, find.byKey(const Key('pesquisa-canais')), 'rtp');
+      await t.pump(const Duration(milliseconds: 200));
+      expect(find.text('Canais · 2'), findsOneWidget);
       expect(find.text('RTP Açores'), findsOneWidget);
 
-      await _escrever(t, find.byKey(const Key('pesquisa-canais')), '');
+      // o filtro dos grupos só mexe nos grupos
       await _escrever(t, find.byKey(const Key('filtro-grupos')), 'desp');
       await t.pump(const Duration(milliseconds: 200));
-      expect(find.widgetWithText(ListTile, 'Portugal'), findsNothing);
-      expect(find.widgetWithText(ListTile, 'Desporto'), findsOneWidget);
+      final grupos = find.byKey(const Key('lista-grupos'));
+      expect(find.descendant(of: grupos, matching: find.text('Portugal')), findsNothing);
+      expect(find.descendant(of: grupos, matching: find.text('Desporto')), findsOneWidget);
     });
 
     testWidgets('favoritos aparecem num grupo próprio e abrir passa a lista do grupo', (t) async {
@@ -153,6 +198,8 @@ void main() {
         aberto = (c, i);
         return null;
       });
+      await t.tap(find.text('Portugal'));
+      await t.pump();
       await t.tap(find.byTooltip('Pôr nos favoritos').first);
       await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
       await t.pump();
@@ -170,9 +217,9 @@ void main() {
       await mostrar(t, l);
       await _escrever(t, find.byKey(const Key('pesquisa-canais')), 'rtp');
       await t.pump(const Duration(milliseconds: 50));
-      expect(find.text('Portugal · 2 canais'), findsOneWidget);
+      expect(find.text('1 de 5'), findsOneWidget, reason: 'ainda «Todos os canais», sem filtrar');
       await t.pump(const Duration(milliseconds: 150));
-      expect(find.text('2 canais encontrados'), findsOneWidget);
+      expect(find.text('Canais · 2'), findsOneWidget);
     });
 
     testWidgets('I5: com 100 mil canais, cada rebuild (favorito) não volta a percorrer os nomes', (t) async {
@@ -194,26 +241,80 @@ void main() {
       await t.pump(const Duration(milliseconds: 200));
       await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 500)));
       await t.pump();
-      expect(find.text('11 canais encontrados'), findsOneWidget);
-      final sw = Stopwatch()..start();
+      expect(find.text('Canais · 11'), findsOneWidget);
       for (var k = 0; k < 5; k++) {
         await t.tap(find.byTooltip(k.isEven ? 'Pôr nos favoritos' : 'Tirar dos favoritos').first);
         await t.pump();
       }
-      sw.stop();
-      // ignore: avoid_print
-      print('I5 rebuild médio: ${sw.elapsedMilliseconds / 5} ms');
-      expect(sw.elapsedMilliseconds / 5, lessThan(60));
     });
 
-    testWidgets('no telemóvel os grupos são chips', (t) async {
+    testWidgets('sugestão 9: esqueleto a brilhar enquanto carrega; depois o cabeçalho com estado e validade',
+        (t) async {
+      _tamanho(t, 1200, 800);
+      await t.runAsync(() async {
+        await bib.adicionar([
+          Importada(contaDeLinha('http://x.com/l.m3u')!,
+              UltimaVerificacao(estado: 'funciona', data: DateTime.now(), validade: '2027-10-16')),
+        ]);
+        await bib.guardarCanais(bib.listas.single.id, canais);
+      });
+      final l = bib.listas.single;
+      // a cache ainda não foi lida (IO real fora do runAsync): está a carregar
+      await t.pumpWidget(_app(TelaConteudo(biblioteca: bib, lista: l)));
+      expect(find.byType(EsqueletoBrilho), findsOneWidget);
+      expect(find.text('PT: RTP 1 HD'), findsNothing);
+      // a leitura tem vários passos de IO real: cada um precisa de tempo real e de um pump
+      for (var i = 0; i < 30 && find.byType(EsqueletoBrilho).evaluate().isNotEmpty; i++) {
+        await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+        await t.pump();
+      }
+      expect(find.byType(EsqueletoBrilho), findsNothing);
+      expect(find.text('PT: RTP 1 HD'), findsOneWidget);
+      // cabeçalho: nome da lista, estado da última verificação e validade
+      expect(find.text(l.nomeMostrado), findsWidgets);
+      expect(find.descendant(of: find.byType(PilulaEstado), matching: find.text('Funciona')), findsOneWidget);
+      expect(find.text('até 16/10/2027'), findsOneWidget);
+      expect(find.textContaining('Verificada hoje'), findsOneWidget);
+    });
+
+    testWidgets('sem verificação, o cabeçalho diz "Por verificar"', (t) async {
+      _tamanho(t, 1200, 800);
+      final l = await preparar(t);
+      await mostrar(t, l);
+      expect(find.descendant(of: find.byType(PilulaEstado), matching: find.text('Por verificar')), findsOneWidget);
+    });
+
+    testWidgets('sugestão 8: na TV (ecraTv) canais e logótipos maiores', (t) async {
+      _tamanho(t, 960, 540);
+      final l = await preparar(t);
+      Future<(double, Size)> medidas() async {
+        await mostrar(t, l);
+        final extensao = t.widget<ListView>(find.byKey(const Key('lista-canais'))).itemExtent!;
+        final logo = t.getSize(find.byKey(const Key('logo-canal')).first);
+        return (extensao, logo);
+      }
+
+      final (altura, logo) = await medidas();
+      await t.pumpWidget(const SizedBox());
+      EcraTv.nativo = true;
+      addTearDown(() => EcraTv.nativo = false);
+      final (alturaTv, logoTv) = await medidas();
+      expect(alturaTv, greaterThan(altura));
+      expect(logoTv.width, greaterThan(logo.width));
+    });
+
+    testWidgets('no telemóvel os grupos estão num botão que abre uma folha (sem chips)', (t) async {
       _tamanho(t, 400, 800);
       final l = await preparar(t);
       await mostrar(t, l);
-      expect(find.widgetWithText(ChoiceChip, 'Portugal'), findsOneWidget);
-      await t.tap(find.widgetWithText(ChoiceChip, 'Desporto'));
-      await t.pump();
+      expect(find.byType(ChoiceChip), findsNothing);
+      await t.tap(find.byKey(const Key('botao-grupo')));
+      await t.pumpAndSettle();
+      expect(find.descendant(of: find.byKey(const Key('folha-grupos')), matching: find.text('Portugal')), findsOneWidget);
+      await t.tap(find.descendant(of: find.byKey(const Key('folha-grupos')), matching: find.text('Desporto')));
+      await t.pumpAndSettle();
       expect(find.text('Sport TV 1'), findsOneWidget);
+      expect(find.text('Grupo: Desporto'), findsOneWidget);
     });
 
     testWidgets('setas navegam até um canal e OK abre-o', (t) async {

@@ -47,3 +47,12 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // Motor ExoPlayer (ReprodutorExo.kt): progressivo (MPEG-TS/MP4) e HLS
+    implementation("androidx.media3:media3-exoplayer:1.5.1")
+    implementation("androidx.media3:media3-exoplayer-hls:1.5.1")
+}
+
+// libmpv completo (com filtros do ffmpeg) do mpv-android, no lugar do do media_kit
+apply(from = "../libmpv_completo.gradle")

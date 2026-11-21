@@ -41,6 +41,38 @@ void main() {
       final dazn = perfisCanais['dazn1']!;
       expect(candidatos(dazn, ['PT: DAZN 1', 'PT: DAZN 1 PPV', 'ES: DAZN 1'], (s) => s), ['PT: DAZN 1']);
     });
+    test('tabela de nomes: separadores e "Um"', () {
+      bool casa(String perfil, String nome) => candidatos(perfisCanais[perfil]!, [nome], (s) => s).isNotEmpty;
+      for (final n in ['RTP 1', 'RTP-1', 'RTP.1', 'RTP_1', 'RTP | 1', 'RTP1', 'RTP Um', 'PT: RTP-1 HD']) {
+        expect(casa('rtp1', n), isTrue, reason: n);
+      }
+      for (final n in ['RTP 11', 'RTP Umbria', 'RTP 1 Açores', 'RTP-1 Madeira', 'RTP 1 Internacional', 'RTP 1 África',
+        'RTP 2', 'XRTP 1']) {
+        expect(casa('rtp1', n), isFalse, reason: n);
+      }
+      for (final n in ['PT: SPORT.TV 1', 'PT: Sport-TV1', 'PT: Sport TV Um', 'PT | SPORT_TV 1', 'PT: SPORTTV 1']) {
+        expect(casa('sporttv1', n), isTrue, reason: n);
+      }
+      for (final n in ['PT: SPORT TV 11', 'PT: SPORT TV 1 PFC', 'PT: SPORT TV 2', 'PT: SPORT TV Umbra', 'SPORT TV 1']) {
+        expect(casa('sporttv1', n), isFalse, reason: n);
+      }
+      for (final n in ['PT: DAZN-1', 'PT: DAZN.1', 'PT: DAZN Um', 'PT: DAZN | 1', 'PT: DAZN1']) {
+        expect(casa('dazn1', n), isTrue, reason: n);
+      }
+      for (final n in ['PT: DAZN 11', 'PT: DAZN 1 PPV', 'PT: DAZN 1 EVENT', 'PT: DAZN 2', 'ES: DAZN 1']) {
+        expect(casa('dazn1', n), isFalse, reason: n);
+      }
+    });
+    test('grupo de Portugal aceita sem PT no nome; Brasil não conta', () {
+      final sport = perfisCanais['sporttv1']!;
+      final itens = [('Sport TV 1', 'Portugal'), ('Sport TV 1 ', 'Brasil'), ('Sport TV 1  ', 'PT | Desporto'),
+        ('Sport TV 1   ', 'Portugal/Brasil'), ('Sport TV 1    ', 'BR Desporto'), ('Sport TV 1     ', 'Português')];
+      final r = candidatos(sport, itens, (i) => i.$1, null, (i) => i.$2).map((i) => i.$2).toSet();
+      expect(r, {'Portugal', 'PT | Desporto', 'Português'});
+      final rtp = perfisCanais['rtp1']!;
+      final o = candidatos(rtp, [('RTP 1', 'Geral'), ('RTP 1 HD', 'Portugal')], (i) => i.$1, null, (i) => i.$2);
+      expect(o.first.$2, 'Portugal');
+    });
     test('perfisDe', () {
       expect(perfisDe(['dazn1', 'rtp1']).map((p) => p.id), ['rtp1', 'dazn1']);
       expect(perfisDe(['xpto']).map((p) => p.id), ['rtp1']);
@@ -138,6 +170,14 @@ void main() {
       final r2 = await v.verificar(conta(), ['rtp1', 'dazn1']);
       expect(r2.estado, EstadoV.funciona);
       expect(r2.canais.map((c) => (c['id'], c['estado'])), [('rtp1', 'nao_funciona'), ('dazn1', 'funciona')]);
+    });
+
+    test('o passo diz em que canal de teste vai ("canal 2/2 · ..."), para o Gestor mostrar', () async {
+      srv.responder = (p) => painel(p, temRtp: false);
+      final avisos = <String>[];
+      await v.verificar(conta(), ['rtp1', 'dazn1'], aviso: avisos.add);
+      expect(avisos.where((a) => a.startsWith('canal 2/2 · DAZN 1 · variante 1/')), isNotEmpty, reason: '$avisos');
+      expect(avisos.where((a) => a.startsWith('canal 1/')), isEmpty, reason: 'RTP 1 não existe: não há variantes');
     });
 
     test('limite de ligações fica inconclusivo (com 2.ª volta)', () async {

@@ -49,6 +49,7 @@ ConteudoLista lerM3u(String texto) {
       canais.add(Canal(
         id: linha, nome: nome.isEmpty ? (attrs['tvg-name'] ?? linha) : nome, grupo: grupo,
         url: linha, logo: attrs['tvg-logo'] ?? '', userAgent: ua, referer: referer,
+        numero: numeroCanal(attrs['tvg-chno']),
       ));
       extinf = null;
       opcoes = [];

@@ -2,18 +2,24 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:player_iptv/dados/area_gestor.dart';
 import 'package:player_iptv/dados/biblioteca.dart';
 import 'package:player_iptv/ui/tema.dart';
-import 'package:player_iptv/ui/verificar/tela_verificar.dart';
+import 'package:player_iptv/tarefas/servico_tarefas.dart';
+import 'package:player_iptv/ui/design/componentes.dart';
+import 'package:player_iptv/ui/gestor/tela_gestor.dart';
 import 'package:player_iptv/verificar/servico.dart';
 
 import '../apoio/servidor_falso.dart';
 
-String _dd(DateTime d) =>
-    '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
+/// O stbstalker está no sub-ecrã de importar (passo 1).
+Future<void> abrirImportar(WidgetTester t) async {
+  await t.tap(find.descendant(of: find.byType(CartaoModerno), matching: find.text('Importar')));
+  await t.pumpAndSettle();
+}
 
 void main() {
-  testWidgets('Verificar: pesquisa do stbstalker junta as listas e mostra o aviso', (t) async {
+  testWidgets('Gestor: pesquisa do stbstalker junta as listas ao Gestor (não ao Player) e mostra o aviso', (t) async {
     HttpOverrides.global = null; // o binding de testes bloqueia a rede
     t.view.physicalSize = const Size(1200, 1600);
     t.view.devicePixelRatio = 1;
@@ -26,8 +32,10 @@ void main() {
         });
     final pasta = Directory.systemTemp.createTempSync('stb');
     late Biblioteca bib;
+    late AreaGestor area;
     await t.runAsync(() async {
       bib = await Biblioteca.abrir(pasta);
+      area = await AreaGestor.abrir(pasta);
       await srv.iniciar();
     });
     addTearDown(() async {
@@ -39,18 +47,27 @@ void main() {
     await t.pumpWidget(MaterialApp(
         theme: temaApp(),
         home: Scaffold(
-            body: TelaVerificar(
-                biblioteca: bib, servico: ServicoVerificacao(bib), baseStb: '${srv.url}/'))));
+            body: TelaGestor(
+                biblioteca: bib,
+                area: area,
+                servico: ServicoVerificacao(bib, colecao: area),
+                tarefas: ServicoTarefas(),
+                baseStb: '${srv.url}/'))));
+    await abrirImportar(t);
     expect(find.text('Listas do stbstalker'), findsOneWidget);
-    expect(find.text(_dd(hoje)), findsNWidgets(2));
+    await t.tap(find.text('Listas do stbstalker'));
+    await t.pump();
+    expect(find.textContaining('Escolher datas · '), findsOneWidget);
     await t.runAsync(() async {
-      await t.tap(find.text('Iniciar pesquisa'));
+      await t.tap(find.text('Procurar e juntar'));
       await Future<void>.delayed(const Duration(milliseconds: 800));
     });
     await t.pump();
     await t.pump();
-    expect(find.text('Em ${_dd(hoje)}: 2 linhas em 1 post, 2 listas novas.'), findsOneWidget);
-    expect(bib.listas.length, 2);
+    expect(find.text('Novas no Gestor'), findsOneWidget);
+    expect(find.text('Verificar as 2 novas'), findsOneWidget);
+    expect(area.listas.length, 2);
+    expect(bib.listas, isEmpty);
   });
 
   testWidgets('I1: blog que corta a ligação mostra o erro em português e sem o link', (t) async {
@@ -60,9 +77,11 @@ void main() {
     addTearDown(t.view.reset);
     final pasta = Directory.systemTemp.createTempSync('stb');
     late Biblioteca bib;
+    late AreaGestor area;
     late ServerSocket corta;
     await t.runAsync(() async {
       bib = await Biblioteca.abrir(pasta);
+      area = await AreaGestor.abrir(pasta);
       corta = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
       corta.listen((s) => s.destroy());
     });
@@ -75,25 +94,36 @@ void main() {
     await t.pumpWidget(MaterialApp(
         theme: temaApp(),
         home: Scaffold(
-            body: TelaVerificar(
-                biblioteca: bib, servico: ServicoVerificacao(bib), baseStb: 'http://127.0.0.1:${corta.port}/'))));
+            body: TelaGestor(
+                biblioteca: bib,
+                area: area,
+                servico: ServicoVerificacao(bib, colecao: area),
+                tarefas: ServicoTarefas(),
+                baseStb: 'http://127.0.0.1:${corta.port}/'))));
+    await abrirImportar(t);
+    await t.tap(find.text('Listas do stbstalker'));
+    await t.pump();
     await t.runAsync(() async {
-      await t.tap(find.text('Iniciar pesquisa'));
+      await t.tap(find.text('Procurar e juntar'));
       await Future<void>.delayed(const Duration(milliseconds: 800));
     });
     await t.pump();
     await t.pump();
-    expect(find.text('Não foi possível pesquisar: a ligação foi cortada pelo servidor'), findsOneWidget);
+    expect(find.text('Com erro (Não foi possível pesquisar: a ligação foi cortada pelo servidor)'), findsOneWidget);
     expect(find.textContaining('http'), findsNothing);
   });
 
-  testWidgets('o seletor de datas aparece em português', (t) async {
+  testWidgets('o calendário do stbstalker abre no ecrã, em português', (t) async {
     t.view.physicalSize = const Size(1200, 1600);
     t.view.devicePixelRatio = 1;
     addTearDown(t.view.reset);
     final pasta = Directory.systemTemp.createTempSync('stb');
     late Biblioteca bib;
-    await t.runAsync(() async => bib = await Biblioteca.abrir(pasta));
+    late AreaGestor area;
+    await t.runAsync(() async {
+      bib = await Biblioteca.abrir(pasta);
+      area = await AreaGestor.abrir(pasta);
+    });
     addTearDown(() {
       try {
         pasta.deleteSync(recursive: true);
@@ -104,9 +134,15 @@ void main() {
         locale: const Locale('pt', 'PT'),
         supportedLocales: const [Locale('pt', 'PT')],
         localizationsDelegates: GlobalMaterialLocalizations.delegates,
-        home: Scaffold(body: TelaVerificar(biblioteca: bib, servico: ServicoVerificacao(bib)))));
-    await t.tap(find.byType(OutlinedButton).first);
+        home: Scaffold(
+            body: TelaGestor(
+                biblioteca: bib, area: area, servico: ServicoVerificacao(bib, colecao: area), tarefas: ServicoTarefas()))));
+    await abrirImportar(t);
+    await t.tap(find.text('Listas do stbstalker'));
+    await t.pump();
+    await t.tap(find.widgetWithIcon(OutlinedButton, Icons.calendar_today));
     await t.pumpAndSettle();
-    expect(find.text('Cancelar'), findsOneWidget);
+    expect(find.text('Escolhe o início e o fim'), findsOneWidget);
+    expect(find.textContaining(RegExp(r'^(janeiro|fevereiro|março|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro) \d{4}$')), findsOneWidget);
   });
 }

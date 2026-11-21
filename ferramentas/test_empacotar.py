@@ -1,6 +1,8 @@
+import hashlib
 import sys
 import tempfile
 import unittest
+import unittest.mock
 import zipfile
 from pathlib import Path
 
@@ -8,10 +10,33 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import empacotar
 
 
+def _licencas_windows(p: Path) -> None:
+    (p / "licencas-libmpv" / "licencas").mkdir(parents=True)
+    (p / "licencas-libmpv" / "AVISOS-LICENCAS.txt").write_text("x")
+    for n in ["GPL-3.0.txt", "LGPL-2.1.txt"]:
+        (p / "licencas-libmpv" / "licencas" / n).write_text("x")
+
+
+_LIBMPV = {"arm64-v8a": b"libmpv do mpv-android arm64", "armeabi-v7a": b"libmpv do mpv-android armv7"}
+_FIXADOS = {abi: hashlib.sha256(c).hexdigest() for abi, c in _LIBMPV.items()}
+
+
+def _apk(caminho: Path, abi: str, libmpv=b"", licencas=True) -> None:
+    """Um APK de mentira (zip) com o lib/<abi>/libmpv.so e os assets das licenças."""
+    if libmpv == b"":
+        libmpv = _LIBMPV[abi]
+    with zipfile.ZipFile(caminho, "w") as z:
+        if libmpv is not None:
+            z.writestr(f"lib/{abi}/libmpv.so", libmpv)
+        if licencas:
+            for a in empacotar.LICENCAS_APK:
+                z.writestr(a, "x")
+
+
 class VerificarConteudo(unittest.TestCase):
     def test_pasta_limpa_passa(self):
         with tempfile.TemporaryDirectory() as t:
-            (Path(t) / "player_iptv.exe").write_text("x")
+            (Path(t) / "TVIntel.exe").write_text("x")
             empacotar.verificar_conteudo(Path(t))
 
     def test_recusa_ficheiros_proibidos(self):
@@ -25,22 +50,96 @@ class VerificarConteudo(unittest.TestCase):
                     empacotar.verificar_conteudo(Path(t))
 
 
+class VerificarLibmpv(unittest.TestCase):
+    def _pasta(self, t, conteudo=b"x", licencas=True):
+        p = Path(t)
+        (p / "libmpv-2.dll").write_bytes(conteudo)
+        if licencas:
+            _licencas_windows(p)
+        return p
+
+    def test_dll_certa_passa(self):
+        with tempfile.TemporaryDirectory() as t:
+            conteudo = b"dll completa"
+            with unittest.mock.patch.object(empacotar, "SHA256_LIBMPV", hashlib.sha256(conteudo).hexdigest()):
+                empacotar.verificar_libmpv(self._pasta(t, conteudo))
+
+    def test_dll_minima_do_media_kit_recusa(self):
+        with tempfile.TemporaryDirectory() as t:
+            with self.assertRaises(SystemExit) as e:
+                empacotar.verificar_libmpv(self._pasta(t, b"outra dll"))
+            self.assertIn("libmpv", str(e.exception))
+
+    def test_sem_dll_recusa(self):
+        with tempfile.TemporaryDirectory() as t:
+            with self.assertRaises(SystemExit):
+                empacotar.verificar_libmpv(Path(t))
+
+    def test_sem_os_textos_das_licencas_recusa(self):
+        with tempfile.TemporaryDirectory() as t:
+            conteudo = b"dll completa"
+            p = self._pasta(t, conteudo)
+            (p / "licencas-libmpv" / "licencas" / "GPL-3.0.txt").unlink()
+            with unittest.mock.patch.object(empacotar, "SHA256_LIBMPV", hashlib.sha256(conteudo).hexdigest()):
+                with self.assertRaises(SystemExit) as e:
+                    empacotar.verificar_libmpv(p)
+            self.assertIn("GPL-3.0.txt", str(e.exception))
+
+    def test_sem_licencas_recusa(self):
+        with tempfile.TemporaryDirectory() as t:
+            conteudo = b"dll completa"
+            with unittest.mock.patch.object(empacotar, "SHA256_LIBMPV", hashlib.sha256(conteudo).hexdigest()):
+                with self.assertRaises(SystemExit):
+                    empacotar.verificar_libmpv(self._pasta(t, conteudo, licencas=False))
+
+
 class NomesApk(unittest.TestCase):
     def test_nomes_de_saida(self):
-        self.assertEqual(empacotar.APKS["app-arm64-v8a-release.apk"], "PlayerIPTV-android-arm64.apk")
-        self.assertEqual(empacotar.APKS["app-armeabi-v7a-release.apk"], "PlayerIPTV-android-armv7.apk")
+        self.assertEqual(empacotar.APKS["app-arm64-v8a-release.apk"], "TVIntel-android-arm64.apk")
+        self.assertEqual(empacotar.APKS["app-armeabi-v7a-release.apk"], "TVIntel-android-armv7.apk")
 
     def test_copiar_apks(self):
         with tempfile.TemporaryDirectory() as t:
             origem, dist = Path(t) / "o", Path(t) / "d"
             origem.mkdir()
-            for n in empacotar.APKS:
-                (origem / n).write_text(n)
+            for n, abi in [("app-arm64-v8a-release.apk", "arm64-v8a"), ("app-armeabi-v7a-release.apk", "armeabi-v7a")]:
+                _apk(origem / n, abi)
             (origem / "app-x86_64-release.apk").write_text("x")
-            feitos = empacotar.copiar_apks(origem, dist)
+            with unittest.mock.patch.object(empacotar, "SHA256_LIBMPV_ANDROID", _FIXADOS):
+                feitos = empacotar.copiar_apks(origem, dist)
             self.assertEqual(sorted(p.name for p in feitos),
-                             ["PlayerIPTV-android-arm64.apk", "PlayerIPTV-android-armv7.apk"])
+                             ["TVIntel-android-arm64.apk", "TVIntel-android-armv7.apk"])
             self.assertFalse((dist / "app-x86_64-release.apk").exists())
+
+    def test_apk_com_o_libmpv_minimo_recusa(self):
+        with tempfile.TemporaryDirectory() as t:
+            origem = Path(t) / "o"
+            origem.mkdir()
+            _apk(origem / "app-arm64-v8a-release.apk", "arm64-v8a", libmpv=b"o minimo do media_kit")
+            _apk(origem / "app-armeabi-v7a-release.apk", "armeabi-v7a")
+            with unittest.mock.patch.object(empacotar, "SHA256_LIBMPV_ANDROID", _FIXADOS):
+                with self.assertRaises(SystemExit) as e:
+                    empacotar.copiar_apks(origem, Path(t) / "d")
+            self.assertIn("libmpv", str(e.exception))
+            self.assertFalse((Path(t) / "d" / "TVIntel-android-arm64.apk").exists())
+
+    def test_apk_sem_libmpv_ou_sem_licencas_recusa(self):
+        for falta in ["libmpv", "licencas"]:
+            with self.subTest(falta=falta), tempfile.TemporaryDirectory() as t:
+                origem = Path(t) / "o"
+                origem.mkdir()
+                _apk(origem / "app-arm64-v8a-release.apk", "arm64-v8a",
+                     libmpv=None if falta == "libmpv" else _LIBMPV["arm64-v8a"], licencas=falta != "licencas")
+                _apk(origem / "app-armeabi-v7a-release.apk", "armeabi-v7a")
+                with unittest.mock.patch.object(empacotar, "SHA256_LIBMPV_ANDROID", _FIXADOS):
+                    with self.assertRaises(SystemExit):
+                        empacotar.copiar_apks(origem, Path(t) / "d")
+
+    def test_sha256_do_libmpv_android_vem_do_sha256_txt(self):
+        fixados = empacotar.ler_sha256_libmpv_android()
+        self.assertEqual(fixados["arm64-v8a"], "03d2d02db0451cebf4da2648188df7b2502005c6409fad1841b1d2b91ca8a814")
+        self.assertEqual(fixados["armeabi-v7a"], "433381171115bce0d02b53b1402943815678a852fa5eee9a6c38873b25bf5c26")
+        self.assertEqual(fixados["x86_64"], "97f0621d8f6e236ed5491a89565c2ed526f5450074ec58df560ada5f5f1bc5f8")
 
     def test_apk_em_falta(self):
         with tempfile.TemporaryDirectory() as t:
@@ -53,15 +152,21 @@ class ZipWindows(unittest.TestCase):
         with tempfile.TemporaryDirectory() as t:
             rel = Path(t) / "Release"
             (rel / "data").mkdir(parents=True)
-            (rel / "player_iptv.exe").write_text("exe")
+            (rel / "TVIntel.exe").write_text("exe")
             (rel / "data" / "app.so").write_text("so")
-            destino = Path(t) / "dist" / "PlayerIPTV-windows.zip"
-            empacotar.criar_zip_windows(rel, destino)
+            (rel / "libmpv-2.dll").write_bytes(b"completa")
+            _licencas_windows(rel)
+            destino = Path(t) / "dist" / "TVIntel-windows.zip"
+            with unittest.mock.patch.object(empacotar, "SHA256_LIBMPV", hashlib.sha256(b"completa").hexdigest()):
+                empacotar.criar_zip_windows(rel, destino)
             with zipfile.ZipFile(destino) as z:
                 nomes = z.namelist()
-            self.assertIn("PlayerIPTV/player_iptv.exe", nomes)
-            self.assertIn("PlayerIPTV/data/app.so", nomes)
-            self.assertTrue(all(n.startswith("PlayerIPTV/") for n in nomes))
+            self.assertIn("TVIntel/libmpv-2.dll", nomes)
+            self.assertIn("TVIntel/licencas-libmpv/AVISOS-LICENCAS.txt", nomes)
+            self.assertIn("TVIntel/licencas-libmpv/licencas/GPL-3.0.txt", nomes)
+            self.assertIn("TVIntel/TVIntel.exe", nomes)
+            self.assertIn("TVIntel/data/app.so", nomes)
+            self.assertTrue(all(n.startswith("TVIntel/") for n in nomes))
 
     def test_zip_recusa_dados_pessoais(self):
         with tempfile.TemporaryDirectory() as t:
@@ -82,8 +187,8 @@ class LimparSaidas(unittest.TestCase):
     def _dist_velha(self, t):
         dist = Path(t) / "dist"
         dist.mkdir()
-        for n in ["PlayerIPTV-android-arm64.apk", "PlayerIPTV-android-armv7.apk",
-                  "PlayerIPTV-windows.zip", "LEIA-ME.txt"]:
+        for n in ["TVIntel-android-arm64.apk", "TVIntel-android-armv7.apk",
+                  "TVIntel-windows.zip", "LEIA-ME.txt"]:
             (dist / n).write_text("velho")
         return dist
 
@@ -91,9 +196,9 @@ class LimparSaidas(unittest.TestCase):
         with tempfile.TemporaryDirectory() as t:
             dist = self._dist_velha(t)
             empacotar.limpar_saidas(dist, android=True, windows=False)
-            self.assertFalse((dist / "PlayerIPTV-android-arm64.apk").exists())
-            self.assertFalse((dist / "PlayerIPTV-android-armv7.apk").exists())
-            self.assertTrue((dist / "PlayerIPTV-windows.zip").exists())
+            self.assertFalse((dist / "TVIntel-android-arm64.apk").exists())
+            self.assertFalse((dist / "TVIntel-android-armv7.apk").exists())
+            self.assertTrue((dist / "TVIntel-windows.zip").exists())
 
     def test_falha_android_nao_deixa_apk_velho(self):
         with tempfile.TemporaryDirectory() as t:
@@ -107,9 +212,9 @@ class LimparSaidas(unittest.TestCase):
                     empacotar.main(["--so-android"])
             finally:
                 empacotar.RAIZ, empacotar.construir_android = orig
-            self.assertFalse((dist / "PlayerIPTV-android-arm64.apk").exists())
+            self.assertFalse((dist / "TVIntel-android-arm64.apk").exists())
             self.assertFalse((dist / "LEIA-ME.txt").exists())
-            self.assertTrue((dist / "PlayerIPTV-windows.zip").exists())
+            self.assertTrue((dist / "TVIntel-windows.zip").exists())
 
     def test_symlinks_nao_deixa_zip_velho(self):
         with tempfile.TemporaryDirectory() as t:
@@ -120,8 +225,8 @@ class LimparSaidas(unittest.TestCase):
                 empacotar.main(["--so-windows"])
             finally:
                 empacotar.RAIZ, empacotar.construir_windows = orig
-            self.assertFalse((dist / "PlayerIPTV-windows.zip").exists())
-            self.assertTrue((dist / "PlayerIPTV-android-arm64.apk").exists())
+            self.assertFalse((dist / "TVIntel-windows.zip").exists())
+            self.assertTrue((dist / "TVIntel-android-arm64.apk").exists())
 
 
 class Codificacao(unittest.TestCase):

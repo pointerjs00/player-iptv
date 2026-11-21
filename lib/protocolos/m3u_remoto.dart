@@ -11,7 +11,7 @@ class M3uRemoto implements Protocolo {
     aviso?.call('a descarregar a lista');
     final String texto;
     try {
-      texto = await obterTexto(conta.endereco, timeout: const Duration(seconds: 30), cancelamento: cancelamento);
+      texto = await obterTexto(conta.endereco, headers: {'User-Agent': uaListas()}, timeout: const Duration(seconds: 30), cancelamento: cancelamento);
     } on ErroHttp catch (e) {
       // R12: 401/403 pode ser WAF, geo ou IP: não prova nada
       if (e.status == 401 || e.status == 403) throw ErroLista('servidor recusou o acesso à lista (${e.status})');
@@ -26,7 +26,7 @@ class M3uRemoto implements Protocolo {
   @override
   Future<FonteVideo> fonte(Conta conta, Canal canal, {Cancelamento? cancelamento}) async =>
       FonteVideo(canal.url, {
-        'User-Agent': canal.userAgent ?? uaVlc,
+        'User-Agent': canal.userAgent ?? uaListas(),
         if (canal.referer != null) 'Referer': canal.referer!,
       });
 }

@@ -1,0 +1,633 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:player_iptv/ui/player/compativel_sessao.dart';
+import 'package:player_iptv/ui/player/configuracao_mpv.dart';
+import 'package:player_iptv/ui/player/controlo_desentrelacamento.dart';
+import 'package:player_iptv/ui/player/desentrelacamento.dart';
+
+/// Um mpv de mentira: regista o que se põe e devolve o código que o mpv daria.
+class _Mpv implements MotorMpv {
+  _Mpv({this.recusaVf = false, this.semResposta = false});
+  final bool recusaVf;
+  final bool semResposta;
+  final chamadas = <String>[];
+
+  @override
+  Future<int?> setProperty(String p, String v) async {
+    if (semResposta) return null;
+    chamadas.add('$p=$v');
+    // o libmpv mínimo do media_kit (e um filtro que não existe): -9 (visto com o 0.36 e o 0.42)
+    if (p == 'vf' && v.isNotEmpty && recusaVf) return -9;
+    return 0;
+  }
+
+  @override
+  Future<String> getProperty(String p) async => '';
+  @override
+  Future<void> setRate(double r) async {}
+  @override
+  Future<void> setVolume(double v) async {}
+  @override
+  Future<void> command(List<String> c) async {}
+}
+
+/// O mpv recusa o deinterlace=yes (o d3d11vpp não pode ser criado).
+class _MpvRecusaDeinterlace extends _Mpv {
+  @override
+  Future<int?> setProperty(String p, String v) async {
+    await super.setProperty(p, v);
+    return p == 'deinterlace' && v == 'yes' ? -9 : 0;
+  }
+}
+
+const _versao = 'mpv v0.42.0-38-gbcde6b93c';
+const _bwdif = 'bwdif=mode=send_field:deint=interlaced';
+
+/// Uma leitura do mpv a tocar um 1080i25 (Windows, software): o que `propriedadesEntrelacamento` lê.
+Map<String, String> _leitura({
+  String versao = _versao,
+  String interlaced = 'yes',
+  String altura = '1080',
+  String fps = '25.000000',
+  String vfFps = '25.000000',
+  String hwdec = 'no',
+  String vf = '',
+  String coreIdle = 'no',
+  String eof = 'no',
+  String seekable = 'no',
+  String idet = '',
+  String parcial = 'no',
+  String perdidas = '0',
+}) =>
+    {
+      'mpv-version': versao,
+      'video-frame-info/interlaced': interlaced,
+      'height': altura,
+      'container-fps': fps,
+      'estimated-vf-fps': vfFps,
+      'hwdec-current': hwdec,
+      'vf': vf,
+      'core-idle': coreIdle,
+      'eof-reached': eof,
+      'seekable': seekable,
+      'partially-seekable': parcial,
+      'vf-metadata/$rotuloIdet': idet,
+      'frame-drop-count': perdidas,
+      'decoder-frame-drop-count': '0',
+    };
+
+/// Tudo vazio: o que o MotorForaDaUi devolve num pedido sem resposta (limite de 10 s ou fechado).
+Map<String, String> _vazia() => {for (final k in _leitura().keys) k: ''};
+
+String _idet({required int tff, required int prog}) =>
+    '{"lavfi.idet.multiple.current_frame":"${tff > prog ? 'tff' : 'progressive'}",'
+    '"lavfi.idet.multiple.tff":"$tff.00","lavfi.idet.multiple.bff":"0.00",'
+    '"lavfi.idet.multiple.progressive":"$prog.00","lavfi.idet.multiple.undetermined":"0.00"}';
+
+void main() {
+  var agora = DateTime(2026, 11, 18, 20);
+  late FiltrosNaSessao sessao;
+  late CompativelNaSessao compativel;
+  setUp(() {
+    sessao = FiltrosNaSessao();
+    compativel = CompativelNaSessao(relogio: () => agora);
+  });
+
+  ControloDesentrelacamento windows() =>
+      ControloDesentrelacamento(PlataformaVideo.windows, sessao: sessao, compativel: compativel);
+  ControloDesentrelacamento android({bool armv7 = false}) => ControloDesentrelacamento(PlataformaVideo.android,
+      sessao: sessao, compativel: compativel, armv7: armv7, relogio: () => agora);
+
+  Future<void> aplicar(ControloDesentrelacamento c, MotorMpv mpv, {bool direto = false, bool valido = true}) =>
+      c.aplicar(mpv,
+          ligado: true,
+          shaderFlutter: true,
+          direto: direto,
+          caminhoShader: Future.value('shader.glsl'),
+          valido: () => valido);
+
+  /// Lê, aplica e devolve o pedido de reabrir.
+  Future<bool> passo(ControloDesentrelacamento c, MotorMpv mpv, Map<String, String> m,
+      {bool direto = false, String chave = 'lista|1'}) async {
+    final reabrir = c.ler(m, ligado: true, direto: direto, chave: chave);
+    if (!reabrir) await aplicar(c, mpv, direto: direto);
+    return reabrir;
+  }
+
+  group('Windows: o filtro tem de funcionar de facto, senão volta o shader', () {
+    test('vf recusado pelo mpv (libmpv sem o filtro): volta o shader, e nesta sessão não se tenta mais', () async {
+      final mpv = _Mpv(recusaVf: true);
+      final c = windows();
+      await passo(c, mpv, _leitura());
+      expect(c.meio, MeioDesentrelacamento.shaderMpv);
+      expect(mpv.chamadas, contains('vf=$_bwdif'));
+      expect(mpv.chamadas.last, 'glsl-shaders=shader.glsl');
+      expect(sessao.disponivel, isFalse, reason: 'recusado: o filtro não existe neste libmpv');
+      // canal seguinte: logo o shader, sem tentar o vf outra vez
+      final outro = windows();
+      final mpv2 = _Mpv(recusaVf: true);
+      await passo(outro, mpv2, _leitura());
+      expect(outro.meio, MeioDesentrelacamento.shaderMpv);
+      expect(mpv2.chamadas.where((s) => s.startsWith('vf=') && s != 'vf='), isEmpty);
+    });
+
+    test('leitura vazia (pedido sem resposta) com o filtro posto: o filtro fica (nada muda)', () async {
+      final mpv = _Mpv();
+      final c = windows();
+      await passo(c, mpv, _leitura());
+      expect(c.meio, MeioDesentrelacamento.filtroMpv);
+      final antes = mpv.chamadas.length;
+      for (var i = 0; i < 6; i++) {
+        await passo(c, mpv, _vazia());
+      }
+      expect(c.meio, MeioDesentrelacamento.filtroMpv);
+      expect(c.entrelacada, isTrue);
+      expect(sessao.disponivel, isTrue, reason: 'a versão lida uma vez fica para a sessão');
+      expect(mpv.chamadas.length, antes, reason: 'nenhum vf tirado nem posto');
+    });
+
+    test('leitura no fim do buffer (corte: eof, sem altura) ou em pausa: não conta como falha', () async {
+      final mpv = _Mpv();
+      final c = windows();
+      await passo(c, mpv, _leitura());
+      for (var i = 0; i < 6; i++) {
+        await passo(c, mpv, _leitura(vf: _bwdif, altura: '', eof: 'yes', vfFps: ''));
+        await passo(c, mpv, _leitura(vf: _bwdif, coreIdle: 'yes'));
+      }
+      expect(c.meio, MeioDesentrelacamento.filtroMpv);
+    });
+
+    test('medido a dobrar as imagens (50 de 25): confirmado e fica', () async {
+      final mpv = _Mpv();
+      final c = windows();
+      await passo(c, mpv, _leitura());
+      await passo(c, mpv, _leitura(vf: _bwdif, interlaced: 'no', vfFps: '50.000000'));
+      expect(c.meio, MeioDesentrelacamento.filtroMpv);
+      expect(c.confirmado, isTrue);
+      expect(sessao.confirmado, isTrue);
+      expect(c.verificarCedo, isFalse);
+    });
+
+    test('posto mas sem efeito (25 imagens/s) várias leituras seguidas: este canal volta ao shader', () async {
+      final mpv = _Mpv();
+      final c = windows();
+      await passo(c, mpv, _leitura());
+      for (var i = 0; i < ControloDesentrelacamento.leiturasSemEfeito; i++) {
+        expect(c.meio, MeioDesentrelacamento.filtroMpv);
+        await passo(c, mpv, _leitura(vf: _bwdif, interlaced: 'no'));
+      }
+      expect(c.meio, MeioDesentrelacamento.shaderMpv);
+      expect(sessao.disponivel, isTrue, reason: 'falhou neste canal, não no libmpv');
+      // outro canal: tenta-se de novo
+      c.abrir(continuar: false, playerNovo: false);
+      await passo(c, mpv, _leitura());
+      expect(c.meio, MeioDesentrelacamento.filtroMpv);
+    });
+
+    test('o mpv tirou o filtro (vf vazio) com a imagem a correr: volta o shader', () async {
+      final mpv = _Mpv();
+      final c = windows();
+      await passo(c, mpv, _leitura());
+      await passo(c, mpv, _leitura(vf: ''));
+      expect(c.meio, MeioDesentrelacamento.shaderMpv);
+    });
+
+    test('já confirmado e passa a 25 imagens/s: o canal ficou progressivo, o filtro sai (sem riscar)', () async {
+      final mpv = _Mpv();
+      final c = windows();
+      await passo(c, mpv, _leitura());
+      await passo(c, mpv, _leitura(vf: _bwdif, interlaced: 'no', vfFps: '50'));
+      await passo(c, mpv, _leitura(vf: _bwdif, interlaced: 'no', vfFps: '25'));
+      expect(c.entrelacada, isFalse);
+      expect(c.meio, MeioDesentrelacamento.nenhum);
+      expect(mpv.chamadas.last, 'glsl-shaders=');
+    });
+
+    test('sem a versão (ainda não se leu nada): o filtro está por saber, não "indisponível"', () {
+      final c = windows();
+      expect(c.filtrosPorSaber, isTrue);
+      c.ler(_leitura(), ligado: true, direto: false, chave: 'k');
+      expect(c.filtrosPorSaber, isFalse);
+      expect(c.filtros, isTrue);
+    });
+
+    test('libmpv 0.36 (o mínimo): sem filtros, o shader, e nunca se põe o vf', () async {
+      final mpv = _Mpv();
+      final c = windows();
+      await passo(c, mpv, _leitura(versao: 'mpv v0.36.0-403-g652a1dd907'));
+      expect(c.meio, MeioDesentrelacamento.shaderMpv);
+      expect(mpv.chamadas.where((s) => s.startsWith('vf=') && s != 'vf='), isEmpty);
+    });
+
+    test('d3d11vpp sem efeito (25 imagens/s) 4 leituras seguidas: volta o shader do mpv (sai do "a medir")', () async {
+      final mpv = _Mpv();
+      final c = windows();
+      await passo(c, mpv, _leitura(hwdec: 'd3d11va'));
+      expect(c.meio, MeioDesentrelacamento.d3d11vpp);
+      for (var i = 0; i < ControloDesentrelacamento.leiturasSemEfeito; i++) {
+        await passo(c, mpv, _leitura(hwdec: 'd3d11va', interlaced: 'no'));
+      }
+      expect(c.meio, MeioDesentrelacamento.shaderMpv);
+      expect(mpv.chamadas.last, 'glsl-shaders=shader.glsl');
+      expect(mpv.chamadas, contains('deinterlace=no'));
+      expect(c.verificarCedo, isFalse);
+      // outro canal: o d3d11vpp tenta-se de novo
+      c.abrir(continuar: false, playerNovo: false);
+      await passo(c, mpv, _leitura(hwdec: 'd3d11va'));
+      expect(c.meio, MeioDesentrelacamento.d3d11vpp);
+    });
+
+    test('d3d11vpp recusado pelo mpv (deinterlace=yes < 0): fica o shader, não o d3d11vpp outra vez', () async {
+      final mpv = _MpvRecusaDeinterlace();
+      final c = windows();
+      await passo(c, mpv, _leitura(hwdec: 'd3d11va'));
+      expect(c.meio, MeioDesentrelacamento.shaderMpv);
+      expect(mpv.chamadas.where((x) => x == 'deinterlace=yes').length, 1, reason: 'não se volta a pedir');
+      expect(mpv.chamadas.last, 'glsl-shaders=shader.glsl');
+      await passo(c, mpv, _leitura(hwdec: 'd3d11va'));
+      expect(c.meio, MeioDesentrelacamento.shaderMpv);
+      expect(mpv.chamadas.where((x) => x == 'deinterlace=yes').length, 1);
+    });
+
+    test('pedido sem resposta ao pôr o vf (null): não é recusa; tenta-se na próxima', () async {
+      final c = windows();
+      await passo(c, _Mpv(semResposta: true), _leitura());
+      expect(sessao.disponivel, isTrue);
+      expect(c.meio, MeioDesentrelacamento.nenhum, reason: 'nada ficou posto');
+      await passo(c, _Mpv(), _leitura());
+      expect(c.meio, MeioDesentrelacamento.filtroMpv);
+    });
+  });
+
+  group('reabrir o mesmo canal num corte do servidor', () {
+    test('continuar: fica tudo (entrelaçado, filtro, confirmação); o mpv não perde o vf', () async {
+      final mpv = _Mpv();
+      final c = windows();
+      await passo(c, mpv, _leitura());
+      await passo(c, mpv, _leitura(vf: _bwdif, interlaced: 'no', vfFps: '50'));
+      final r = c.abrir(continuar: true, playerNovo: false);
+      expect(r.manter, isTrue);
+      expect(r.limpar, isFalse);
+      expect(c.meio, MeioDesentrelacamento.filtroMpv);
+      expect(c.entrelacada, isTrue);
+      expect(c.confirmado, isTrue);
+      expect(c.verificarCedo, isFalse);
+    });
+
+    test('continuar com o d3d11vpp: fica (o aplicarAoAbrir não põe deinterlace=no)', () async {
+      final mpv = _Mpv();
+      final c = windows();
+      await passo(c, mpv, _leitura(hwdec: 'd3d11va'));
+      expect(c.meio, MeioDesentrelacamento.d3d11vpp);
+      expect(c.abrir(continuar: true, playerNovo: false).manter, isTrue);
+      expect(c.meio, MeioDesentrelacamento.d3d11vpp);
+    });
+
+    test('mudar de canal: limpa o filtro do anterior e decide de novo', () async {
+      final mpv = _Mpv();
+      final c = windows();
+      await passo(c, mpv, _leitura());
+      final r = c.abrir(continuar: false, playerNovo: false);
+      expect(r.manter, isFalse);
+      expect(r.limpar, isTrue);
+      expect(c.meio, MeioDesentrelacamento.nenhum);
+      expect(c.entrelacada, isNull);
+    });
+
+    test('continuar num player novo (o mpv antigo deixou de responder): o mpv novo não tem o vf', () async {
+      final mpv = _Mpv();
+      final c = windows();
+      await passo(c, mpv, _leitura());
+      final r = c.abrir(continuar: true, playerNovo: true);
+      expect(r.manter, isFalse);
+      expect(c.meio, MeioDesentrelacamento.nenhum, reason: 'o vf volta a pôr-se no mpv novo');
+    });
+
+    test('uma falha do filtro fica para o canal (mesmo depois de um corte) mas não para o seguinte', () async {
+      final mpv = _Mpv();
+      final c = windows();
+      await passo(c, mpv, _leitura());
+      await passo(c, mpv, _leitura(vf: ''));
+      expect(c.meio, MeioDesentrelacamento.shaderMpv);
+      c.abrir(continuar: true, playerNovo: false);
+      await passo(c, mpv, _leitura());
+      expect(c.meio, MeioDesentrelacamento.shaderMpv, reason: 'o mesmo canal: não se tenta outra vez');
+      c.abrir(continuar: false, playerNovo: false);
+      await passo(c, mpv, _leitura());
+      expect(c.meio, MeioDesentrelacamento.filtroMpv);
+    });
+  });
+
+  test('um pedido na fila de um canal que já mudou não toca no mpv (nem no meio)', () async {
+    final mpv = _Mpv();
+    final c = windows();
+    c.ler(_leitura(), ligado: true, direto: false, chave: 'k');
+    await aplicar(c, mpv, valido: false);
+    expect(mpv.chamadas, isEmpty);
+    expect(c.meio, MeioDesentrelacamento.nenhum);
+  });
+
+  group('Android', () {
+    Map<String, String> direto(
+            {String altura = '1080', String fps = '25.000000', String seekable = 'no', String parcial = 'no'}) =>
+        _leitura(hwdec: 'mediacodec', interlaced: '', altura: altura, fps: fps, seekable: seekable, parcial: parcial);
+
+    test('direto: só reabre em Compatível um direto (não um filme) com 1080/576/480 a 25 ou 30 imagens/s', () {
+      bool reabre(Map<String, String> m, {String chave = 'k'}) =>
+          android().ler(m, ligado: true, direto: true, chave: chave);
+      expect(reabre(direto()), isTrue);
+      expect(reabre(direto(altura: '576'), chave: 'k2'), isTrue);
+      expect(reabre(direto(fps: '29.970030'), chave: 'k3'), isTrue);
+      expect(reabre(direto(fps: '23.976024'), chave: 'k4'), isFalse, reason: 'filme a 24 imagens/s: progressivo');
+      expect(reabre(direto(fps: '24.000000'), chave: 'k5'), isFalse);
+      expect(reabre(direto(seekable: 'yes'), chave: 'k6'), isFalse, reason: 'um filme (VOD), não um direto');
+      expect(reabre(direto(seekable: 'yes', parcial: 'yes'), chave: 'k9'), isTrue,
+          reason: 'um direto com o cache ligado diz seekable=yes e partially-seekable=yes');
+      expect(reabre(direto(altura: '720', fps: '50'), chave: 'k7'), isFalse);
+      expect(reabre(direto(fps: '50'), chave: 'k8'), isFalse, reason: '1080p50');
+    });
+
+    test('direto: uma vez por canal', () {
+      expect(android().ler(direto(), ligado: true, direto: true, chave: 'k'), isTrue);
+      expect(android().ler(direto(), ligado: true, direto: true, chave: 'k'), isFalse);
+    });
+
+    test('armv7 (Fire TV): nunca o filtro (o bwdif do ffmpeg não tem NEON de 32 bits): fica o shader', () async {
+      final c = android(armv7: true);
+      expect(c.ler(direto(), ligado: true, direto: true, chave: 'k'), isFalse);
+      expect(c.filtros, isFalse);
+      final mpv = _Mpv();
+      await passo(c, mpv, _leitura(hwdec: 'mediacodec-copy', interlaced: ''));
+      expect(c.meio, MeioDesentrelacamento.shaderFlutter);
+      expect(mpv.chamadas, isEmpty);
+    });
+
+    test('Compatível (mediacodec-copy, sem marcas): o idet marca as imagens e o bwdif só mexe nas entrelaçadas',
+        () async {
+      final mpv = _Mpv();
+      final c = android();
+      await passo(c, mpv, _leitura(hwdec: 'mediacodec-copy', interlaced: ''));
+      expect(c.meio, MeioDesentrelacamento.filtroMpv);
+      expect(mpv.chamadas.last, 'vf=@$rotuloIdet:idet,$_bwdif');
+    });
+
+    test('Compatível: o idet diz progressivo e o filtro fica a 25 (o esperado): não é falha', () async {
+      final mpv = _Mpv();
+      final c = android();
+      final vf = '@$rotuloIdet:idet,$_bwdif';
+      await passo(c, mpv, _leitura(hwdec: 'mediacodec-copy', interlaced: ''));
+      for (var i = 0; i < ControloDesentrelacamento.leiturasSemEfeito + 2; i++) {
+        await passo(c, mpv,
+            _leitura(hwdec: 'mediacodec-copy', interlaced: '', vf: vf, idet: _idet(tff: 0, prog: 30 * (i + 1))));
+      }
+      expect(c.meio, MeioDesentrelacamento.filtroMpv);
+    });
+
+    test('Compatível: o idet diz entrelaçado mas sai a 25: o filtro não funciona, volta o shader', () async {
+      final mpv = _Mpv();
+      final c = android();
+      final vf = '@$rotuloIdet:idet,$_bwdif';
+      await passo(c, mpv, _leitura(hwdec: 'mediacodec-copy', interlaced: ''));
+      for (var i = 0; i < ControloDesentrelacamento.leiturasSemEfeito; i++) {
+        await passo(c, mpv,
+            _leitura(hwdec: 'mediacodec-copy', interlaced: '', vf: vf, idet: _idet(tff: 30 * (i + 1), prog: 0)));
+      }
+      expect(c.meio, MeioDesentrelacamento.shaderFlutter);
+    });
+
+    test('reaberto para o filtro e o idet diz que é progressivo: na próxima vez o canal fica no direto', () async {
+      final mpv = _Mpv();
+      final c = android();
+      expect(c.ler(direto(), ligado: true, direto: true, chave: 'k'), isTrue);
+      expect(compativel.modoPara('k', ModoDescodificacao.direto), ModoDescodificacao.compativel);
+      c.abrir(continuar: false, playerNovo: true);
+      final vf = '@$rotuloIdet:idet,$_bwdif';
+      await passo(c, mpv, _leitura(hwdec: 'mediacodec-copy', interlaced: ''), chave: 'k');
+      for (var i = 1; i <= 4; i++) {
+        await passo(c, mpv, _leitura(hwdec: 'mediacodec-copy', interlaced: '', vf: vf, idet: _idet(tff: 0, prog: 40 * i)),
+            chave: 'k');
+      }
+      expect(compativel.modoPara('k', ModoDescodificacao.direto), ModoDescodificacao.direto);
+      expect(android().ler(direto(), ligado: true, direto: true, chave: 'k'), isFalse,
+          reason: 'já se sabe que é progressivo: não reabre outra vez');
+    });
+  });
+
+  group('canal visto progressivo: memorizado na sessão (por id do canal)', () {
+    Map<String, String> direto() => _leitura(hwdec: 'mediacodec', interlaced: '');
+
+    test('ao reabrir não leva shader nem Compatível', () async {
+      final mpv = _Mpv();
+      final c = android();
+      // sem memória: parece entrelaçado (1080 a 25) e leva o shader
+      expect(c.ler(direto(), ligado: true, direto: true, chave: 'lista|9'), isTrue);
+      compativel.progressivo('lista|9'); // o idet viu-o progressivo em Compatível
+      final c2 = android();
+      c2.abrir(continuar: false, playerNovo: true);
+      expect(c2.ler(direto(), ligado: true, direto: true, chave: 'lista|9'), isFalse, reason: 'sem Compatível');
+      expect(c2.entrelacada, isFalse);
+      await aplicar(c2, mpv, direto: true);
+      expect(c2.meio, MeioDesentrelacamento.nenhum, reason: 'sem shader');
+      expect(compativel.modoPara('lista|9', ModoDescodificacao.direto), ModoDescodificacao.direto);
+    });
+
+    test('o canal muda para outro formato (720p50 -> 1080i25): sai da memória e o shader/Compatível voltam', () async {
+      final mpv = _Mpv();
+      final c = android();
+      // visto progressivo a 720p50 (altura e imagens/s guardadas)
+      compativel.progressivo('lista|9', '720@50');
+      c.abrir(continuar: false, playerNovo: true);
+      expect(c.ler(_leitura(hwdec: 'mediacodec', interlaced: '', altura: '720', fps: '50.000000'), ligado: true, direto: true, chave: 'lista|9'), isFalse);
+      expect(c.entrelacada, isFalse, reason: 'mesmo formato: continua progressivo');
+      // passa a 1080 a 25: a memória deixa de valer
+      expect(c.ler(direto(), ligado: true, direto: true, chave: 'lista|9'), isTrue, reason: 'volta o Compatível');
+      expect(compativel.eProgressivo('lista|9'), isFalse);
+      await aplicar(c, mpv, direto: true);
+    });
+
+    test('o mpv volta a ler entrelaçado (a descodificar, com marca): sai da memória e leva o filtro', () {
+      compativel.progressivo('lista|9', '1080@25');
+      final c = windows();
+      c.ler(_leitura(hwdec: 'd3d11va-copy', interlaced: 'yes'), ligado: true, direto: false, chave: 'lista|9');
+      expect(compativel.eProgressivo('lista|9'), isFalse);
+      expect(c.entrelacada, isTrue);
+    });
+
+    test('outro canal não é afetado', () {
+      compativel.progressivo('lista|9');
+      final c = android();
+      expect(c.ler(direto(), ligado: true, direto: true, chave: 'lista|10'), isTrue);
+      expect(c.entrelacada, isTrue);
+    });
+  });
+
+  group('Android: o Compatível com o bwdif que perde imagens volta ao direto', () {
+    const k = 'lista|7';
+    Map<String, String> direto() => _leitura(hwdec: 'mediacodec', interlaced: '');
+    final vf = '@$rotuloIdet:idet,$_bwdif';
+    Map<String, String> aDobrar(int perdidas) =>
+        _leitura(hwdec: 'mediacodec-copy', interlaced: '', vf: vf, vfFps: '50.000000', perdidas: '$perdidas',
+            idet: _idet(tff: 200, prog: 0));
+
+    /// O canal reaberto em Compatível para o filtro, com o bwdif confirmado (a dobrar).
+    Future<ControloDesentrelacamento> confirmado(_Mpv mpv) async {
+      final c = android();
+      expect(c.ler(direto(), ligado: true, direto: true, chave: k), isTrue);
+      c.abrir(continuar: false, playerNovo: true);
+      await passo(c, mpv, _leitura(hwdec: 'mediacodec-copy', interlaced: ''), chave: k);
+      await passo(c, mpv, aDobrar(0), chave: k);
+      expect(c.confirmado, isTrue);
+      return c;
+    }
+
+    test('mais de 0,5 imagens perdidas por segundo durante 10 s: reabre no direto (e fica nesta sessão)', () async {
+      final mpv = _Mpv();
+      final c = await confirmado(mpv);
+      agora = agora.add(const Duration(seconds: 10));
+      expect(await passo(c, mpv, aDobrar(40), chave: k), isFalse, reason: 'a 1.ª janela má não chega');
+      agora = agora.add(const Duration(seconds: 10));
+      expect(await passo(c, mpv, aDobrar(80), chave: k), isTrue);
+      expect(c.avisoReabrir, contains('Direta'));
+      expect(compativel.modoPara(k, ModoDescodificacao.direto), ModoDescodificacao.direto);
+      expect(android().ler(direto(), ligado: true, direto: true, chave: k), isFalse,
+          reason: 'não volta a reabrir em Compatível para o filtro nesta sessão');
+    });
+
+    test('limite de perdidas: 0,5/s (antes 2/s)', () {
+      expect(ControloDesentrelacamento.perdidasPorSegundo, 0.5);
+    });
+
+    test('0,6 imagens perdidas por segundo (6 em 10 s) já fazem voltar ao direto', () async {
+      final mpv = _Mpv();
+      final c = await confirmado(mpv);
+      agora = agora.add(const Duration(seconds: 10));
+      expect(await passo(c, mpv, aDobrar(6), chave: k), isFalse);
+      agora = agora.add(const Duration(seconds: 10));
+      expect(await passo(c, mpv, aDobrar(12), chave: k), isTrue);
+    });
+
+    test('uma janela má isolada (soluço) não desiste: as seguintes limpas zeram a contagem', () async {
+      final mpv = _Mpv();
+      final c = await confirmado(mpv);
+      var perdidas = 0;
+      for (final mas in [true, false, true, false, true, false]) {
+        agora = agora.add(const Duration(seconds: 10));
+        perdidas += mas ? 40 : 0;
+        expect(await passo(c, mpv, aDobrar(perdidas), chave: k), isFalse);
+      }
+      expect(c.meio, MeioDesentrelacamento.filtroMpv);
+    });
+
+    test('duas janelas más seguidas desistem; passados 10 minutos o canal pode voltar ao Compatível', () async {
+      final mpv = _Mpv();
+      final c = await confirmado(mpv);
+      agora = agora.add(const Duration(seconds: 10));
+      await passo(c, mpv, aDobrar(40), chave: k);
+      agora = agora.add(const Duration(seconds: 10));
+      expect(await passo(c, mpv, aDobrar(80), chave: k), isTrue);
+      expect(android().ler(direto(), ligado: true, direto: true, chave: k), isFalse, reason: 'ainda de castigo');
+      agora = agora.add(const Duration(minutes: 9));
+      expect(android().ler(direto(), ligado: true, direto: true, chave: k), isFalse);
+      agora = agora.add(const Duration(minutes: 1, seconds: 1));
+      expect(android().ler(direto(), ligado: true, direto: true, chave: k), isTrue, reason: 'passaram 10 minutos');
+    });
+
+    test('0,4 imagens perdidas por segundo (4 em 10 s) ainda aguenta', () async {
+      final mpv = _Mpv();
+      final c = await confirmado(mpv);
+      agora = agora.add(const Duration(seconds: 10));
+      expect(await passo(c, mpv, aDobrar(4), chave: k), isFalse);
+    });
+
+    test('poucas perdidas (as do arranque, ou < 0,5/s): fica no Compatível com o bwdif', () async {
+      final mpv = _Mpv();
+      final c = await confirmado(mpv);
+      for (var i = 1; i <= 6; i++) {
+        agora = agora.add(const Duration(seconds: 10));
+        expect(await passo(c, mpv, aDobrar(3 * i), chave: k), isFalse);
+      }
+      expect(c.meio, MeioDesentrelacamento.filtroMpv);
+      expect(compativel.modoPara(k, ModoDescodificacao.direto), ModoDescodificacao.compativel);
+    });
+
+    test('uma janela curta (< 8 s) nunca decide, mesmo com muitas perdidas', () async {
+      final mpv = _Mpv();
+      final c = await confirmado(mpv);
+      agora = agora.add(const Duration(seconds: 3));
+      expect(await passo(c, mpv, aDobrar(60), chave: k), isFalse);
+    });
+
+    test('em pausa / a carregar não conta (as perdidas e o tempo da janela recomeçam)', () async {
+      final mpv = _Mpv();
+      final c = await confirmado(mpv);
+      agora = agora.add(const Duration(seconds: 30));
+      final parado = {...aDobrar(10), 'core-idle': 'yes'};
+      expect(await passo(c, mpv, parado, chave: k), isFalse);
+      agora = agora.add(const Duration(seconds: 10));
+      expect(await passo(c, mpv, aDobrar(20), chave: k), isFalse, reason: '10 perdidas em 10 s: 1/s');
+    });
+
+    test('um canal que o utilizador pôs em Compatível (não reaberto para o filtro) nunca muda de modo', () async {
+      final mpv = _Mpv();
+      final c = android();
+      await passo(c, mpv, _leitura(hwdec: 'mediacodec-copy', interlaced: ''), chave: k);
+      await passo(c, mpv, aDobrar(0), chave: k);
+      agora = agora.add(const Duration(seconds: 10));
+      expect(await passo(c, mpv, aDobrar(100), chave: k), isFalse);
+    });
+
+    test('Windows nunca muda de modo por perdidas', () async {
+      final mpv = _Mpv();
+      final c = windows();
+      await passo(c, mpv, _leitura());
+      await passo(c, mpv, {..._leitura(vf: _bwdif, vfFps: '50.000000'), 'frame-drop-count': '0'});
+      agora = agora.add(const Duration(seconds: 10));
+      expect(await passo(c, mpv, {..._leitura(vf: _bwdif, vfFps: '50.000000'), 'frame-drop-count': '500'}), isFalse);
+    });
+  });
+
+  group('Ligado (forçar) e Automático', () {
+    Future<bool> aplicarModo(ControloDesentrelacamento c, MotorMpv mpv, {required bool forcar}) => c.aplicar(mpv,
+        ligado: true,
+        forcar: forcar,
+        shaderFlutter: true,
+        direto: false,
+        caminhoShader: Future.value('shader.glsl'),
+        valido: () => true);
+
+    test('Windows, imagem progressiva: Automático não mexe; Ligado põe o bwdif com deint=all', () async {
+      final mpv = _Mpv();
+      final c = windows();
+      c.ler(_leitura(interlaced: 'no'), ligado: true, direto: false, chave: 'k');
+      await aplicarModo(c, mpv, forcar: false);
+      expect(c.meio, MeioDesentrelacamento.nenhum);
+      expect(mpv.chamadas, isEmpty);
+      await aplicarModo(c, mpv, forcar: true);
+      expect(c.meio, MeioDesentrelacamento.filtroMpv);
+      expect(mpv.chamadas.last, 'vf=bwdif=mode=send_field:deint=all');
+    });
+
+    test('com o filtro já posto, passar de Automático a Ligado (e voltar) refaz o vf', () async {
+      final mpv = _Mpv();
+      final c = windows();
+      c.ler(_leitura(), ligado: true, direto: false, chave: 'k');
+      await aplicarModo(c, mpv, forcar: false);
+      expect(mpv.chamadas.last, 'vf=$_bwdif');
+      expect(await aplicarModo(c, mpv, forcar: true), isFalse, reason: 'o meio é o mesmo');
+      expect(mpv.chamadas.last, 'vf=bwdif=mode=send_field:deint=all');
+      await aplicarModo(c, mpv, forcar: false);
+      expect(mpv.chamadas.last, 'vf=$_bwdif');
+    });
+
+    test('Ligado num progressivo: o filtro forçado a não dobrar as imagens desiste (volta o shader)', () async {
+      final mpv = _Mpv();
+      final c = windows();
+      c.ler(_leitura(interlaced: 'no'), ligado: true, direto: false, chave: 'k');
+      await aplicarModo(c, mpv, forcar: true);
+      for (var i = 0; i < ControloDesentrelacamento.leiturasSemEfeito; i++) {
+        c.ler(_leitura(interlaced: 'no', vf: 'bwdif=mode=send_field:deint=all'), ligado: true, direto: false, chave: 'k');
+      }
+      await aplicarModo(c, mpv, forcar: true);
+      expect(c.meio, MeioDesentrelacamento.shaderMpv);
+    });
+  });
+}
