@@ -741,6 +741,26 @@ void main() {
       expect(_noCampo(t, _filtro), isTrue);
     });
 
+    testWidgets('Enter físico, já a escrever, confirma nos dois campos', (t) async {
+      await abrir(t);
+      await escreverSem(t, _filtro, 'internac');
+      await t.sendKeyEvent(LogicalKeyboardKey.enter);
+      await t.pumpAndSettle();
+      expect(_focado(), 'Desporto Internacional', reason: textosFocados());
+      await escreverSem(t, _filtro, 'zzz');
+      await t.sendKeyEvent(LogicalKeyboardKey.enter);
+      await t.pumpAndSettle();
+      expect(_noCampo(t, _filtro), isTrue);
+      await escreverSem(t, _pesquisa, 'desp. mundo');
+      await t.sendKeyEvent(LogicalKeyboardKey.enter);
+      await t.pumpAndSettle();
+      expect(_focado(), 'Desp. Mundo 1', reason: textosFocados());
+      await escreverSem(t, _pesquisa, 'zzz');
+      await t.sendKeyEvent(LogicalKeyboardKey.enter);
+      await t.pumpAndSettle();
+      expect(_naPesquisa(t), isTrue);
+    });
+
     testWidgets('no ecrã estreito, confirmar a pesquisa foca o 1.º canal', (t) async {
       await abrir(t, largura: 400, altura: 800);
       await escreverSem(t, _pesquisa, 'notic');

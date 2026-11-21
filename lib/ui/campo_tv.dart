@@ -105,6 +105,16 @@ class _CampoTvState extends State<CampoTv> {
       return KeyEventResult.handled;
     }
     final variasLinhas = widget.maxLines != 1;
+    // Enter físico a escrever, num campo de uma linha: confirma (o teclado físico não manda a ação
+    // «Concluído»; no Windows é assim que se confirma)
+    if (_aEscrever &&
+        !variasLinhas &&
+        widget.onSubmitted != null &&
+        (k == LogicalKeyboardKey.enter || k == LogicalKeyboardKey.numpadEnter)) {
+      _pararDeEscrever();
+      widget.onSubmitted!(widget.controller?.text ?? '');
+      return KeyEventResult.handled;
+    }
     if ((k == LogicalKeyboardKey.arrowDown || k == LogicalKeyboardKey.arrowUp) && !(variasLinhas && _aEscrever)) {
       final moveu =
           _foco.focusInDirection(k == LogicalKeyboardKey.arrowDown ? TraversalDirection.down : TraversalDirection.up);
