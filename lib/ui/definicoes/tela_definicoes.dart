@@ -10,6 +10,7 @@ import '../../dados/biblioteca.dart';
 import '../../dados/copia_seguranca.dart';
 import '../../dados/guardar_ficheiro.dart';
 import '../../dados/preferencias.dart';
+import '../../marca.dart';
 import '../../rede/http.dart';
 import '../../verificar/canais_teste.dart';
 import '../../verificar/servico.dart';
@@ -394,6 +395,18 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
                   value: _p.volume,
                   texto: '${_p.volume.round()} %',
                   aoMudar: (v) => _mudou(() => _p.volume = v, player: true))),
+          // telemóvel Android: o volume do sistema ao abrir (no canal, os deslizes laterais mudam-no)
+          if (_android && !EcraTv.nativo)
+            _opcao('Volume inicial do sistema',
+                'Ao abrir um canal, o volume do telemóvel passa a esta percentagem do máximo. '
+                'No canal, deslize no lado direito do ecrã para o volume e no esquerdo para o brilho.',
+                controlo: _deslizador(
+                    min: 0,
+                    max: 100,
+                    divisions: 20,
+                    value: _p.volumeInicialSistema.toDouble(),
+                    texto: '${_p.volumeInicialSistema} %',
+                    aoMudar: (v) => _mudou(() => _p.volumeInicialSistema = v.round(), player: true))),
           // a explicação é a da escolha atual
           _opcao('Recuar no direto', _p.recuoDireto.descricao,
               controlo: _escolhas(RecuoDireto.values, (r) => r.rotulo, _p.recuoDireto,
@@ -510,7 +523,7 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
               controlo: Align(
                 alignment: Alignment.centerLeft,
                 child: OutlinedButton.icon(
-                  onPressed: () => showLicensePage(context: context, applicationName: 'Player IPTV'),
+                  onPressed: () => showLicensePage(context: context, applicationName: nomeApp),
                   icon: const Icon(Icons.description_outlined),
                   label: const Text('Ver licenças'),
                 ),

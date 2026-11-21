@@ -12,6 +12,7 @@ import '../../protocolos/protocolo.dart';
 import '../../rede/http.dart';
 import '../design/componentes.dart';
 import '../design/ecra.dart';
+import 'ajuste_toque.dart';
 import 'aplicar_preferencias.dart';
 import 'aviso_buffering.dart';
 import 'cartao_erro.dart';
@@ -134,6 +135,9 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   late final DateTime Function() _agora = widget.agora ?? DateTime.now;
   late final _relogio = RelogioDireto(agora: _agora);
   final _controlos = GlobalKey<ControlosPlayerState>();
+
+  /// Telemóvel Android (não a TV): volume do sistema e brilho da app com os deslizes laterais.
+  late final AjusteToque? _ajuste = _android && !EcraTv.nativo ? AjusteToque() : null;
 
   // a configuração do mpv para direto (buffer, reconexão, descodificação por plataforma); no
   // Android o player é recriado para mudar a descodificação (o vo fixa-se ao criar)
@@ -366,6 +370,8 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // o volume do sistema começa no das Definições (uma vez, ao abrir o player)
+    if (_ajuste != null) unawaited(_ajuste.sistema.volumeInicial(_prefs.volumeInicialSistema));
     if (_android && FiltroDesentrelacamento.suportado) {
       FiltroDesentrelacamento.programa().then((p) {
         if (mounted) setState(() => _programaFlutter = p);
@@ -1933,6 +1939,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     _vigiaLink?.cancel();
     _linkSeguinte.esquecer();
     _pararVigiaSemDados();
+    _ajuste?.dispose(); // o brilho volta ao do sistema
     _esconderAviso?.cancel();
     _soltarEcra?.cancel();
     _vigiaEntrelacamento?.cancel();
@@ -2031,6 +2038,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
         aoMudarVelocidade: _mudarVelocidade,
         definicoes: _definicoes,
         comEcraInteiro: widget.alternarEcraInteiro != null,
+        ajusteToque: _ajuste,
         child: Stack(fit: StackFit.expand, children: [
           video,
           // ao reabrir depois de um corte: a última imagem por baixo do "A carregar…"

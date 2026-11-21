@@ -2,13 +2,17 @@ package pt.playeriptv.player_iptv
 
 import android.Manifest
 import android.content.ContentValues
+import android.content.Context
 import android.content.pm.PackageManager
+import android.media.AudioManager
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.os.StatFs
 import android.provider.MediaStore
+import android.provider.Settings
 import android.view.Display
+import android.view.WindowManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.android.RenderMode
 import io.flutter.embedding.android.TransparencyMode
@@ -117,6 +121,48 @@ class MainActivity : FlutterActivity() {
                 }
                 "repor" -> {
                     window.attributes = window.attributes.apply { preferredDisplayModeId = 0 }
+                    result.success(true)
+                }
+                else -> result.notImplemented()
+            }
+        }
+        // Gestos do player no telemóvel: o volume da música muda sem a barra do sistema (flags 0) e o
+        // brilho é só o desta janela (o do sistema não se toca; -1 volta ao do sistema)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "player_iptv/sistema").setMethodCallHandler { call, result ->
+            val audio = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            when (call.method) {
+                "volume" -> result.success(
+                    mapOf(
+                        "atual" to audio.getStreamVolume(AudioManager.STREAM_MUSIC),
+                        "max" to audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                    )
+                )
+                "definirVolume" -> {
+                    val max = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                    val indice = (call.argument<Int>("indice") ?: 0).coerceIn(0, max)
+                    try {
+                        audio.setStreamVolume(AudioManager.STREAM_MUSIC, indice, 0)
+                        result.success(true)
+                    } catch (e: SecurityException) {
+                        // "Não incomodar" pode impedir a mudança
+                        result.success(false)
+                    }
+                }
+                "brilho" -> {
+                    val janela = window.attributes.screenBrightness
+                    if (janela >= 0f) {
+                        result.success(janela.toDouble())
+                    } else {
+                        val sistema = Settings.System.getInt(contentResolver, Settings.System.SCREEN_BRIGHTNESS, 128)
+                        result.success((sistema / 255.0).coerceIn(0.0, 1.0))
+                    }
+                }
+                "definirBrilho" -> {
+                    val v = call.argument<Double>("valor") ?: -1.0
+                    window.attributes = window.attributes.apply {
+                        screenBrightness =
+                            if (v < 0) WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE else v.toFloat().coerceIn(0.01f, 1f)
+                    }
                     result.success(true)
                 }
                 else -> result.notImplemented()

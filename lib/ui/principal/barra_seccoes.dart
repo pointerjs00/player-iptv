@@ -1,5 +1,6 @@
 import 'package:material_ui/material_ui.dart';
 
+import '../../marca.dart';
 import '../design/design.dart';
 import '../realce_foco.dart';
 import 'tela_principal.dart';
@@ -68,21 +69,16 @@ class BarraSeccoes extends StatelessWidget {
       );
 }
 
-/// O nome da app com o ícone em gradiente.
+/// O nome da app com o ícone dela (ferramentas/gerar_icones.py).
 class MarcaApp extends StatelessWidget {
   const MarcaApp({super.key});
 
   @override
   Widget build(BuildContext context) => Row(mainAxisSize: MainAxisSize.min, children: [
-        Container(
-          width: 30,
-          height: 30,
-          decoration: BoxDecoration(gradient: Tokens.gradienteAcento, borderRadius: BorderRadius.circular(9)),
-          child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 22),
-        ),
+        Image.asset('assets/marca/logo.png', width: 34, height: 34, filterQuality: FilterQuality.medium),
         const SizedBox(width: 10),
         const Flexible(
-          child: Text('Player IPTV',
+          child: Text(nomeApp,
               overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
         ),
       ]);

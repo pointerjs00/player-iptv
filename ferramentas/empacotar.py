@@ -15,12 +15,12 @@ from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
 APKS = {
-    "app-arm64-v8a-release.apk": "PlayerIPTV-android-arm64.apk",
-    "app-armeabi-v7a-release.apk": "PlayerIPTV-android-armv7.apk",
+    "app-arm64-v8a-release.apk": "TVIntel-android-arm64.apk",
+    "app-armeabi-v7a-release.apk": "TVIntel-android-armv7.apk",
 }
 PASTA_APK = Path("build/app/outputs/flutter-apk")
 PASTA_WINDOWS = Path("build/windows/x64/runner/Release")
-RAIZ_ZIP = "PlayerIPTV"
+RAIZ_ZIP = "TVIntel"
 PROIBIDOS = ["Accounts*.json", "*.ini", "historico.json", "biblioteca.json"]
 MSG_SYMLINK = "Building with plugins requires symlink support"
 # o libmpv completo (com os filtros do ffmpeg: bwdif...) que o windows/libmpv_completo.cmake instala;
@@ -53,23 +53,23 @@ SHA256_LIBMPV_ANDROID = ler_sha256_libmpv_android()
 ABI_APK = {"app-arm64-v8a-release.apk": "arm64-v8a", "app-armeabi-v7a-release.apk": "armeabi-v7a"}
 
 LEIA_ME = """\
-PLAYER IPTV - COMO INSTALAR
-===========================
+TVINTEL - COMO INSTALAR
+=======================
 
 Que ficheiro escolher
 ---------------------
-- Windows:  PlayerIPTV-windows.zip
+- Windows:  TVIntel-windows.zip
 - Android (telemóvel, tablet, Fire TV, Android TV):
-  * PlayerIPTV-android-arm64.apk  -> a escolha certa para a maioria dos
+  * TVIntel-android-arm64.apk  -> a escolha certa para a maioria dos
     telemóveis, tablets e boxes Android TV recentes.
-  * PlayerIPTV-android-armv7.apk  -> Fire TV e aparelhos mais antigos.
+  * TVIntel-android-armv7.apk  -> Fire TV e aparelhos mais antigos.
     No Fire TV Stick 4K Max use o armv7 (o Fire OS 7 só instala 32 bits).
     Se o arm64 não instalar ("App não instalada"), use este.
 
 Windows
 -------
-1. Descompacte o PlayerIPTV-windows.zip (botão direito -> Extrair tudo).
-2. Abra a pasta PlayerIPTV e execute player_iptv.exe.
+1. Descompacte o TVIntel-windows.zip (botão direito -> Extrair tudo).
+2. Abra a pasta TVIntel e execute TVIntel.exe.
    Não mova o .exe para fora da pasta: precisa dos restantes ficheiros.
 
 Telemóvel ou tablet Android
@@ -89,7 +89,7 @@ Opção A - app Downloader:
 Opção B - adb, a partir de um computador na mesma rede:
 1. Ative "Depuração ADB" nas opções de programador do aparelho.
 2. adb connect ENDEREÇO_IP_DO_APARELHO
-3. adb install PlayerIPTV-android-armv7.apk   (Fire TV; arm64 noutros aparelhos)
+3. adb install TVIntel-android-armv7.apk   (Fire TV; arm64 noutros aparelhos)
 
 Importar as listas
 ------------------
@@ -187,7 +187,7 @@ def limpar_saidas(dist: Path, android: bool, windows: bool) -> None:
     if android:
         nomes += list(APKS.values())
     if windows:
-        nomes.append("PlayerIPTV-windows.zip")
+        nomes.append("TVIntel-windows.zip")
     for n in nomes:
         (Path(dist) / n).unlink(missing_ok=True)
 
@@ -219,7 +219,7 @@ def construir_windows(dist: Path) -> Path | None:
         if falta_symlinks(saida):
             return None
         raise SystemExit("Falhou 'flutter build windows'.")
-    return criar_zip_windows(RAIZ / PASTA_WINDOWS, dist / "PlayerIPTV-windows.zip")
+    return criar_zip_windows(RAIZ / PASTA_WINDOWS, dist / "TVIntel-windows.zip")
 
 
 def main(argv=None) -> int:

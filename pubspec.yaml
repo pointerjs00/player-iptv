@@ -80,7 +80,9 @@ flutter:
     - shaders/desentrelacar.frag
 
   # o aviso e os textos das licenças do libmpv/ffmpeg (GPLv3) dentro da app (Definições -> Licenças)
+  # e o logótipo (ferramentas/gerar_icones.py)
   assets:
+    - assets/marca/logo.png
     - third_party/libmpv_completo/AVISOS-LICENCAS.txt
     - third_party/libmpv_completo/licencas/GPL-3.0.txt
     - third_party/libmpv_completo/licencas/LGPL-2.1.txt

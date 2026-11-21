@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "pt.playeriptv" "\0"
-            VALUE "FileDescription", "Player IPTV" "\0"
+            VALUE "FileDescription", "TVIntel" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "player_iptv" "\0"
+            VALUE "InternalName", "TVIntel" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 pt.playeriptv. All rights reserved." "\0"
-            VALUE "OriginalFilename", "player_iptv.exe" "\0"
-            VALUE "ProductName", "Player IPTV" "\0"
+            VALUE "OriginalFilename", "TVIntel.exe" "\0"
+            VALUE "ProductName", "TVIntel" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

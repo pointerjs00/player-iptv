@@ -146,6 +146,9 @@ class Preferencias extends ChangeNotifier {
   static Duration esperaBloqueio = const Duration(seconds: 5);
 
   /// O tempo limite da verificação por omissão e os seus limites, em segundos.
+  /// O volume do sistema ao abrir o player no telemóvel Android, em % do máximo.
+  static const padraoVolumeInicialSistema = 50;
+
   static const padraoTimeoutVerificacao = 8, minTimeoutVerificacao = 5, maxTimeoutVerificacao = 30;
 
   /// Quantas listas se verificam ao mesmo tempo (omissão e limites).
@@ -166,6 +169,7 @@ class Preferencias extends ChangeNotifier {
   FormatoImagem _formato = FormatoImagem.ajustar;
   bool _hardware = true;
   double _volume = 100;
+  int _volumeInicialSistema = padraoVolumeInicialSistema;
   ModoDescodificacao _modoAndroid = ModoDescodificacao.direto;
   bool _ajustarTaxaEcra;
   MotorAndroid _motorAndroid = MotorAndroid.exoplayer;
@@ -212,6 +216,13 @@ class Preferencias extends ChangeNotifier {
   set volume(double v) {
     final n = v.clamp(0, 100).toDouble();
     _mudar('volume', _volume != n, () => _volume = n);
+  }
+
+  /// Telemóvel Android: o volume do sistema (em % do máximo) ao abrir o player, 0–100.
+  int get volumeInicialSistema => _volumeInicialSistema;
+  set volumeInicialSistema(int v) {
+    final n = v.clamp(0, 100);
+    _mudar('volumeInicialSistema', _volumeInicialSistema != n, () => _volumeInicialSistema = n);
   }
 
   /// Descodificação por hardware no Android: direta (por omissão) ou "Compatível".
@@ -340,6 +351,8 @@ class Preferencias extends ChangeNotifier {
     _hardware = campo<bool>('hardware') ?? _hardware;
     final volume = campo<num>('volume');
     if (volume != null) _volume = volume.clamp(0, 100).toDouble();
+    final volumeSistema = campo<num>('volumeInicialSistema');
+    if (volumeSistema != null) _volumeInicialSistema = volumeSistema.round().clamp(0, 100);
     final modo = campo<String>('modoAndroid');
     if (modo != null) _modoAndroid = ModoDescodificacao.deNome(modo);
     _ajustarTaxaEcra = campo<bool>('ajustarTaxaEcra') ?? _ajustarTaxaEcra;
@@ -375,6 +388,7 @@ class Preferencias extends ChangeNotifier {
         'formato': _formato.nome,
         'hardware': _hardware,
         'volume': _volume,
+        'volumeInicialSistema': _volumeInicialSistema,
         'modoAndroid': _modoAndroid.nome,
         'ajustarTaxaEcra': _ajustarTaxaEcra,
         'motorAndroid': _motorAndroid.nome,
@@ -402,6 +416,7 @@ class Preferencias extends ChangeNotifier {
     if (lidas.contains('formato')) formato = outro._formato;
     if (lidas.contains('hardware')) hardware = outro._hardware;
     if (lidas.contains('volume')) volume = outro._volume;
+    if (lidas.contains('volumeInicialSistema')) volumeInicialSistema = outro._volumeInicialSistema;
     if (lidas.contains('modoAndroid')) modoAndroid = outro._modoAndroid;
     if (lidas.contains('ajustarTaxaEcra')) ajustarTaxaEcra = outro._ajustarTaxaEcra;
     if (lidas.contains('motorAndroid')) motorAndroid = outro._motorAndroid;

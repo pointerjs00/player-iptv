@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- o fundo do ícone adaptativo: o azul-noite da app -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <gradient
+        android:type="radial"
+        android:centerX="0.3"
+        android:centerY="0.2"
+        android:gradientRadius="120%p"
+        android:startColor="#1A3A66"
+        android:endColor="#0A1628" />
+</shape>

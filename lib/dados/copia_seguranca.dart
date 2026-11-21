@@ -16,6 +16,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import '../marca.dart';
 import '../rede/http.dart' show descreverErro;
 import 'area_gestor.dart';
 import 'biblioteca.dart';
@@ -88,11 +89,11 @@ Uint8List codificarCopia(Biblioteca biblioteca, AreaGestor area, Preferencias pr
   return Uint8List.fromList(utf8.encode(const JsonEncoder.withIndent(' ').convert(mapa)));
 }
 
-/// O nome sugerido para o ficheiro: "Player IPTV copia 2026-11-17.json".
+/// O nome sugerido para o ficheiro: "TVIntel copia 2026-11-17.json".
 String nomeFicheiroCopia([DateTime? agora]) {
   final d = agora ?? DateTime.now();
   String dois(int n) => n.toString().padLeft(2, '0');
-  return 'Player IPTV copia ${d.year}-${dois(d.month)}-${dois(d.day)}.json';
+  return '$nomeApp copia ${d.year}-${dois(d.month)}-${dois(d.day)}.json';
 }
 
 /// Lê e valida o texto de um ficheiro de cópia. Lança [ErroCopia] (com mensagem legível, sem
@@ -105,7 +106,7 @@ CopiaLida lerCopia(String texto) {
     throw ErroCopia('O ficheiro não é uma cópia de segurança: não tem JSON válido.');
   }
   if (raiz is! Map || raiz['formato'] != _formato) {
-    throw ErroCopia('Este ficheiro não é uma cópia de segurança do Player IPTV.');
+    throw ErroCopia('Este ficheiro não é uma cópia de segurança do $nomeApp.');
   }
   final versao = raiz['versao'];
   if (versao is! int || versao < 1) {

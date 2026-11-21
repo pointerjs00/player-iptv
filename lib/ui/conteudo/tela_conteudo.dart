@@ -446,6 +446,35 @@ class _TelaConteudoState extends State<TelaConteudo> {
     });
   }
 
+  /// Nos grupos: DIREITA vai ao canal à vista mais perto na vertical. A procura direcional do
+  /// Flutter também via os canais construídos fora da vista (a cache da lista), por exemplo o
+  /// que está meio escondido por baixo do nome do grupo, e a deslocação "manter no fim" não o
+  /// trazia para a vista (só desce): o foco ficava num canal que não se via.
+  KeyEventResult _teclaGrupos(KeyEvent e) {
+    if (e is KeyUpEvent || e.logicalKey != LogicalKeyboardKey.arrowRight) return KeyEventResult.ignored;
+    final atual = FocusManager.instance.primaryFocus;
+    final lista = _focoColunaCanais;
+    if (atual == null || lista.context == null) return KeyEventResult.ignored;
+    final vista = lista.rect;
+    final y = atual.rect.center.dy;
+    FocusNode? alvo;
+    var melhor = double.infinity;
+    for (final n in lista.traversalDescendants) {
+      if (!n.canRequestFocus || n.skipTraversal || n.context == null) continue;
+      final r = n.rect;
+      // inteiro dentro da parte à vista da lista
+      if (r.top < vista.top - 0.5 || r.bottom > vista.bottom + 0.5) continue;
+      final d = (r.center.dy - y).abs();
+      if (d < melhor) {
+        melhor = d;
+        alvo = n;
+      }
+    }
+    if (alvo == null) return KeyEventResult.ignored;
+    alvo.requestFocus();
+    return KeyEventResult.handled;
+  }
+
   /// O cursor do campo está no fim (ou no início) do texto, sem seleção.
   bool _cursorNoFim(TextEditingController c) =>
       !c.selection.isValid || (c.selection.isCollapsed && c.selection.extentOffset >= c.text.length);
@@ -1474,7 +1503,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
           // "Todos os canais" é sempre a primeira linha
           onKeyEvent: (_, e) => _subirParaCampo(e, _focoTodos.hasPrimaryFocus, _focoFiltroGrupos)
               ? KeyEventResult.handled
-              : KeyEventResult.ignored,
+              : _teclaGrupos(e),
           child: FocusTraversalGroup(
           child: ListView.builder(
             key: const Key('lista-grupos'),

@@ -7,6 +7,7 @@ import '../design/componentes.dart';
 import '../design/ecra.dart';
 import '../design/movimento.dart';
 import '../design/tokens.dart';
+import 'ajuste_toque.dart';
 import 'aplicar_preferencias.dart';
 import 'barra_progresso.dart';
 import 'maquina_controlos.dart';
@@ -64,7 +65,11 @@ class ControlosPlayer extends StatefulWidget {
     this.aoProcurar,
     this.esconderApos = const Duration(seconds: 5),
     this.aoNumero,
+    this.ajusteToque,
   });
+
+  /// Telemóvel Android: os deslizes nas laterais mudam o volume (direita) e o brilho (esquerda).
+  final AjusteToque? ajusteToque;
 
   /// O número de canal escrito com os algarismos (null = os algarismos não fazem nada).
   final ValueChanged<int>? aoNumero;
@@ -398,7 +403,20 @@ class ControlosPlayerState extends State<ControlosPlayer> {
               onTap: _tocou,
               onDoubleTap: widget.comEcraInteiro ? () => widget.aoAgir(AcaoPlayer.ecraInteiro) : null,
               onLongPress: () => widget.aoAgir(AcaoPlayer.estatisticas),
+              onVerticalDragStart: widget.ajusteToque == null
+                  ? null
+                  : (d) {
+                      final largura = context.size?.width ?? 0;
+                      if (largura > 0) widget.ajusteToque!.comecar(d.localPosition.dx / largura);
+                    },
+              onVerticalDragUpdate: widget.ajusteToque == null
+                  ? null
+                  : (d) {
+                      final altura = context.size?.height ?? 0;
+                      if (altura > 0) widget.ajusteToque!.mover(-d.delta.dy / altura);
+                    },
               onVerticalDragEnd: (d) {
+                if (widget.ajusteToque?.terminar() ?? false) return;
                 if (_m.vista != VistaPlayer.escondida) return;
                 widget.aoAgir((d.primaryVelocity ?? 0) < 0 ? AcaoPlayer.canalSeguinte : AcaoPlayer.canalAnterior);
               },
@@ -437,6 +455,7 @@ class ControlosPlayerState extends State<ControlosPlayer> {
                 ),
               ),
             ),
+            if (widget.ajusteToque != null) IndicadoresAjuste(ajuste: widget.ajusteToque!),
             if (_m.numero.isNotEmpty) IgnorePointer(child: MostradorNumero(numero: _m.numero)),
             AnimatedSwitcher(
               duration: duracao,

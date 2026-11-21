@@ -2,15 +2,16 @@ import 'dart:io';
 
 import 'package:material_ui/material_ui.dart';
 import 'package:media_kit/media_kit.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'dados/area_gestor.dart';
 import 'dados/biblioteca.dart';
 import 'dados/licencas.dart';
+import 'dados/pasta_dados.dart';
 import 'dados/preferencias.dart';
 import 'direto/sessao_direto.dart';
 import 'janelas/janela_player.dart';
+import 'marca.dart';
 import 'modelo/canal.dart';
 import 'rede/http.dart';
 import 'tarefas/servico_tarefas.dart';
@@ -48,11 +49,11 @@ Future<void> main(List<String> args) async {
     // as mesmas preferências do player que no Android (o ficheiro da janela principal)
     // a abertura que a principal manda já pode chegar durante estas esperas: a ligação
     // guarda-a até a app a escutar (ver LigacaoPrincipal.aberturas)
-    Preferencias.atual = await Preferencias.abrir(await getApplicationSupportDirectory());
+    Preferencias.atual = await Preferencias.abrir(await pastaDados());
     runApp(AppJanelaPlayer(ligacao: ligacao));
     return;
   }
-  final pasta = await getApplicationSupportDirectory();
+  final pasta = await pastaDados();
   // uma só instância: duas janelas principais reescreviam a biblioteca uma por cima da outra
   _bloqueio = await Biblioteca.bloquearInstancia(pasta);
   if (_bloqueio == null) {
@@ -137,7 +138,7 @@ class _AppPlayerIptvState extends State<AppPlayerIptv> {
 
   @override
   Widget build(BuildContext context) => MaterialApp(
-        title: 'Player IPTV',
+        title: nomeApp,
         debugShowCheckedModeBanner: false,
         theme: temaApp(),
         // o fundo azul-noite por trás de todos os ecrãs (os Scaffold são transparentes); as mensagens
@@ -204,7 +205,7 @@ class _AppJanelaPlayerState extends State<AppJanelaPlayer> {
 
   @override
   Widget build(BuildContext context) => MaterialApp(
-        title: 'Player IPTV',
+        title: nomeApp,
         debugShowCheckedModeBanner: false,
         theme: temaApp(),
         builder: (_, w) => TemaConformeRealce(child: w!),
