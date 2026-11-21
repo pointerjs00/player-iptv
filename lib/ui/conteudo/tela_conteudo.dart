@@ -128,6 +128,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
 
   // ao voltar do player: o canal que estava a tocar recebe o foco
   final _scrollCanais = ScrollController();
+  final _scrollGrupos = ScrollController();
   final _focoRegresso = FocusNode();
   Canal? _canalAFocar;
 
@@ -175,6 +176,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
     _atrasoFiltro?.cancel();
     _atrasoDigitos?.cancel();
     _scrollCanais.dispose();
+    _scrollGrupos.dispose();
     _textoGrupos.dispose();
     _focoFiltroGrupos.dispose();
     _focoColunaGrupos.dispose();
@@ -346,6 +348,25 @@ class _TelaConteudoState extends State<TelaConteudo> {
     });
   }
 
+  /// Confirmar a pesquisa (Enter, OK, «Pesquisar» do teclado): aplica-a já (sem esperar os 150 ms) e
+  /// o foco vai ao 1.º canal encontrado; sem resultados fica no campo.
+  void _confirmarPesquisa(String v) {
+    _atrasoPesquisa?.cancel();
+    setState(() {
+      _comTexto = v.isNotEmpty;
+      _q = v;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final canais = _canaisVisiveis();
+      if (canais.isNotEmpty) {
+        _focarNoCanal(canais, 0);
+      } else if (_focoPesquisa.context != null) {
+        _focoPesquisa.requestFocus();
+      }
+    });
+  }
+
   /// Apaga a pesquisa (o campo e os resultados). Com o foco num canal encontrado, o foco vai
   /// ao 1.º canal do que fica à vista: a linha focada passaria a ser outro canal (ou deixaria
   /// de existir) e o "i de n" e o ↑ ficariam desencontrados dela.
@@ -376,6 +397,59 @@ class _TelaConteudoState extends State<TelaConteudo> {
     _atrasoFiltro = Timer(const Duration(milliseconds: 150), () {
       if (mounted) setState(() => _qGrupos = v);
     });
+  }
+
+  /// Confirmar o filtro dos grupos: aplica-o já e o foco vai ao 1.º grupo encontrado (a seguir a
+  /// «Todos os canais», que nunca é filtrada); sem resultados fica no campo.
+  void _confirmarFiltroGrupos(String v) {
+    _atrasoFiltro?.cancel();
+    setState(() {
+      _comTextoGrupos = v.isNotEmpty;
+      _qGrupos = v;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final grupos = _gruposVisiveis();
+      if (grupos.isEmpty) {
+        if (_focoFiltroGrupos.context != null) _focoFiltroGrupos.requestFocus();
+        return;
+      }
+      // o 1.º grupo pode estar fora do que a lista construiu: volta-se ao topo e foca-se no frame seguinte
+      if (_scrollGrupos.hasClients) _scrollGrupos.jumpTo(0);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final f = _focosGrupos[grupos.first];
+        if (f != null && f.context != null && f.canRequestFocus) {
+          f.requestFocus();
+        } else if (_focoFiltroGrupos.context != null) {
+          _focoFiltroGrupos.requestFocus();
+        }
+      });
+    });
+  }
+
+  /// O cursor do campo está no fim (ou no início) do texto, sem seleção.
+  bool _cursorNoFim(TextEditingController c) =>
+      !c.selection.isValid || (c.selection.isCollapsed && c.selection.extentOffset >= c.text.length);
+  bool _cursorNoInicio(TextEditingController c) =>
+      !c.selection.isValid || (c.selection.isCollapsed && c.selection.extentOffset <= 0);
+
+  /// → no filtro dos grupos vai à pesquisa dos canais: sempre, em modo de leitura (comando); a
+  /// escrever, só com o cursor no fim do texto.
+  bool _setaFiltroGrupos(LogicalKeyboardKey k, bool aEscrever) {
+    if (k != LogicalKeyboardKey.arrowRight || (aEscrever && !_cursorNoFim(_textoGrupos))) return false;
+    if (_focoPesquisa.context == null) return false;
+    _focoPesquisa.requestFocus();
+    return true;
+  }
+
+  /// ← na pesquisa dos canais volta ao filtro dos grupos (se há coluna de grupos): sempre, em
+  /// modo de leitura; a escrever, só com o cursor no início.
+  bool _setaPesquisaCanais(LogicalKeyboardKey k, bool aEscrever) {
+    if (k != LogicalKeyboardKey.arrowLeft || (aEscrever && !_cursorNoInicio(_textoPesquisa))) return false;
+    if (_focoFiltroGrupos.context == null) return false;
+    _focoFiltroGrupos.requestFocus();
+    return true;
   }
 
   /// Apaga o filtro dos grupos. Com o foco num grupo, o foco vai ao grupo escolhido (ou, se ele
@@ -1052,7 +1126,8 @@ class _TelaConteudoState extends State<TelaConteudo> {
 
   /// Um campo no topo de uma coluna.
   Widget _campoColuna(Key chave, TextEditingController texto, FocusNode foco, IconData icone, String dica,
-          ValueChanged<String> aoMudar) =>
+          ValueChanged<String> aoMudar, ValueChanged<String> aoConfirmar,
+          bool Function(LogicalKeyboardKey, bool) aoSeta) =>
       Padding(
         padding: const EdgeInsets.fromLTRB(Tokens.e12, Tokens.e8, Tokens.e12, 0),
         child: CampoTv(
@@ -1061,6 +1136,9 @@ class _TelaConteudoState extends State<TelaConteudo> {
           focusNode: foco,
           decoration: InputDecoration(prefixIcon: Icon(icone), hintText: dica),
           onChanged: aoMudar,
+          onSubmitted: aoConfirmar,
+          textInputAction: TextInputAction.search,
+          aoSeta: aoSeta,
         ),
       );
 
@@ -1068,7 +1146,8 @@ class _TelaConteudoState extends State<TelaConteudo> {
   Widget _campoPesquisaCanais() {
     final g = _grupo;
     final dica = g == null ? 'Pesquisar canais ou número' : 'Pesquisar em ${g == grupoFavoritos ? 'Favoritos' : g}';
-    return _campoColuna(const Key('pesquisa-canais'), _textoPesquisa, _focoPesquisa, Icons.search, dica, _pesquisar);
+    return _campoColuna(const Key('pesquisa-canais'), _textoPesquisa, _focoPesquisa, Icons.search, dica, _pesquisar,
+        _confirmarPesquisa, _setaPesquisaCanais);
   }
 
   /// O texto com a parte encontrada (`q`, já sem acentos) em [Tokens.anelFoco]; sem ela, só o texto.
@@ -1130,7 +1209,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
     final q = _pesquisaGrupos ? semAcentos(_qGrupos.trim()) : '';
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       _campoColuna(const Key('filtro-grupos'), _textoGrupos, _focoFiltroGrupos, Icons.filter_list,
-          'Filtrar grupos', _filtrarGrupos),
+          'Filtrar grupos', _filtrarGrupos, _confirmarFiltroGrupos, _setaFiltroGrupos),
       Expanded(
         child: Focus(
           focusNode: _focoColunaGrupos,
@@ -1142,6 +1221,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
           child: FocusTraversalGroup(
           child: ListView.builder(
             key: const Key('lista-grupos'),
+            controller: _scrollGrupos,
             // margem para a borda de realce não ser cortada pelo vidro
             padding: const EdgeInsets.all(_margemLista),
             // a 1.ª linha, "Todos os canais", nunca é filtrada

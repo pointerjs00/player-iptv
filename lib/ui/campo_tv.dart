@@ -16,6 +16,9 @@ class CampoTv extends StatefulWidget {
     this.autofocus = false,
     this.obscureText = false,
     this.focusNode,
+    this.onSubmitted,
+    this.textInputAction,
+    this.aoSeta,
   });
 
   final InputDecoration decoration;
@@ -30,6 +33,16 @@ class CampoTv extends StatefulWidget {
 
   /// O foco do campo, para o pôr nele de fora (sem ele, o campo tem um seu).
   final FocusNode? focusNode;
+
+  /// Confirmado (Enter, OK do comando ou a ação do teclado no ecrã), com o texto do campo.
+  final ValueChanged<String>? onSubmitted;
+
+  /// A ação do teclado no ecrã («Concluído», «Pesquisar»…).
+  final TextInputAction? textInputAction;
+
+  /// ESQUERDA/DIREITA antes de o campo as tratar: recebe a tecla e se o campo está a escrever;
+  /// devolve true se já tratou (por exemplo, saltou para o campo ao lado).
+  final bool Function(LogicalKeyboardKey tecla, bool aEscrever)? aoSeta;
 
   @override
   State<CampoTv> createState() => _CampoTvState();
@@ -87,6 +100,10 @@ class _CampoTvState extends State<CampoTv> {
       _pararDeEscrever();
       return KeyEventResult.handled;
     }
+    if ((k == LogicalKeyboardKey.arrowLeft || k == LogicalKeyboardKey.arrowRight) &&
+        (widget.aoSeta?.call(k, _aEscrever) ?? false)) {
+      return KeyEventResult.handled;
+    }
     final variasLinhas = widget.maxLines != 1;
     if ((k == LogicalKeyboardKey.arrowDown || k == LogicalKeyboardKey.arrowUp) && !(variasLinhas && _aEscrever)) {
       final moveu =
@@ -133,7 +150,11 @@ class _CampoTvState extends State<CampoTv> {
           decoration: widget.decoration,
           onTap: _aEscrever ? null : _escrever,
           onChanged: widget.onChanged,
-          onSubmitted: (_) => setState(() => _aEscrever = false),
+          textInputAction: widget.textInputAction,
+          onSubmitted: (v) {
+            setState(() => _aEscrever = false);
+            widget.onSubmitted?.call(v);
+          },
         ),
       ),
     );

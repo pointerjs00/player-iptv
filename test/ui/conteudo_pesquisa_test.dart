@@ -687,4 +687,114 @@ void main() {
     expect(find.byType(TelaConteudo), findsNothing);
     expect(find.text('base'), findsOneWidget);
   });
+
+  group('confirmar o filtro leva o foco ao 1.º resultado', () {
+    // a ação «Concluído/Pesquisar» do teclado no ecrã chega por testTextInput.receiveAction
+    Future<void> escreverSem(WidgetTester t, Finder campo, String texto) async {
+      await t.tap(campo);
+      await t.pump();
+      await t.enterText(campo, texto);
+      await t.pump();
+    }
+
+    testWidgets('«Filtrar grupos»: confirmar com resultados foca o 1.º grupo encontrado', (t) async {
+      await abrir(t);
+      await escreverSem(t, _filtro, 'internac');
+      await t.testTextInput.receiveAction(TextInputAction.done);
+      await t.pumpAndSettle();
+      expect(_focado(), 'Desporto Internacional', reason: textosFocados());
+    });
+
+    testWidgets('«Filtrar grupos»: sem resultados o foco fica no campo', (t) async {
+      await abrir(t);
+      await escreverSem(t, _filtro, 'zzz');
+      await t.testTextInput.receiveAction(TextInputAction.done);
+      await t.pumpAndSettle();
+      expect(_noCampo(t, _filtro), isTrue);
+    });
+
+    testWidgets('«Pesquisar canais»: confirmar com resultados foca o 1.º canal; sem, fica no campo', (t) async {
+      await abrir(t);
+      await escreverSem(t, _pesquisa, 'desp. mundo');
+      await t.testTextInput.receiveAction(TextInputAction.done);
+      await t.pumpAndSettle();
+      expect(_focado(), 'Desp. Mundo 1', reason: textosFocados());
+      await escreverSem(t, _pesquisa, 'zzz');
+      await t.testTextInput.receiveAction(TextInputAction.done);
+      await t.pumpAndSettle();
+      expect(_naPesquisa(t), isTrue);
+    });
+
+    testWidgets('confirmar logo a seguir a escrever (antes dos 150 ms) já usa o texto todo', (t) async {
+      await abrir(t);
+      await escreverSem(t, _pesquisa, '402');
+      await t.testTextInput.receiveAction(TextInputAction.done);
+      await t.pumpAndSettle();
+      expect(_focado(), 'Notícias 2', reason: textosFocados());
+    });
+
+    testWidgets('escrever letra a letra não move o foco', (t) async {
+      await abrir(t);
+      await escrever(t, 'desp');
+      expect(_naPesquisa(t), isTrue);
+      await filtrar(t, 'desp');
+      expect(_noCampo(t, _filtro), isTrue);
+    });
+
+    testWidgets('no ecrã estreito, confirmar a pesquisa foca o 1.º canal', (t) async {
+      await abrir(t, largura: 400, altura: 800);
+      await escreverSem(t, _pesquisa, 'notic');
+      await t.testTextInput.receiveAction(TextInputAction.done);
+      await t.pumpAndSettle();
+      expect(_focado(), 'Notícias 1', reason: textosFocados());
+    });
+
+    testWidgets('→ no filtro dos grupos vai à pesquisa de canais (só de leitura: sempre)', (t) async {
+      await abrir(t);
+      await teclaDpad(t, LogicalKeyboardKey.arrowUp); // de «Todos os canais» ao filtro
+      expect(_noCampo(t, _filtro), isTrue);
+      await teclaDpad(t, LogicalKeyboardKey.arrowRight);
+      expect(_naPesquisa(t), isTrue, reason: textosFocados());
+      await teclaDpad(t, LogicalKeyboardKey.arrowLeft);
+      expect(_noCampo(t, _filtro), isTrue, reason: textosFocados());
+    });
+
+    testWidgets('a escrever, → só salta com o cursor no fim; ← só com o cursor no início', (t) async {
+      await abrir(t);
+      await escreverSem(t, _filtro, 'desp');
+      // cursor no fim: salta
+      await t.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await t.pumpAndSettle();
+      expect(_naPesquisa(t), isTrue, reason: textosFocados());
+      await escreverSem(t, _pesquisa, 'abc');
+      // cursor no fim: ← fica no campo (move o cursor)
+      await t.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+      await t.pumpAndSettle();
+      expect(_naPesquisa(t), isTrue);
+      await t.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+      await t.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+      await t.pumpAndSettle();
+      expect(_naPesquisa(t), isTrue);
+      // cursor no início: salta ao filtro
+      await t.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+      await t.pumpAndSettle();
+      expect(_noCampo(t, _filtro), isTrue, reason: textosFocados());
+      // o filtro voltou a só de leitura (salta sempre); a escrever, com o cursor a meio, → não salta
+      await t.tap(_filtro);
+      await t.pump();
+      t.widget<TextField>(find.descendant(of: _filtro, matching: find.byType(TextField))).controller!.selection =
+          const TextSelection.collapsed(offset: 1);
+      await t.pump();
+      await t.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await t.pumpAndSettle();
+      expect(_noCampo(t, _filtro), isTrue);
+    });
+
+    testWidgets('no ecrã estreito, ← na pesquisa não salta para lado nenhum', (t) async {
+      await abrir(t, largura: 400, altura: 800);
+      await teclaDpad(t, LogicalKeyboardKey.arrowUp);
+      await teclaDpad(t, LogicalKeyboardKey.arrowLeft);
+      expect(_filtro, findsNothing);
+    });
+  });
 }
