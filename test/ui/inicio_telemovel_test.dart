@@ -8,6 +8,7 @@ import 'package:player_iptv/dados/biblioteca.dart';
 import 'package:player_iptv/importar/importar.dart';
 import 'package:player_iptv/modelo/canal.dart';
 import 'package:player_iptv/modelo/conta.dart';
+import 'package:player_iptv/ui/inicio/cartao_lista.dart';
 import 'package:player_iptv/ui/inicio/tela_inicio.dart';
 
 import 'apoio_telemovel.dart';
@@ -196,5 +197,29 @@ void main() {
     expect(texto, matches(r'^.+ · Canal 2 · \|PT\| DESPORTO$'));
     inteiro(t, detalhe);
     noEcra(t, detalhe, ecra);
+  });
+  noAndroid('cartão da lista: um ⋮ de 48 dp, «Opções da lista», abre o mesmo menu', (t, ecra) async {
+    await abrir(t);
+    final cartao = find.byType(CartaoLista).first;
+    final mais = find.descendant(of: cartao, matching: find.widgetWithIcon(IconButton, Icons.more_vert));
+    expect(mais.hitTestable(), findsOneWidget);
+    expect(t.widget<IconButton>(mais).tooltip, 'Opções da lista');
+    alvo48(t, mais);
+    noEcra(t, mais, ecra);
+    expect(find.byType(Dialog), findsNothing);
+    await t.tap(mais);
+    await t.pumpAndSettle();
+    expect(find.byType(Dialog), findsOneWidget, reason: 'o ⋮ abre o menu da lista');
+    expect(find.descendant(of: find.byType(Dialog), matching: find.byType(ListTile)), findsAtLeastNWidgets(4),
+        reason: 'as ações da lista (sem Gestor nem verificação neste ecrã: 4)');
+  });
+
+  testWidgets('cartão da lista: sem ⋮ num ecrã largo (Windows e TV ficam iguais)', (t) async {
+    t.view.physicalSize = const Size(1280, 800);
+    t.view.devicePixelRatio = 1;
+    addTearDown(t.view.reset);
+    await abrir(t);
+    expect(find.byType(CartaoLista), findsWidgets);
+    expect(find.descendant(of: find.byType(CartaoLista), matching: find.byIcon(Icons.more_vert)), findsNothing);
   });
 }

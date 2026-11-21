@@ -9,7 +9,8 @@ import 'favoritos_inicio.dart';
 /// Cartão de uma lista no Player: ícone do tipo, nome, servidor, pílula do último resultado,
 /// validade e motivo (a verificação faz-se no Gestor). Com o foco do comando cresce e brilha
 /// (ver [CartaoModerno]). O menu de ações ([aoMenu]) abre com a pressão longa (toque longo,
-/// clique direito, OK mantido). O cartão não tem botões de dentro: é uma só paragem do foco.
+/// clique direito, OK mantido) e, no telemóvel, também com o ⋮ «Opções da lista» (48 dp). Fora
+/// do telemóvel o cartão não tem botões de dentro: é uma só paragem do foco.
 /// Na grelha ([emGrelha]) tem a altura fixa [altura]; fora dela (o telemóvel, uma lista por
 /// linha) tem a altura do que mostra e o detalhe da pílula nunca se corta.
 class CartaoLista extends StatelessWidget {
@@ -44,6 +45,7 @@ class CartaoLista extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tv = ecraTv(context);
+    final telemovel = ecraTelemovel(context);
     final u = lista.ultima;
     final validade = textoValidade(u?.validade ?? '');
     final secundario = TextStyle(color: Tokens.texto2, fontSize: tv ? 13 : 12);
@@ -98,6 +100,15 @@ class CartaoLista extends StatelessWidget {
                 ),
               ]),
             ),
+            // no telemóvel o menu também se abre com um ⋮ à vista (a pressão longa não se adivinha)
+            if (telemovel && aoMenu != null)
+              IconButton(
+                onPressed: aoMenu,
+                tooltip: 'Opções da lista',
+                icon: const Icon(Icons.more_vert),
+                color: Tokens.texto2,
+                style: IconButton.styleFrom(minimumSize: const Size(48, 48)),
+              ),
           ]),
           if (emGrelha) const Spacer() else const SizedBox(height: Tokens.e8),
           // a pílula e a validade na mesma linha quando cabem; senão a validade vai para baixo
