@@ -191,11 +191,54 @@ void main() {
     expect(find.text('Grupo 3 canal 1'), findsNothing);
     // e «Todos os canais» volta a mostrar todos
     await abrirFolha(t);
+    // a folha abre com o «Grupo 10» à vista: sobe-se até «Todos os canais», a 1.ª linha
+    await t.dragUntilVisible(linhaDaFolha('Todos os canais'), find.descendant(of: _folha, matching: find.byType(ListView)),
+        const Offset(0, 200));
+    await t.pumpAndSettle();
     await t.tap(linhaDaFolha('Todos os canais'));
     await t.pumpAndSettle();
     expect(_folha, findsNothing);
     expect(find.descendant(of: _botaoGrupo, matching: find.text('Grupo: Todos os canais')), findsOneWidget);
     expect(find.text(_canalLongo), findsOneWidget);
+  });
+
+  noAndroid('a folha volta a abrir com o grupo escolhido à vista', (t, ecra) async {
+    await abrir(t);
+    await abrirFolha(t);
+    final lista = find.descendant(of: _folha, matching: find.byType(ListView));
+    await t.dragUntilVisible(linhaDaFolha('Grupo 11'), lista, const Offset(0, -200));
+    await t.pumpAndSettle();
+    await t.tap(linhaDaFolha('Grupo 11'));
+    await t.pumpAndSettle();
+    expect(find.descendant(of: _botaoGrupo, matching: find.text('Grupo: Grupo 11')), findsOneWidget);
+    await abrirFolha(t);
+    final linha = linhaDaFolha('Grupo 11');
+    expect(linha.hitTestable(), findsOneWidget, reason: 'o grupo escolhido à vista, sem deslizar');
+    final r = t.getRect(linha);
+    final l = t.getRect(lista);
+    expect(r.top, greaterThanOrEqualTo(l.top - .5));
+    expect(r.bottom, lessThanOrEqualTo(l.bottom + .5), reason: 'inteiro dentro da folha');
+    expect(t.widget<ListTile>(linha).selected, isTrue);
+  });
+
+  noAndroid('a pesquisa sem resultados diz «Nenhum grupo» e a folha mantém a altura', (t, ecra) async {
+    await abrir(t);
+    await abrirFolha(t);
+    final campo = find.descendant(of: _folha, matching: find.byType(TextField));
+    await t.tap(campo);
+    await t.pumpAndSettle();
+    final antes = t.getSize(_folha).height;
+    await t.enterText(campo, 'grupo 1');
+    await t.pumpAndSettle();
+    expect(find.descendant(of: _folha, matching: find.text('Nenhum grupo')), findsNothing);
+    expect(t.getSize(_folha).height, antes, reason: 'a altura não muda com a pesquisa');
+    await t.enterText(campo, 'nada disto existe');
+    await t.pumpAndSettle();
+    final nenhum = find.descendant(of: _folha, matching: find.text('Nenhum grupo'));
+    expect(nenhum.hitTestable(), findsOneWidget);
+    inteiro(t, nenhum);
+    expect(linhaDaFolha('Todos os canais'), findsOneWidget, reason: 'nunca é filtrada');
+    expect(t.getSize(_folha).height, antes, reason: 'a altura não muda com a pesquisa');
   });
 
   noAndroid('arrastar a folha para baixo fecha-a, sem mudar o grupo', (t, ecra) async {

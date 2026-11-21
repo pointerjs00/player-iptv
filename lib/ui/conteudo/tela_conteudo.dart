@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:isolate';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/services.dart';
@@ -1200,6 +1201,28 @@ class _TelaConteudoState extends State<TelaConteudo> {
     final todos = _gruposVisiveis(filtrar: false);
     final escondidos = widget.lista.gruposEscondidos;
     final altura = MediaQuery.sizeOf(context).height;
+    // o grupo escolhido (que não «Todos os canais», sempre a 1.ª) fica à vista quando a folha abre
+    final chaveEscolhido = GlobalKey();
+    final rolar = ScrollController();
+    if (_grupo != null) {
+      var tentativas = 0;
+      void mostrarEscolhido(Duration _) {
+        final ctx = chaveEscolhido.currentContext;
+        if (ctx != null) {
+          Scrollable.ensureVisible(ctx, alignment: .3);
+          return;
+        }
+        // a linha ainda não foi construída (a lista só constrói o que está perto da vista):
+        // desce-se uma folha e tenta-se no frame seguinte
+        if (!rolar.hasClients || tentativas++ > 50) return;
+        final p = rolar.position;
+        if (p.pixels >= p.maxScrollExtent) return;
+        rolar.jumpTo((p.pixels + p.viewportDimension).clamp(0, p.maxScrollExtent));
+        WidgetsBinding.instance.addPostFrameCallback(mostrarEscolhido);
+      }
+
+      WidgetsBinding.instance.addPostFrameCallback(mostrarEscolhido);
+    }
     // (grupo, false) = escolheu (null = «Todos os canais»); (grupo, true) = toque longo (o menu
     // do grupo); null = fechou sem escolher
     final r = await showModalBottomSheet<(String?, bool)>(
@@ -1209,6 +1232,9 @@ class _TelaConteudoState extends State<TelaConteudo> {
       useSafeArea: true,
       builder: (ctx) {
         var q = '';
+        // a altura da folha ao abrir: com a pesquisa nunca fica mais baixa (não salta a cada tecla)
+        double? alturaInicial;
+        final chaveFolha = GlobalKey();
         return StatefulBuilder(builder: (ctx, mudar) {
           final busca = semAcentos(q.trim());
           // com pesquisa, só os grupos encontrados (sem Favoritos nem Vistos, como no filtro da TV)
@@ -1222,6 +1248,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
             final escondido = g != null && escondidos.contains(g);
             final real = g != null && g != grupoFavoritos && g != grupoVistos;
             return ListTile(
+              key: g != null && g == _grupo ? chaveEscolhido : null,
               selected: g == _grupo,
               title: _comRealce(_nomeGrupo(g), g == null ? '' : busca,
                   TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: escondido ? Tokens.texto2 : null),
@@ -1238,13 +1265,24 @@ class _TelaConteudoState extends State<TelaConteudo> {
             );
           }
 
+          if (alturaInicial == null) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              final caixa = chaveFolha.currentContext?.findRenderObject();
+              if (caixa is RenderBox && caixa.hasSize) alturaInicial = caixa.size.height;
+            });
+          }
+          final maxima = altura * .85;
+          final teclado = MediaQuery.viewInsetsOf(ctx).bottom;
           return ConstrainedBox(
             key: const Key('folha-grupos'),
-            constraints: BoxConstraints(maxHeight: altura * .85),
+            constraints: BoxConstraints(
+              minHeight: alturaInicial == null ? 0 : math.min(alturaInicial! + teclado, maxima),
+              maxHeight: maxima,
+            ),
             child: Padding(
               // o teclado no ecrã não tapa a lista
               padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
-              child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              child: Column(key: chaveFolha, mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                 Padding(
                   padding: const EdgeInsets.fromLTRB(Tokens.e16, 0, Tokens.e16, Tokens.e8),
                   child: CampoTv(
@@ -1255,12 +1293,18 @@ class _TelaConteudoState extends State<TelaConteudo> {
                 ),
                 Flexible(
                   child: ListView(
+                    controller: rolar,
                     shrinkWrap: true,
                     padding: const EdgeInsets.only(bottom: Tokens.e8),
                     children: [
                       // «Todos os canais» nunca é filtrada
                       linha(null, _totalTodos(c)),
                       for (final g in grupos) linha(g, _contagemGrupo(g)),
+                      if (busca.isNotEmpty && grupos.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: Tokens.e16, vertical: Tokens.e12),
+                          child: Text('Nenhum grupo', style: TextStyle(color: Tokens.texto2, fontSize: 15)),
+                        ),
                     ],
                   ),
                 ),
@@ -1270,6 +1314,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
         });
       },
     );
+    rolar.dispose();
     if (r == null || !mounted) return;
     final (g, menu) = r;
     if (menu) {
