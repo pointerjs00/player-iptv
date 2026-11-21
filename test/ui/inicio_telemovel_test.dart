@@ -49,7 +49,7 @@ void main() {
         }
       });
 
-  Future<void> abrir(WidgetTester t) async {
+  Future<void> abrir(WidgetTester t, {Canal canal = _longo, bool comCache = false}) async {
     await t.runAsync(() async {
       await bib.adicionar([
         Importada(
@@ -59,7 +59,13 @@ void main() {
         ),
         Importada(contaDeLinha('http://bravo.exemplo.invalid/lista.m3u')!),
       ]);
-      await bib.registarVisto(bib.listas.first.id, _longo);
+      if (comCache) {
+        await bib.guardarCanais(
+          bib.listas.first.id,
+          ConteudoLista([canal.grupo], [Canal(id: 'x', nome: 'Antes', grupo: canal.grupo), canal]),
+        );
+      }
+      await bib.registarVisto(bib.listas.first.id, canal);
     });
     await t.pumpWidget(appTelemovel(TelaInicio(biblioteca: bib)));
     for (var i = 0; i < 10; i++) {
@@ -93,6 +99,7 @@ void main() {
         findsOneWidget,
         reason: '$c num Wrap',
       );
+      alvo48(t, find.descendant(of: chip, matching: find.byType(RawChip)), motivo: c);
     }
     expect(find.text('INC'), findsNothing);
     // filtrar continua a funcionar
@@ -159,4 +166,35 @@ void main() {
       sem.dispose();
     },
   );
+
+  noAndroid('nome com 60 caracteres: 2 linhas com reticências, sem overflow e o ▶ à vista', (t, ecra) async {
+    final canal = Canal(
+      id: 'c2',
+      nome: '|PT| SPORT TV 1 FHD ALTERNATIVO COM UM NOME MESMO MUITO COMPRIDO (DIRETO)',
+      grupo: '|PT| DESPORTO',
+    );
+    expect(canal.nome.length, greaterThanOrEqualTo(60));
+    await abrir(t, canal: canal);
+    final cartao = find.byKey(const Key('continuar-a-ver'));
+    final nome = find.descendant(of: cartao, matching: find.text(canal.nome));
+    final p = t.renderObject<RenderParagraph>(find.descendant(of: nome, matching: find.byType(RichText)).first);
+    expect(p.didExceedMaxLines, isTrue, reason: 'cortado em 2 linhas, com reticências');
+    expect(p.maxLines, 2);
+    expect(p.overflow, TextOverflow.ellipsis);
+    final seta = find.descendant(of: cartao, matching: find.byIcon(Icons.play_arrow_rounded));
+    expect(seta.hitTestable(), findsOneWidget);
+    noEcra(t, seta, ecra);
+    noEcra(t, cartao, ecra);
+  });
+
+  noAndroid('com o número do canal: «lista · Canal n · grupo» sem overflow', (t, ecra) async {
+    await abrir(t, comCache: true);
+    final cartao = find.byKey(const Key('continuar-a-ver'));
+    final detalhe = find.descendant(of: cartao, matching: find.textContaining('Canal 2'));
+    expect(detalhe, findsOneWidget);
+    final texto = t.widget<Text>(detalhe).data!;
+    expect(texto, matches(r'^.+ · Canal 2 · \|PT\| DESPORTO$'));
+    inteiro(t, detalhe);
+    noEcra(t, detalhe, ecra);
+  });
 }

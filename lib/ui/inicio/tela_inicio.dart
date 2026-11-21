@@ -341,8 +341,8 @@ class _TelaInicioState extends State<TelaInicio> {
   }
 
   /// A pesquisa e os filtros por estado. Na TV e no computador os filtros vão numa só fila (com
-  /// scroll para o lado quando não cabem; no telemóvel, ao toque, vão num `Wrap`): partidos em duas linhas (num `Wrap`), do último filtro da primeira
-  /// linha → não tinha nada à direita e ↓ saltava para os cartões (por baixo dele não há outro
+  /// scroll para o lado quando não cabem; no telemóvel, ao toque, vão num `Wrap`).
+  /// Na TV, partidos em duas linhas, do último filtro da primeira linha → não tinha nada à direita e ↓ saltava para os cartões (por baixo dele não há outro
   /// filtro), e o comando nunca chegava aos da segunda linha («Por verificar»). Ao lado da
   /// pesquisa quando há largura; por baixo dela no ecrã estreito.
   Widget _pesquisaEFiltros() {
