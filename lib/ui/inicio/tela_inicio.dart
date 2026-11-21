@@ -130,7 +130,7 @@ class _TelaInicioState extends State<TelaInicio> {
   static const _filtros = [
     (null, 'Todas'),
     ('funciona', 'Funcionam'),
-    ('inconclusivo', 'INC'),
+    ('inconclusivo', 'Inconclusivas'),
     ('nao_funciona', 'Não funcionam'),
     ('por_verificar', 'Por verificar'),
     (_filtroFavoritas, 'Favoritas'),
@@ -272,6 +272,20 @@ class _TelaInicioState extends State<TelaInicio> {
     final visto = widget.biblioteca.ultimoVisto;
     final lista = visto == null ? null : widget.biblioteca.porId(visto.lista);
     if (visto == null || lista == null) return const SizedBox.shrink();
+    final cartao = CartaoContinuar(
+      visto: visto,
+      lista: lista,
+      numero: _resumos[lista.id]?.numeroVisto,
+      autofocus: true,
+      aoAbrir: () => _abrir(lista, continuar: visto.canal),
+    );
+    // no telemóvel o cartão tem a altura do que mostra, e a largura toda
+    if (ecraTelemovel(context)) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(Tokens.e16, Tokens.e8, Tokens.e16, Tokens.e4),
+        child: entradaEmCascata(0, cartao),
+      );
+    }
     return Padding(
       // margem para o cartão focado crescer e brilhar sem ser cortado
       padding: const EdgeInsets.fromLTRB(Tokens.e24, Tokens.e16, Tokens.e24, Tokens.e4),
@@ -281,13 +295,7 @@ class _TelaInicioState extends State<TelaInicio> {
           height: CartaoContinuar.altura(tv, fatorTexto(context)),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 760),
-            child: entradaEmCascata(0, CartaoContinuar(
-              visto: visto,
-              lista: lista,
-              numero: _resumos[lista.id]?.numeroVisto,
-              autofocus: true,
-              aoAbrir: () => _abrir(lista, continuar: visto.canal),
-            )),
+            child: entradaEmCascata(0, cartao),
           ),
         ),
       ),
@@ -332,8 +340,8 @@ class _TelaInicioState extends State<TelaInicio> {
     ]);
   }
 
-  /// A pesquisa e os filtros por estado. Os filtros vão sempre numa só fila (com scroll para o
-  /// lado quando não cabem): partidos em duas linhas (num `Wrap`), do último filtro da primeira
+  /// A pesquisa e os filtros por estado. Na TV e no computador os filtros vão numa só fila (com
+  /// scroll para o lado quando não cabem; no telemóvel, ao toque, vão num `Wrap`): partidos em duas linhas (num `Wrap`), do último filtro da primeira
   /// linha → não tinha nada à direita e ↓ saltava para os cartões (por baixo dele não há outro
   /// filtro), e o comando nunca chegava aos da segunda linha («Por verificar»). Ao lado da
   /// pesquisa quando há largura; por baixo dela no ecrã estreito.
@@ -343,22 +351,29 @@ class _TelaInicioState extends State<TelaInicio> {
       decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Pesquisar listas'),
       onChanged: (v) => setState(() => _q = v),
     );
-    final filtros = SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      // margem para o anel do foco não ser cortado
-      padding: const EdgeInsets.all(Tokens.e4),
-      child: Row(children: [
-        for (final (i, (v, t)) in _filtros.indexed) ...[
-          if (i > 0) const SizedBox(width: Tokens.e8),
-          ChoiceChip(
-            focusNode: v == _filtroFavoritas ? _focoChipFavoritas : null,
-            label: Text(t),
-            selected: _filtro == v,
-            onSelected: (_) => setState(() => _filtro = v),
-          ),
-        ],
-      ]),
-    );
+    final chips = [
+      for (final (v, t) in _filtros)
+        ChoiceChip(
+          focusNode: v == _filtroFavoritas ? _focoChipFavoritas : null,
+          label: Text(t),
+          selected: _filtro == v,
+          onSelected: (_) => setState(() => _filtro = v),
+        ),
+    ];
+    // no telemóvel (toque) todos à vista, em mais de uma linha; a fila única é para o D-pad
+    final filtros = ecraTelemovel(context)
+        ? Padding(
+            padding: const EdgeInsets.symmetric(vertical: Tokens.e4),
+            child: Wrap(spacing: Tokens.e8, children: chips),
+          )
+        : SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            // margem para o anel do foco não ser cortado
+            padding: const EdgeInsets.all(Tokens.e4),
+            child: Row(children: [
+              for (final (i, c) in chips.indexed) ...[if (i > 0) const SizedBox(width: Tokens.e8), c],
+            ]),
+          );
     return LayoutBuilder(
       builder: (_, c) => c.maxWidth < 560
           ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [pesquisa, filtros])

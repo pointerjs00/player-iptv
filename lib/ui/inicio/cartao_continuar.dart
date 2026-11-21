@@ -24,6 +24,7 @@ class CartaoContinuar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (ecraTelemovel(context)) return _telemovel(context);
     final tv = ecraTv(context);
     final logo = tv ? 40.0 : 34.0;
     final vazio = Text(_iniciais(visto.nome),
@@ -93,6 +94,85 @@ class CartaoContinuar extends StatelessWidget {
               const SizedBox(width: 4),
               Text('Ver', style: TextStyle(color: Colors.white, fontSize: tv ? 15 : 13.5, fontWeight: FontWeight.w700)),
             ]),
+          ),
+        ]),
+      ),
+    ));
+  }
+
+  /// No telemóvel (ao alto) o cartão cresce com o que mostra: «Continuar a ver» em cima, o canal
+  /// inteiro (até 2 linhas) numa linha própria, «lista · canal · grupo» em baixo e só um ▶ (o
+  /// cartão todo é o toque).
+  Widget _telemovel(BuildContext context) {
+    const logo = 40.0;
+    final vazio = Text(_iniciais(visto.nome),
+        style: TextStyle(color: Colors.white, fontSize: logo * .36, fontWeight: FontWeight.w800));
+    final detalhe = [
+      lista.nomeMostrado,
+      if (numero != null) 'Canal $numero',
+      if (visto.grupo.isNotEmpty) visto.grupo,
+    ].join(' · ');
+    return letraPresa(Semantics(
+      container: true,
+      button: true,
+      label: 'Continuar a ver ${visto.nome}, ${lista.nomeMostrado}',
+      child: CartaoModerno(
+        key: const Key('continuar-a-ver'),
+        autofocus: autofocus,
+        onTap: aoAbrir,
+        escalaFoco: 1.02,
+        padding: const EdgeInsets.symmetric(horizontal: Tokens.e12, vertical: Tokens.e12),
+        child: Row(children: [
+          Expanded(
+            child: ExcludeSemantics(
+              child: Row(children: [
+                Container(
+                  width: logo,
+                  height: logo,
+                  padding: const EdgeInsets.all(4),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    gradient: Tokens.gradienteAcento,
+                    borderRadius: BorderRadius.circular(logo * .26),
+                  ),
+                  child: visto.logo.startsWith('http')
+                      ? Image.network(visto.logo, fit: BoxFit.contain, errorBuilder: (_, _, _) => vazio,
+                          cacheWidth: (logo * MediaQuery.devicePixelRatioOf(context)).round())
+                      : vazio,
+                ),
+                const SizedBox(width: Tokens.e12),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    const Text('Continuar a ver',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: Tokens.acento, fontSize: 12, fontWeight: FontWeight.w700)),
+                    Text(visto.nome,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w700)),
+                    if (detalhe.isNotEmpty)
+                      Text(detalhe,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(color: Tokens.texto2, fontSize: 12.5)),
+                  ]),
+                ),
+              ]),
+            ),
+          ),
+          const SizedBox(width: Tokens.e12),
+          // só visual (o toque é do cartão), mas lido como «Ver»
+          Semantics(
+            container: true,
+            label: 'Ver',
+            excludeSemantics: true,
+            child: Container(
+              width: 36,
+              height: 36,
+              decoration: const BoxDecoration(shape: BoxShape.circle, gradient: Tokens.gradienteAcento),
+              child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 24),
+            ),
           ),
         ]),
       ),

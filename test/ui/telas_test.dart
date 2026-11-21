@@ -72,7 +72,7 @@ void main() {
     // o Player não verifica (é no Gestor)
     expect(find.text('Verificar de novo'), findsNothing);
 
-    await t.tap(find.widgetWithText(ChoiceChip, 'INC'));
+    await t.tap(find.widgetWithText(ChoiceChip, 'Inconclusivas'));
     await t.pump();
     expect(find.text('001NXTBOX 161027'), findsNothing);
     expect(find.text('INC 002OUTRO'), findsOneWidget);
