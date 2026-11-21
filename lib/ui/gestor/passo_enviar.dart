@@ -210,7 +210,8 @@ class PassoEnviarState extends State<PassoEnviar> {
           final marcadas = _n(sel.length, 'marcada', 'marcadas');
           final rodape = Padding(
             padding: const EdgeInsets.only(top: Tokens.e8),
-            child: Text(telemovel ? marcadas : '$marcadas · OK marca/desmarca uma lista',
+            // a dica do comando só na TV e no computador
+            child: Text(mostrarDicasComando(context) ? '$marcadas · OK marca/desmarca uma lista' : marcadas,
                 style: const TextStyle(color: Tokens.texto2, fontSize: 13, fontWeight: FontWeight.w500)),
           );
           final cartoes = _cartoes(sel);

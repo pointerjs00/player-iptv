@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:material_ui/material_ui.dart';
 
 /// O que se sabe do ecrã para lá do MediaQuery.
@@ -23,6 +24,15 @@ const larguraTelemovel = 600.0;
 /// saem; a TV e o Windows (largos) ficam como estão.
 bool ecraTelemovel(BuildContext context) =>
     !ecraTv(context) && MediaQuery.sizeOf(context).width < larguraTelemovel;
+
+/// Mostra as dicas do comando («OK: abrir →», «OK marca/desmarca…»)? Só na TV e no computador
+/// (Windows, Linux, macOS); no telemóvel e no tablet, que se usam ao toque, não.
+bool mostrarDicasComando(BuildContext context) =>
+    ecraTv(context) ||
+    switch (defaultTargetPlatform) {
+      TargetPlatform.windows || TargetPlatform.linux || TargetPlatform.macOS => true,
+      _ => false,
+    };
 
 /// O maior fator da letra do sistema que as alturas fixas acompanham: acima dele, a letra
 /// dessas peças fica presa ([letraPresa]).

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -154,13 +155,31 @@ void _noTelemovel(
 
 /// O texto não foi cortado (nem com reticências, nem por faltarem linhas).
 void _inteiro(WidgetTester t, Finder texto) {
-  final p = t.renderObject<RenderParagraph>(texto);
+  final p = _paragrafo(t, texto);
   expect(p.didExceedMaxLines, isFalse, reason: '«${p.text.toPlainText()}» cortado');
+}
+
+/// O parágrafo de um `Text` (também com `semanticsLabel`, que o embrulha num `Semantics`).
+RenderParagraph _paragrafo(WidgetTester t, Finder texto) =>
+    t.renderObject<RenderParagraph>(find.descendant(of: texto, matching: find.byType(RichText), matchRoot: true).first);
+
+/// O texto cabe todo na caixa que o desenha (sem reticências nem corte).
+void _semReticencias(WidgetTester t, Finder texto) {
+  final p = _paragrafo(t, texto);
+  final s = p.text.toPlainText();
+  expect(p.didExceedMaxLines, isFalse, reason: '«$s» cortado');
+  final fim = p.getOffsetForCaret(TextPosition(offset: s.length), Rect.zero);
+  expect(fim.dx, lessThanOrEqualTo(p.size.width + .5), reason: '«$s» passa a largura');
+  expect(
+    p.getMaxIntrinsicWidth(double.infinity),
+    lessThanOrEqualTo(p.size.width + .5),
+    reason: '«$s» não cabe numa linha mas não parte',
+  );
 }
 
 /// Nenhuma palavra do texto partida entre duas linhas («.t xt»).
 void _semPalavrasPartidas(WidgetTester t, Finder texto) {
-  final p = t.renderObject<RenderParagraph>(texto);
+  final p = _paragrafo(t, texto);
   final s = p.text.toPlainText();
   for (final m in RegExp(r'\S+').allMatches(s)) {
     final caixas = p.getBoxesForSelection(TextSelection(baseOffset: m.start, extentOffset: m.end));
@@ -372,7 +391,10 @@ void main() {
     _alvo48(t, acoes, motivo: 'Ações');
     expect((t.getCenter(caixa).dy - t.getCenter(acoes).dy).abs(), lessThan(24), reason: 'na mesma linha');
     _noEcra(t, acoes, ecra);
-    expect(find.bySemanticsLabel(RegExp('Selecionar visíveis')), findsOneWidget);
+    expect(find.bySemanticsLabel(RegExp('Selecionar todas as visíveis')), findsOneWidget);
+    final todas = find.descendant(of: caixa, matching: find.text('Todas'));
+    _inteiro(t, todas);
+    _semReticencias(t, todas);
     await t.tap(caixa);
     await t.pump();
     expect(find.text('Ações (20)'), findsOneWidget);
@@ -407,6 +429,35 @@ void main() {
       );
     }
     sem.dispose();
+  });
+
+  _noTelemovel('passo 2 a verificar: «A verificar · canal 2/3» e «Na fila» inteiros', (t, ecra) async {
+    final ver = _VerificadorPreso();
+    final s = ServicoVerificacao(bib, colecao: area, verificador: ver, workers: 3);
+    try {
+      await t.pumpWidget(casca(s));
+      await t.pumpAndSettle();
+      await abrirPasso(t, 'Verificar');
+      unawaited(s.verificarVarias(area.listas.take(5).toList()));
+      await t.pump();
+      await t.pump(const Duration(milliseconds: 300));
+      final aVerificar = noPasso2(find.text('A verificar · canal 2/3')).hitTestable();
+      expect(aVerificar, findsWidgets);
+      _inteiro(t, aVerificar.first);
+      _semReticencias(t, aVerificar.first);
+      final naFila = noPasso2(find.text('Na fila'));
+      for (var i = 0; i < 10 && naFila.hitTestable().evaluate().isEmpty; i++) {
+        await t.drag(listaPasso2(), const Offset(0, -150));
+        await t.pump();
+      }
+      _inteiro(t, naFila.first);
+      _semReticencias(t, naFila.first);
+    } finally {
+      s.parar();
+      ver.soltar();
+      await t.pumpWidget(const SizedBox());
+      await t.pump(const Duration(seconds: 1));
+    }
   });
 
   _noTelemovel('passo 3: os 6 chips à vista, linhas de 48 e sem «OK marca/desmarca»', (t, ecra) async {
@@ -525,4 +576,40 @@ void main() {
     await t.tapAt(const Offset(4, 4));
     await t.pumpAndSettle();
   }, configs: const [(360.0, 800.0, 1.3)]);
+
+  testWidgets('Android sem TV a 800 dp (tablet): sem as dicas do comando', (t) async {
+    t.view.physicalSize = const Size(800, 1200);
+    t.view.devicePixelRatio = 1;
+    addTearDown(t.view.reset);
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    try {
+      await t.pumpWidget(casca());
+      await t.pumpAndSettle();
+      expect(find.text('Verificar').hitTestable(), findsWidgets, reason: 'o resumo à vista');
+      expect(find.text('OK: abrir →'), findsNothing);
+      await abrirPasso(t, 'Enviar ou exportar');
+      expect(find.textContaining('OK marca'), findsNothing);
+      expect(find.text('0 marcadas'), findsOneWidget);
+      await t.pumpWidget(const SizedBox());
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
+  testWidgets('no computador (Windows) a 800 dp: com as dicas do comando', (t) async {
+    t.view.physicalSize = const Size(800, 1200);
+    t.view.devicePixelRatio = 1;
+    addTearDown(t.view.reset);
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    try {
+      await t.pumpWidget(casca());
+      await t.pumpAndSettle();
+      expect(find.text('OK: abrir →'), findsNWidgets(3));
+      await abrirPasso(t, 'Enviar ou exportar');
+      expect(find.text('0 marcadas · OK marca/desmarca uma lista'), findsOneWidget);
+      await t.pumpWidget(const SizedBox());
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
 }

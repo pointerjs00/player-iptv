@@ -103,7 +103,7 @@ void main() {
       'Adicionar às que já lá estão, ou substituir (escolhes a seguir).',
       'Exportar para ficheiro',
       'Accounts.json (sfvip) ou .ini num zip (Stalker). O ficheiro leva os dados de acesso.',
-      '0 marcadas · OK marca/desmarca uma lista',
+      '0 marcadas',
     ]) {
       expect(find.text(s), findsOneWidget, reason: s);
     }
@@ -124,11 +124,11 @@ void main() {
     await abrir(t);
     await tocarChip(t, find.text('Funcionam (2)'));
     await t.pump();
-    expect(find.text('2 marcadas · OK marca/desmarca uma lista'), findsOneWidget);
+    expect(find.text('2 marcadas'), findsOneWidget);
     expect(ligadoChip(t, 'Funcionam (2)'), isTrue);
     await tocarChip(t, find.text('Inconclusivas (1)'));
     await t.pump();
-    expect(find.text('3 marcadas · OK marca/desmarca uma lista'), findsOneWidget);
+    expect(find.text('3 marcadas'), findsOneWidget);
     expect(ligadoChip(t, 'Funcionam (2)'), isTrue, reason: 'não toca nas outras');
     expect(ligadoChip(t, 'Inconclusivas (1)'), isTrue);
     expect(ligadoChip(t, 'Não funcionam (1)'), isFalse);
@@ -136,7 +136,7 @@ void main() {
     expect(ligadoChip(t, 'Todas (5)'), isFalse);
     await tocarChip(t, find.text('Funcionam (2)'));
     await t.pump();
-    expect(find.text('1 marcada · OK marca/desmarca uma lista'), findsOneWidget);
+    expect(find.text('1 marcada'), findsOneWidget);
     expect(t.widget<CheckboxListTile>(find.ancestor(of: find.textContaining('010BETA'), matching: find.byType(CheckboxListTile))).value, isTrue);
     expect(t.widget<CheckboxListTile>(linha('001ALFA 070927')).value, isFalse);
     expect(ligadoChip(t, 'Funcionam (2)'), isFalse);
@@ -154,7 +154,7 @@ void main() {
     // ligado a partir de um estado parcial: completa-o
     await tocarChip(t, find.text('Funcionam (2)'));
     await t.pump();
-    expect(find.text('2 marcadas · OK marca/desmarca uma lista'), findsOneWidget);
+    expect(find.text('2 marcadas'), findsOneWidget);
   });
 
   testWidgets('o chip com o foco fica sem listas: o foco passa a um chip ativo e visível', (t) async {
@@ -200,7 +200,7 @@ void main() {
     expect(ligadoChip(t, 'Todas (5)'), isFalse);
     await tocarChip(t, find.text('Todas (5)'));
     await t.pump();
-    expect(find.text('5 marcadas · OK marca/desmarca uma lista'), findsOneWidget);
+    expect(find.text('5 marcadas'), findsOneWidget);
     expect(ligadoChip(t, 'Todas (5)'), isTrue);
     for (final c in ['Funcionam (2)', 'Inconclusivas (1)', 'Não funcionam (1)', 'Por verificar (1)']) {
       expect(ligadoChip(t, c), isTrue, reason: c);
@@ -250,11 +250,11 @@ void main() {
     await t.pump();
     await t.sendKeyEvent(LogicalKeyboardKey.enter);
     await t.pump();
-    expect(find.text('1 marcada · OK marca/desmarca uma lista'), findsOneWidget);
+    expect(find.text('1 marcada'), findsOneWidget);
     expect(t.widget<CheckboxListTile>(linha('007GAMA 201126')).value, isTrue);
     await t.sendKeyEvent(LogicalKeyboardKey.enter);
     await t.pump();
-    expect(find.text('0 marcadas · OK marca/desmarca uma lista'), findsOneWidget);
+    expect(find.text('0 marcadas'), findsOneWidget);
   });
 
   testWidgets('botões com a contagem, singular e desativados com 0', (t) async {
@@ -288,7 +288,7 @@ void main() {
     await t.pump();
     await t.runAsync(() => area.remover([area.listas.first.id]));
     await t.pump();
-    expect(find.text('4 marcadas · OK marca/desmarca uma lista'), findsOneWidget);
+    expect(find.text('4 marcadas'), findsOneWidget);
     expect(find.text('Enviar 4 listas'), findsOneWidget);
     expect(marcadas.length, 4);
   });
@@ -301,7 +301,7 @@ void main() {
         body: PassoEnviar(
             area: area, marcadas: marcadas, aoMudarMarcadas: () {}, aoEnviar: (_) {}, aoExportar: (_) {}))));
     await t.pump();
-    expect(find.text('1 marcada · OK marca/desmarca uma lista'), findsOneWidget);
+    expect(find.text('1 marcada'), findsOneWidget);
   });
 
   testWidgets('→ da lista leva aos cartões; ← volta à linha', (t) async {

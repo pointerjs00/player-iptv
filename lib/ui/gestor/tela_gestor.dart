@@ -768,8 +768,8 @@ class _TelaGestorState extends State<TelaGestor> {
   /// Um cartão do resumo, baixo: o número e o nome do passo numa linha, o estado (o número
   /// grande com o rótulo ao lado e até duas linhas) e "OK: abrir →".
   Widget _cartao(int i, bool largo, List<Widget> corpo) {
-    // a dica do comando só fora do telemóvel; aí, a seta › diz que o cartão abre
-    final telemovel = ecraTelemovel(context);
+    // a dica do comando só na TV e no computador; ao toque, a seta › diz que o cartão abre
+    final dica = mostrarDicasComando(context);
     return CartaoModerno(
         focusNode: _focosCartoes[i],
         escalaFoco: 1.02,
@@ -791,11 +791,11 @@ class _TelaGestorState extends State<TelaGestor> {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Tokens.texto)),
             ),
-            if (telemovel) const Icon(Icons.chevron_right, color: Tokens.texto2),
+            if (!dica) const Icon(Icons.chevron_right, color: Tokens.texto2),
           ]),
           const SizedBox(height: 6),
           for (final w in corpo) Padding(padding: const EdgeInsets.only(bottom: 2), child: w),
-          if (!telemovel) ...[
+          if (dica) ...[
             // lado a lado (com a mesma altura), "OK: abrir →" fica em baixo em todos
             if (largo) const Spacer() else const SizedBox(height: Tokens.e4),
             const Text('OK: abrir →',

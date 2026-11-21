@@ -538,7 +538,10 @@ class PassoVerificarState extends State<PassoVerificar> {
 
   /// A ☐ «Selecionar visíveis» do telemóvel (na linha de cima, com o texto e o alvo de 48): faz
   /// o mesmo que a do cabeçalho.
-  Widget _selecionarVisiveis(List<Lista> visiveis) => RealceFoco(
+  Widget _selecionarVisiveis(List<Lista> visiveis) => Tooltip(
+      message: 'Selecionar todas as visíveis',
+      excludeFromSemantics: true,
+      child: RealceFoco(
         raio: 8,
         construir: (_, aoMudarFoco) => CheckboxListTile(
           key: const ValueKey('caixaCabecalho'),
@@ -547,17 +550,19 @@ class PassoVerificarState extends State<PassoVerificar> {
           tristate: true,
           value: _estadoCabecalho(visiveis),
           onChanged: visiveis.isEmpty ? null : (_) => _alternarVisiveis(),
-          title: const Text('Selecionar visíveis', maxLines: 1, overflow: TextOverflow.ellipsis),
+          // curto, para caber ao lado de Ações com a letra grande; a leitura do ecrã diz tudo
+          title: const Text('Todas', maxLines: 1, semanticsLabel: 'Selecionar todas as visíveis'),
           contentPadding: EdgeInsets.zero,
           horizontalTitleGap: Tokens.e4,
           minTileHeight: Tokens.alvoToque,
           materialTapTargetSize: MaterialTapTargetSize.padded,
           controlAffinity: ListTileControlAffinity.leading,
         ),
-      );
+      ));
 
-  /// Uma lista: na TV e no Windows uma linha baixa com as colunas; no telemóvel duas linhas (o
-  /// nome inteiro, até duas linhas, com o teste à direita; por baixo o estado e o motivo).
+  /// Uma lista: na TV e no Windows uma linha baixa com as colunas; no telemóvel o nome inteiro
+  /// (até duas linhas, com a largura toda) e por baixo o estado e o teste e, depois, o motivo.
+  /// Nada se corta: o estado «A verificar · canal 2/3» parte para a linha seguinte se preciso.
   Widget _linha(Lista l, bool largo, DateTime agora, {bool telemovel = false}) {
     final passo = _s.passos[l.id];
     final u = l.ultima;
@@ -566,8 +571,8 @@ class PassoVerificarState extends State<PassoVerificar> {
     final Widget estado = passo == null
         ? (telemovel ? pilula : Align(alignment: Alignment.centerLeft, child: pilula))
         : Text(passo == 'na fila' ? 'Na fila' : 'A verificar · $passo',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+            maxLines: telemovel ? null : 1,
+            overflow: telemovel ? null : TextOverflow.ellipsis,
             style: const TextStyle(color: Tokens.anelFoco, fontWeight: FontWeight.w600));
     const pequeno = TextStyle(color: Tokens.texto2, fontSize: 13);
     final nome = Text(l.nomeMostrado,
@@ -589,11 +594,7 @@ class PassoVerificarState extends State<PassoVerificar> {
         value: _selecao.contains(l.id),
         onChanged: (v) => setState(() => v == true ? _selecao.add(l.id) : _selecao.remove(l.id)),
         title: telemovel
-            ? Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Expanded(child: nome),
-                const SizedBox(width: Tokens.e8),
-                teste,
-              ])
+            ? nome
             : _colunas(
                 largo,
                 nome,
@@ -604,12 +605,18 @@ class PassoVerificarState extends State<PassoVerificar> {
         subtitle: telemovel
             ? Padding(
                 padding: const EdgeInsets.only(top: Tokens.e4),
-                child: Row(children: [
-                  if (passo == null) estado else Flexible(child: estado),
-                  if (motivo.isNotEmpty) ...[
-                    const SizedBox(width: Tokens.e8),
-                    Expanded(child: Text(motivo, maxLines: 2, overflow: TextOverflow.ellipsis, style: pequeno)),
-                  ],
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Wrap(
+                    spacing: Tokens.e8,
+                    runSpacing: Tokens.e4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [estado, teste],
+                  ),
+                  if (motivo.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(motivo, maxLines: 2, overflow: TextOverflow.ellipsis, style: pequeno),
+                    ),
                 ]),
               )
             : null,

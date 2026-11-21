@@ -332,7 +332,7 @@ void main() {
       expect(_focado(), 'Ir para o Gestor');
       await _tecla(t, LogicalKeyboardKey.select);
       await t.pumpAndSettle();
-      expect(_focado(), '1 | Importar | Ficheiros, texto, stbstalker ou de Ver TV | OK: abrir →');
+      expect(_focado(), '1 | Importar | Ficheiros, texto, stbstalker ou de Ver TV');
       await _tecla(t, LogicalKeyboardKey.select);
       await t.pumpAndSettle();
       expect(find.text('Listas do stbstalker').hitTestable(), findsOneWidget);
@@ -629,7 +629,7 @@ void main() {
       await abrirEnvio(t);
       await t.tap(doDialogo('Enviar 1 lista'));
       final tarefa = await acabada(t);
-      const rodape = '1 marcada · OK marca/desmarca uma lista';
+      const rodape = '1 marcada';
       expect(find.text(rodape).hitTestable(), findsOneWidget, reason: 'ainda no Gestor');
       tarefa.aoAcao!();
       await t.pumpAndSettle();
@@ -960,7 +960,7 @@ void main() {
       expect(find.text('Ações (1)'), findsOneWidget);
       await t.tap(find.text('3 · Enviar ou exportar'));
       await t.pumpAndSettle();
-      expect(find.text('2 marcadas · OK marca/desmarca uma lista'), findsOneWidget, reason: 'as marcadas ficam');
+      expect(find.text('2 marcadas'), findsOneWidget, reason: 'as marcadas ficam');
     });
 
     testWidgets('Voltar num passo regressa ao resumo (foco no cartão do passo); no resumo vai para Ver TV',
