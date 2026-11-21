@@ -701,7 +701,8 @@ void main() {
 
     testWidgets('T1: Conteúdo estreito — os grupos em chips têm realce', (t) async {
       _realceTv();
-      _tamanho(t, 500, 800);
+      // estreito mas não telemóvel (este, < 600, tem o botão «Grupo: …» em vez dos chips)
+      _tamanho(t, 650, 800);
       final l = await comCache(t, pequena);
       await mostrar(t, l);
       final vistos = <String>{};

@@ -303,14 +303,18 @@ void main() {
       expect(logoTv.width, greaterThan(logo.width));
     });
 
-    testWidgets('no telemóvel os grupos são chips', (t) async {
+    testWidgets('no telemóvel os grupos estão num botão que abre uma folha (sem chips)', (t) async {
       _tamanho(t, 400, 800);
       final l = await preparar(t);
       await mostrar(t, l);
-      expect(find.widgetWithText(ChoiceChip, 'Portugal'), findsOneWidget);
-      await t.tap(find.widgetWithText(ChoiceChip, 'Desporto'));
-      await t.pump();
+      expect(find.byType(ChoiceChip), findsNothing);
+      await t.tap(find.byKey(const Key('botao-grupo')));
+      await t.pumpAndSettle();
+      expect(find.descendant(of: find.byKey(const Key('folha-grupos')), matching: find.text('Portugal')), findsOneWidget);
+      await t.tap(find.descendant(of: find.byKey(const Key('folha-grupos')), matching: find.text('Desporto')));
+      await t.pumpAndSettle();
       expect(find.text('Sport TV 1'), findsOneWidget);
+      expect(find.text('Grupo: Desporto'), findsOneWidget);
     });
 
     testWidgets('setas navegam até um canal e OK abre-o', (t) async {

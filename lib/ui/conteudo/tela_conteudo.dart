@@ -159,8 +159,19 @@ class _TelaConteudoState extends State<TelaConteudo> {
   String _digitos = '';
   Timer? _atrasoDigitos;
 
-  /// A altura de cada canal: uma linha de 56 (maior na TV: vê-se de longe).
-  double _alturaCanal(bool tv) => tv ? 68 : 56;
+  /// A altura de cada canal: uma linha de 56 (maior na TV: vê-se de longe). No telemóvel o nome
+  /// vai até duas linhas (e, com pesquisa, o grupo por baixo): a altura acompanha a letra.
+  double _alturaCanal() {
+    if (ecraTv(context)) return 68;
+    if (!ecraTelemovel(context)) return 56;
+    // o nome (15) em duas linhas e, com pesquisa, o grupo (12); a altura de cada linha de texto
+    // nos ListTile (Material 3) é 1,5 vezes a letra; mais 8 em cima e em baixo
+    final letra = 2 * 15 + (_pesquisaCanais ? 12 : 0);
+    final precisa = (Tokens.e16 + fatorTexto(context) * letra * 1.5).ceilToDouble();
+    final minimo = _pesquisaCanais ? 72.0 : 64.0;
+    return precisa < minimo ? minimo : precisa;
+  }
+
   static const _margemLista = 8.0;
 
   @override
@@ -262,6 +273,12 @@ class _TelaConteudoState extends State<TelaConteudo> {
         verEscondidos: _verEscondidos,
         escondidos: l.gruposEscondidos.length);
     if (o == null || !mounted) return;
+    _aplicarOpcao(o, grupo);
+  }
+
+  /// Aplica a opção `o` (do menu das opções, ou do ⋮ do topo no telemóvel) ao grupo `grupo`.
+  void _aplicarOpcao(OpcaoCanais o, String? grupo) {
+    final l = widget.lista;
     Future<void> gravar(Future<void> f) => f.catchError((Object e) {
           if (mounted) {
             mostrarMensagem(context, 'Não foi possível guardar (${descreverErro(e)}).', tipo: MensagemTipo.erro);
@@ -744,7 +761,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
     setState(() => _canalAFocar = canais[i]);
     if (_scrollCanais.hasClients) {
       final p = _scrollCanais.position;
-      final h = _alturaCanal(ecraTv(context));
+      final h = _alturaCanal();
       _scrollCanais.jumpTo((_margemLista + i * h - p.viewportDimension / 2 + h / 2)
           .clamp(0.0, p.maxScrollExtent));
     }
@@ -895,6 +912,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
     );
     // o estado da última verificação e a validade (sugestão 9), discretos
     Widget info([Widget? antes]) => Align(alignment: Alignment.centerLeft, child: _cabecalhoLista(antes));
+    if (ecraTelemovel(context)) return _barraTopoTelemovel(contagem, atualizar, info);
     if (largo) {
       // abaixo de 1600 px a ordem e os grupos escondidos passam para a linha do estado
       final medio = MediaQuery.sizeOf(context).width < 1600;
@@ -944,6 +962,72 @@ class _TelaConteudoState extends State<TelaConteudo> {
           child: Wrap(spacing: Tokens.e8, runSpacing: Tokens.e4, children: [ordem, escondidos]),
         ),
         Padding(padding: const EdgeInsets.fromLTRB(Tokens.e8, Tokens.e8, Tokens.e8, 0), child: info()),
+      ]),
+    );
+  }
+
+  /// O topo no telemóvel, como uma barra de app: ← (só o ícone), o nome da lista (até duas
+  /// linhas) com o n.º de canais por baixo, ⟳ e um ⋮ com a ordem, os grupos escondidos e
+  /// «Atualizar canais»; por baixo, o estado e a validade.
+  Widget _barraTopoTelemovel(Widget? contagem, Widget atualizar, Widget Function([Widget?]) info) {
+    final l = widget.lista;
+    final carregado = _conteudo != null;
+    final az = l.ordemCanais == OrdemCanais.az;
+    final n = l.gruposEscondidos.length;
+    PopupMenuItem<Object> item(OpcaoCanais o, String texto, {bool ativo = true, bool marcado = false}) =>
+        PopupMenuItem(
+          value: o,
+          enabled: ativo,
+          child: Row(children: [
+            Expanded(child: Text(texto)),
+            if (marcado) const Padding(
+              padding: EdgeInsets.only(left: Tokens.e8),
+              child: Icon(Icons.check_rounded, color: Tokens.acento),
+            ),
+          ]),
+        );
+    // «Atualizar canais» não é uma opção dos canais: vai como o próprio [_atualizar]
+    final menu = PopupMenuButton<Object>(
+      key: const Key('menu-lista-aberta'),
+      tooltip: 'Mais opções',
+      enabled: carregado,
+      icon: const Icon(Icons.more_vert),
+      onSelected: (o) => o is OpcaoCanais ? _aplicarOpcao(o, null) : _atualizar(),
+      itemBuilder: (_) => [
+        item(OpcaoCanais.ordemLista, 'Ordem: da lista', marcado: !az),
+        item(OpcaoCanais.ordemAz, 'Ordem: A–Z', marcado: az),
+        if (_verEscondidos)
+          item(OpcaoCanais.ocultarEscondidos, 'Ocultar grupos escondidos')
+        else
+          item(OpcaoCanais.verEscondidos, 'Mostrar grupos escondidos ($n)', ativo: n > 0),
+        const PopupMenuDivider(),
+        PopupMenuItem<Object>(value: _atualizar, child: const Text('Atualizar canais')),
+      ],
+    );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(Tokens.e4, Tokens.e4, Tokens.e4, Tokens.e4),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          IconButton(
+            tooltip: 'Voltar ao Início',
+            // sai sempre, mesmo com texto na pesquisa (como o «‹ Início»)
+            onPressed: () => Navigator.of(context).pop(),
+            icon: const Icon(Icons.arrow_back),
+          ),
+          const SizedBox(width: Tokens.e4),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+              Text(l.nomeMostrado,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, height: 1.2)),
+              ?contagem,
+            ]),
+          ),
+          atualizar,
+          menu,
+        ]),
+        Padding(padding: const EdgeInsets.fromLTRB(Tokens.e12, Tokens.e4, Tokens.e12, 0), child: info()),
       ]),
     );
   }
@@ -1035,6 +1119,23 @@ class _TelaConteudoState extends State<TelaConteudo> {
         ]),
       );
     }
+    final corpoCanais = [
+      _campoPesquisaCanais(),
+      _cabecalhoCanais(canais.length, pesquisa),
+      Expanded(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(Tokens.e12, 0, Tokens.e12, Tokens.e12),
+          child: SuperficieVidro(child: lista),
+        ),
+      ),
+    ];
+    if (ecraTelemovel(context)) {
+      // no telemóvel: os grupos num botão «Grupo: …» que abre uma folha com pesquisa
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        _botaoGrupo(),
+        ...corpoCanais,
+      ]);
+    }
     // sem coluna dos grupos (nem filtro): os grupos numa fila de chips por cima da pesquisa dos canais
     final grupos = _gruposVisiveis(filtrar: false);
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -1057,20 +1158,130 @@ class _TelaConteudoState extends State<TelaConteudo> {
           },
         ),
       ),
-      _campoPesquisaCanais(),
-      _cabecalhoCanais(canais.length, pesquisa),
-      Expanded(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(Tokens.e12, 0, Tokens.e12, Tokens.e12),
-          child: SuperficieVidro(child: lista),
-        ),
-      ),
+      ...corpoCanais,
     ]);
+  }
+
+  /// O nome de um grupo para mostrar (null = «Todos os canais»).
+  static String _nomeGrupo(String? g) => g ?? 'Todos os canais';
+
+  /// Quantos canais tem o grupo `g` (os virtuais incluídos).
+  int _contagemGrupo(String g) => g == grupoFavoritos
+      ? widget.lista.favoritos.length
+      : g == grupoVistos ? _vistosExistentes(_conteudo!).length : (_contagens[g] ?? 0);
+
+  /// No telemóvel: «Grupo: (nome) ▾», da largura do ecrã; abre a folha dos grupos.
+  Widget _botaoGrupo() => Padding(
+        padding: const EdgeInsets.fromLTRB(Tokens.e12, Tokens.e4, Tokens.e12, 0),
+        child: OutlinedButton(
+          key: const Key('botao-grupo'),
+          style: OutlinedButton.styleFrom(
+            minimumSize: const Size.fromHeight(Tokens.alvoToque),
+            padding: const EdgeInsets.symmetric(horizontal: Tokens.e16, vertical: Tokens.e8),
+          ),
+          onPressed: _escolherNaFolha,
+          child: Row(children: [
+            Expanded(
+              child: Text('Grupo: ${_nomeGrupo(_grupo)}', maxLines: 1, overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+            ),
+            const SizedBox(width: Tokens.e8),
+            const Icon(Icons.arrow_drop_down_rounded),
+          ]),
+        ),
+      );
+
+  /// A folha dos grupos (telemóvel): pesquisa, «Todos os canais», Favoritos e Vistos (se houver)
+  /// e cada grupo com a contagem (os escondidos só com «Mostrar grupos escondidos»). Escolher um
+  /// fecha-a e mostra-o; o toque longo num grupo abre o menu dele; arrastar para baixo fecha-a.
+  Future<void> _escolherNaFolha() async {
+    final c = _conteudo;
+    if (c == null) return;
+    final todos = _gruposVisiveis(filtrar: false);
+    final escondidos = widget.lista.gruposEscondidos;
+    final altura = MediaQuery.sizeOf(context).height;
+    // (grupo, false) = escolheu (null = «Todos os canais»); (grupo, true) = toque longo (o menu
+    // do grupo); null = fechou sem escolher
+    final r = await showModalBottomSheet<(String?, bool)>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      useSafeArea: true,
+      builder: (ctx) {
+        var q = '';
+        return StatefulBuilder(builder: (ctx, mudar) {
+          final busca = semAcentos(q.trim());
+          // com pesquisa, só os grupos encontrados (sem Favoritos nem Vistos, como no filtro da TV)
+          final grupos = busca.isEmpty
+              ? todos
+              : [
+                  for (final g in c.grupos)
+                    if (todos.contains(g) && (_gruposSemAcentos[g] ?? semAcentos(g)).contains(busca)) g,
+                ];
+          Widget linha(String? g, int n) {
+            final escondido = g != null && escondidos.contains(g);
+            final real = g != null && g != grupoFavoritos && g != grupoVistos;
+            return ListTile(
+              selected: g == _grupo,
+              title: _comRealce(_nomeGrupo(g), g == null ? '' : busca,
+                  TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: escondido ? Tokens.texto2 : null),
+                  linhas: 2),
+              trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                if (escondido) ...[
+                  const Icon(Icons.visibility_off_outlined, size: 16, color: Tokens.texto2, semanticLabel: 'escondido'),
+                  const SizedBox(width: 6),
+                ],
+                Text('$n', style: const TextStyle(color: Tokens.texto2, fontSize: 13)),
+              ]),
+              onTap: () => Navigator.pop(ctx, (g, false)),
+              onLongPress: real ? () => Navigator.pop(ctx, (g, true)) : null,
+            );
+          }
+
+          return ConstrainedBox(
+            key: const Key('folha-grupos'),
+            constraints: BoxConstraints(maxHeight: altura * .85),
+            child: Padding(
+              // o teclado no ecrã não tapa a lista
+              padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
+              child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(Tokens.e16, 0, Tokens.e16, Tokens.e8),
+                  child: CampoTv(
+                    decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Pesquisar grupos'),
+                    textInputAction: TextInputAction.search,
+                    onChanged: (v) => mudar(() => q = v),
+                  ),
+                ),
+                Flexible(
+                  child: ListView(
+                    shrinkWrap: true,
+                    padding: const EdgeInsets.only(bottom: Tokens.e8),
+                    children: [
+                      // «Todos os canais» nunca é filtrada
+                      linha(null, _totalTodos(c)),
+                      for (final g in grupos) linha(g, _contagemGrupo(g)),
+                    ],
+                  ),
+                ),
+              ]),
+            ),
+          );
+        });
+      },
+    );
+    if (r == null || !mounted) return;
+    final (g, menu) = r;
+    if (menu) {
+      unawaited(_opcoes(g));
+    } else {
+      _escolherGrupo(g);
+    }
   }
 
   /// Enquanto carrega: blocos com a forma dos grupos e dos canais, com um brilho a passar.
   Widget _esqueleto(bool largo, bool tv) {
-    final h = _alturaCanal(tv);
+    final h = _alturaCanal();
     final logo = tv ? 56.0 : 40.0;
     Widget canal(int i) => SizedBox(
           height: h,
@@ -1151,18 +1362,18 @@ class _TelaConteudoState extends State<TelaConteudo> {
   }
 
   /// O texto com a parte encontrada (`q`, já sem acentos) em [Tokens.anelFoco]; sem ela, só o texto.
-  Widget _comRealce(String texto, String q, TextStyle estilo) {
+  Widget _comRealce(String texto, String q, TextStyle estilo, {int linhas = 1}) {
     final normal = q.isEmpty ? '' : semAcentos(texto);
     // só quando as posições batem certo (tirar os acentos quase nunca muda o comprimento)
     final i = normal.length == texto.length ? normal.indexOf(q) : -1;
-    if (i < 0) return Text(texto, maxLines: 1, overflow: TextOverflow.ellipsis, style: estilo);
+    if (i < 0) return Text(texto, maxLines: linhas, overflow: TextOverflow.ellipsis, style: estilo);
     return Text.rich(
       TextSpan(children: [
         TextSpan(text: texto.substring(0, i)),
         TextSpan(text: texto.substring(i, i + q.length), style: const TextStyle(color: Tokens.anelFoco)),
         TextSpan(text: texto.substring(i + q.length)),
       ]),
-      maxLines: 1,
+      maxLines: linhas,
       overflow: TextOverflow.ellipsis,
       style: estilo,
     );
@@ -1187,7 +1398,8 @@ class _TelaConteudoState extends State<TelaConteudo> {
           const SizedBox(width: Tokens.e12),
           Text('A ordenar…', style: estilo.copyWith(fontWeight: FontWeight.w400)),
         ],
-        if (n > 0) ...[
+        // o «i de n» é para o comando: no telemóvel é só ruído
+        if (n > 0 && !ecraTelemovel(context)) ...[
           const SizedBox(width: Tokens.e12),
           Text('${_indice.clamp(0, n - 1) + 1} de $n', key: const Key('contador-canais'), style: estilo),
         ],
@@ -1229,9 +1441,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
             itemBuilder: (_, j) {
               if (j == 0) return _linhaTodos(tv);
               final g = grupos[j - 1];
-              final n = g == grupoFavoritos
-                  ? widget.lista.favoritos.length
-                  : g == grupoVistos ? _vistosExistentes(_conteudo!).length : (_contagens[g] ?? 0);
+              final n = _contagemGrupo(g);
               final fav = g == grupoFavoritos || g == grupoVistos;
               final escondido = !fav && widget.lista.gruposEscondidos.contains(g);
               void escolher() => _escolherGrupo(g);
@@ -1291,8 +1501,15 @@ class _TelaConteudoState extends State<TelaConteudo> {
       return const Center(child: Text('Nenhum canal.', style: TextStyle(color: Tokens.texto2)));
     }
     final tv = ecraTv(context);
+    final telemovel = ecraTelemovel(context);
     final pesquisa = _pesquisaCanais;
     final q = pesquisa ? semAcentos(_q.trim()) : '';
+    // no telemóvel o número só tem a largura dos algarismos do maior (o nome fica com o resto)
+    final larguraNumero = tv
+        ? 64.0
+        : telemovel
+            ? (_algarismos(canais) * 14 * .62 * fatorTexto(context)).ceilToDouble() + Tokens.e8
+            : 52.0;
     // no ecrã estreito (sem coluna de grupos) o foco começa no 1.º canal
     final focarPrimeiro = MediaQuery.sizeOf(context).width < 720;
     return Focus(
@@ -1306,7 +1523,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
           controller: _scrollCanais,
           padding: const EdgeInsets.all(_margemLista),
           itemCount: canais.length,
-          itemExtent: _alturaCanal(tv),
+          itemExtent: _alturaCanal(),
           itemBuilder: (_, i) {
             final c = canais[i];
             final fav = widget.lista.favoritos.contains(c.id);
@@ -1315,7 +1532,6 @@ class _TelaConteudoState extends State<TelaConteudo> {
             // a linha é a única paragem do foco: a estrela só mostra o estado e responde ao
             // toque/rato; no comando, OK mantido (ou toque longo, ou clique direito) põe/tira
             final numero = '${c.numero ?? i + 1}';
-            final larguraNumero = tv ? 64.0 : 52.0;
             // uma linha inteira: número, logótipo, nome e estrela. O número fica por cima da
             // margem esquerda da linha (fora do ListTile: não faz parte do que recebe o foco)
             return OkMantido(
@@ -1332,12 +1548,16 @@ class _TelaConteudoState extends State<TelaConteudo> {
                       },
                       focusNode: identical(c, _canalAFocar) ? _focoRegresso : null,
                       autofocus: focarPrimeiro && i == 0,
-                      contentPadding: EdgeInsets.only(left: Tokens.e16 + larguraNumero, right: Tokens.e8),
+                      contentPadding: EdgeInsets.only(
+                          left: (telemovel ? Tokens.e8 : Tokens.e16) + larguraNumero, right: telemovel ? 0 : Tokens.e8),
                       leading: _Logo(c.logo, c.nome, tamanho: tv ? 52 : 40),
                       minLeadingWidth: tv ? 52 : 40,
-                      title: _comRealce(c.nome, q, TextStyle(fontSize: tv ? 19 : 15, fontWeight: FontWeight.w500)),
+                      horizontalTitleGap: telemovel ? Tokens.e12 : null,
+                      title: _comRealce(c.nome, q, TextStyle(fontSize: tv ? 19 : 15, fontWeight: FontWeight.w500),
+                          linhas: telemovel ? 2 : 1),
                       subtitle: pesquisa
-                          ? Text(c.grupo, maxLines: 1, style: TextStyle(fontSize: tv ? 14 : 12, color: Tokens.texto2))
+                          ? Text(c.grupo, maxLines: 1, overflow: TextOverflow.ellipsis,
+                              style: TextStyle(fontSize: tv ? 14 : 12, color: Tokens.texto2))
                           : null,
                       trailing: ExcludeFocus(
                         child: IconButton(
@@ -1345,6 +1565,9 @@ class _TelaConteudoState extends State<TelaConteudo> {
                           icon: Icon(fav ? Icons.star_rounded : Icons.star_outline_rounded,
                               color: fav ? Tokens.aviso : Tokens.texto2, size: tv ? 28 : 24),
                           onPressed: favorito,
+                          // no telemóvel, 40 de largura (a linha toda já é um alvo de toque)
+                          constraints: telemovel ? const BoxConstraints(minWidth: 40, minHeight: Tokens.alvoToque) : null,
+                          padding: telemovel ? EdgeInsets.zero : null,
                         ),
                       ),
                       onTap: abrir,
@@ -1352,7 +1575,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
                     ),
                   ),
                   Positioned(
-                    left: Tokens.e16,
+                    left: telemovel ? Tokens.e8 : Tokens.e16,
                     top: 0,
                     bottom: 0,
                     width: larguraNumero - Tokens.e8,
@@ -1373,6 +1596,22 @@ class _TelaConteudoState extends State<TelaConteudo> {
       ),
     );
   }
+
+  /// Quantos algarismos tem o maior número de `canais` (o do portal ou a posição), pelo menos 2.
+  /// Guardado para a mesma lista (com 100 mil canais não se refaz a cada build).
+  int _algarismos(List<Canal> canais) {
+    if (identical(canais, _algarismosDe)) return _nAlgarismos;
+    var maior = canais.length;
+    for (final c in canais) {
+      final n = c.numero;
+      if (n != null && n > maior) maior = n;
+    }
+    _algarismosDe = canais;
+    return _nAlgarismos = '$maior'.length < 2 ? 2 : '$maior'.length;
+  }
+
+  List<Canal>? _algarismosDe;
+  int _nAlgarismos = 2;
 
   static const _teclasDigitos = [
     LogicalKeyboardKey.digit0, LogicalKeyboardKey.digit1, LogicalKeyboardKey.digit2, LogicalKeyboardKey.digit3,
