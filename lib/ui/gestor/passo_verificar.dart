@@ -99,6 +99,32 @@ class PassoVerificarState extends State<PassoVerificar> {
       f.addListener(() => _estadoAVista(f));
     }
     _focoCabecalho.addListener(_cabecalhoSemFoco);
+    _verificava = _s.ocupado;
+    _s.addListener(_aoMudarVerificacao);
+  }
+
+  bool _verificava = false;
+
+  @override
+  void didUpdateWidget(PassoVerificar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.servico != widget.servico) {
+      oldWidget.servico.removeListener(_aoMudarVerificacao);
+      _verificava = widget.servico.ocupado;
+      widget.servico.addListener(_aoMudarVerificacao);
+    }
+  }
+
+  /// A verificação acabou (ou foi parada): os estados mudaram. A seleção fica só com as listas
+  /// que continuam à vista com os filtros (e a pesquisa) ativos; sem filtros fica como estava.
+  void _aoMudarVerificacao() {
+    final acabou = _verificava && !_s.ocupado;
+    _verificava = _s.ocupado;
+    if (!acabou || !mounted || _selecao.isEmpty) return;
+    final vistas = {for (final l in _visiveis()) l.id};
+    final antes = _selecao.length;
+    _selecao.retainWhere(vistas.contains);
+    if (_selecao.length != antes) setState(() {});
   }
 
   /// A ☐ do cabeçalho com o foco ficou desligada (não há visíveis) ou saiu: o foco passa a
@@ -147,6 +173,7 @@ class PassoVerificarState extends State<PassoVerificar> {
 
   @override
   void dispose() {
+    _s.removeListener(_aoMudarVerificacao);
     _pesquisa.dispose();
     for (final f in [..._focosEstados, ..._focosLinhas.values, _focoCabecalho, _focoAcoes]) {
       f.dispose();

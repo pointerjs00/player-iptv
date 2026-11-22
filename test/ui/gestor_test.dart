@@ -84,6 +84,16 @@ Future<void> _esperar(WidgetTester t, bool Function() feito) async {
 UltimaVerificacao _u(String estado, {String motivo = ''}) =>
     UltimaVerificacao(estado: estado, data: DateTime(2026, 3, 1), validade: '2027-10-16', motivo: motivo);
 
+/// Verificador que responde logo: "boa" funciona, as outras não.
+class _Rapido extends Verificador {
+  @override
+  Future<ResultadoVerificacao> verificarComLimite(Conta conta, List<String> canaisTeste,
+      {Duration timeout = const Duration(seconds: 8), Cancelamento? cancelamento, Aviso? aviso, Duration? limite}) async =>
+      conta.endereco.contains('boa')
+          ? const ResultadoVerificacao(EstadoV.funciona, 'ok')
+          : const ResultadoVerificacao(EstadoV.naoFunciona, 'acesso recusado (403)');
+}
+
 /// Verificador que fica no "canal 2/3" de cada lista até ao fim do teste (sem relógios: o teste
 /// acaba sem tempos pendentes).
 class _Preso extends Verificador {
@@ -760,6 +770,37 @@ void main() {
       await _esperar(t, () => tarefas.recentes.length == 2);
       expect(guardados, ['listas_stalker.zip', 'listas_stalker.zip']);
       expect(tarefas.recentes.first.estado, EstadoTarefa.terminada);
+    });
+
+    testWidgets('no passo 2, ao acabar a verificação a seleção fica só com as listas à vista nos filtros', (t) async {
+      await t.runAsync(() => area.adicionar([
+            Importada(contaDeLinha('http://boa.com/c/ 00:1A:79:00:00:01')!),
+            Importada(contaDeLinha('http://morta.com/c/ 00:1A:79:00:00:02')!),
+            Importada(contaDeLinha('http://boa2.com/c/ 00:1A:79:00:00:03')!, _u('funciona')),
+          ]));
+      final s = ServicoVerificacao(bib, colecao: area, verificador: _Rapido(), ritmo: RitmoHost(intervalo: Duration.zero));
+      _tamanho(t, 1200, 1200);
+      await t.pumpWidget(_app(gestor(s)));
+      await t.pump();
+      await abrirPasso(t, 'Verificar');
+      // filtro "Funcionam" e "Por verificar": seleciona as três
+      await estado(t, 'Funcionam · 1');
+      await estado(t, 'Por verificar · 2');
+      await t.tap(find.byKey(const ValueKey('caixaCabecalho')));
+      await t.pump();
+      expect(find.text('Ações (3)'), findsOneWidget);
+      s.verificarVarias(area.listas.where((l) => l.ultima == null).toList());
+      await _esperar(t, () => !s.ocupado && s.fimRonda != null);
+      await t.pumpAndSettle();
+      // a "morta" passou a "Não funciona" (fora dos filtros): sai da seleção; a "boa" continua à vista
+      expect(find.text('Ações (2)'), findsOneWidget);
+      // sem filtros, a seleção não muda
+      await estado(t, 'Funcionam · 2');
+      await estado(t, 'Por verificar · 0');
+      s.verificarVarias(area.listas);
+      await _esperar(t, () => !s.ocupado);
+      await t.pumpAndSettle();
+      expect(find.text('Ações (2)'), findsOneWidget);
     });
 
     testWidgets('no passo 2, "Parar" no topo (só a decorrer), com confirmação', (t) async {
