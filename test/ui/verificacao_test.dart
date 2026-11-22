@@ -11,6 +11,7 @@ import 'package:player_iptv/modelo/conta.dart';
 import 'package:player_iptv/protocolos/protocolo.dart';
 import 'package:player_iptv/rede/http.dart';
 import 'package:player_iptv/tarefas/servico_tarefas.dart';
+import 'package:player_iptv/ui/gestor/painel_atividade.dart';
 import 'package:player_iptv/ui/gestor/passo_verificar.dart';
 import 'package:player_iptv/ui/gestor/tela_gestor.dart';
 import 'package:player_iptv/ui/gestor/tela_verificacao.dart';
@@ -183,6 +184,39 @@ void main() {
     roteiro.soltar();
     await esperar(t, () => !s.ocupado);
     expect(find.text('Parar'), findsNothing);
+  });
+
+  testWidgets('depois de parar, a Atividade mostra o relatório; a confirmação não é larga demais', (t) async {
+    await t.runAsync(() => area.adicionar([Importada(_conta('boa', 1)), Importada(_conta('presa', 2))]));
+    final s = servico({'boa': const ResultadoVerificacao(EstadoV.funciona, 'abriu RTP 1')});
+    final tarefas = ServicoTarefas();
+    addTearDown(tarefas.dispose);
+    var verRelatorio = 0;
+    t.view.physicalSize = const Size(1920, 1080);
+    t.view.devicePixelRatio = 1;
+    addTearDown(t.view.reset);
+    await t.pumpWidget(_app(Scaffold(
+        body: Align(
+            alignment: Alignment.centerRight,
+            child: PainelAtividade(servico: s, tarefas: tarefas, aoVerVerificacao: () => verRelatorio++)))));
+    s.verificarVarias(area.listas);
+    await esperar(t, () => s.feitas == 1);
+    expect(find.text('Verificação das listas'), findsOneWidget);
+    await t.tap(find.text('Parar'));
+    await t.pump();
+    await t.pump(const Duration(milliseconds: 300));
+    expect(t.getSize(find.descendant(of: find.byType(AlertDialog), matching: find.byType(Material)).first).width,
+        lessThan(560));
+    await t.tap(find.widgetWithText(FilledButton, 'Parar'));
+    await t.pump();
+    await t.pump(const Duration(milliseconds: 300));
+    roteiro.soltar();
+    await esperar(t, () => !s.ocupado);
+    expect(find.textContaining('Parada às'), findsOneWidget);
+    expect(find.text('1 funcionam, 0 não'), findsOneWidget);
+    expect(find.text('0 a decorrer · 1 terminadas'), findsOneWidget);
+    await t.tap(find.text('Ver relatório'));
+    expect(verRelatorio, 1);
   });
 
   testWidgets('"Verificar mais (fila)" vai ao passo 2 com o filtro "Por verificar" (e o foco nele)', (t) async {

@@ -768,6 +768,9 @@ void main() {
       await t.pump();
       expect(find.byKey(const ValueKey('infoVerificacao')), findsNothing, reason: 'só no passo 2 e no progresso');
       await abrirPasso(t, 'Verificar');
+      // no canto direito da barra do topo
+      final info = t.getRect(find.byKey(const ValueKey('infoVerificacao')));
+      expect(info.right, greaterThan(1200 - 40), reason: '$info');
       await t.tap(find.byKey(const ValueKey('infoVerificacao')));
       await t.pumpAndSettle();
       expect(find.text('Como é feita a verificação'), findsWidgets);

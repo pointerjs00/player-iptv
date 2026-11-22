@@ -6,8 +6,8 @@ import 'package:material_ui/material_ui.dart';
 
 import '../../tarefas/servico_tarefas.dart';
 import '../../verificar/servico.dart';
-import '../design/design.dart';
 import '../design/mensagens.dart';
+import '../gestor/painel_atividade.dart';
 import '../gestor/tela_gestor.dart';
 import 'barra_seccoes.dart';
 
@@ -189,17 +189,13 @@ class _TelaPrincipalState extends State<TelaPrincipal> {
     final acabou = _verificava && !v.ocupado;
     _verificava = v.ocupado;
     if (!acabou) return;
-    final estados = [for (final id in v.concluidas) if (v.colecao.porId(id) != null) estadoDe(v.colecao.porId(id)!)];
-    if (estados.isEmpty) {
+    final resumo = resumoVerificacao(v);
+    if (resumo == null) {
       if (v.parada) _mensagens.mostrar('Verificação parada. Nenhuma lista chegou ao fim.');
       return;
     }
-    int n(EstadoLista e) => estados.where((x) => x == e).length;
-    final inconclusivas = n(EstadoLista.inconclusiva);
     _mensagens.mostrar(
-      '${v.parada ? 'Verificação parada' : 'Verificação terminada'}: ${n(EstadoLista.funciona)} funcionam, '
-      '${n(EstadoLista.naoFunciona)} não'
-      '${inconclusivas > 0 ? ' · $inconclusivas inconclusivas' : ''}',
+      '${v.parada ? 'Verificação parada' : 'Verificação terminada'}: $resumo',
       tipo: v.parada ? MensagemTipo.info : MensagemTipo.sucesso,
       acao: 'Ver resultados',
       aoAcao: _naCasca(() {

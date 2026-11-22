@@ -391,7 +391,8 @@ Future<bool> confirmar(BuildContext context,
     builder: (ctx) => AlertDialog(
       icon: Icon(icone, color: Tokens.mau, size: 32),
       title: Text(titulo),
-      content: Text(texto),
+      // sem limite, o texto corria numa só linha da largura do ecrã
+      content: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 420), child: Text(texto)),
       actions: [
         TextButton(autofocus: true, onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
         FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(acao)),

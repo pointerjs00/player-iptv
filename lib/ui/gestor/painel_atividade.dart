@@ -5,6 +5,17 @@ import '../../verificar/servico.dart';
 import '../design/design.dart';
 import '../verificar/dialogos_gestor.dart';
 
+/// O resumo da última ronda do Gestor ("3 funcionam, 1 não · 2 inconclusivas"), ou null se
+/// nenhuma lista chegou ao fim.
+String? resumoVerificacao(ServicoVerificacao v) {
+  final estados = [for (final id in v.concluidas) if (v.colecao.porId(id) != null) estadoDe(v.colecao.porId(id)!)];
+  if (estados.isEmpty) return null;
+  int n(EstadoLista e) => estados.where((x) => x == e).length;
+  final inconclusivas = n(EstadoLista.inconclusiva);
+  return '${n(EstadoLista.funciona)} funcionam, ${n(EstadoLista.naoFunciona)} não'
+      '${inconclusivas > 0 ? ' · $inconclusivas inconclusivas' : ''}';
+}
+
 /// Abre o painel de atividade (ecrã 10b) por cima do ecrã, encostado à direita. Voltar fecha-o e o
 /// foco regressa ao que o abriu (o indicador de atividade).
 Future<void> abrirPainelAtividade(
@@ -77,7 +88,11 @@ class _PainelAtividadeState extends State<PainelAtividade> {
             builder: (context, _) {
               final emCurso = widget.tarefas.emCurso;
               final recentes = widget.tarefas.recentes;
-              final aDecorrer = emCurso.length + (widget.servico.ocupado ? 1 : 0);
+              final s = widget.servico;
+              // a última ronda do Gestor (terminada ou parada) fica com o relatório
+              final rondaAcabada = !s.ocupado && s.fimRonda != null;
+              final aDecorrer = emCurso.length + (s.ocupado ? 1 : 0);
+              final terminadas = recentes.length + (rondaAcabada ? 1 : 0);
               return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                 Padding(
                   padding: const EdgeInsets.fromLTRB(Tokens.e16, Tokens.e16, Tokens.e8, Tokens.e8),
@@ -88,7 +103,7 @@ class _PainelAtividadeState extends State<PainelAtividade> {
                             style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Tokens.texto)),
                         Semantics(
                           liveRegion: true,
-                          child: Text('$aDecorrer a decorrer · ${recentes.length} terminadas',
+                          child: Text('$aDecorrer a decorrer · $terminadas terminadas',
                               style: const TextStyle(fontSize: 13, color: Tokens.texto2)),
                         ),
                       ]),
@@ -105,8 +120,9 @@ class _PainelAtividadeState extends State<PainelAtividade> {
                   child: ListView(padding: const EdgeInsets.symmetric(horizontal: Tokens.e16), children: [
                     if (widget.servico.ocupado) _cartaoVerificacao(),
                     for (final t in emCurso) _cartaoTarefa(t),
+                    if (rondaAcabada) _cartaoRelatorio(),
                     for (final t in recentes) _cartaoTarefa(t),
-                    if (aDecorrer == 0 && recentes.isEmpty)
+                    if (aDecorrer == 0 && terminadas == 0)
                       const Padding(
                         padding: EdgeInsets.symmetric(vertical: Tokens.e24),
                         child: Text('Nada a decorrer.', style: TextStyle(color: Tokens.texto2)),
@@ -154,6 +170,34 @@ class _PainelAtividadeState extends State<PainelAtividade> {
       [
         if (widget.aoVerVerificacao != null) TextButton(onPressed: widget.aoVerVerificacao, child: const Text('Ver detalhe')),
         TextButton(onPressed: () => confirmarParar(context, s), child: const Text('Parar')),
+      ],
+    );
+  }
+
+  /// A última ronda acabou (ou foi parada): o resumo e "Ver relatório".
+  Widget _cartaoRelatorio() {
+    final s = widget.servico;
+    final resumo = resumoVerificacao(s);
+    final f = s.fimRonda!;
+    final hora = '${f.hour.toString().padLeft(2, '0')}:${f.minute.toString().padLeft(2, '0')}';
+    return _cartao(
+      'Verificação das listas',
+      [
+        Row(children: [
+          Icon(s.parada ? Icons.stop_circle_outlined : Icons.check_circle_outline,
+              size: 16, color: s.parada ? Tokens.texto2 : Tokens.ok),
+          const SizedBox(width: Tokens.e8),
+          Expanded(
+            child: Text('${s.parada ? 'Parada' : 'Terminada'} às $hora',
+                style: const TextStyle(color: Tokens.texto)),
+          ),
+        ]),
+        const SizedBox(height: Tokens.e4),
+        Text(resumo ?? 'Nenhuma lista chegou ao fim.', style: const TextStyle(color: Tokens.texto2)),
+      ],
+      [
+        if (resumo != null && widget.aoVerVerificacao != null)
+          TextButton(onPressed: widget.aoVerVerificacao, child: const Text('Ver relatório')),
       ],
     );
   }

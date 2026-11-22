@@ -562,10 +562,10 @@ class _TelaGestorState extends State<TelaGestor> {
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Tokens.texto)),
         ),
-        if (_temInfo) _botaoInfo(),
         const SizedBox(width: Tokens.e12),
-        // no canto direito: o indicador só encolhe se não couber
+        // à direita: o indicador só encolhe se não couber; o "i" fica no canto
         Flexible(child: Align(alignment: Alignment.centerRight, child: indicador)),
+        if (_temInfo) ...[const SizedBox(width: Tokens.e4), _botaoInfo()],
       ]),
     );
   }
@@ -600,9 +600,9 @@ class _TelaGestorState extends State<TelaGestor> {
                       style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Tokens.texto)),
                 ),
         ),
-        if (_temInfo) _botaoInfo(),
         const SizedBox(width: Tokens.e8),
         indicador,
+        if (_temInfo) _botaoInfo(),
       ]),
     );
   }
