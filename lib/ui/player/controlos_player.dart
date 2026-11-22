@@ -10,6 +10,7 @@ import '../design/tokens.dart';
 import 'ajuste_toque.dart';
 import 'aplicar_preferencias.dart';
 import 'barra_progresso.dart';
+import 'controlo_volume.dart';
 import 'maquina_controlos.dart';
 import 'numero_canal.dart';
 import 'painel_definicoes.dart';
@@ -66,7 +67,11 @@ class ControlosPlayer extends StatefulWidget {
     this.esconderApos = const Duration(seconds: 5),
     this.aoNumero,
     this.ajusteToque,
+    this.volume,
   });
+
+  /// O volume na barra (o do player, 0–100, e o silêncio); null = sem ele.
+  final ({double valor, bool silencio, ValueChanged<double> aoMudar, ValueChanged<bool> aoSilencio})? volume;
 
   /// Telemóvel Android: os deslizes nas laterais mudam o volume (direita) e o brilho (esquerda).
   final AjusteToque? ajusteToque;
@@ -537,6 +542,20 @@ class ControlosPlayerState extends State<ControlosPlayer> {
       botao(Icons.skip_next_rounded, 'Canal seguinte', AcaoPlayer.canalSeguinte),
     ];
     final indicador = _IndicadorDireto(emDireto: emDireto, atraso: atraso);
+    final v = widget.volume;
+    final volume = v == null
+        ? null
+        : ControloVolume(
+            key: const ValueKey('controloVolume'),
+            volume: v.valor,
+            silencio: v.silencio,
+            aoMudar: v.aoMudar,
+            aoSilencio: v.aoSilencio,
+            aoAtividade: _agendar,
+            largura: tv ? 140 : (alto ? 160 : 110),
+            tamanhoIcone: icone,
+            estiloIcone: estiloIcone,
+          );
     return Stack(children: [
       // em cima: Voltar (fechar a janela/sair) e ecrã inteiro (Windows)
       Positioned(
@@ -638,6 +657,7 @@ class ControlosPlayerState extends State<ControlosPlayer> {
                       ]),
                     ),
                     ?voltarAoDireto,
+                    if (volume != null) ...[const SizedBox(height: Tokens.e4), volume],
                   ] else
                     Wrap(
                       alignment: WrapAlignment.center,
@@ -648,6 +668,7 @@ class ControlosPlayerState extends State<ControlosPlayer> {
                         ...transporte,
                         ?alternar,
                         const SizedBox(width: Tokens.e16),
+                        ?volume,
                         velocidade,
                         ?voltarAoDireto,
                         definicoes,

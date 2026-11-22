@@ -751,13 +751,15 @@ void main() {
       // (até dar a volta: depois de "Voltar" vem a faixa)
       expect(await _semRealceAoPercorrer(t, 20, vistos: vistos), isEmpty);
       expect(vistos.join(' / '), allOf(contains('1 · Importar | 2 · Verificar'), contains('Funcionam · 0'),
-          contains('001X'), contains('Ações (1)'), contains('A verificar 0/1')));
+          contains('001X'), contains('Ações (1)'), contains('A verificar 0/1'), contains('Parar')));
       // o menu Ações: os itens com realce
       await t.tap(find.byKey(const ValueKey('botaoAcoes')));
       await t.pumpAndSettle();
       final noMenu = <String>{};
-      expect(await _semRealceAoPercorrer(t, 3, vistos: noMenu), isEmpty);
-      expect(noMenu, containsAll(['Verificar selecionadas', 'Verificar todas', 'Remover do gestor']), reason: '$noMenu');
+      // (com a verificação a decorrer, também "Parar a verificação")
+      expect(await _semRealceAoPercorrer(t, 4, vistos: noMenu), isEmpty);
+      expect(noMenu, containsAll(['Verificar selecionadas', 'Verificar todas', 'Parar a verificação', 'Remover do gestor']),
+          reason: '$noMenu');
       await t.binding.handlePopRoute();
       await t.pumpAndSettle();
       // o progresso (pelo indicador do topo)

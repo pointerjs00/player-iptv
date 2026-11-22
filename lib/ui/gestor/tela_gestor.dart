@@ -102,6 +102,7 @@ class _TelaGestorState extends State<TelaGestor> {
   /// A faixa dos passos (uma só paragem do foco) e o "Voltar" por cima dela.
   final _focoFaixa = FocusNode(debugLabel: 'Faixa dos passos');
   final _focoVoltar = FocusNode(debugLabel: 'Voltar');
+  final _focoPararTopo = FocusNode(debugLabel: 'Parar (topo)');
 
   /// O primeiro controlo de cada ecrã (recebe o foco ao abrir).
   final _focoOrigens = FocusNode(debugLabel: 'Origens da importação');
@@ -191,6 +192,7 @@ class _TelaGestorState extends State<TelaGestor> {
       _focoBarraAtividade,
       _focoFaixa,
       _focoVoltar,
+      _focoPararTopo,
       _focoOrigens,
       _focoPesquisa,
       _focoFuncionam,
@@ -321,14 +323,45 @@ class _TelaGestorState extends State<TelaGestor> {
   Future<void> _parar() async {
     if (!await confirmarParar(context, _s) || !mounted) return;
     _aviso('Verificação parada. O relatório fica no ecrã da verificação.');
-    // "Parar" desaparece: o foco passa para "Verificar mais (fila)" (depois do frame: o diálogo
-    // que fechou devolve o foco ao "Parar" primeiro)
+    // "Parar" desaparece: o foco passa para "Verificar mais (fila)" no progresso, ou para o
+    // indicador no passo 2 (depois do frame: o diálogo que fechou devolve o foco ao "Parar" primeiro)
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && FocusManager.instance.primaryFocus?.context?.widget is! EditableText) {
+      if (!mounted || FocusManager.instance.primaryFocus?.context?.widget is EditableText) return;
+      if (_ecra == EcraGestor.verificar) {
+        // do menu Ações o foco volta ao botão Ações: só se perdeu se estava no "Parar" do topo
+        if (!_focoPararTopo.hasFocus && FocusManager.instance.primaryFocus?.context != null) return;
+        _focoIndicador.requestFocus();
+      } else {
         _focoVerificarMais.requestFocus();
       }
     });
   }
+
+  /// O "Parar" do topo no passo 2, só com a verificação a decorrer.
+  Widget _botaoParar({required bool compacto}) => ListenableBuilder(
+        listenable: _s,
+        builder: (context, _) {
+          if (_ecra != EcraGestor.verificar || !_s.ocupado || _s.parada) return const SizedBox.shrink();
+          return Padding(
+            padding: const EdgeInsets.only(right: Tokens.e8),
+            child: compacto
+                ? IconButton(
+                    key: const ValueKey('pararTopo'),
+                    focusNode: _focoPararTopo,
+                    onPressed: _parar,
+                    tooltip: 'Parar a verificação',
+                    icon: const Icon(Icons.stop_circle_outlined, color: Tokens.mau),
+                  )
+                : TextButton.icon(
+                    key: const ValueKey('pararTopo'),
+                    focusNode: _focoPararTopo,
+                    onPressed: _parar,
+                    icon: const Icon(Icons.stop_circle_outlined, color: Tokens.mau),
+                    label: const Text('Parar'),
+                  ),
+          );
+        },
+      );
 
   /// "Enviar N listas" (passo 3): vão as marcadas que não estão a ser verificadas (as que estão
   /// ficam de fora e a mensagem final diz quantas são). O diálogo só pergunta como (adicionar ou
@@ -489,6 +522,7 @@ class _TelaGestorState extends State<TelaGestor> {
               aoVerificar: _verificarSelecionadas,
               aoVerificarTodas: _verificarTodas,
               aoRemover: _removerSelecionadas,
+              aoParar: _parar,
               focoInicial: _focoPesquisa,
             ),
             PassoEnviar(
@@ -563,6 +597,7 @@ class _TelaGestorState extends State<TelaGestor> {
               style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Tokens.texto)),
         ),
         const SizedBox(width: Tokens.e12),
+        _botaoParar(compacto: false),
         // à direita: o indicador só encolhe se não couber; o "i" fica no canto
         Flexible(child: Align(alignment: Alignment.centerRight, child: indicador)),
         if (_temInfo) ...[const SizedBox(width: Tokens.e4), _botaoInfo()],
@@ -601,6 +636,7 @@ class _TelaGestorState extends State<TelaGestor> {
                 ),
         ),
         const SizedBox(width: Tokens.e8),
+        _botaoParar(compacto: true),
         indicador,
         if (_temInfo) _botaoInfo(),
       ]),

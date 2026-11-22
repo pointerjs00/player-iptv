@@ -1857,12 +1857,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
         menos: _prefs.volume > 0 ? () => _mudarVolume(-5) : null,
         mais: _prefs.volume < 100 ? () => _mudarVolume(5) : null,
       ),
-      DefinicaoInterruptor('Silêncio', valor: _sessao.silencio, aoMudar: (v) {
-        setState(() => _sessao.silencio = v);
-        // durante a espera do salto o som fica desligado; o silêncio aplica-se no fim dela
-        _porMudo(_mudo.mudouSilencio(v));
-        if (_mpv == null) _motor.volume(_volumeMotor);
-      }),
+      DefinicaoInterruptor('Silêncio', valor: _sessao.silencio, aoMudar: _definirSilencio),
       DefinicaoPassos(
         'Atraso do áudio',
         valor: textoAtrasoAudio(_sessao.atrasoAudio),
@@ -1922,8 +1917,27 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     ];
   }
 
-  void _mudarVolume(int passo) {
-    _preferir((p) => p.volume = p.volume + passo, () => _motor.volume(_volumeMotor));
+  void _mudarVolume(int passo) => _definirVolume(_prefs.volume + passo);
+
+  /// O volume do player (0–100): a barra do volume e o painel. Ouve-se logo; grava-se quando se
+  /// pára de mexer (arrastar a barra mudava-o dezenas de vezes por segundo).
+  void _definirVolume(double v) {
+    setState(() => _prefs.volume = v);
+    _motor.volume(_volumeMotor);
+    _gravarVolume?.cancel();
+    _gravarVolume = Timer(const Duration(milliseconds: 400), () {
+      _prefs.guardar().catchError((Object e) => debugPrint('preferências não gravadas ($e)'));
+    });
+  }
+
+  Timer? _gravarVolume;
+
+  void _definirSilencio(bool v) {
+    if (v == _sessao.silencio) return;
+    setState(() => _sessao.silencio = v);
+    // durante a espera do salto o som fica desligado; o silêncio aplica-se no fim dela
+    _porMudo(_mudo.mudouSilencio(v));
+    if (_mpv == null) _motor.volume(_volumeMotor);
   }
 
   void _mudarAtrasoAudio(int direcao) {
@@ -1942,6 +1956,11 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     _ajuste?.dispose(); // o brilho volta ao do sistema
     _esconderAviso?.cancel();
     _soltarEcra?.cancel();
+    // o volume que ainda não foi gravado grava-se já
+    if (_gravarVolume?.isActive ?? false) {
+      _prefs.guardar().catchError((Object e) => debugPrint('preferências não gravadas ($e)'));
+    }
+    _gravarVolume?.cancel();
     _vigiaEntrelacamento?.cancel();
     _ultima.largar();
     _linhasNoEcra.dispose();
@@ -2021,6 +2040,12 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
           podeAlternar: _historico.anterior != null,
         ),
         aoNumero: _irParaNumero,
+        volume: (
+          valor: _prefs.volume,
+          silencio: _sessao.silencio,
+          aoMudar: _definirVolume,
+          aoSilencio: _definirSilencio,
+        ),
         atraso: () => _comRecuo ? _atrasoGravado : _relogio.atraso,
         // sem mpv: a informação vem das estatísticas do motor e não há barra de progresso nem
         // saltos (só o mpv salta no que já recebeu)

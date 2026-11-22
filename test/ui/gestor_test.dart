@@ -762,6 +762,67 @@ void main() {
       expect(tarefas.recentes.first.estado, EstadoTarefa.terminada);
     });
 
+    testWidgets('no passo 2, "Parar" no topo (só a decorrer), com confirmação', (t) async {
+      await t.runAsync(() => area.adicionar([
+            Importada(contaDeLinha('http://a.com/c/ 00:1A:79:00:00:01')!),
+            Importada(contaDeLinha('http://b.com/c/ 00:1A:79:00:00:02')!),
+          ]));
+      final s = ServicoVerificacao(bib, colecao: area, verificador: _Preso());
+      _tamanho(t, 1200, 1200);
+      await t.pumpWidget(_app(gestor(s)));
+      await t.pump();
+      await abrirPasso(t, 'Verificar');
+      final topo = find.byKey(const ValueKey('pararTopo'));
+      expect(topo, findsNothing, reason: 'sem verificação a decorrer');
+      s.verificar(area.listas.first);
+      await t.pump();
+      expect(topo, findsOneWidget);
+      // o topo pede confirmação e pára
+      await t.tap(topo);
+      await t.pumpAndSettle();
+      expect(find.text('Parar a verificação?'), findsOneWidget);
+      await t.tap(find.widgetWithText(FilledButton, 'Parar'));
+      await t.pumpAndSettle();
+      expect(s.parada, isTrue);
+      expect(topo, findsNothing);
+    });
+
+    testWidgets('no passo 2, o menu Ações tem "Parar a verificação" enquanto decorre', (t) async {
+      await t.runAsync(() => area.adicionar([Importada(contaDeLinha('http://a.com/c/ 00:1A:79:00:00:01')!)]));
+      final s = ServicoVerificacao(bib, colecao: area, verificador: _Preso());
+      _tamanho(t, 1200, 1200);
+      await t.pumpWidget(_app(gestor(s)));
+      await t.pump();
+      await abrirPasso(t, 'Verificar');
+      s.verificar(area.listas.first);
+      await t.pump();
+      await t.tap(find.textContaining('Ações'));
+      await t.pumpAndSettle();
+      await t.tap(find.text('Parar a verificação'));
+      await t.pumpAndSettle();
+      expect(find.text('Parar a verificação?'), findsOneWidget);
+      await t.tap(find.widgetWithText(FilledButton, 'Parar'));
+      await t.pumpAndSettle();
+      expect(s.parada, isTrue);
+      await t.tap(find.textContaining('Ações'));
+      await t.pumpAndSettle();
+      expect(find.text('Parar a verificação'), findsNothing, reason: 'parada: o item sai do menu');
+    });
+
+    testWidgets('no telemóvel, o "Parar" do topo é um ícone', (t) async {
+      await t.runAsync(() => area.adicionar([Importada(contaDeLinha('http://a.com/c/ 00:1A:79:00:00:01')!)]));
+      final s = ServicoVerificacao(bib, colecao: area, verificador: _Preso());
+      _tamanho(t, 400, 800);
+      await t.pumpWidget(_app(gestor(s)));
+      await t.pump();
+      await abrirPasso(t, 'Verificar');
+      s.verificar(area.listas.first);
+      await t.pump();
+      expect(find.descendant(of: find.byKey(const ValueKey('pararTopo')), matching: find.byIcon(Icons.stop_circle_outlined)),
+          findsOneWidget);
+      s.parar();
+    });
+
     testWidgets('o "i" do passo 2 abre a explicação da verificação e Voltar fecha-a', (t) async {
       _tamanho(t, 1200, 1200);
       await t.pumpWidget(_app(gestor()));

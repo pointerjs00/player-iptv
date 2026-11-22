@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:player_iptv/ui/design/ecra.dart';
+import 'package:player_iptv/ui/player/controlo_volume.dart';
 import 'package:player_iptv/ui/player/controlos_player.dart';
 import 'package:player_iptv/ui/player/maquina_controlos.dart';
 import 'package:player_iptv/ui/player/numero_canal.dart';
@@ -28,6 +29,7 @@ class _Ensaio {
   bool ecraInteiro = false;
   String canal = 'RTP 1';
   var silencio = false;
+  double volume = 80;
   StateSetter? reconstruir;
   var leiturasInfo = 0;
 
@@ -57,6 +59,7 @@ Future<_Ensaio> _montar(WidgetTester t,
     bool tv = false,
     bool botaoNoVideo = true,
     bool comProgresso = false,
+    bool comVolume = false,
     JanelaProgresso? janela}) async {
   EcraTv.nativo = tv;
   addTearDown(() => EcraTv.nativo = false);
@@ -91,6 +94,14 @@ Future<_Ensaio> _montar(WidgetTester t,
                 podeAlternar: e.podeAlternar,
               ),
               aoNumero: e.numeros.add,
+              volume: comVolume
+                  ? (
+                      valor: e.volume,
+                      silencio: e.silencio,
+                      aoMudar: (v) => setState(() => e.volume = v),
+                      aoSilencio: (v) => setState(() => e.silencio = v),
+                    )
+                  : null,
               atraso: () => e.atraso,
               lerInfoStream: () async {
                 e.leiturasInfo++;
@@ -163,9 +174,78 @@ String? _focado() {
   return t?.message;
 }
 
+/// O foco está na barra do volume (não no botão do silêncio).
+bool _noVolume() {
+  final ctx = FocusManager.instance.primaryFocus?.context;
+  return ctx?.findAncestorWidgetOfExactType<ControloVolume>() != null && _focado() == null;
+}
+
 bool _barraVisivel(WidgetTester t) => find.byTooltip('Definições').hitTestable().evaluate().isNotEmpty;
 
 void main() {
+  group('volume', () {
+    testWidgets('na barra: o silêncio alterna e a barra arrasta-se', (t) async {
+      final e = await _montar(t, comVolume: true);
+      await _tecla(t, LogicalKeyboardKey.select);
+      expect(find.text('80 %'), findsOneWidget);
+      await t.tap(find.byTooltip('Silêncio'));
+      await t.pumpAndSettle();
+      expect(e.silencio, isTrue);
+      expect(find.byIcon(Icons.volume_off_rounded), findsOneWidget);
+      expect(find.text('0 %'), findsOneWidget);
+      await t.tap(find.byTooltip('Ligar o som'));
+      await t.pumpAndSettle();
+      expect(e.silencio, isFalse);
+      // um toque no início da barra baixa o volume
+      final barra = t.getRect(find.byKey(const ValueKey('volumeBarra')));
+      await t.tapAt(Offset(barra.left + 16, barra.center.dy));
+      await t.pumpAndSettle();
+      expect(e.volume, lessThan(30));
+    });
+
+    testWidgets('com o comando: OK entra na edição; sem ela as setas andam pela barra', (t) async {
+      final e = await _montar(t, comVolume: true, tv: true);
+      await _tecla(t, LogicalKeyboardKey.select);
+      for (var i = 0; i < 10 && !_noVolume(); i++) {
+        await _tecla(t, LogicalKeyboardKey.arrowRight);
+      }
+      expect(_noVolume(), isTrue);
+      // sem OK, → passa ao controlo seguinte e o volume fica
+      await _tecla(t, LogicalKeyboardKey.arrowRight);
+      expect(_noVolume(), isFalse);
+      expect(e.volume, 80);
+      await _tecla(t, LogicalKeyboardKey.arrowLeft);
+      expect(_noVolume(), isTrue);
+      await _tecla(t, LogicalKeyboardKey.select);
+      expect(find.byKey(const ValueKey('volumeAEditar')), findsOneWidget);
+      await _tecla(t, LogicalKeyboardKey.arrowRight);
+      await _tecla(t, LogicalKeyboardKey.arrowRight);
+      expect(e.volume, 90);
+      for (var i = 0; i < 25; i++) {
+        await _tecla(t, LogicalKeyboardKey.arrowLeft);
+      }
+      expect(e.volume, 0);
+      expect(_noVolume(), isTrue, reason: 'a editar, as setas não saem');
+      // Voltar sai da edição (a barra fica)
+      await _tecla(t, LogicalKeyboardKey.escape);
+      expect(find.byKey(const ValueKey('volumeAEditar')), findsNothing);
+      expect(_barraVisivel(t), isTrue);
+      expect(e.acoes, isEmpty);
+    });
+
+    testWidgets('no telemóvel ao alto, o volume fica por baixo dos botões', (t) async {
+      await _montar(t, comVolume: true);
+      t.view.physicalSize = const Size(400, 860);
+      await t.pumpAndSettle();
+      await t.tapAt(const Offset(200, 300));
+      await t.pumpAndSettle();
+      final volume = t.getRect(find.byType(ControloVolume));
+      final play = t.getRect(find.byTooltip('Pausa'));
+      expect(volume.top, greaterThan(play.bottom - 1));
+      expect(t.takeException(), isNull);
+    });
+  });
+
   testWidgets('escondidos: cima/baixo mudam de canal, esquerda/direita recuam/avançam; a barra não aparece', (t) async {
     final e = await _montar(t);
     expect(_barraVisivel(t), isFalse);

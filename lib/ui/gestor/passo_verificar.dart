@@ -11,7 +11,7 @@ import '../campo_tv.dart';
 import '../realce_foco.dart';
 
 /// As ações do menu «Ações».
-enum _Acao { verificarSelecionadas, verificarTodas, remover }
+enum _Acao { verificarSelecionadas, verificarTodas, parar, remover }
 
 /// O passo 2 do Gestor, "Verificar": numa linha a pesquisa, os estados (de escolha múltipla:
 /// nenhum ligado mostra todas) e o botão `Ações (N)`; por baixo a tabela `☐ LISTA · ESTADO ·
@@ -19,8 +19,8 @@ enum _Acao { verificarSelecionadas, verificarTodas, remover }
 /// visíveis.
 ///
 /// `Ações (N)` (ou a tecla Menu do comando, de qualquer sítio do passo, menos a escrever num
-/// campo: [abrirAcoes]) abre o menu `Verificar selecionadas` · `Verificar todas` · `Remover do
-/// gestor`. O progresso da verificação abre-se no indicador do topo (na `TelaGestor`).
+/// campo: [abrirAcoes]) abre o menu `Verificar selecionadas` · `Verificar todas` · `Parar a
+/// verificação` (só a decorrer) · `Remover do gestor`. O progresso da verificação abre-se no indicador do topo (na `TelaGestor`).
 ///
 /// A linha de cima e o cabeçalho ficam fixos (sempre à vista, mesmo no fundo de uma lista longa);
 /// só a tabela desliza, com as linhas preguiçosas (`SliverList.builder`). ESQUERDA numa linha
@@ -35,6 +35,7 @@ class PassoVerificar extends StatefulWidget {
     required this.aoVerificar,
     required this.aoVerificarTodas,
     required this.aoRemover,
+    this.aoParar,
     this.focoInicial,
     this.agora,
   });
@@ -48,6 +49,9 @@ class PassoVerificar extends StatefulWidget {
 
   /// "Remover do gestor": quem chama confirma e remove.
   final Future<void> Function(List<Lista>) aoRemover;
+
+  /// "Parar a verificação" (quem chama confirma); sem ele o item não aparece.
+  final VoidCallback? aoParar;
 
   /// O controlo que recebe o foco quando o passo abre (por omissão, a pesquisa não o pede).
   final FocusNode? focoInicial;
@@ -259,6 +263,8 @@ class PassoVerificarState extends State<PassoVerificar> {
     final itens = [
       (_Acao.verificarSelecionadas, 'Verificar selecionadas', Icons.playlist_add_check, n > 0),
       (_Acao.verificarTodas, 'Verificar todas', Icons.fact_check_outlined, _g.listas.isNotEmpty),
+      if (widget.aoParar != null && widget.servico.ocupado && !widget.servico.parada)
+        (_Acao.parar, 'Parar a verificação', Icons.stop_circle_outlined, true),
       (_Acao.remover, 'Remover do gestor', Icons.remove_circle_outline, n > 0),
     ];
     final primeiro = itens.indexWhere((i) => i.$4);
@@ -295,6 +301,8 @@ class PassoVerificarState extends State<PassoVerificar> {
         if (sel.isNotEmpty) widget.aoVerificar(sel);
       case _Acao.verificarTodas:
         widget.aoVerificarTodas();
+      case _Acao.parar:
+        widget.aoParar?.call();
       case _Acao.remover:
         if (sel.isNotEmpty) await widget.aoRemover(sel);
     }
