@@ -1,4 +1,5 @@
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../dados/area_gestor.dart';
@@ -19,7 +20,7 @@ import 'calendario_intervalo.dart';
 import 'indicador_atividade.dart';
 
 /// As origens de onde se importa.
-enum OrigemImportacao { ficheiros, colar, stbstalker, doPlayer }
+enum OrigemImportacao { ficheiros, adicionar, stbstalker, doPlayer }
 
 /// Uma pesquisa/importação que falhou: a mensagem é a que se mostra (sem "Exception:").
 class _Falha implements Exception {
@@ -57,7 +58,7 @@ class RegistoImportacoes extends ChangeNotifier {
   }
 }
 
-/// O sub-ecrã de importar (passo 1): quatro origens (Ficheiros · Colar texto · Listas do stbstalker ·
+/// O sub-ecrã de importar (passo 1): quatro origens (Ficheiros · Adicionar lista · Listas do stbstalker ·
 /// De Ver TV), o painel da origem escolhida e o painel "Resultado" da última importação, com
 /// "Verificar as n novas". Cada importação é uma tarefa em segundo plano: o botão fica logo livre
 /// (carregar outra vez inicia outra) e o ecrã só observa.
@@ -92,6 +93,15 @@ class _TelaImportarState extends State<TelaImportar> {
   late DateTime _inicio = _hoje(), _fim = _hoje();
   final _texto = TextEditingController();
 
+  /// "Adicionar lista": o tipo escolhido e os campos (o MAC começa com o prefixo habitual).
+  FormaLista _forma = FormaLista.portalMac;
+  static const _prefixoMac = '00:1A:79:';
+  final _endereco = TextEditingController();
+  final _mac = TextEditingController(text: _prefixoMac);
+  final _utilizador = TextEditingController();
+  final _password = TextEditingController();
+  final _focosFormas = [for (final f in FormaLista.values) FocusNode(debugLabel: 'Tipo ${f.nome}')];
+
   /// Os blocos para CIMA/BAIXO: origens, painel da origem, resultado e "Limpar o Gestor".
   final _blocos = [
     for (final b in ['Origens', 'Painel', 'Resultado', 'Limpar'])
@@ -103,7 +113,12 @@ class _TelaImportarState extends State<TelaImportar> {
 
   @override
   void dispose() {
-    _texto.dispose();
+    for (final c in [_texto, _endereco, _mac, _utilizador, _password]) {
+      c.dispose();
+    }
+    for (final f in _focosFormas) {
+      f.dispose();
+    }
     for (final b in _blocos) {
       b.dispose();
     }
@@ -138,11 +153,24 @@ class _TelaImportarState extends State<TelaImportar> {
         widget.tarefas, 'Importar ficheiros', (p) => importarEscolhidos(_g, ficheiros, p: p));
   }
 
-  void _juntarTexto() {
-    final texto = _texto.text;
-    if (texto.trim().isEmpty) return _aviso('Cole primeiro as listas, uma por linha.');
-    widget.registo.iniciar(widget.tarefas, 'Importar texto colado', (p) => importarTexto(_g, texto));
-    _texto.clear();
+  /// "Juntar ao Gestor" do "Adicionar lista": a lista dos campos (ou as coladas, em "Várias").
+  void _juntar() {
+    if (_forma == FormaLista.varias) {
+      final texto = _texto.text;
+      if (texto.trim().isEmpty) return _aviso('Cole primeiro as listas, uma por linha.');
+      widget.registo.iniciar(widget.tarefas, 'Importar texto colado', (p) => importarTexto(_g, texto));
+      _texto.clear();
+      return;
+    }
+    final r = contaManual(_forma,
+        endereco: _endereco.text, mac: _mac.text, utilizador: _utilizador.text, password: _password.text);
+    if (r.erro != null) return _aviso(r.erro!);
+    final c = r.conta!;
+    widget.registo.iniciar(widget.tarefas, 'Adicionar lista · ${c.nome}', (p) => importarConta(_g, c));
+    _endereco.clear();
+    _mac.text = _prefixoMac;
+    _utilizador.clear();
+    _password.clear();
   }
 
   void _procurarStb() {
@@ -246,7 +274,7 @@ class _TelaImportarState extends State<TelaImportar> {
         final nPlayer = _b.listas.length;
         final origens = <(OrigemImportacao, IconData, String, String)>[
           (OrigemImportacao.ficheiros, Icons.file_open_outlined, 'Ficheiros', 'Accounts.json, .ini, .m3u, .txt'),
-          (OrigemImportacao.colar, Icons.content_paste_rounded, 'Colar texto', 'Uma lista por linha'),
+          (OrigemImportacao.adicionar, Icons.playlist_add_rounded, 'Adicionar lista', 'Portal MAC, Xtream ou M3U'),
           (OrigemImportacao.stbstalker, Icons.event_note_outlined, 'Listas do stbstalker',
               'Publicadas entre duas datas'),
           (OrigemImportacao.doPlayer, Icons.download_for_offline_outlined, 'De Ver TV',
@@ -303,24 +331,33 @@ class _TelaImportarState extends State<TelaImportar> {
             label: const Text('Escolher ficheiros'),
           ),
         ]);
-      case OrigemImportacao.colar:
+      case OrigemImportacao.adicionar:
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          _titulo('Colar texto'),
-          _explicacao('Cole as listas, uma por linha (portal e MAC, ligação Xtream ou M3U).'),
-          // o comando da TV não fica preso no campo: o teclado só abre com OK (ver CampoTv)
-          CampoTv(
-            controller: _texto,
-            minLines: 4,
-            maxLines: 8,
-            decoration: const InputDecoration(
-              hintText: 'http://portal.com/c/ 00:1A:79:00:00:01\nhttp://servidor:8080/get.php?username=…\nhttp://…/lista.m3u',
-            ),
+          _titulo('Nova lista'),
+          _explicacao('Escolha o tipo de lista e preencha os dados.'),
+          // os tipos: ESQUERDA/DIREITA passam de um ao outro pela ordem, mesmo partidos em duas linhas
+          Focus(
+            canRequestFocus: false,
+            skipTraversal: true,
+            includeSemantics: false,
+            onKeyEvent: (_, e) => _teclaFormas(e),
+            child: Wrap(spacing: Tokens.e8, runSpacing: Tokens.e8, children: [
+              for (final (i, f) in FormaLista.values.indexed)
+                ChoiceChip(
+                  focusNode: _focosFormas[i],
+                  label: Text(f.nome),
+                  selected: _forma == f,
+                  onSelected: (_) => setState(() => _forma = f),
+                ),
+            ]),
           ),
+          const SizedBox(height: Tokens.e16),
+          ..._campos(),
           const SizedBox(height: Tokens.e12),
           Align(
             alignment: Alignment.centerLeft,
             child: FilledButton.icon(
-              onPressed: _juntarTexto,
+              onPressed: _juntar,
               icon: const Icon(Icons.playlist_add_rounded),
               label: const Text('Juntar ao Gestor'),
             ),
@@ -359,6 +396,60 @@ class _TelaImportarState extends State<TelaImportar> {
         ]);
     }
   }
+
+  /// Um campo de uma linha com rótulo (o comando da TV só abre o teclado com OK: ver CampoTv).
+  Widget _campo(TextEditingController c, String rotulo, String exemplo) => Padding(
+        padding: const EdgeInsets.only(bottom: Tokens.e8),
+        child: CampoTv(
+          controller: c,
+          decoration: InputDecoration(labelText: rotulo, hintText: exemplo),
+        ),
+      );
+
+  KeyEventResult _teclaFormas(KeyEvent e) {
+    if (e is KeyUpEvent) return KeyEventResult.ignored;
+    final i = _focosFormas.indexWhere((f) => f.hasPrimaryFocus);
+    if (i < 0) return KeyEventResult.ignored;
+    final j = switch (e.logicalKey) {
+      LogicalKeyboardKey.arrowRight => i + 1,
+      LogicalKeyboardKey.arrowLeft => i - 1,
+      _ => null,
+    };
+    if (j == null || j < 0 || j >= _focosFormas.length) return KeyEventResult.ignored;
+    _focosFormas[j].requestFocus();
+    return KeyEventResult.handled;
+  }
+
+  /// Os campos do tipo escolhido em "Adicionar lista".
+  List<Widget> _campos() => switch (_forma) {
+        FormaLista.portalMac => [
+            _campo(_endereco, 'Endereço do portal', 'http://portal.com:8080/c/'),
+            _campo(_mac, 'Endereço MAC', '00:1A:79:12:34:56'),
+          ],
+        FormaLista.xtreamLink => [
+            _campo(_endereco, 'Link Xtream', 'http://servidor.com:8080/get.php?username=…&password=…'),
+          ],
+        FormaLista.xtreamConta => [
+            _campo(_endereco, 'Servidor', 'http://servidor.com:8080'),
+            _campo(_utilizador, 'Utilizador', ''),
+            _campo(_password, 'Palavra-passe', ''),
+          ],
+        FormaLista.m3u => [
+            _campo(_endereco, 'Endereço da lista', 'http://servidor.com/lista.m3u'),
+          ],
+        FormaLista.varias => [
+            _explicacao('Cole as listas, uma por linha (portal e MAC, ligação Xtream ou M3U).'),
+            CampoTv(
+              controller: _texto,
+              minLines: 4,
+              maxLines: 8,
+              decoration: const InputDecoration(
+                hintText:
+                    'http://portal.com/c/ 00:1A:79:00:00:01\nhttp://servidor:8080/get.php?username=…\nhttp://…/lista.m3u',
+              ),
+            ),
+          ],
+      };
 
   Widget _numero(String rotulo, int n) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 2),

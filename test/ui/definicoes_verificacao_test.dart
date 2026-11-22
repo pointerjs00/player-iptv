@@ -48,7 +48,7 @@ void main() {
       'Quanto se espera por cada canal de teste.',
       'A lista funciona se um deles abrir.',
       'Com uma verificação a decorrer, as mudanças valem para as próximas listas. '
-          '← → mudam o valor; ↑ ↓ mudam de opção.',
+          'OK para mudar um valor, depois ← →; ↑ ↓ mudam de opção.',
     ]) {
       expect(find.text(d), findsOneWidget, reason: d);
     }
@@ -62,6 +62,8 @@ void main() {
     await teclaDpad(t, LogicalKeyboardKey.arrowDown); // Verificação
     await teclaDpad(t, LogicalKeyboardKey.arrowRight); // a primeira opção
     expect(textosFocados(), contains('Listas ao mesmo tempo'));
+    await teclaDpad(t, LogicalKeyboardKey.select); // OK: entra na edição
+    expect(find.byKey(const ValueKey('seletorAEditar')), findsOneWidget);
     for (var i = 0; i < 3; i++) {
       await teclaDpad(t, LogicalKeyboardKey.arrowRight);
     }
@@ -81,6 +83,7 @@ void main() {
     await teclaDpad(t, LogicalKeyboardKey.arrowRight);
     await teclaDpad(t, LogicalKeyboardKey.arrowDown);
     expect(textosFocados(), contains('Tempo limite por lista'));
+    await teclaDpad(t, LogicalKeyboardKey.select);
     await teclaDpad(t, LogicalKeyboardKey.arrowRight);
     await teclaDpad(t, LogicalKeyboardKey.arrowRight);
     expect(find.text('50 s'), findsOneWidget);
@@ -99,6 +102,46 @@ void main() {
     await t.pump();
     expect(prefs.timeoutVerificacao, antes + 1);
     expect(find.byType(Slider), findsNothing);
+  });
+
+  testWidgets('sem OK, ← → não mudam o valor e ← vai ao menu lateral', (t) async {
+    await abrir(t);
+    await teclaDpad(t, LogicalKeyboardKey.tab);
+    await teclaDpad(t, LogicalKeyboardKey.arrowDown);
+    await teclaDpad(t, LogicalKeyboardKey.arrowRight);
+    await teclaDpad(t, LogicalKeyboardKey.arrowDown);
+    expect(textosFocados(), contains('Tempo limite por lista'));
+    final antes = prefs.tempoLimiteLista;
+    await teclaDpad(t, LogicalKeyboardKey.arrowRight);
+    expect(prefs.tempoLimiteLista, antes);
+    expect(textosFocados(), contains('Tempo limite por lista'));
+    await teclaDpad(t, LogicalKeyboardKey.arrowLeft);
+    expect(prefs.tempoLimiteLista, antes);
+    expect(textosFocados(), contains('Verificação'), reason: 'foi ao menu lateral');
+  });
+
+  testWidgets('a editar, OK e Voltar saem da edição; ↓ sai e muda de opção', (t) async {
+    await abrir(t);
+    await teclaDpad(t, LogicalKeyboardKey.tab);
+    await teclaDpad(t, LogicalKeyboardKey.arrowDown);
+    await teclaDpad(t, LogicalKeyboardKey.arrowRight);
+    final editar = find.byKey(const ValueKey('seletorAEditar'));
+    await teclaDpad(t, LogicalKeyboardKey.select);
+    expect(editar, findsOneWidget);
+    await teclaDpad(t, LogicalKeyboardKey.select);
+    expect(editar, findsNothing);
+    await teclaDpad(t, LogicalKeyboardKey.select);
+    await teclaDpad(t, LogicalKeyboardKey.escape);
+    expect(editar, findsNothing);
+    expect(find.byType(TelaDefinicoes), findsOneWidget, reason: 'Voltar não sai do ecrã');
+    expect(textosFocados(), contains('Listas ao mesmo tempo'));
+    await teclaDpad(t, LogicalKeyboardKey.select);
+    await teclaDpad(t, LogicalKeyboardKey.arrowDown);
+    expect(editar, findsNothing);
+    expect(textosFocados(), contains('Tempo limite por lista'));
+    final antes = prefs.tempoLimiteLista;
+    await teclaDpad(t, LogicalKeyboardKey.arrowRight);
+    expect(prefs.tempoLimiteLista, antes, reason: 'a nova opção não está em edição');
   });
 
   testWidgets('↓ a partir de Listas ao mesmo tempo leva a Tempo limite por lista', (t) async {

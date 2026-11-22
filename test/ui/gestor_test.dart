@@ -292,14 +292,14 @@ void main() {
       expect(find.text('Listas'), findsNothing);
       // o Player não verifica: sem botão "Verificar"
       expect(find.widgetWithText(ButtonStyleButton, 'Verificar'), findsNothing);
-      expect(find.text('Colar texto'), findsNothing);
+      expect(find.text('Adicionar lista'), findsNothing);
       await t.tap(find.descendant(of: barra, matching: find.text('Gestor')));
       await t.pumpAndSettle();
       await abrirPasso(t, 'Importar');
-      expect(find.text('Colar texto').hitTestable(), findsOneWidget);
+      expect(find.text('Adicionar lista').hitTestable(), findsOneWidget);
       await t.tap(find.descendant(of: barra, matching: find.text('Ver TV')));
       await t.pumpAndSettle();
-      expect(find.text('Colar texto'), findsNothing);
+      expect(find.text('Adicionar lista'), findsNothing);
     });
 
     testWidgets('não gere nada (sem verificar), mas os cartões mostram o estado', (t) async {
@@ -318,7 +318,7 @@ void main() {
       expect(find.textContaining('Verificar'), findsNothing);
       expect(find.text('Verificar de novo'), findsNothing);
       expect(find.byTooltip('Adicionar listas'), findsNothing);
-      expect(find.text('Colar texto'), findsNothing);
+      expect(find.text('Adicionar lista'), findsNothing);
       // pesquisa e filtros ficam
       expect(find.widgetWithText(ChoiceChip, 'Funcionam'), findsOneWidget);
     });
@@ -424,7 +424,7 @@ void main() {
       await preparar(t);
       await t.runAsync(() => area.adicionar([Importada(contaDeLinha('http://talvez.com/l.m3u')!, _u('inconclusivo'))]));
       await t.pump();
-      await abrirPasso(t, 'Enviar ou exportar');
+      await abrirPasso(t, 'Exportar');
       await marcarChip(t, 'Todas');
       await abrirEnvio(t);
       for (final texto in [
@@ -451,7 +451,7 @@ void main() {
 
     testWidgets('Enviar: adicionar corre como tarefa e o resultado diz quantas foram', (t) async {
       await preparar(t);
-      await abrirPasso(t, 'Enviar ou exportar');
+      await abrirPasso(t, 'Exportar');
       await marcarChip(t, 'Funcionam');
       await abrirEnvio(t);
       await t.tap(doDialogo('Enviar 1 lista'));
@@ -466,7 +466,7 @@ void main() {
 
     testWidgets('Enviar: substituir deixa o Player só com as enviadas', (t) async {
       await preparar(t);
-      await abrirPasso(t, 'Enviar ou exportar');
+      await abrirPasso(t, 'Exportar');
       await marcarChip(t, 'Funcionam');
       await abrirEnvio(t);
       await t.tap(find.text('Substituir as listas de Ver TV'));
@@ -484,7 +484,7 @@ void main() {
       await t.runAsync(() => area.adicionar(
           [Importada(contaDeLinha('http://boa.com/c/ 00:1A:79:00:00:01')!, _u('funciona', motivo: 'canal 1/3'))]));
       await t.pump();
-      await abrirPasso(t, 'Enviar ou exportar');
+      await abrirPasso(t, 'Exportar');
       await marcarChip(t, 'Funcionam');
       await abrirEnvio(t);
       await t.tap(doDialogo('Enviar 2 listas'));
@@ -522,7 +522,7 @@ void main() {
       testWidgets('Enviar: substituir com $toques (descrição e resultado)', (t) async {
         await preparar(t);
         await t.runAsync(() => bib.adicionar([Importada(contaDeLinha('http://talvez.com/l.m3u')!, _u('inconclusivo'))]));
-        await abrirPasso(t, 'Enviar ou exportar');
+        await abrirPasso(t, 'Exportar');
         await marcarChip(t, 'Funcionam');
         await abrirEnvio(t);
         expect(find.text('Das listas que já estão em Ver TV, manter:'), findsNothing);
@@ -542,7 +542,7 @@ void main() {
 
     testWidgets('Substituir: "Favoritas" vem ligado e "Nenhuma" é exclusivo', (t) async {
       await preparar(t);
-      await abrirPasso(t, 'Enviar ou exportar');
+      await abrirPasso(t, 'Exportar');
       await marcarChip(t, 'Funcionam');
       await abrirEnvio(t);
       await t.tap(find.text('Substituir as listas de Ver TV'));
@@ -567,7 +567,7 @@ void main() {
         (t) async {
       await preparar(t);
       await t.runAsync(() => bib.alternarFavorita(bib.listas.first.id)); // velha.com
-      await abrirPasso(t, 'Enviar ou exportar');
+      await abrirPasso(t, 'Exportar');
       await marcarChip(t, 'Funcionam');
       await abrirEnvio(t);
       await t.tap(find.text('Substituir as listas de Ver TV'));
@@ -580,7 +580,7 @@ void main() {
 
     testWidgets('Substituir: os chips de manter alcançam-se com o teclado e o foco não fica preso', (t) async {
       await preparar(t);
-      await abrirPasso(t, 'Enviar ou exportar');
+      await abrirPasso(t, 'Exportar');
       await marcarChip(t, 'Funcionam');
       await abrirEnvio(t);
       await _tecla(t, LogicalKeyboardKey.arrowDown);
@@ -597,7 +597,7 @@ void main() {
     testWidgets('Enviar com o comando: setas, OK e Voltar', (t) async {
       await preparar(t);
       // OK no cartão 3: o foco fica em "Funcionam"; OK marca-as
-      await _irPara(t, '3 | Enviar ou exportar');
+      await _irPara(t, '3 | Exportar');
       await _tecla(t, LogicalKeyboardKey.select);
       await t.pumpAndSettle();
       expect(_focado(), 'Funcionam (1)');
@@ -624,7 +624,7 @@ void main() {
 
     testWidgets('"Ir para Ver TV" troca de secção', (t) async {
       await preparar(t, ecra: inicio(inicial: Seccao.gestor));
-      await abrirPasso(t, 'Enviar ou exportar');
+      await abrirPasso(t, 'Exportar');
       await marcarChip(t, 'Funcionam');
       await abrirEnvio(t);
       await t.tap(doDialogo('Enviar 1 lista'));
@@ -638,7 +638,7 @@ void main() {
 
     testWidgets('na TV (960×540) o diálogo de enviar cabe sem deslizar', (t) async {
       await preparar(t);
-      await abrirPasso(t, 'Enviar ou exportar');
+      await abrirPasso(t, 'Exportar');
       await marcarChip(t, 'Todas');
       await abrirEnvio(t);
       _tamanho(t, 960, 540);
@@ -668,7 +668,7 @@ void main() {
       await t.pump();
       s.verificar(area.listas.last);
       await t.pump();
-      await abrirPasso(t, 'Enviar ou exportar');
+      await abrirPasso(t, 'Exportar');
       await marcarChip(t, 'Todas');
       await abrirEnvio(t);
       expect(find.text('Enviar 2 listas para Ver TV'), findsOneWidget, reason: 'a que está a ser verificada não conta');
@@ -687,7 +687,7 @@ void main() {
       _tamanho(t, 1200, 1800);
       await t.pumpWidget(_app(gestor()));
       await t.pump();
-      await abrirPasso(t, 'Enviar ou exportar');
+      await abrirPasso(t, 'Exportar');
       await marcarChip(t, 'Todas');
       await abrirEnvio(t);
       expect(find.byType(AlertDialog), findsOneWidget, reason: 'não fica pelo "Verifique-as primeiro"');
@@ -701,7 +701,7 @@ void main() {
 
     testWidgets('Exportar mostra as duas opções e o aviso; sem marcadas fica desligado', (t) async {
       await preparar(t);
-      await abrirPasso(t, 'Enviar ou exportar');
+      await abrirPasso(t, 'Exportar');
       expect(t.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, 'Exportar 0 listas')).onPressed, isNull);
       await t.tap(find.widgetWithText(OutlinedButton, 'Exportar 0 listas'));
       await t.pump();
@@ -730,7 +730,7 @@ void main() {
 
     testWidgets('Exportar Accounts.json corre como tarefa e guarda o ficheiro', (t) async {
       await preparar(t);
-      await abrirPasso(t, 'Enviar ou exportar');
+      await abrirPasso(t, 'Exportar');
       await marcarChip(t, 'Todas');
       await t.tap(find.widgetWithText(OutlinedButton, 'Exportar 2 listas'));
       await t.pumpAndSettle();
@@ -744,7 +744,7 @@ void main() {
     testWidgets('Exportar com erro de escrita falha e "repetir" volta a guardar com a mesma escolha', (t) async {
       await preparar(t);
       falharGuardar = true;
-      await abrirPasso(t, 'Enviar ou exportar');
+      await abrirPasso(t, 'Exportar');
       await marcarChip(t, 'Todas');
       await t.tap(find.widgetWithText(OutlinedButton, 'Exportar 2 listas'));
       await t.pumpAndSettle();
@@ -760,6 +760,21 @@ void main() {
       await _esperar(t, () => tarefas.recentes.length == 2);
       expect(guardados, ['listas_stalker.zip', 'listas_stalker.zip']);
       expect(tarefas.recentes.first.estado, EstadoTarefa.terminada);
+    });
+
+    testWidgets('o "i" do passo 2 abre a explicação da verificação e Voltar fecha-a', (t) async {
+      _tamanho(t, 1200, 1200);
+      await t.pumpWidget(_app(gestor()));
+      await t.pump();
+      expect(find.byKey(const ValueKey('infoVerificacao')), findsNothing, reason: 'só no passo 2 e no progresso');
+      await abrirPasso(t, 'Verificar');
+      await t.tap(find.byKey(const ValueKey('infoVerificacao')));
+      await t.pumpAndSettle();
+      expect(find.text('Como é feita a verificação'), findsWidgets);
+      expect(find.text('O que a verificação quer saber'), findsOneWidget);
+      await t.pageBack();
+      await t.pumpAndSettle();
+      expect(find.text('O que a verificação quer saber'), findsNothing);
     });
 
     testWidgets('Remover e Limpar o Gestor pedem confirmação', (t) async {
@@ -823,7 +838,7 @@ void main() {
       expect(s.ocupado, isTrue);
       expect(_desligados(), isEmpty);
       await abrirPasso(t, 'Importar');
-      expect(find.text('Colar texto').hitTestable(), findsOneWidget);
+      expect(find.text('Adicionar lista').hitTestable(), findsOneWidget);
       expect(_desligados(), isEmpty);
       await voltar(t);
       // nos passos 2 e 3 só ficam desligadas as ações que pedem listas escolhidas (no passo 2,
@@ -847,7 +862,7 @@ void main() {
       expect(_desligados(), isEmpty);
       await voltar(t);
       await voltar(t);
-      await abrirPasso(t, 'Enviar ou exportar');
+      await abrirPasso(t, 'Exportar');
       expect(_desligados(), unorderedEquals(['FilledButton: Enviar 0 listas', 'OutlinedButton: Exportar 0 listas']));
       await marcarChip(t, 'Todas');
       expect(_desligados(), isEmpty);
@@ -928,7 +943,7 @@ void main() {
       _tamanho(t, 1200, 1800);
       await t.pumpWidget(_app(inicio(inicial: Seccao.gestor)));
       await t.pump();
-      await abrirPasso(t, 'Enviar ou exportar');
+      await abrirPasso(t, 'Exportar');
       await marcarChip(t, 'Funcionam');
       await t.tap(find.text('2 · Verificar'));
       await t.pumpAndSettle();
@@ -939,15 +954,15 @@ void main() {
       expect(find.textContaining('003MORTA'), findsNothing);
       await t.tap(find.text('1 · Importar'));
       await t.pumpAndSettle();
-      expect(find.text('Colar texto').hitTestable(), findsOneWidget);
+      expect(find.text('Adicionar lista').hitTestable(), findsOneWidget);
       // a Ver TV e de volta ao Gestor: continua no sub-ecrã de importar
       final barra = find.byType(BarraSeccoes);
       await t.tap(find.descendant(of: barra, matching: find.text('Ver TV')));
       await t.pumpAndSettle();
-      expect(find.text('Colar texto'), findsNothing);
+      expect(find.text('Adicionar lista'), findsNothing);
       await t.tap(find.descendant(of: barra, matching: find.text('Gestor')));
       await t.pumpAndSettle();
-      expect(find.text('Colar texto').hitTestable(), findsOneWidget);
+      expect(find.text('Adicionar lista').hitTestable(), findsOneWidget);
       // pelo resumo, de volta ao passo 2
       await voltar(t);
       await abrirPasso(t, 'Verificar');
@@ -958,7 +973,7 @@ void main() {
       expect(t.widget<CheckboxListTile>(linha('002OUTRA')).value, isTrue, reason: 'a seleção fica');
       expect(t.widget<CheckboxListTile>(linha('001BOA')).value, isFalse);
       expect(find.text('Ações (1)'), findsOneWidget);
-      await t.tap(find.text('3 · Enviar ou exportar'));
+      await t.tap(find.text('3 · Exportar'));
       await t.pumpAndSettle();
       expect(find.text('2 marcadas'), findsOneWidget, reason: 'as marcadas ficam');
     });
@@ -969,7 +984,7 @@ void main() {
       await t.runAsync(() => area.adicionar([Importada(contaDeLinha('http://boa.com/l.m3u')!)]));
       await t.pumpWidget(_app(inicio(inicial: Seccao.gestor)));
       await t.pump();
-      for (final (n, passo) in [(1, 'Importar'), (3, 'Enviar ou exportar'), (2, 'Verificar')]) {
+      for (final (n, passo) in [(1, 'Importar'), (3, 'Exportar'), (2, 'Verificar')]) {
         await abrirPasso(t, passo);
         expect(find.byKey(ValueKey('faixa $n')).hitTestable(), findsOneWidget, reason: 'a faixa no passo $n');
         await t.binding.handlePopRoute();
@@ -1000,7 +1015,7 @@ void main() {
       }
       // (o toque não deixa o foco no comando: volta-se à linha com Tab) e CIMA até à faixa
       await _irPara(t, '001BOA');
-      const faixa = '1 · Importar | 2 · Verificar | 3 · Enviar ou exportar';
+      const faixa = '1 · Importar | 2 · Verificar | 3 · Exportar';
       for (var i = 0; i < 8 && textosFocados() != faixa; i++) {
         await teclaDpad(t, LogicalKeyboardKey.arrowUp);
       }

@@ -1,6 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 
 import '../../dados/biblioteca.dart';
+import '../../verificar/servico.dart';
 import '../design/design.dart';
 
 /// Uma opção de um [escolherOpcao]: um cartão com ícone, título e descrição.
@@ -398,4 +399,17 @@ Future<bool> confirmar(BuildContext context,
     ),
   );
   return ok == true;
+}
+
+/// "Parar" a verificação: pede confirmação e só então pára. true = parou.
+Future<bool> confirmarParar(BuildContext context, ServicoVerificacao servico) async {
+  final ok = await confirmar(context,
+      icone: Icons.stop_circle_outlined,
+      titulo: 'Parar a verificação?',
+      texto: 'As listas que já foram verificadas ficam com o resultado guardado e o relatório '
+          'mostra-as. As que estão na fila ou a meio ficam como estavam.',
+      acao: 'Parar');
+  if (!ok || !servico.ocupado) return false;
+  servico.parar();
+  return true;
 }

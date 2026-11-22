@@ -258,6 +258,33 @@ void main() {
     expect(daBib(ls[1])!.ultima?.estado, 'funciona');
   });
 
+  test('parar: a que esperava a 2.ª volta entra no relatório; a que estava a meio da 1.ª fica de fora',
+      () async {
+    await bib.adicionar([
+      Importada(contaDeLinha('http://mesmo.com/c/ 00:1A:79:00:00:01')!),
+      Importada(contaDeLinha('http://mesmo.com/stalker_portal/c/ 00:1A:79:00:00:02')!),
+    ]);
+    final ls = bib.listas.where((l) => l.conta.endereco.contains('//mesmo')).toList();
+    final f = _Funcao((c, volta, can) async {
+      if (c.endereco == ls[0].conta.endereco) return const ResultadoVerificacao(EstadoV.inconclusivo, 'tempo esgotado');
+      while (true) {
+        can?.verificar();
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+    });
+    final s = servico(f, workers: 2);
+    final todas = s.verificarVarias(ls);
+    await _ate(() => s.passos[ls[0].id]?.startsWith('inconclusiva: à espera') ?? false);
+    s.parar();
+    await todas.timeout(const Duration(seconds: 5));
+    expect(s.ocupado, isFalse);
+    expect(s.parada, isTrue);
+    expect(s.concluidas, [ls[0].id]);
+    expect(s.fimRonda, isNotNull);
+    expect(daBib(ls[0])!.ultima?.estado, 'inconclusivo');
+    expect(daBib(ls[1])!.ultima, isNull, reason: 'a meio: fica como estava');
+  });
+
   test('estimativaRestante é o ritmo real da ronda: 2 de 4 feitas aos 10 s, a 2 de cada vez, faltam 10 s',
       () async {
     final ls = await juntar(4);

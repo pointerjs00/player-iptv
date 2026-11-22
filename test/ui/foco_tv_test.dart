@@ -194,7 +194,7 @@ void main() {
         definicoes: const SizedBox(),
       );
 
-  /// Ver TV vazio: "Ir para o Gestor" (OK), o passo 1 do Gestor (OK) e a origem "Colar texto"
+  /// Ver TV vazio: "Ir para o Gestor" (OK), o passo 1 do Gestor (OK) e a origem "Adicionar lista"
   /// (DIREITA e OK) abrem o painel de colar (só com o comando).
   Future<void> abrirAdicionar(WidgetTester t) async {
     await t.pumpWidget(_app(casca()));
@@ -209,7 +209,16 @@ void main() {
     await _tecla(t, LogicalKeyboardKey.arrowRight);
     await _tecla(t, LogicalKeyboardKey.select);
     await t.pumpAndSettle();
-    expect(_focado(), startsWith('Colar texto'));
+    expect(_focado(), startsWith('Adicionar lista'));
+    // o último tipo, "Várias (colar)" (DIREITA passa por todos, mesmo partidos em duas linhas)
+    await _tecla(t, LogicalKeyboardKey.arrowDown);
+    expect(_focado(), startsWith('Portal MAC'));
+    for (var i = 0; i < 4; i++) {
+      await _tecla(t, LogicalKeyboardKey.arrowRight);
+    }
+    expect(_focado(), startsWith('Várias (colar)'));
+    await _tecla(t, LogicalKeyboardKey.select);
+    await t.pumpAndSettle();
   }
   tearDown(() async {
     try {
@@ -392,6 +401,14 @@ void main() {
       await _irPara(t, 'Parar');
       await _tecla(t, LogicalKeyboardKey.select);
       await t.pump();
+      await t.pump(const Duration(milliseconds: 300));
+      // a confirmação começa em "Cancelar"; DIREITA chega a "Parar"
+      expect(_focado(), 'Cancelar');
+      await _tecla(t, LogicalKeyboardKey.arrowRight);
+      expect(_focado(), 'Parar');
+      await _tecla(t, LogicalKeyboardKey.select);
+      await t.pump();
+      await t.pump(const Duration(milliseconds: 300));
       expect(_focado(), contains('Verificar mais (fila)'));
       f.soltar.complete();
       for (var i = 0; i < 10 && s.ocupado; i++) {
@@ -490,13 +507,13 @@ void main() {
       expect(t.takeException(), isNull);
       final nav = find.byType(NavigationBar);
       expect(find.descendant(of: nav, matching: find.text('Gestor')).hitTestable(), findsOneWidget);
-      expect(find.text('Colar texto'), findsNothing, reason: 'Ver TV não adiciona');
+      expect(find.text('Adicionar lista'), findsNothing, reason: 'Ver TV não adiciona');
       await t.tap(find.descendant(of: nav, matching: find.text('Gestor')));
       await t.pumpAndSettle();
       expect(t.takeException(), isNull);
       await abrirPasso(t, 'Importar');
       expect(t.takeException(), isNull);
-      expect(find.text('Colar texto').hitTestable(), findsOneWidget);
+      expect(find.text('Adicionar lista').hitTestable(), findsOneWidget);
     });
 
     testWidgets('T3: a importação continua alcançável no Gestor: o passo 1 é o 1.º controlo, à direita da '
@@ -522,7 +539,7 @@ void main() {
       expect(find.text('Escolher ficheiros'), findsOneWidget);
     });
 
-    testWidgets('T2: "Colar texto": o campo não abre o teclado com o foco, Voltar sai da '
+    testWidgets('T2: "Adicionar lista": o campo não abre o teclado com o foco, Voltar sai da '
         'edição e chega-se a "Juntar ao Gestor" só com setas e OK', (t) async {
       _tamanho(t, 960, 540);
       await abrirAdicionar(t);
@@ -670,7 +687,7 @@ void main() {
       final noGestor = <String>{};
       expect(await _semRealceAoPercorrer(t, 8, vistos: noGestor), isEmpty);
       expect(noGestor.join(' / '), allOf(contains('1 | Importar'), contains('2 | Verificar'),
-          contains('3 | Enviar ou exportar')));
+          contains('3 | Exportar')));
       await abrirPasso(t, 'Importar');
       expect(await _semRealceAoPercorrer(t, 8, vistos: noGestor), isEmpty);
       await t.tap(find.widgetWithText(TextButton, 'Voltar'));
@@ -679,7 +696,7 @@ void main() {
       expect(await _semRealceAoPercorrer(t, 16, vistos: noGestor), isEmpty);
       await t.tap(find.widgetWithText(TextButton, 'Voltar'));
       await t.pumpAndSettle();
-      await abrirPasso(t, 'Enviar ou exportar');
+      await abrirPasso(t, 'Exportar');
       expect(await _semRealceAoPercorrer(t, 10, vistos: noGestor), isEmpty);
       expect(noGestor.join(' / '), allOf(contains('Ficheiros'), contains('Escolher ficheiros'),
           contains('Limpar o Gestor'), contains('Ações (0)'), contains('1 · Importar | 2 · Verificar'),
@@ -725,7 +742,7 @@ void main() {
       await t.pump();
       final falhas = await _semRealceAoPercorrer(t, 8, vistos: vistos);
       expect(falhas, isEmpty);
-      expect(vistos.join(' / '), allOf(contains('1 | Importar'), contains('3 | Enviar ou exportar'),
+      expect(vistos.join(' / '), allOf(contains('1 | Importar'), contains('3 | Exportar'),
           contains('A verificar 0/1')));
       // o passo 2: a faixa, o indicador, pesquisa, estados, Ações, a ☐ do cabeçalho e as linhas
       await abrirPasso(t, 'Verificar');
@@ -764,7 +781,7 @@ void main() {
       await t.tap(find.widgetWithText(TextButton, 'Voltar'));
       await t.pumpAndSettle();
       // o passo 3 e o formato da exportação (as opções do diálogo)
-      await abrirPasso(t, 'Enviar ou exportar');
+      await abrirPasso(t, 'Exportar');
       await t.ensureVisible(find.textContaining('Todas ('));
       await t.tap(find.textContaining('Todas ('));
       await t.pump();
@@ -774,7 +791,7 @@ void main() {
       expect(await _semRealceAoPercorrer(t, 3, vistos: vistos), isEmpty);
       expect(vistos.join(' / '), allOf(contains('Escolher ficheiros'), contains('Verificar mais (fila)'),
           contains('Enviar 1 lista'), contains('Exportar 1 lista'), contains('Accounts.json'), contains('Ficheiros .ini')));
-      expect(vistos.join(' / '), allOf(contains('Colar texto'), contains('Limpar o Gestor')));
+      expect(vistos.join(' / '), allOf(contains('Adicionar lista'), contains('Limpar o Gestor')));
     });
 
     testWidgets('T1: ecrã de importar — origens, painel e campo com realce', (t) async {
@@ -796,9 +813,9 @@ void main() {
       await _tecla(t, LogicalKeyboardKey.select);
       await t.pumpAndSettle();
       final vistos = <String>{};
-      final falhas = await _semRealceAoPercorrer(t, 5, vistos: vistos);
+      final falhas = await _semRealceAoPercorrer(t, 12, vistos: vistos);
       expect(falhas, isEmpty);
-      expect(vistos.join(' / '), allOf(contains('Colar texto'), contains('[campo'), contains('Juntar ao Gestor')));
+      expect(vistos.join(' / '), allOf(contains('Adicionar lista'), contains('[campo'), contains('Juntar ao Gestor')));
     });
 
     testWidgets('D1: DIREITA do 1.º cartão foca o 2.º cartão e só há um realce; o cartão é uma só '

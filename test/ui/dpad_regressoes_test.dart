@@ -320,6 +320,7 @@ void main() {
       expect(id(), descer.first, reason: 'CIMA volta ao topo');
       await teclaDpad(t, LogicalKeyboardKey.arrowDown);
       await teclaDpad(t, LogicalKeyboardKey.arrowDown);
+      await teclaDpad(t, LogicalKeyboardKey.select); // OK: entra na edição
       await teclaDpad(t, LogicalKeyboardKey.arrowRight);
       expect(prefs.timeoutVerificacao, timeout + 1);
       await teclaDpad(t, LogicalKeyboardKey.arrowLeft);

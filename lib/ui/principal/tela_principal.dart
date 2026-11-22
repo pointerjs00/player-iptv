@@ -182,20 +182,25 @@ class _TelaPrincipalState extends State<TelaPrincipal> {
     );
   }
 
-  /// Uma ronda do Gestor acabou (ocupado passou de true a false, com listas concluídas e sem Parar).
+  /// Uma ronda do Gestor acabou (ocupado passou de true a false): o relatório, também quando foi
+  /// parada (com as que chegaram ao fim).
   void _aoMudarVerificacao() {
     final v = widget.verificacao!;
     final acabou = _verificava && !v.ocupado;
     _verificava = v.ocupado;
-    if (!acabou || v.parada) return;
+    if (!acabou) return;
     final estados = [for (final id in v.concluidas) if (v.colecao.porId(id) != null) estadoDe(v.colecao.porId(id)!)];
-    if (estados.isEmpty) return;
+    if (estados.isEmpty) {
+      if (v.parada) _mensagens.mostrar('Verificação parada. Nenhuma lista chegou ao fim.');
+      return;
+    }
     int n(EstadoLista e) => estados.where((x) => x == e).length;
     final inconclusivas = n(EstadoLista.inconclusiva);
     _mensagens.mostrar(
-      'Verificação terminada: ${n(EstadoLista.funciona)} funcionam, ${n(EstadoLista.naoFunciona)} não'
+      '${v.parada ? 'Verificação parada' : 'Verificação terminada'}: ${n(EstadoLista.funciona)} funcionam, '
+      '${n(EstadoLista.naoFunciona)} não'
       '${inconclusivas > 0 ? ' · $inconclusivas inconclusivas' : ''}',
-      tipo: MensagemTipo.sucesso,
+      tipo: v.parada ? MensagemTipo.info : MensagemTipo.sucesso,
       acao: 'Ver resultados',
       aoAcao: _naCasca(() {
         _mudar(Seccao.gestor, focar: false);

@@ -92,3 +92,72 @@ Future<ResumoImportacao> importarTexto(AreaGestor b, String texto) async {
 
 /// Para testes: as contas de um texto colado.
 List<Conta> contasColadas(String t) => lerLinhas(t);
+
+/// As formas de adicionar uma lista à mão (como no IPTV Extreme).
+enum FormaLista {
+  portalMac('Portal MAC'),
+  xtreamLink('Xtream (link)'),
+  xtreamConta('Xtream (servidor e conta)'),
+  m3u('Lista M3U'),
+  varias('Várias (colar)');
+
+  const FormaLista(this.nome);
+  final String nome;
+}
+
+final _reMacLivre = RegExp(r'^[0-9A-F]{2}([:-]?[0-9A-F]{2}){5}$');
+
+/// O endereço com http:// se não tiver esquema; null se não for um endereço.
+String? _endereco(String t) {
+  var e = t.trim();
+  if (e.isEmpty) return null;
+  if (!RegExp(r'^[a-z][a-z0-9+.-]*://', caseSensitive: false).hasMatch(e)) e = 'http://$e';
+  final u = Uri.tryParse(e);
+  if (u == null || u.host.isEmpty || !(u.scheme == 'http' || u.scheme == 'https')) return null;
+  return e;
+}
+
+/// O MAC como 00:1A:79:12:34:56 (aceita minúsculas, "-" ou sem separadores); null se não for um MAC.
+String? macNormalizado(String t) {
+  final m = t.trim().toUpperCase();
+  if (!_reMacLivre.hasMatch(m)) return null;
+  final hex = m.replaceAll(RegExp('[:-]'), '');
+  return [for (var i = 0; i < 12; i += 2) hex.substring(i, i + 2)].join(':');
+}
+
+/// A conta escrita nos campos de [forma] (não serve para [FormaLista.varias]), ou o que está mal.
+({Conta? conta, String? erro}) contaManual(FormaLista forma,
+    {String endereco = '', String mac = '', String utilizador = '', String password = ''}) {
+  ({Conta? conta, String? erro}) erro(String e) => (conta: null, erro: e);
+  final url = _endereco(endereco);
+  switch (forma) {
+    case FormaLista.portalMac:
+      if (url == null) return erro('Escreva o endereço do portal (por exemplo http://portal.com:8080/c/).');
+      final m = macNormalizado(mac);
+      if (m == null) return erro('O MAC tem de ter 6 pares, como 00:1A:79:12:34:56.');
+      return (conta: Conta(hostDe(url), Tipo.stalker, url, mac: m), erro: null);
+    case FormaLista.xtreamLink:
+      final x = url == null ? null : xtreamDeUrl(url);
+      if (x == null) {
+        return erro('O link tem de ter o utilizador e a palavra-passe '
+            '(…/get.php?username=…&password=…).');
+      }
+      return (conta: Conta(hostDe(url!), Tipo.xtream, x.$1, utilizador: x.$2, password: x.$3), erro: null);
+    case FormaLista.xtreamConta:
+      if (url == null) return erro('Escreva o endereço do servidor (por exemplo http://servidor.com:8080).');
+      final u = utilizador.trim(), p = password.trim();
+      if (u.isEmpty || p.isEmpty) return erro('Escreva o utilizador e a palavra-passe.');
+      // só a raiz do servidor (http://host:porta): um caminho a mais não faz parte da conta
+      final s = Uri.parse(url);
+      return (conta: Conta(hostDe(url), Tipo.xtream, '${s.scheme}://${s.authority}', utilizador: u, password: p), erro: null);
+    case FormaLista.m3u:
+      if (url == null) return erro('Escreva o endereço da lista M3U.');
+      return (conta: Conta(hostDe(url), Tipo.m3u, url), erro: null);
+    case FormaLista.varias:
+      return erro('Use importarTexto para várias listas.');
+  }
+}
+
+/// Junta ao Gestor uma conta escrita à mão.
+Future<ResumoImportacao> importarConta(AreaGestor b, Conta c) =>
+    juntarAoGestor(b, () => b.adicionar([Importada(c)]), encontradas: 1);

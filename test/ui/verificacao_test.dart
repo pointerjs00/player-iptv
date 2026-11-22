@@ -163,6 +163,21 @@ void main() {
     expect(s.ocupado, isTrue);
     await t.tap(find.text('Parar'));
     await t.pump();
+    await t.pump(const Duration(milliseconds: 300));
+    // pede confirmação: "Cancelar" não pára
+    expect(find.text('Parar a verificação?'), findsOneWidget);
+    await t.tap(find.descendant(of: find.byType(AlertDialog), matching: find.text('Cancelar')));
+    await t.pump();
+    await t.pump(const Duration(milliseconds: 300));
+    expect(s.parada, isFalse);
+    expect(s.ocupado, isTrue);
+    await t.tap(find.text('Parar'));
+    await t.pump();
+    await t.pump(const Duration(milliseconds: 300));
+    await t.tap(find.widgetWithText(FilledButton, 'Parar'));
+    await t.pump();
+    await t.pump(const Duration(milliseconds: 300));
+    expect(s.parada, isTrue);
     expect(find.textContaining('Verificação parada'), findsOneWidget);
     // as que estavam a correr param assim que o verificador devolve
     roteiro.soltar();

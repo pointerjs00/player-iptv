@@ -120,7 +120,7 @@ void main() {
 
   /// O foco está na faixa, com o realce no passo `n`.
   void naFaixa(WidgetTester t, int n) {
-    expect(textosFocados(), '1 · Importar | 2 · Verificar | 3 · Enviar ou exportar');
+    expect(textosFocados(), '1 · Importar | 2 · Verificar | 3 · Exportar');
     for (final i in [1, 2, 3]) {
       expect(faixa(t, i).border, i == n ? isNotNull : isNull, reason: 'realce no passo $n');
     }
@@ -140,7 +140,7 @@ void main() {
     await t.pumpAndSettle();
     expect(find.text('Gestor de listas').hitTestable(), findsOneWidget);
     expect(find.text('24 listas no Gestor · escolhe por onde começar'), findsOneWidget);
-    final c1 = cartao('Importar'), c2 = cartao('Verificar'), c3 = cartao('Enviar ou exportar');
+    final c1 = cartao('Importar'), c2 = cartao('Verificar'), c3 = cartao('Exportar');
     for (final (n, c) in [(1, c1), (2, c2), (3, c3)]) {
       expect(em(c, '$n'), findsOneWidget, reason: 'cartão $n');
       expect(em(c, 'OK: abrir →'), findsOneWidget, reason: 'cartão $n');
@@ -186,7 +186,7 @@ void main() {
     await t.pump();
     expect(find.text('0 listas no Gestor · escolhe por onde começar'), findsOneWidget);
     expect(em(cartao('Verificar'), 'Importe listas primeiro'), findsOneWidget);
-    expect(em(cartao('Enviar ou exportar'), 'Importe listas primeiro'), findsOneWidget);
+    expect(em(cartao('Exportar'), 'Importe listas primeiro'), findsOneWidget);
     expect(em(cartao('Verificar'), 'por verificar'), findsNothing);
   });
 
@@ -200,7 +200,7 @@ void main() {
         ]));
     await t.pumpWidget(casca());
     await t.pump();
-    expect(em(cartao('Enviar ou exportar'), '3 listas'), findsOneWidget);
+    expect(em(cartao('Exportar'), '3 listas'), findsOneWidget);
     await t.tap(em(cartao('Importar'), 'Importar'));
     await t.pumpAndSettle();
     await t.tap(find.text('De Ver TV'));
@@ -288,7 +288,7 @@ void main() {
     await teclaDpad(t, LogicalKeyboardKey.select);
     await t.pumpAndSettle();
     expect(find.byType(PassoVerificar).hitTestable(), findsOneWidget);
-    for (final f in ['1 · Importar', '2 · Verificar', '3 · Enviar ou exportar']) {
+    for (final f in ['1 · Importar', '2 · Verificar', '3 · Exportar']) {
       expect(find.text(f).hitTestable(), findsOneWidget, reason: f);
     }
     expect(corFaixa(t, 2), Tokens.acento);
@@ -369,7 +369,7 @@ void main() {
         ]));
     await t.pumpWidget(gestor());
     await t.pump();
-    await t.tap(em(cartao('Enviar ou exportar'), 'Enviar ou exportar'));
+    await t.tap(em(cartao('Exportar'), 'Exportar'));
     await t.pumpAndSettle();
     await t.tap(find.text('Funcionam (3)'));
     await t.pump();
@@ -528,7 +528,7 @@ void main() {
     await t.pumpWidget(cascaCompacta());
     await t.pump();
     expect(t.takeException(), isNull);
-    final c1 = cartao('Importar'), c2 = cartao('Verificar'), c3 = cartao('Enviar ou exportar');
+    final c1 = cartao('Importar'), c2 = cartao('Verificar'), c3 = cartao('Exportar');
     for (final (n, c) in [(1, c1), (2, c2), (3, c3)]) {
       final r = t.getRect(c);
       expect(r.height, lessThanOrEqualTo(160 * escalaCompacto), reason: 'cartão $n: $r');
@@ -558,7 +558,7 @@ void main() {
         ]));
     await t.pumpWidget(cascaCompacta());
     await t.pump();
-    await t.tap(em(cartao('Enviar ou exportar'), 'Enviar ou exportar'));
+    await t.tap(em(cartao('Exportar'), 'Exportar'));
     await t.pumpAndSettle();
     expect(t.takeException(), isNull);
     final passo = find.byType(PassoEnviar);
@@ -619,7 +619,7 @@ void main() {
     s.verificar(area.listas.last);
     await t.pump();
     final menu = find.ancestor(of: find.text('Verificar todas'), matching: find.byWidgetPredicate((w) => w is PopupMenuItem));
-    for (final onde in ['Voltar', '1 · Importar | 2 · Verificar | 3 · Enviar ou exportar', 'A verificar 0/1']) {
+    for (final onde in ['Voltar', '1 · Importar | 2 · Verificar | 3 · Exportar', 'A verificar 0/1']) {
       await irPara(t, onde);
       await teclaDpad(t, LogicalKeyboardKey.contextMenu);
       await t.pumpAndSettle();
@@ -657,7 +657,7 @@ void main() {
     List<(String, String)> itens() =>
         t.widget<BarraTeclas>(find.descendant(of: find.byType(TelaGestor), matching: find.byType(BarraTeclas))).itens;
     expect(itens(), contains(('OK', 'abrir o passo')));
-    for (final passo in ['Importar', 'Verificar', 'Enviar ou exportar']) {
+    for (final passo in ['Importar', 'Verificar', 'Exportar']) {
       await t.tap(em(cartao(passo), passo));
       await t.pumpAndSettle();
       expect(itens(), contains(('Voltar', 'resumo do Gestor')), reason: passo);

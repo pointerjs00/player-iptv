@@ -6,10 +6,11 @@ import '../realce_foco.dart';
 import 'linha_opcao.dart';
 
 /// Uma linha das Definições com um número: título e descrição à esquerda, `− valor +` à direita.
-/// A linha toda é uma paragem do foco: ← → mudam o valor em `passo` (sem sair de `min`..`max`) e
-/// ↑ ↓ seguem o percurso normal. Os botões − / + também respondem ao toque e ao rato, mas não são
-/// paragens do foco.
-class SeletorNumero extends StatelessWidget {
+/// A linha toda é uma paragem do foco. Com o comando, OK entra na edição: aí ← → mudam o valor em
+/// `passo` (sem sair de `min`..`max`) e OK, Voltar, ↑ ou ↓ saem dela. Fora da edição as setas
+/// seguem o percurso normal (← vai ao menu lateral). Os botões − / + respondem ao toque e ao
+/// rato, mas não são paragens do foco.
+class SeletorNumero extends StatefulWidget {
   const SeletorNumero({
     super.key,
     required this.titulo,
@@ -41,15 +42,47 @@ class SeletorNumero extends StatelessWidget {
   /// descrição ficavam com menos de metade da linha.
   static const larguraMinimaLado = 400.0;
 
-  String _texto(int v) => formatar?.call(v) ?? '$v';
+  @override
+  State<SeletorNumero> createState() => _SeletorNumeroState();
+}
+
+class _SeletorNumeroState extends State<SeletorNumero> {
+  /// OK carregado: ← → mudam o valor.
+  bool _aEditar = false;
+
+  int get valor => widget.valor;
+  int get min => widget.min;
+  int get max => widget.max;
+  int get passo => widget.passo;
+  String get titulo => widget.titulo;
+
+  String _texto(int v) => widget.formatar?.call(v) ?? '$v';
 
   void _mudar(int delta) {
     final novo = (valor + delta * passo).clamp(min, max);
-    if (novo != valor) aoMudar(novo);
+    if (novo != valor) widget.aoMudar(novo);
+  }
+
+  void _editar(bool sim) {
+    if (mounted && sim != _aEditar) setState(() => _aEditar = sim);
   }
 
   KeyEventResult _tecla(FocusNode _, KeyEvent e) {
     final k = e.logicalKey;
+    if (teclasOk.contains(k)) {
+      if (e is KeyDownEvent) _editar(!_aEditar);
+      return KeyEventResult.handled;
+    }
+    if (!_aEditar) return KeyEventResult.ignored; // as setas seguem o percurso normal
+    if (k == LogicalKeyboardKey.goBack || k == LogicalKeyboardKey.escape) {
+      // Voltar sai da edição (não do ecrã)
+      if (e is KeyDownEvent) _editar(false);
+      return KeyEventResult.handled;
+    }
+    if (k == LogicalKeyboardKey.arrowUp || k == LogicalKeyboardKey.arrowDown) {
+      _editar(false);
+      return KeyEventResult.ignored; // e muda de opção
+    }
     if (k != LogicalKeyboardKey.arrowLeft && k != LogicalKeyboardKey.arrowRight) return KeyEventResult.ignored;
     // nos extremos a tecla fica aqui: não salta para outro sítio
     if (e is! KeyUpEvent) _mudar(k == LogicalKeyboardKey.arrowLeft ? -1 : 1);
@@ -68,21 +101,28 @@ class SeletorNumero extends StatelessWidget {
             onIncrease: valor < max ? () => _mudar(1) : null,
             onDecrease: valor > min ? () => _mudar(-1) : null,
             child: Focus(
-              focusNode: focusNode,
-              autofocus: autofocus,
-              onFocusChange: aoMudarFoco,
+              focusNode: widget.focusNode,
+              autofocus: widget.autofocus,
+              onFocusChange: (f) {
+                if (!f) _editar(false);
+                aoMudarFoco(f);
+              },
               onKeyEvent: _tecla,
               includeSemantics: false,
               child: Padding(
                 padding: paddingLinhaOpcao,
                 child: LayoutBuilder(builder: (context, c) {
-                  final texto = ExcludeSemantics(child: TextoOpcao(titulo, descricao));
+                  final texto = ExcludeSemantics(child: TextoOpcao(titulo, widget.descricao));
                   // no telemóvel, botões de 48 (alvo de toque)
                   final lado = ecraTelemovel(context) ? 48.0 : 40.0;
                   final controlo = ExcludeSemantics(
                     child: DecoratedBox(
-                      decoration:
-                          BoxDecoration(color: Tokens.fundo, borderRadius: BorderRadius.circular(Tokens.raioCampo)),
+                      key: _aEditar ? const ValueKey('seletorAEditar') : null,
+                      // a editar (depois do OK), a caixa do valor ganha a cor de destaque
+                      decoration: BoxDecoration(
+                          color: Tokens.fundo,
+                          borderRadius: BorderRadius.circular(Tokens.raioCampo),
+                          border: Border.all(color: _aEditar ? Tokens.acento : Colors.transparent, width: 2)),
                       child: Padding(
                         padding: const EdgeInsets.all(Tokens.e4),
                         child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -98,7 +138,7 @@ class SeletorNumero extends StatelessWidget {
                       ),
                     ),
                   );
-                  if (c.maxWidth < larguraMinimaLado) {
+                  if (c.maxWidth < SeletorNumero.larguraMinimaLado) {
                     return SizedBox(
                       width: double.infinity,
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

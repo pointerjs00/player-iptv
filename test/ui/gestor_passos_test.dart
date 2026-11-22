@@ -18,7 +18,7 @@ import 'package:player_iptv/verificar/servico.dart';
 
 import 'ajuda_dpad.dart';
 
-/// O Gestor em 3 passos (Importar → Verificar → Enviar ou exportar), a partir do resumo, só com o comando.
+/// O Gestor em 3 passos (Importar → Verificar → Exportar), a partir do resumo, só com o comando.
 
 
 UltimaVerificacao _u(String estado) =>
@@ -84,15 +84,15 @@ void main() {
     await comListas(t);
     await t.pumpWidget(appTeste(gestor()));
     await t.pump();
-    for (final (n, nome) in [(1, 'Importar'), (2, 'Verificar'), (3, 'Enviar ou exportar')]) {
+    for (final (n, nome) in [(1, 'Importar'), (2, 'Verificar'), (3, 'Exportar')]) {
       expect(find.descendant(of: passo(nome), matching: find.text('$n')), findsWidgets, reason: nome);
     }
     expect(find.text('5 listas no Gestor · escolhe por onde começar'), findsOneWidget);
     // passo 2: 1 por verificar, 2 funcionam, 1 não funciona; passo 3: 2 prontas a enviar
     expect(find.descendant(of: passo('Verificar'), matching: find.text('1')), findsNWidgets(2), reason: 'por verificar e não funciona');
     expect(find.descendant(of: passo('Verificar'), matching: find.text('2')), findsNWidgets(2), reason: 'o n.º e as que funcionam');
-    expect(find.descendant(of: passo('Enviar ou exportar'), matching: find.text('2')), findsOneWidget);
-    await abrir(t, 'Enviar ou exportar');
+    expect(find.descendant(of: passo('Exportar'), matching: find.text('2')), findsOneWidget);
+    await abrir(t, 'Exportar');
     expect(find.text('0 marcadas · OK marca/desmarca uma lista'), findsOneWidget);
     await t.ensureVisible(find.text('Funcionam (2)'));
     await t.tap(find.text('Funcionam (2)'));
@@ -101,7 +101,7 @@ void main() {
     // ao passo 2 e de volta pela faixa: as marcadas ficam
     await t.tap(find.text('2 · Verificar'));
     await t.pumpAndSettle();
-    await t.tap(find.text('3 · Enviar ou exportar'));
+    await t.tap(find.text('3 · Exportar'));
     await t.pumpAndSettle();
     expect(find.text('2 marcadas · OK marca/desmarca uma lista'), findsOneWidget);
   });
@@ -115,7 +115,7 @@ void main() {
         ]));
     await t.pumpWidget(appTeste(gestor()));
     await t.pump();
-    await abrir(t, 'Enviar ou exportar');
+    await abrir(t, 'Exportar');
     expect(find.text('Funcionam (0)'), findsOneWidget);
     expect(textosFocados(), 'Por verificar (2)');
   });
@@ -204,7 +204,7 @@ void main() {
       expect(nosCima.last, isNot(nosCima[nosCima.length - 2]), reason: 'CIMA preso: $subir');
     }
     expect(subir.last, 'Gestor', reason: 'CIMA: $subir');
-    expect(subir, contains('1 · Importar | 2 · Verificar | 3 · Enviar ou exportar'), reason: 'CIMA: $subir');
+    expect(subir, contains('1 · Importar | 2 · Verificar | 3 · Exportar'), reason: 'CIMA: $subir');
   });
 
   testWidgets('na TV: DIREITA alcança os cartões e os botões ao lado (as origens da importação, '
@@ -220,7 +220,7 @@ void main() {
     await teclaDpad(t, LogicalKeyboardKey.arrowRight);
     expect(textosFocados(), startsWith('2 | Verificar'));
     await teclaDpad(t, LogicalKeyboardKey.arrowRight);
-    expect(textosFocados(), startsWith('3 | Enviar ou exportar'));
+    expect(textosFocados(), startsWith('3 | Exportar'));
     await teclaDpad(t, LogicalKeyboardKey.arrowLeft);
     await teclaDpad(t, LogicalKeyboardKey.arrowLeft);
     expect(textosFocados(), startsWith('1 | Importar'));
@@ -234,7 +234,7 @@ void main() {
     await t.pumpAndSettle();
     expect(textosFocados(), startsWith('Ficheiros'));
     await teclaDpad(t, LogicalKeyboardKey.arrowRight);
-    expect(textosFocados(), startsWith('Colar texto'));
+    expect(textosFocados(), startsWith('Adicionar lista'));
     await teclaDpad(t, LogicalKeyboardKey.arrowRight);
     expect(textosFocados(), startsWith('Listas do stbstalker'));
     await teclaDpad(t, LogicalKeyboardKey.arrowRight);
@@ -257,7 +257,7 @@ void main() {
       cima.add(textosFocados());
     }
     expect(textosFocados(), 'Voltar', reason: 'CIMA: $cima');
-    expect(cima, contains('1 · Importar | 2 · Verificar | 3 · Enviar ou exportar'), reason: 'CIMA: $cima');
+    expect(cima, contains('1 · Importar | 2 · Verificar | 3 · Exportar'), reason: 'CIMA: $cima');
     await teclaDpad(t, LogicalKeyboardKey.select);
     await t.pumpAndSettle();
     expect(textosFocados(), startsWith('1 | Importar'));
@@ -322,7 +322,7 @@ void main() {
     await t.pumpWidget(appTeste(gestor()));
     await t.pump();
     // no passo 3, as marcadas que saem do Gestor saem das marcadas
-    await abrir(t, 'Enviar ou exportar');
+    await abrir(t, 'Exportar');
     // (os chips de marcar vão numa só fila: com a letra dos testes, larga, os da direita deslizam)
     await t.ensureVisible(find.text('Todas (5)'));
     await t.tap(find.text('Todas (5)'));
@@ -366,7 +366,7 @@ void main() {
     await t.pumpAndSettle();
     expect(t.takeException(), isNull);
     expect(area.listas, hasLength(3));
-    await t.tap(find.text('3 · Enviar ou exportar'));
+    await t.tap(find.text('3 · Exportar'));
     await t.pumpAndSettle();
     expect(find.text('3 marcadas · OK marca/desmarca uma lista'), findsOneWidget, reason: 'as removidas saíram');
     await t.tap(find.text('1 · Importar'));

@@ -22,6 +22,7 @@ import 'indicador_atividade.dart';
 import 'painel_atividade.dart';
 import 'passo_enviar.dart';
 import 'passo_verificar.dart';
+import 'tela_como_verifica.dart';
 import 'tela_importar.dart';
 import 'tela_verificacao.dart';
 
@@ -32,7 +33,7 @@ enum EcraGestor { resumo, importar, verificar, enviar, verificacao }
 /// Separador "Gestor": a área de trabalho com as suas próprias listas ([AreaGestor]).
 ///
 /// Abre sempre no resumo, sem nenhum passo aberto: três cartões (1 Importar · 2 Verificar · 3
-/// Enviar ou exportar), cada um com o seu estado, e, com uma verificação a decorrer, a barra do
+/// Exportar), cada um com o seu estado, e, com uma verificação a decorrer, a barra do
 /// progresso (OK nela abre o progresso). Dentro de cada passo, a faixa dos passos no topo diz em
 /// qual se está (← → mudam de passo). Em cima, o [IndicadorAtividade] diz o que está a decorrer.
 ///
@@ -74,7 +75,7 @@ class _TelaGestorState extends State<TelaGestor> {
 
   /// Os passos, pela ordem da faixa.
   static const _passos = [EcraGestor.importar, EcraGestor.verificar, EcraGestor.enviar];
-  static const _nomesPassos = ['Importar', 'Verificar', 'Enviar ou exportar'];
+  static const _nomesPassos = ['Importar', 'Verificar', 'Exportar'];
 
   /// Os nomes na faixa do telemóvel (curtos, para caberem inteiros os três).
   static const _nomesCurtos = ['Importar', 'Verificar', 'Enviar'];
@@ -317,12 +318,16 @@ class _TelaGestorState extends State<TelaGestor> {
     _s.verificarVarias(novas);
   }
 
-  void _parar() {
-    final tinhaFoco = FocusManager.instance.primaryFocus?.context?.widget is! EditableText;
-    _s.parar();
-    _aviso('Verificação parada. As listas que faltavam ficaram como estavam.');
-    // "Parar" desaparece: o foco passa para "Verificar mais (fila)"
-    if (tinhaFoco) _focoVerificarMais.requestFocus();
+  Future<void> _parar() async {
+    if (!await confirmarParar(context, _s) || !mounted) return;
+    _aviso('Verificação parada. O relatório fica no ecrã da verificação.');
+    // "Parar" desaparece: o foco passa para "Verificar mais (fila)" (depois do frame: o diálogo
+    // que fechou devolve o foco ao "Parar" primeiro)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && FocusManager.instance.primaryFocus?.context?.widget is! EditableText) {
+        _focoVerificarMais.requestFocus();
+      }
+    });
   }
 
   /// "Enviar N listas" (passo 3): vão as marcadas que não estão a ser verificadas (as que estão
@@ -536,7 +541,7 @@ class _TelaGestorState extends State<TelaGestor> {
       EcraGestor.resumo => 'Gestor de listas',
       EcraGestor.importar => 'Importar listas',
       EcraGestor.verificar => 'Verificar listas',
-      EcraGestor.enviar => 'Enviar ou exportar listas',
+      EcraGestor.enviar => 'Exportar listas',
       EcraGestor.verificacao => 'Verificação',
     };
     return Padding(
@@ -557,6 +562,7 @@ class _TelaGestorState extends State<TelaGestor> {
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Tokens.texto)),
         ),
+        if (_temInfo) _botaoInfo(),
         const SizedBox(width: Tokens.e12),
         // no canto direito: o indicador só encolhe se não couber
         Flexible(child: Align(alignment: Alignment.centerRight, child: indicador)),
@@ -594,11 +600,22 @@ class _TelaGestorState extends State<TelaGestor> {
                       style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Tokens.texto)),
                 ),
         ),
+        if (_temInfo) _botaoInfo(),
         const SizedBox(width: Tokens.e8),
         indicador,
       ]),
     );
   }
+
+  /// O "i" da verificação (no passo 2 e no progresso): explica como é feita.
+  bool get _temInfo => _ecra == EcraGestor.verificar || _ecra == EcraGestor.verificacao;
+
+  Widget _botaoInfo() => IconButton(
+        key: const ValueKey('infoVerificacao'),
+        onPressed: () => abrirComoVerifica(context),
+        tooltip: 'Como é feita a verificação',
+        icon: const Icon(Icons.info_outline),
+      );
 
   // ---------------------------------------------------------------- faixa dos passos
 

@@ -110,7 +110,7 @@ void main() {
         body: TelaGestor(
             biblioteca: bib, area: area, servico: ServicoVerificacao(bib, colecao: area), tarefas: tarefas))));
     await t.pump();
-    await t.tap(cartao('Enviar ou exportar'));
+    await t.tap(cartao('Exportar'));
     await t.pumpAndSettle();
     semPlayer(t, 'passo enviar');
     await t.tap(find.text('Funcionam (1)'));

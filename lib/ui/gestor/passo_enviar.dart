@@ -6,7 +6,7 @@ import '../../dados/biblioteca.dart';
 import '../design/design.dart';
 import '../realce_foco.dart';
 
-/// O passo 3 do Gestor, "Enviar ou exportar": à esquerda a marcação das listas (os atalhos
+/// O passo 3 do Gestor, "Exportar": à esquerda a marcação das listas (os atalhos
 /// `Marcar:` e uma linha com caixa por lista) e à direita os dois destinos, cada um com o seu
 /// botão (`Enviar N listas` · `Exportar N listas`). No ecrã estreito os cartões vão por baixo.
 ///

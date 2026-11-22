@@ -3,6 +3,7 @@ import 'package:material_ui/material_ui.dart';
 import '../../tarefas/servico_tarefas.dart';
 import '../../verificar/servico.dart';
 import '../design/design.dart';
+import '../verificar/dialogos_gestor.dart';
 
 /// Abre o painel de atividade (ecrã 10b) por cima do ecrã, encostado à direita. Voltar fecha-o e o
 /// foco regressa ao que o abriu (o indicador de atividade).
@@ -152,7 +153,7 @@ class _PainelAtividadeState extends State<PainelAtividade> {
       ],
       [
         if (widget.aoVerVerificacao != null) TextButton(onPressed: widget.aoVerVerificacao, child: const Text('Ver detalhe')),
-        TextButton(onPressed: s.parar, child: const Text('Parar')),
+        TextButton(onPressed: () => confirmarParar(context, s), child: const Text('Parar')),
       ],
     );
   }

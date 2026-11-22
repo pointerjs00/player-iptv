@@ -107,14 +107,19 @@ class TelaVerificacao extends StatelessWidget {
               titulo: ocupado
                   ? 'A verificar ${_n(s.total, 'lista', 'listas')}'
                   : acabadas.isNotEmpty
-                      ? 'Última verificação: ${_n(acabadas.length, 'lista', 'listas')}'
-                      : 'Verificação',
+                      ? s.parada
+                          ? 'Verificação parada: ${_n(acabadas.length, 'lista verificada', 'listas verificadas')}'
+                          : 'Última verificação: ${_n(acabadas.length, 'lista', 'listas')}'
+                      : s.parada && s.fimRonda != null
+                          ? 'Verificação parada: nenhuma lista chegou ao fim'
+                          : 'Verificação',
               subtitulo: ocupado
                   ? 'Pode sair, continua sozinha'
                   : area.listas.isEmpty
                       ? 'Importe listas primeiro'
                       : [
-                          if (acabadas.isNotEmpty && s.fimRonda != null) 'terminou às ${_hora(s.fimRonda!)}',
+                          if (acabadas.isNotEmpty && s.fimRonda != null)
+                            '${s.parada ? 'parou' : 'terminou'} às ${_hora(s.fimRonda!)}',
                           _resumoGeral(),
                         ].where((x) => x.isNotEmpty).join(' · '),
               icone: Icons.playlist_add_check,

@@ -170,7 +170,7 @@ void main() {
     final sem = t.ensureSemantics();
     await t.pumpWidget(casca());
     await t.pumpAndSettle();
-    for (final cartao in ['Importar', 'Verificar', 'Enviar ou exportar']) {
+    for (final cartao in ['Importar', 'Verificar', 'Exportar']) {
       await abrirPasso(t, cartao);
       final voltar = find.byTooltip('Voltar');
       expect(voltar, findsOneWidget, reason: cartao);
@@ -178,7 +178,7 @@ void main() {
       // o leitor de ecrã diz «Voltar» (a dica do ←; a barra de teclas não aparece no telemóvel)
       expect(t.getSemantics(voltar), isSemantics(tooltip: 'Voltar'));
       alvo48(t, find.ancestor(of: voltar, matching: find.byType(IconButton)));
-      for (final titulo in ['Importar listas', 'Verificar listas', 'Enviar ou exportar listas']) {
+      for (final titulo in ['Importar listas', 'Verificar listas', 'Exportar listas']) {
         expect(find.text(titulo), findsNothing, reason: 'a faixa já diz o passo');
       }
       for (final (i, nome) in ['Importar', 'Verificar', 'Enviar'].indexed) {
@@ -354,7 +354,7 @@ void main() {
   noTelemovel('passo 3: os 6 chips à vista, linhas de 48 e sem «OK marca/desmarca»', (t, ecra) async {
     await t.pumpWidget(casca());
     await t.pumpAndSettle();
-    await abrirPasso(t, 'Enviar ou exportar');
+    await abrirPasso(t, 'Exportar');
     for (final c in ['Funcionam (', 'Inconclusivas (', 'Não funcionam (', 'Por verificar (', 'Todas (', 'Nenhuma']) {
       final chip = noPasso3(find.textContaining(c)).hitTestable();
       expect(chip, findsOneWidget, reason: c);
@@ -391,7 +391,7 @@ void main() {
     final sem = t.ensureSemantics();
     await t.pumpWidget(casca());
     await t.pumpAndSettle();
-    await abrirPasso(t, 'Enviar ou exportar');
+    await abrirPasso(t, 'Exportar');
     await t.tap(noPasso3(find.textContaining('Funcionam (')));
     await t.pump();
     final enviar = noPasso3(find.byType(FilledButton));
@@ -427,7 +427,7 @@ void main() {
   noTelemovel('diálogo de envio em ecrã inteiro, com os «manter» à vista sem deslizar', (t, ecra) async {
     await t.pumpWidget(casca());
     await t.pumpAndSettle();
-    await abrirPasso(t, 'Enviar ou exportar');
+    await abrirPasso(t, 'Exportar');
     await t.tap(noPasso3(find.textContaining('Funcionam (')));
     await t.pump();
     // (a 360 com a letra a 1,3 o botão diz «Enviar (10)»: procura-se pelo tipo)
@@ -463,8 +463,8 @@ void main() {
     for (final o in [
       'Ficheiros',
       'Accounts.json, .ini, .m3u, .txt',
-      'Colar texto',
-      'Uma lista por linha',
+      'Adicionar lista',
+      'Portal MAC, Xtream ou M3U',
       'Listas do stbstalker',
       'Publicadas entre duas datas',
       'De Ver TV',
@@ -516,7 +516,7 @@ void main() {
       await t.pumpAndSettle();
       expect(find.text('Verificar').hitTestable(), findsWidgets, reason: 'o resumo à vista');
       expect(find.text('OK: abrir →'), findsNothing);
-      await abrirPasso(t, 'Enviar ou exportar');
+      await abrirPasso(t, 'Exportar');
       expect(find.textContaining('OK marca'), findsNothing);
       expect(find.text('0 marcadas'), findsOneWidget);
       await t.pumpWidget(const SizedBox());
@@ -534,7 +534,7 @@ void main() {
       await t.pumpWidget(casca());
       await t.pumpAndSettle();
       expect(find.text('OK: abrir →'), findsNWidgets(3));
-      await abrirPasso(t, 'Enviar ou exportar');
+      await abrirPasso(t, 'Exportar');
       expect(find.text('0 marcadas · OK marca/desmarca uma lista'), findsOneWidget);
       await t.pumpWidget(const SizedBox());
     } finally {

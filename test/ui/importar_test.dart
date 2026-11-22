@@ -119,6 +119,8 @@ void main() {
 
   /// O campo é só de leitura até se carregar nele (comando da TV): toca-se e depois escreve-se.
   Future<void> colar(WidgetTester t, String texto) async {
+    await t.tap(find.text('Várias (colar)'));
+    await t.pump();
     await t.tap(find.byType(TextField));
     await t.pump();
     await t.pump();
@@ -141,8 +143,8 @@ void main() {
       for (final x in [
         'Ficheiros',
         'Accounts.json, .ini, .m3u, .txt',
-        'Colar texto',
-        'Uma lista por linha',
+        'Adicionar lista',
+        'Portal MAC, Xtream ou M3U',
         'Listas do stbstalker',
         'Publicadas entre duas datas',
         'De Ver TV',
@@ -175,9 +177,43 @@ void main() {
       expect(find.byKey(const Key('origem-escolhida')), findsOneWidget);
     });
 
-    testWidgets('Colar texto: cria uma tarefa e o resultado mostra os números', (t) async {
+    testWidgets('Adicionar lista: Xtream com o servidor e a conta em campos separados', (t) async {
+      // (o campo da TV só escreve depois de o tocar)
+      Future<void> escrever(WidgetTester t, String rotulo, String texto) async {
+        final f = find.widgetWithText(TextField, rotulo);
+        await t.tap(f);
+        await t.pump();
+        await t.pump();
+        await t.enterText(f, texto);
+      }
+
       await abrir(t, base: () => 'http://127.0.0.1:1/');
-      await t.tap(find.text('Colar texto'));
+      await t.tap(find.text('Adicionar lista'));
+      await t.pump();
+      expect(find.text('Endereço do portal'), findsOneWidget, reason: 'Portal MAC por omissão');
+      await t.tap(find.text('Xtream (servidor e conta)'));
+      await t.pump();
+      await escrever(t, 'Servidor', 'http://s.com:8080');
+      await escrever(t, 'Utilizador', 'ana');
+      // sem a palavra-passe: diz o que falta e não junta nada
+      await t.tap(find.text('Juntar ao Gestor'));
+      await t.pump();
+      expect(area.listas, isEmpty);
+      await escrever(t, 'Palavra-passe', 'pw');
+      await t.runAsync(() async {
+        await t.tap(find.text('Juntar ao Gestor'));
+        await Future<void>.delayed(const Duration(milliseconds: 200));
+      });
+      await t.pump();
+      await t.pump();
+      final c = area.listas.single.conta;
+      expect((c.tipo, c.endereco, c.utilizador, c.password), (Tipo.xtream, 'http://s.com:8080', 'ana', 'pw'));
+      expect(find.text('Novas no Gestor'), findsOneWidget);
+    });
+
+    testWidgets('Adicionar lista: cria uma tarefa e o resultado mostra os números', (t) async {
+      await abrir(t, base: () => 'http://127.0.0.1:1/');
+      await t.tap(find.text('Adicionar lista'));
       await t.pump();
       await colar(t, 'http://x.com/l.m3u\nhttp://y.com/l.m3u\nhttp://x.com/l.m3u');
       await t.runAsync(() async {
@@ -223,7 +259,7 @@ void main() {
       await abrir(t, base: () => 'http://127.0.0.1:1/');
       await t.runAsync(() => area.adicionar([Importada(contaDeLinha('http://antiga.com/l.m3u')!)]));
       await t.pump();
-      await t.tap(find.text('Colar texto'));
+      await t.tap(find.text('Adicionar lista'));
       await t.pump();
       await colar(t, 'http://antiga.com/l.m3u\nhttp://nova1.com/l.m3u\nhttp://nova2.com/l.m3u');
       await t.runAsync(() async {
@@ -364,6 +400,24 @@ void main() {
       expect(ResumoImportacao(encontradas: 3, novas: 2, repetidas: 1).texto, '2 listas novas, 1 já existia.');
       expect(ResumoImportacao(encontradas: 1, novas: 1).texto, '1 lista nova.');
       expect(ResumoImportacao(erros: const ['x']).texto, 'x');
+    });
+
+    test('contaManual: cada tipo dá a conta certa ou diz o que falta', () {
+      var r = contaManual(FormaLista.portalMac, endereco: 'portal.com:8080/c/', mac: '00-1a-79-ab-cd-ef');
+      expect((r.conta!.tipo, r.conta!.endereco, r.conta!.mac), (Tipo.stalker, 'http://portal.com:8080/c/', '00:1A:79:AB:CD:EF'));
+      expect(contaManual(FormaLista.portalMac, endereco: 'http://p.com/c/', mac: '00:1A:79:').erro, contains('MAC'));
+      expect(contaManual(FormaLista.portalMac, endereco: '', mac: '00:1A:79:00:00:01').erro, contains('portal'));
+      r = contaManual(FormaLista.xtreamLink, endereco: 'http://s.com:8080/get.php?username=ana&password=pw&type=m3u');
+      expect((r.conta!.tipo, r.conta!.endereco, r.conta!.utilizador, r.conta!.password),
+          (Tipo.xtream, 'http://s.com:8080', 'ana', 'pw'));
+      expect(contaManual(FormaLista.xtreamLink, endereco: 'http://s.com:8080/').erro, contains('utilizador'));
+      r = contaManual(FormaLista.xtreamConta, endereco: 's.com:8080/', utilizador: ' ana ', password: 'pw');
+      expect((r.conta!.tipo, r.conta!.endereco, r.conta!.utilizador), (Tipo.xtream, 'http://s.com:8080', 'ana'));
+      expect(contaManual(FormaLista.xtreamConta, endereco: 's.com', utilizador: 'ana').erro, contains('palavra-passe'));
+      r = contaManual(FormaLista.m3u, endereco: 'https://x.com/l.m3u?a=1');
+      expect((r.conta!.tipo, r.conta!.endereco), (Tipo.m3u, 'https://x.com/l.m3u?a=1'));
+      expect(contaManual(FormaLista.m3u, endereco: 'ftp://x.com/l.m3u').erro, isNotNull);
+      expect(macNormalizado('001a79000001'), '00:1A:79:00:00:01');
     });
 
     test('importarTexto devolve os ids das novas', () async {

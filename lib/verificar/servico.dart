@@ -135,7 +135,7 @@ class ServicoVerificacao extends ChangeNotifier {
   static bool _jaInconclusiva(Lista l) => l.ultima?.estado == EstadoV.inconclusivo.valor;
 
   /// Pára tudo: as que estão a meio ficam com o resultado que tinham (as que esperavam a
-  /// 2.ª volta ficam com o da 1.ª).
+  /// 2.ª volta ficam com o da 1.ª, que já está guardado, e contam no relatório da ronda).
   void parar() {
     parada = true;
     _cancelamento.cancelar();
@@ -147,6 +147,8 @@ class ServicoVerificacao extends ChangeNotifier {
     _fila.clear();
     for (final t in _reteste) {
       passos.remove(t.id);
+      feitas++;
+      concluidas.add(t.id);
       t.acabar();
     }
     _reteste.clear();
@@ -275,6 +277,11 @@ class ServicoVerificacao extends ChangeNotifier {
         _largar(t);
         if (t.cancelada) {
           // já saiu das contas ao cancelar
+        } else if (r == null && t.cancelamento!.cancelado) {
+          // parada a meio da 1.ª volta: fica como estava e não entra no relatório
+          passos.remove(t.id);
+          if (passos.isEmpty) _recomecarContas();
+          t.acabar();
         } else if (r != null &&
             r.estado == EstadoV.inconclusivo &&
             r.repeticao != Repeticao.inutil &&

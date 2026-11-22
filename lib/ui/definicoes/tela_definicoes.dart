@@ -468,7 +468,7 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
             child: Text(
                 'Com uma verificação a decorrer, as mudanças valem para as próximas listas.'
                 // as teclas só na TV e no computador (no telemóvel não há setas)
-                '${mostrarDicasComando(context) ? ' ← → mudam o valor; ↑ ↓ mudam de opção.' : ''}',
+                '${mostrarDicasComando(context) ? ' OK para mudar um valor, depois ← →; ↑ ↓ mudam de opção.' : ''}',
                 style: const TextStyle(fontSize: 13, color: Tokens.texto2)),
           ),
         ];
