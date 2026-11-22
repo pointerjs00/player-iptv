@@ -213,7 +213,15 @@ void main() {
     // o último tipo, "Várias (colar)" (DIREITA passa por todos, mesmo partidos em duas linhas)
     await _tecla(t, LogicalKeyboardKey.arrowDown);
     expect(_focado(), startsWith('Portal MAC'));
-    for (var i = 0; i < 4; i++) {
+    expect(find.text('Endereço MAC'), findsOneWidget);
+    // passar por um tipo já mostra os campos dele (sem OK)
+    await _tecla(t, LogicalKeyboardKey.arrowRight);
+    expect(_focado(), startsWith('Xtream (link)'));
+    expect(find.text('Link Xtream'), findsOneWidget);
+    expect(find.text('Endereço MAC'), findsNothing);
+    await _tecla(t, LogicalKeyboardKey.arrowRight);
+    expect(find.text('Palavra-passe'), findsOneWidget);
+    for (var i = 0; i < 2; i++) {
       await _tecla(t, LogicalKeyboardKey.arrowRight);
     }
     expect(_focado(), startsWith('Várias (colar)'));

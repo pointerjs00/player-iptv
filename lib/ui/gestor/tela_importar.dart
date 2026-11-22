@@ -112,6 +112,18 @@ class _TelaImportarState extends State<TelaImportar> {
   AreaGestor get _g => widget.area;
 
   @override
+  void initState() {
+    super.initState();
+    // o tipo com o foco fica escolhido: os campos dele aparecem logo (sem ter de carregar em OK)
+    for (final (i, f) in _focosFormas.indexed) {
+      f.addListener(() {
+        final forma = FormaLista.values[i];
+        if (mounted && f.hasPrimaryFocus && _forma != forma) setState(() => _forma = forma);
+      });
+    }
+  }
+
+  @override
   void dispose() {
     for (final c in [_texto, _endereco, _mac, _utilizador, _password]) {
       c.dispose();
@@ -335,7 +347,8 @@ class _TelaImportarState extends State<TelaImportar> {
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           _titulo('Nova lista'),
           _explicacao('Escolha o tipo de lista e preencha os dados.'),
-          // os tipos: ESQUERDA/DIREITA passam de um ao outro pela ordem, mesmo partidos em duas linhas
+          // os tipos: ESQUERDA/DIREITA passam de um ao outro pela ordem, mesmo partidos em duas linhas;
+          // o que tem o foco fica escolhido
           Focus(
             canRequestFocus: false,
             skipTraversal: true,

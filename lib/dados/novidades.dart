@@ -14,6 +14,13 @@ class Novidades {
 /// Todas as versões, a mais recente primeiro. A primeira é a versão da app: ao mudar a versão no
 /// pubspec.yaml, junta-se aqui a entrada dela (um teste confirma que batem certo).
 const historicoNovidades = <Novidades>[
+  Novidades('1.0.10', [
+    'Ver TV: → num grupo vai sempre ao primeiro canal desse grupo.',
+    'Ver TV: sempre que o grupo muda (também ao esconder o grupo aberto), a lista dos canais volta '
+        'ao topo.',
+    'Gestor › Nova lista: os campos de cada tipo aparecem logo ao passar pelo botão do tipo, sem '
+        'ser preciso carregar nele.',
+  ]),
   Novidades('1.0.9', [
     'Gestor: no passo "Verificar", o botão da atividade abre a Atividade com todos os relatórios, '
         'como nos outros passos.',

@@ -93,7 +93,18 @@ class _TelaConteudoState extends State<TelaConteudo> {
   FocusNode? _focoAntes;
 
   /// O grupo escolhido (null = nenhum: "Todos os canais"). A pesquisa dos canais procura só nele.
-  String? _grupo;
+  /// Mudar de grupo (por qualquer caminho) leva a lista dos canais ao topo.
+  String? get _grupo => _grupoEscolhido;
+  set _grupo(String? g) {
+    if (g == _grupoEscolhido) return;
+    _grupoEscolhido = g;
+    // depois do frame: a lista já tem os canais do grupo novo (e pode mudar-se durante um build)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _grupoEscolhido == g && _scrollCanais.hasClients) _scrollCanais.jumpTo(0);
+    });
+  }
+
+  String? _grupoEscolhido;
 
   /// A pesquisa dos canais (já com o atraso de [_pesquisar]) e o filtro dos grupos (idem).
   String _q = '';
@@ -446,32 +457,17 @@ class _TelaConteudoState extends State<TelaConteudo> {
     });
   }
 
-  /// Nos grupos: DIREITA vai ao canal à vista mais perto na vertical. A procura direcional do
-  /// Flutter também via os canais construídos fora da vista (a cache da lista), por exemplo o
-  /// que está meio escondido por baixo do nome do grupo, e a deslocação "manter no fim" não o
-  /// trazia para a vista (só desce): o foco ficava num canal que não se via.
+  /// Nos grupos: DIREITA vai sempre ao primeiro canal do grupo escolhido (a lista volta ao topo).
   KeyEventResult _teclaGrupos(KeyEvent e) {
     if (e is KeyUpEvent || e.logicalKey != LogicalKeyboardKey.arrowRight) return KeyEventResult.ignored;
-    final atual = FocusManager.instance.primaryFocus;
-    final lista = _focoColunaCanais;
-    if (atual == null || lista.context == null) return KeyEventResult.ignored;
-    final vista = lista.rect;
-    final y = atual.rect.center.dy;
-    FocusNode? alvo;
-    var melhor = double.infinity;
-    for (final n in lista.traversalDescendants) {
-      if (!n.canRequestFocus || n.skipTraversal || n.context == null) continue;
-      final r = n.rect;
-      // inteiro dentro da parte à vista da lista
-      if (r.top < vista.top - 0.5 || r.bottom > vista.bottom + 0.5) continue;
-      final d = (r.center.dy - y).abs();
-      if (d < melhor) {
-        melhor = d;
-        alvo = n;
-      }
-    }
-    if (alvo == null) return KeyEventResult.ignored;
-    alvo.requestFocus();
+    final canais = _canaisVisiveis();
+    if (canais.isEmpty || _focoColunaCanais.context == null) return KeyEventResult.ignored;
+    setState(() => _canalAFocar = canais.first);
+    if (_scrollCanais.hasClients) _scrollCanais.jumpTo(0);
+    // depois do frame: o primeiro canal já está construído (com o nó de regresso)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _focoRegresso.requestFocus();
+    });
     return KeyEventResult.handled;
   }
 

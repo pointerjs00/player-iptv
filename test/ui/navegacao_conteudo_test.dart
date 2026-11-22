@@ -119,6 +119,61 @@ void main() {
     expect(find.text('Outro 0').hitTestable(), findsOneWidget, reason: 'à vista, no topo');
   });
 
+  testWidgets('esconder o grupo aberto (com a lista a meio) volta a «Todos os canais» no topo', (t) async {
+    t.view.physicalSize = const Size(1280, 800);
+    t.view.devicePixelRatio = 1;
+    addTearDown(t.view.reset);
+    await t.runAsync(() async {
+      await bib.adicionar([Importada(contaDeLinha('http://x.com/l.m3u')!)]);
+      await bib.guardarCanais(
+          bib.listas.single.id,
+          ConteudoLista(['Primeiro', 'Muitos', 'Outros'], [
+            const Canal(id: 'p', nome: 'O primeiro', grupo: 'Primeiro'),
+            for (var i = 0; i < 80; i++) Canal(id: 'm$i', nome: 'Muitos $i', grupo: 'Muitos'),
+            for (var i = 0; i < 80; i++) Canal(id: 'o$i', nome: 'Outro $i', grupo: 'Outros'),
+          ]));
+    });
+    await mostrar(t, bib.listas.single);
+    await t.tap(grupo('Muitos'));
+    await t.pumpAndSettle();
+    await t.drag(find.byKey(const Key('lista-canais')), const Offset(0, -2000));
+    await t.pumpAndSettle();
+    await t.longPress(grupo('Muitos'));
+    await t.pumpAndSettle();
+    await t.tap(find.text('Esconder o grupo'));
+    await t.pumpAndSettle();
+    expect(_nomesCanais(t).first, 'O primeiro');
+    expect(find.text('O primeiro').hitTestable(), findsOneWidget, reason: 'no topo');
+  });
+
+  testWidgets('→ num grupo vai sempre ao primeiro canal (mesmo com a lista a meio)', (t) async {
+    t.view.physicalSize = const Size(1280, 800);
+    t.view.devicePixelRatio = 1;
+    addTearDown(t.view.reset);
+    FocusManager.instance.highlightStrategy = FocusHighlightStrategy.alwaysTraditional;
+    addTearDown(() => FocusManager.instance.highlightStrategy = FocusHighlightStrategy.automatic);
+    await t.runAsync(() async {
+      await bib.adicionar([Importada(contaDeLinha('http://x.com/l.m3u')!)]);
+      await bib.guardarCanais(
+          bib.listas.single.id,
+          ConteudoLista(['G1', 'G2', 'G3', 'G4', 'G5', 'G6', 'Muitos'], [
+            for (var g = 1; g <= 6; g++) Canal(id: 'g$g', nome: 'Canal G$g', grupo: 'G$g'),
+            for (var i = 0; i < 80; i++) Canal(id: 'm$i', nome: 'Muitos $i', grupo: 'Muitos'),
+          ]));
+    });
+    await mostrar(t, bib.listas.single);
+    await t.tap(grupo('Muitos'));
+    await t.pumpAndSettle();
+    // os canais a meio da lista e o foco no grupo (que está mais abaixo do que o 1.º canal)
+    await t.drag(find.byKey(const Key('lista-canais')), const Offset(0, -2000));
+    await t.pumpAndSettle();
+    Focus.of(t.element(grupo('Muitos'))).requestFocus();
+    await t.pump();
+    await _tecla(t, LogicalKeyboardKey.arrowRight);
+    expect(_focado(), 'Muitos 0');
+    expect(find.text('Muitos 0').hitTestable(), findsOneWidget);
+  });
+
   testWidgets('D-pad: OK mantido no grupo esconde-o; "Mostrar grupos escondidos" e voltar a mostrar',
       (t) async {
     final l = await preparar(t);
