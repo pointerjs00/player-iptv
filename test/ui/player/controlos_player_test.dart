@@ -216,8 +216,17 @@ void main() {
       expect(e.volume, 80);
       await _tecla(t, LogicalKeyboardKey.arrowLeft);
       expect(_noVolume(), isTrue);
-      await _tecla(t, LogicalKeyboardKey.select);
+      await t.sendKeyEvent(LogicalKeyboardKey.select);
+      await t.pump();
+      await t.pump(const Duration(milliseconds: 100));
+      // o OK vê-se: a barra dá um pulo e aparecem as setas
+      final pulo = t.widget<ScaleTransition>(find.byKey(const ValueKey('volumePulo')));
+      expect(pulo.scale.value, greaterThan(1));
+      await t.pumpAndSettle();
+      expect(pulo.scale.value, 1);
       expect(find.byKey(const ValueKey('volumeAEditar')), findsOneWidget);
+      expect(find.byIcon(Icons.chevron_left_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.chevron_right_rounded), findsOneWidget);
       await _tecla(t, LogicalKeyboardKey.arrowRight);
       await _tecla(t, LogicalKeyboardKey.arrowRight);
       expect(e.volume, 90);
@@ -229,6 +238,8 @@ void main() {
       // Voltar sai da edição (a barra fica)
       await _tecla(t, LogicalKeyboardKey.escape);
       expect(find.byKey(const ValueKey('volumeAEditar')), findsNothing);
+      await t.pumpAndSettle();
+      expect(find.byIcon(Icons.chevron_left_rounded), findsNothing);
       expect(_barraVisivel(t), isTrue);
       expect(e.acoes, isEmpty);
     });
