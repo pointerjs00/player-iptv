@@ -762,8 +762,10 @@ void main() {
           reason: '$noMenu');
       await t.binding.handlePopRoute();
       await t.pumpAndSettle();
-      // o progresso (pelo indicador do topo)
+      // o progresso (pelo indicador do topo: a Atividade e "Ver detalhe")
       await t.tap(find.text('A verificar 0/1'));
+      await t.pumpAndSettle();
+      await t.tap(find.text('Ver detalhe'));
       await t.pumpAndSettle();
       expect(await _semRealceAoPercorrer(t, 4, vistos: vistos), isEmpty);
       s.parar();

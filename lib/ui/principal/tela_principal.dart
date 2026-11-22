@@ -8,6 +8,7 @@ import '../../tarefas/servico_tarefas.dart';
 import '../../verificar/servico.dart';
 import '../design/mensagens.dart';
 import '../gestor/painel_atividade.dart';
+import '../novidades.dart';
 import '../gestor/tela_gestor.dart';
 import 'barra_seccoes.dart';
 
@@ -44,7 +45,11 @@ class SeccaoAtual extends InheritedWidget {
 /// Ver TV (Android) pede "Carregue outra vez em Voltar para sair".
 class TelaPrincipal extends StatefulWidget {
   const TelaPrincipal({super.key, required this.verTv, required this.gestor, required this.definicoes,
-      this.inicial = Seccao.verTv, this.sair = SystemNavigator.pop, this.tarefas, this.verificacao, this.pedidoGestor});
+      this.inicial = Seccao.verTv, this.sair = SystemNavigator.pop, this.tarefas, this.verificacao, this.pedidoGestor,
+      this.novidades = false});
+
+  /// Mostra as novidades desta versão ao abrir (a primeira vez depois de atualizar).
+  final bool novidades;
 
   final Widget verTv;
   final Widget gestor;
@@ -123,6 +128,11 @@ class _TelaPrincipalState extends State<TelaPrincipal> {
     super.initState();
     FocusManager.instance.addListener(_focoMudou);
     _ouvirAvisos();
+    if (widget.novidades) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(mostrarNovidadesDaVersao(context));
+      });
+    }
   }
 
   @override

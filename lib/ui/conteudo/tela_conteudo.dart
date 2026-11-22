@@ -521,9 +521,11 @@ class _TelaConteudoState extends State<TelaConteudo> {
     });
   }
 
-  /// Escolhe o grupo `g` (null = "Todos os canais"). Com pesquisa de canais, apaga-a e abre o
-  /// grupo, com o foco nele.
+  /// Escolhe o grupo `g` (null = "Todos os canais"), com os canais a partir do primeiro. Com
+  /// pesquisa de canais, apaga-a e abre o grupo, com o foco nele.
   void _escolherGrupo(String? g) {
+    // outro grupo: os canais dele aparecem a partir do primeiro (não onde o anterior estava)
+    if (g != _grupo && _scrollCanais.hasClients) _scrollCanais.jumpTo(0);
     if (!_comTexto && _q.trim().isEmpty) {
       setState(() => _grupo = g);
       return;

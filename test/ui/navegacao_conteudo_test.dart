@@ -93,6 +93,32 @@ void main() {
 
   Finder grupo(String g) => find.descendant(of: find.byKey(const Key('lista-grupos')), matching: find.text(g));
 
+  testWidgets('escolher outro grupo mostra os canais dele a partir do primeiro', (t) async {
+    t.view.physicalSize = const Size(1280, 800);
+    t.view.devicePixelRatio = 1;
+    addTearDown(t.view.reset);
+    await t.runAsync(() async {
+      await bib.adicionar([Importada(contaDeLinha('http://x.com/l.m3u')!)]);
+      await bib.guardarCanais(
+          bib.listas.single.id,
+          ConteudoLista(['Muitos', 'Outros'], [
+            for (var i = 0; i < 80; i++) Canal(id: 'm$i', nome: 'Muitos $i', grupo: 'Muitos'),
+            for (var i = 0; i < 80; i++) Canal(id: 'o$i', nome: 'Outro $i', grupo: 'Outros'),
+          ]));
+    });
+    await mostrar(t, bib.listas.single);
+    await t.tap(grupo('Muitos'));
+    await t.pumpAndSettle();
+    // desce até ao fim dos canais do grupo
+    await t.drag(find.byKey(const Key('lista-canais')), const Offset(0, -6000));
+    await t.pumpAndSettle();
+    expect(find.text('Muitos 0'), findsNothing);
+    await t.tap(grupo('Outros'));
+    await t.pumpAndSettle();
+    expect(_nomesCanais(t).first, 'Outro 0');
+    expect(find.text('Outro 0').hitTestable(), findsOneWidget, reason: 'à vista, no topo');
+  });
+
   testWidgets('D-pad: OK mantido no grupo esconde-o; "Mostrar grupos escondidos" e voltar a mostrar',
       (t) async {
     final l = await preparar(t);

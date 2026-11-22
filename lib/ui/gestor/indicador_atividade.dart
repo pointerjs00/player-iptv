@@ -11,15 +11,11 @@ const tituloTarefaStb = 'Pesquisa no stbstalker';
 /// Sem nada a decorrer diz "Nada a decorrer". Com [aoAbrir] é um botão (abre o painel de
 /// atividade); sem ele só mostra o texto e o comando não pára nele.
 ///
-/// Com [soVerificacao] (no passo 2 do Gestor) só fala da verificação: "A verificar 2/5" a
-/// decorrer; "nada a decorrer · ver última" depois de uma ronda (o [aoAbrir] abre o progresso);
-/// "nada a decorrer" antes de qualquer verificação (e aí não é botão).
-///
 /// No telemóvel ([ecraTelemovel]) só mostra o ícone e o contador; o texto todo fica na dica
 /// (toque longo) e na leitura do ecrã.
 class IndicadorAtividade extends StatelessWidget {
   const IndicadorAtividade(
-      {super.key, required this.servico, required this.tarefas, this.aoAbrir, this.foco, this.soVerificacao = false});
+      {super.key, required this.servico, required this.tarefas, this.aoAbrir, this.foco});
 
   final ServicoVerificacao servico;
   final ServicoTarefas tarefas;
@@ -27,9 +23,6 @@ class IndicadorAtividade extends StatelessWidget {
 
   /// O foco do botão (o painel de atividade devolve-lhe o foco ao fechar).
   final FocusNode? foco;
-
-  /// Só a verificação (o indicador do passo 2).
-  final bool soVerificacao;
 
   /// O texto do indicador ('' sem nada a decorrer).
   static String texto(ServicoVerificacao s, ServicoTarefas tarefas) {
@@ -47,17 +40,9 @@ class IndicadorAtividade extends StatelessWidget {
   Widget build(BuildContext context) => ListenableBuilder(
         listenable: Listenable.merge([servico, tarefas]),
         builder: (context, _) {
-          final t = soVerificacao
-              ? (servico.ocupado ? 'A verificar ${servico.feitas}/${servico.total}' : '')
-              : texto(servico, tarefas);
+          final t = texto(servico, tarefas);
           final ativo = t.isNotEmpty;
-          final houve = servico.ocupado || servico.fimRonda != null;
-          final vazio = !soVerificacao
-              ? 'Nada a decorrer'
-              : houve
-                  ? 'nada a decorrer · ver última'
-                  : 'nada a decorrer';
-          final completo = ativo ? t : vazio;
+          final completo = ativo ? t : 'Nada a decorrer';
           final telemovel = ecraTelemovel(context);
           // no telemóvel só o ícone e o contador ("2/5", ou o número de tarefas); o texto todo fica
           // na dica (toque longo) e na leitura do ecrã
@@ -65,7 +50,7 @@ class IndicadorAtividade extends StatelessWidget {
               ? null
               : servico.ocupado
                   ? '${servico.feitas}/${servico.total}'
-                  : !soVerificacao && tarefas.emCurso.isNotEmpty
+                  : tarefas.emCurso.isNotEmpty
                       ? '${tarefas.emCurso.length}'
                       : '';
           final conteudo = Row(mainAxisSize: MainAxisSize.min, children: [
@@ -102,7 +87,7 @@ class IndicadorAtividade extends StatelessWidget {
             ),
             child: conteudo,
           );
-          final abrir = soVerificacao && !houve ? null : aoAbrir;
+          final abrir = aoAbrir;
           final botao = abrir == null
               ? (telemovel
                   ? ConstrainedBox(
@@ -123,7 +108,6 @@ class IndicadorAtividade extends StatelessWidget {
           return Semantics(
             liveRegion: true,
             label: completo,
-            hint: soVerificacao && abrir != null ? 'abre o progresso da verificação' : null,
             excludeSemantics: abrir == null,
             // a dica repete o rótulo: fica fora da leitura do ecrã
             child: telemovel ? Tooltip(message: completo, excludeFromSemantics: true, child: botao) : botao,

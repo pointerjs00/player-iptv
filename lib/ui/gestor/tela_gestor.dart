@@ -212,10 +212,11 @@ class _TelaGestorState extends State<TelaGestor> {
   /// Mostra o ecrã `e` e põe-lhe o foco: na faixa (`naFaixa`, ao mudar de passo nela), no
   /// primeiro controlo de um passo, no cartão do passo de onde se veio (no resumo) ou, ao voltar
   /// do progresso ao passo 2, onde lá estava.
-  void _abrir(EcraGestor e, {bool naFaixa = false}) {
+  /// `focoAntes`: onde o foco fica ao voltar a este ecrã (por omissão, onde está agora).
+  void _abrir(EcraGestor e, {bool naFaixa = false, FocusNode? focoAntes}) {
     final antes = _ecra;
     if (e == antes) return;
-    _ultimoFoco[antes] = FocusManager.instance.primaryFocus;
+    _ultimoFoco[antes] = focoAntes ?? FocusManager.instance.primaryFocus;
     setState(() => _ecra = e);
     // depois do frame: o ecrã novo já pode receber o foco (o antigo deixa de poder)
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -248,13 +249,12 @@ class _TelaGestorState extends State<TelaGestor> {
     var mudouDeEcra = false;
     await abrirPainelAtividade(context, servico: _s, tarefas: widget.tarefas, aoVerVerificacao: () {
       mudouDeEcra = true;
-      _abrir(EcraGestor.verificacao);
+      // o foco está no painel (que fecha): ao voltar, fica no indicador que o abriu
+      _abrir(EcraGestor.verificacao, focoAntes: _focoIndicador);
     });
     if (mounted && !mudouDeEcra) _focoIndicador.requestFocus();
   }
 
-  /// Abre o progresso da verificação (o indicador do topo no passo 2).
-  void _verVerificacao() => _abrir(EcraGestor.verificacao);
 
   /// No passo 2, a tecla Menu abre as ações de qualquer sítio (também do "Voltar", da faixa e do
   /// indicador, como diz a barra de teclas); a escrever num campo, a tecla fica para o campo.
@@ -564,12 +564,9 @@ class _TelaGestorState extends State<TelaGestor> {
   }
 
   Widget _barraTopo() {
-    // no passo 2 é o indicador da verificação (OK abre o progresso, se houve uma); nos outros
-    // ecrãs, o de toda a atividade (OK abre o painel)
-    final indicador = _ecra == EcraGestor.verificar
-        ? IndicadorAtividade(
-            servico: _s, tarefas: widget.tarefas, foco: _focoIndicador, soVerificacao: true, aoAbrir: _verVerificacao)
-        : IndicadorAtividade(servico: _s, tarefas: widget.tarefas, foco: _focoIndicador, aoAbrir: _abrirAtividade);
+    // em todos os ecrãs, o de toda a atividade (OK abre o painel, com todos os relatórios)
+    final indicador =
+        IndicadorAtividade(servico: _s, tarefas: widget.tarefas, foco: _focoIndicador, aoAbrir: _abrirAtividade);
     if (ecraTelemovel(context)) return _barraTopoTelemovel(indicador);
     final titulo = switch (_ecra) {
       EcraGestor.resumo => 'Gestor de listas',
@@ -597,9 +594,16 @@ class _TelaGestorState extends State<TelaGestor> {
               style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Tokens.texto)),
         ),
         const SizedBox(width: Tokens.e12),
-        _botaoParar(compacto: false),
-        // à direita: o indicador só encolhe se não couber; o "i" fica no canto
-        Flexible(child: Align(alignment: Alignment.centerRight, child: indicador)),
+        // à direita: "Parar" (a decorrer) junto do indicador, que só encolhe se não couber; o "i" no canto
+        Flexible(
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              _botaoParar(compacto: false),
+              Flexible(child: indicador),
+            ]),
+          ),
+        ),
         if (_temInfo) ...[const SizedBox(width: Tokens.e4), _botaoInfo()],
       ]),
     );

@@ -174,7 +174,7 @@ class _PainelAtividadeState extends State<PainelAtividade> {
     );
   }
 
-  /// A última ronda acabou (ou foi parada): o resumo e "Ver relatório".
+  /// A última ronda acabou (ou foi parada): o resumo e "Ver detalhe" (o relatório).
   Widget _cartaoRelatorio() {
     final s = widget.servico;
     final resumo = resumoVerificacao(s);
@@ -196,8 +196,8 @@ class _PainelAtividadeState extends State<PainelAtividade> {
         Text(resumo ?? 'Nenhuma lista chegou ao fim.', style: const TextStyle(color: Tokens.texto2)),
       ],
       [
-        if (resumo != null && widget.aoVerVerificacao != null)
-          TextButton(onPressed: widget.aoVerVerificacao, child: const Text('Ver relatório')),
+        if (widget.aoVerVerificacao != null)
+          TextButton(onPressed: widget.aoVerVerificacao, child: const Text('Ver detalhe')),
       ],
     );
   }

@@ -9,6 +9,7 @@ import '../../dados/area_gestor.dart';
 import '../../dados/biblioteca.dart';
 import '../../dados/copia_seguranca.dart';
 import '../../dados/guardar_ficheiro.dart';
+import '../../dados/novidades.dart';
 import '../../dados/preferencias.dart';
 import '../../marca.dart';
 import '../../rede/http.dart';
@@ -19,6 +20,7 @@ import '../design/design.dart';
 import '../design/escala_interface.dart';
 import '../design/mensagens.dart';
 import '../player/configuracao_mpv.dart';
+import '../novidades.dart';
 import '../principal/tela_principal.dart';
 import 'linha_opcao.dart';
 import 'seletor_numero.dart';
@@ -519,6 +521,15 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
         ];
       case _Categoria.sobre:
         return [
+          _opcao('Novidades', 'O que mudou em cada versão. Esta é a $versaoApp.',
+              controlo: Align(
+                alignment: Alignment.centerLeft,
+                child: OutlinedButton.icon(
+                  onPressed: () => abrirNovidades(context),
+                  icon: const Icon(Icons.new_releases_outlined),
+                  label: const Text('Ver novidades'),
+                ),
+              )),
           _opcao('Licenças', 'O player usa o mpv e o ffmpeg (GPLv3).',
               controlo: Align(
                 alignment: Alignment.centerLeft,

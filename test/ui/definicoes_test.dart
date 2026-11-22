@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:player_iptv/dados/novidades.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:player_iptv/dados/area_gestor.dart';
 import 'package:player_iptv/dados/biblioteca.dart';
@@ -114,7 +115,7 @@ void main() {
       'Verificação': ['Listas ao mesmo tempo', 'Tempo limite por lista', 'Tempo por canal', 'Canais de teste'],
       'Ligação': ['User-agent'],
       'Cópia de segurança': ['Exportar cópia', 'Importar cópia'],
-      'Sobre e licenças': ['Ver licenças'],
+      'Sobre e licenças': ['Ver novidades', 'Ver licenças'],
     };
     for (final e in opcoes.entries) {
       await categoria(t, e.key);
@@ -122,6 +123,18 @@ void main() {
         expect(find.text(o), findsOneWidget, reason: '${e.key}: $o');
       }
     }
+  });
+
+  testWidgets('Sobre e licenças: "Ver novidades" abre o histórico e Voltar fecha-o', (t) async {
+    await abrir(t);
+    await categoria(t, 'Sobre e licenças');
+    await t.tap(find.text('Ver novidades'));
+    await t.pumpAndSettle();
+    expect(find.text('Versão ${historicoNovidades.first.versao}'), findsOneWidget);
+    expect(find.text(historicoNovidades.first.itens.first), findsOneWidget);
+    await t.pageBack();
+    await t.pumpAndSettle();
+    expect(find.text('Ver novidades'), findsOneWidget);
   });
 
   testWidgets('Imagem e som: explica cada opção e a taxa do ecrã só aparece na Android TV', (t) async {

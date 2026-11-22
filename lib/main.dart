@@ -7,6 +7,7 @@ import 'package:window_manager/window_manager.dart';
 import 'dados/area_gestor.dart';
 import 'dados/biblioteca.dart';
 import 'dados/licencas.dart';
+import 'dados/novidades.dart';
 import 'dados/pasta_dados.dart';
 import 'dados/preferencias.dart';
 import 'direto/sessao_direto.dart';
@@ -77,7 +78,10 @@ Future<void> main(List<String> args) async {
   instalarRevelarTopo(); // o topo de uma página com scroll nunca fica cortado
   // o player: desentrelaçamento, formato, descodificação, volume, taxa do ecrã
   Preferencias.atual = await Preferencias.abrir(pasta, tv: EcraTv.nativo);
-  runApp(AppPlayerIptv(biblioteca: biblioteca, area: area));
+  // as novidades: uma vez depois de cada atualização (numa instalação nova, não)
+  final novidades = await novidadesPorVer(pasta,
+      instalacaoNova: biblioteca.listas.isEmpty && area.listas.isEmpty);
+  runApp(AppPlayerIptv(biblioteca: biblioteca, area: area, novidades: novidades));
 }
 
 /// Fica aberto enquanto a app corre (é o bloqueio da instância).
@@ -110,9 +114,12 @@ class _Aviso extends StatelessWidget {
 const _pt = Locale('pt', 'PT');
 
 class AppPlayerIptv extends StatefulWidget {
-  const AppPlayerIptv({super.key, required this.biblioteca, required this.area});
+  const AppPlayerIptv({super.key, required this.biblioteca, required this.area, this.novidades = false});
   final Biblioteca biblioteca;
   final AreaGestor area;
+
+  /// Mostrar as novidades desta versão ao abrir (a primeira vez depois de atualizar).
+  final bool novidades;
 
   @override
   State<AppPlayerIptv> createState() => _AppPlayerIptvState();
@@ -153,6 +160,7 @@ class _AppPlayerIptvState extends State<AppPlayerIptv> {
         localizationsDelegates: GlobalMaterialLocalizations.delegates,
         // três secções fixas que guardam o estado; o "Alterar nas Definições" do Gestor muda de secção
         home: TelaPrincipal(
+          novidades: widget.novidades,
           tarefas: _tarefas,
           verificacao: _servico,
           pedidoGestor: _pedidoGestor,

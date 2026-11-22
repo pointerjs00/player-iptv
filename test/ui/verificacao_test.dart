@@ -215,7 +215,7 @@ void main() {
     expect(find.textContaining('Parada às'), findsOneWidget);
     expect(find.text('1 funcionam, 0 não'), findsOneWidget);
     expect(find.text('0 a decorrer · 1 terminadas'), findsOneWidget);
-    await t.tap(find.text('Ver relatório'));
+    await t.tap(find.text('Ver detalhe'));
     expect(verRelatorio, 1);
   });
 
