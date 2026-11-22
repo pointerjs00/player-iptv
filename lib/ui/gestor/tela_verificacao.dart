@@ -8,6 +8,7 @@ import '../design/design.dart';
 import '../navegacao_blocos.dart';
 import '../principal/tela_principal.dart';
 import '../realce_foco.dart';
+import '../../idioma/idioma.dart';
 
 /// O sub-ecrã "Verificação" do Gestor: o que está a decorrer (barra por cor, contagens, o tempo
 /// que falta) e uma linha por lista com o motivo do resultado.
@@ -44,20 +45,20 @@ class TelaVerificacao extends StatelessWidget {
   final VoidCallback aoVerificarTodas;
   final VoidCallback aoParar;
 
-  static String _n(int n, String um, String varios) => '$n ${n == 1 ? um : varios}';
+  static String _n(int n, String um, String varios) => '$n ${tr(n == 1 ? um : varios)}';
 
   /// "faltam cerca de 3 min" (de 1 min para cima) ou "faltam cerca de 40 s". O ritmo real da ronda.
   static String textoEstimativa(Duration d) {
     final s = d.inSeconds;
-    if (s < 60) return 'faltam cerca de ${s < 1 ? 1 : s} s';
-    return 'faltam cerca de ${(s / 60).round()} min';
+    if (s < 60) return tr('faltam cerca de {0} s', [s < 1 ? 1 : s]);
+    return tr('faltam cerca de {0} min', [(s / 60).round()]);
   }
 
   /// O passo do serviço ("canal 2/3 · a pedir os canais") como "A testar canal 2 de 3".
   static String textoPasso(String passo) {
     final m = RegExp(r'^canal (\d+)/(\d+)(?: · (.*))?$').firstMatch(passo);
     if (m == null) return passo.isEmpty ? passo : passo[0].toUpperCase() + passo.substring(1);
-    return 'A testar canal ${m[1]} de ${m[2]}';
+    return tr('A testar canal {0} de {1}', [m[1], m[2]]);
   }
 
   /// O detalhe do passo (depois do "canal i/n · "), em letra mais pequena.
@@ -72,7 +73,7 @@ class TelaVerificacao extends StatelessWidget {
     if (u == null) return '';
     if (u.estado == 'funciona' && u.canais.isNotEmpty) {
       final ok = u.canais.where((c) => c['estado'] == 'funciona').length;
-      return '$ok de ${u.canais.length} canais com imagem';
+      return tr('{0} de {1} canais com imagem', [ok, u.canais.length]);
     }
     return u.motivo;
   }
@@ -105,21 +106,21 @@ class TelaVerificacao extends StatelessWidget {
           final cabeca = <Widget>[
             CabecalhoSeccao(
               titulo: ocupado
-                  ? 'A verificar ${_n(s.total, 'lista', 'listas')}'
+                  ? tr('A verificar {0}', [_n(s.total, 'lista', 'listas')])
                   : acabadas.isNotEmpty
                       ? s.parada
-                          ? 'Verificação parada: ${_n(acabadas.length, 'lista verificada', 'listas verificadas')}'
-                          : 'Última verificação: ${_n(acabadas.length, 'lista', 'listas')}'
+                          ? tr('Verificação parada: {0}', [_n(acabadas.length, 'lista verificada', 'listas verificadas')])
+                          : tr('Última verificação: {0}', [_n(acabadas.length, 'lista', 'listas')])
                       : s.parada && s.fimRonda != null
-                          ? 'Verificação parada: nenhuma lista chegou ao fim'
-                          : 'Verificação',
+                          ? tr('Verificação parada: nenhuma lista chegou ao fim')
+                          : tr('Verificação'),
               subtitulo: ocupado
-                  ? 'Pode sair, continua sozinha'
+                  ? tr('Pode sair, continua sozinha')
                   : area.listas.isEmpty
-                      ? 'Importe listas primeiro'
+                      ? tr('Importe listas primeiro')
                       : [
                           if (acabadas.isNotEmpty && s.fimRonda != null)
-                            '${s.parada ? 'parou' : 'terminou'} às ${_hora(s.fimRonda!)}',
+                            tr('{0} às {1}', [s.parada ? tr('parou') : tr('terminou'), _hora(s.fimRonda!)]),
                           _resumoGeral(),
                         ].where((x) => x.isNotEmpty).join(' · '),
               icone: Icons.playlist_add_check,
@@ -129,15 +130,15 @@ class TelaVerificacao extends StatelessWidget {
                 focusNode: focoVerificarMais,
                 onPressed: aoVerificarMais,
                 icon: const Icon(Icons.playlist_add),
-                label: const Text('Verificar mais (fila)'),
+                label: Text(tr('Verificar mais (fila)')),
               ),
               OutlinedButton.icon(
                 onPressed: aoVerificarTodas,
                 icon: const Icon(Icons.playlist_add_check),
-                label: Text('Verificar todas (${area.listas.length})'),
+                label: Text(tr('Verificar todas ({0})', [area.listas.length])),
               ),
               if (ocupado)
-                OutlinedButton.icon(onPressed: aoParar, icon: const Icon(Icons.stop), label: const Text('Parar')),
+                OutlinedButton.icon(onPressed: aoParar, icon: const Icon(Icons.stop), label: Text(tr('Parar'))),
             ]),
             if (temRonda) ...[
               const SizedBox(height: Tokens.e12),
@@ -150,7 +151,7 @@ class TelaVerificacao extends StatelessWidget {
               const SizedBox(height: Tokens.e8),
               if (ocupado)
                 Wrap(spacing: Tokens.e12, runSpacing: Tokens.e4, children: [
-                  Text('${s.feitas} de ${s.total} verificadas', style: const TextStyle(fontWeight: FontWeight.w600)),
+                  Text(tr('{0} de {1} verificadas', [s.feitas, s.total]), style: const TextStyle(fontWeight: FontWeight.w600)),
                   if (estimativa != null)
                     Text(textoEstimativa(estimativa), style: const TextStyle(color: Tokens.texto2)),
                 ]),
@@ -163,13 +164,13 @@ class TelaVerificacao extends StatelessWidget {
             ],
             const SizedBox(height: Tokens.e12),
             Wrap(spacing: Tokens.e8, runSpacing: Tokens.e8, crossAxisAlignment: WrapCrossAlignment.center, children: [
-              Text('Canais de teste: ${perfisDe(biblioteca.canaisTeste).map((p) => p.nome).join(', ')}',
+              Text(tr('Canais de teste: {0}', [perfisDe(biblioteca.canaisTeste).map((p) => p.nome).join(', ')]),
                   style: const TextStyle(color: Tokens.texto2)),
               if (casca)
                 TextButton.icon(
                   onPressed: () => TelaPrincipal.irPara(context, Seccao.definicoes),
                   icon: const Icon(Icons.settings_outlined),
-                  label: const Text('Alterar nas Definições'),
+                  label: Text(tr('Alterar nas Definições')),
                 ),
             ]),
           ];
@@ -233,7 +234,7 @@ class TelaVerificacao extends StatelessWidget {
       if (n(EstadoLista.funciona) > 0) _n(n(EstadoLista.funciona), 'funciona', 'funcionam'),
       if (n(EstadoLista.inconclusiva) > 0) _n(n(EstadoLista.inconclusiva), 'inconclusiva', 'inconclusivas'),
       if (n(EstadoLista.naoFunciona) > 0) _n(n(EstadoLista.naoFunciona), 'não funciona', 'não funcionam'),
-      if (n(EstadoLista.porVerificar) > 0) '${n(EstadoLista.porVerificar)} por verificar',
+      if (n(EstadoLista.porVerificar) > 0) tr('{0} por verificar', [n(EstadoLista.porVerificar)]),
     ].join(' · ');
   }
 }
@@ -253,7 +254,7 @@ class _Barra extends StatelessWidget {
     Widget troco(int flex, Color cor) =>
         flex <= 0 ? const SizedBox.shrink() : Expanded(flex: flex, child: ColoredBox(color: cor));
     return Semantics(
-      label: 'Progresso da verificação: $feitas de $total',
+      label: tr('Progresso da verificação: {0} de {1}', [feitas, total]),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(Tokens.raioPilula),
         child: SizedBox(
@@ -315,7 +316,7 @@ class _LinhaVerificacaoState extends State<_LinhaVerificacao> {
           alignment: Alignment.centerLeft,
           child: PilulaEstado(estadoDe(l), detalhe: TelaVerificacao.detalheResultado(l)));
     } else if (passo == 'na fila') {
-      estado = const Text('Na fila', style: TextStyle(color: Tokens.texto2, fontWeight: FontWeight.w600));
+      estado = Text(tr('Na fila'), style: TextStyle(color: Tokens.texto2, fontWeight: FontWeight.w600));
     } else {
       estado = Text(TelaVerificacao.textoPasso(passo),
           style: const TextStyle(color: Tokens.anelFoco, fontWeight: FontWeight.w600));
@@ -341,7 +342,7 @@ class _LinhaVerificacaoState extends State<_LinhaVerificacao> {
                   maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Tokens.texto2, fontSize: 12.5)),
             ])),
             if (passo != null)
-              TextButton(onPressed: widget.aoCancelar, child: const Text('Cancelar')),
+              TextButton(onPressed: widget.aoCancelar, child: Text(tr('Cancelar'))),
           ]),
         ),
       ),

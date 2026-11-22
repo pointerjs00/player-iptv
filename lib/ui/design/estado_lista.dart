@@ -3,6 +3,7 @@ import 'package:material_ui/material_ui.dart';
 import '../../dados/biblioteca.dart';
 import 'ecra.dart';
 import 'tokens.dart';
+import '../../idioma/idioma.dart';
 
 /// Os estados de uma lista, com as mesmas palavras e cores em todo o lado.
 enum EstadoLista { funciona, inconclusiva, naoFunciona, porVerificar }
@@ -17,10 +18,10 @@ EstadoLista estadoDe(Lista l) => switch (l.ultima?.estado) {
 
 extension ApresentacaoEstadoLista on EstadoLista {
   String get rotulo => switch (this) {
-        EstadoLista.funciona => 'Funciona',
-        EstadoLista.inconclusiva => 'Inconclusiva',
-        EstadoLista.naoFunciona => 'Não funciona',
-        EstadoLista.porVerificar => 'Por verificar',
+        EstadoLista.funciona => tr('Funciona'),
+        EstadoLista.inconclusiva => tr('Inconclusiva'),
+        EstadoLista.naoFunciona => tr('Não funciona'),
+        EstadoLista.porVerificar => tr('Por verificar'),
       };
 
   Color get cor => switch (this) {

@@ -4,6 +4,7 @@ import '../../tarefas/servico_tarefas.dart';
 import '../../verificar/servico.dart';
 import '../design/design.dart';
 import '../verificar/dialogos_gestor.dart';
+import '../../idioma/idioma.dart';
 
 /// O resumo da última ronda do Gestor ("3 funcionam, 1 não · 2 inconclusivas"), ou null se
 /// nenhuma lista chegou ao fim.
@@ -12,8 +13,7 @@ String? resumoVerificacao(ServicoVerificacao v) {
   if (estados.isEmpty) return null;
   int n(EstadoLista e) => estados.where((x) => x == e).length;
   final inconclusivas = n(EstadoLista.inconclusiva);
-  return '${n(EstadoLista.funciona)} funcionam, ${n(EstadoLista.naoFunciona)} não'
-      '${inconclusivas > 0 ? ' · $inconclusivas inconclusivas' : ''}';
+  return tr('{0} funcionam, {1} não{2}', [n(EstadoLista.funciona), n(EstadoLista.naoFunciona), inconclusivas > 0 ? ' · $inconclusivas inconclusivas' : '']);
 }
 
 /// Abre o painel de atividade (ecrã 10b) por cima do ecrã, encostado à direita. Voltar fecha-o e o
@@ -27,7 +27,7 @@ Future<void> abrirPainelAtividade(
     showGeneralDialog<void>(
       context: context,
       barrierDismissible: true,
-      barrierLabel: 'Fechar a atividade',
+      barrierLabel: tr('Fechar a atividade'),
       barrierColor: Colors.black54,
       transitionDuration: Tokens.duracaoMedia,
       pageBuilder: (c, _, _) => Align(
@@ -99,7 +99,7 @@ class _PainelAtividadeState extends State<PainelAtividade> {
                   child: Row(children: [
                     Expanded(
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        const Text('Atividade',
+                        Text(tr('Atividade'),
                             style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Tokens.texto)),
                         Semantics(
                           liveRegion: true,
@@ -110,7 +110,7 @@ class _PainelAtividadeState extends State<PainelAtividade> {
                     ),
                     IconButton(
                       autofocus: true,
-                      tooltip: 'Fechar',
+                      tooltip: tr('Fechar'),
                       onPressed: widget.aoFechar,
                       icon: const Icon(Icons.close),
                     ),
@@ -123,15 +123,15 @@ class _PainelAtividadeState extends State<PainelAtividade> {
                     if (rondaAcabada) _cartaoRelatorio(),
                     for (final t in recentes) _cartaoTarefa(t),
                     if (aDecorrer == 0 && terminadas == 0)
-                      const Padding(
+                      Padding(
                         padding: EdgeInsets.symmetric(vertical: Tokens.e24),
-                        child: Text('Nada a decorrer.', style: TextStyle(color: Tokens.texto2)),
+                        child: Text(tr('Nada a decorrer.'), style: TextStyle(color: Tokens.texto2)),
                       ),
                   ]),
                 ),
-                const Padding(
+                Padding(
                   padding: EdgeInsets.all(Tokens.e16),
-                  child: Text('Podes fechar este painel e continuar a usar a app. Cada tarefa avisa quando termina.',
+                  child: Text(tr('Podes fechar este painel e continuar a usar a app. Cada tarefa avisa quando termina.'),
                       style: TextStyle(fontSize: 12, color: Tokens.texto2)),
                 ),
               ]);
@@ -161,15 +161,15 @@ class _PainelAtividadeState extends State<PainelAtividade> {
   Widget _cartaoVerificacao() {
     final s = widget.servico;
     return _cartao(
-      'Verificação das listas',
+      tr('Verificação das listas'),
       [
         LinearProgressIndicator(value: s.total == 0 ? null : s.feitas / s.total, minHeight: 6),
         const SizedBox(height: Tokens.e4),
-        Text('A verificar ${s.feitas}/${s.total}', style: const TextStyle(color: Tokens.texto2)),
+        Text(tr('A verificar {0}/{1}', [s.feitas, s.total]), style: const TextStyle(color: Tokens.texto2)),
       ],
       [
-        if (widget.aoVerVerificacao != null) TextButton(onPressed: widget.aoVerVerificacao, child: const Text('Ver detalhe')),
-        TextButton(onPressed: () => confirmarParar(context, s), child: const Text('Parar')),
+        if (widget.aoVerVerificacao != null) TextButton(onPressed: widget.aoVerVerificacao, child: Text(tr('Ver detalhe'))),
+        TextButton(onPressed: () => confirmarParar(context, s), child: Text(tr('Parar'))),
       ],
     );
   }
@@ -181,23 +181,23 @@ class _PainelAtividadeState extends State<PainelAtividade> {
     final f = s.fimRonda!;
     final hora = '${f.hour.toString().padLeft(2, '0')}:${f.minute.toString().padLeft(2, '0')}';
     return _cartao(
-      'Verificação das listas',
+      tr('Verificação das listas'),
       [
         Row(children: [
           Icon(s.parada ? Icons.stop_circle_outlined : Icons.check_circle_outline,
               size: 16, color: s.parada ? Tokens.texto2 : Tokens.ok),
           const SizedBox(width: Tokens.e8),
           Expanded(
-            child: Text('${s.parada ? 'Parada' : 'Terminada'} às $hora',
+            child: Text(tr('{0} às {1}', [s.parada ? tr('Parada') : tr('Terminada'), hora]),
                 style: const TextStyle(color: Tokens.texto)),
           ),
         ]),
         const SizedBox(height: Tokens.e4),
-        Text(resumo ?? 'Nenhuma lista chegou ao fim.', style: const TextStyle(color: Tokens.texto2)),
+        Text(resumo ?? tr('Nenhuma lista chegou ao fim.'), style: const TextStyle(color: Tokens.texto2)),
       ],
       [
         if (widget.aoVerVerificacao != null)
-          TextButton(onPressed: widget.aoVerVerificacao, child: const Text('Ver detalhe')),
+          TextButton(onPressed: widget.aoVerVerificacao, child: Text(tr('Ver detalhe'))),
       ],
     );
   }
@@ -229,9 +229,9 @@ class _PainelAtividadeState extends State<PainelAtividade> {
           Expanded(
             child: Text(
               switch (t.estado) {
-                EstadoTarefa.terminada => 'Terminada',
-                EstadoTarefa.falhou => 'Falhou',
-                _ => 'Cancelada',
+                EstadoTarefa.terminada => tr('Terminada'),
+                EstadoTarefa.falhou => tr('Falhou'),
+                _ => tr('Cancelada'),
               },
               style: const TextStyle(color: Tokens.texto),
             ),
@@ -245,18 +245,18 @@ class _PainelAtividadeState extends State<PainelAtividade> {
       ],
       if (aberta && t.fim != null) ...[
         const SizedBox(height: Tokens.e4),
-        Text('Durou ${_duracao(t.fim!.difference(t.inicio))}', style: const TextStyle(color: Tokens.texto2, fontSize: 12)),
+        Text(tr('Durou {0}', [_duracao(t.fim!.difference(t.inicio))]), style: const TextStyle(color: Tokens.texto2, fontSize: 12)),
       ],
     ];
     return _cartao(t.titulo, corpo, [
       TextButton(
         onPressed: () => setState(() => aberta ? _abertas.remove(t.id) : _abertas.add(t.id)),
-        child: const Text('Ver detalhe'),
+        child: Text(tr('Ver detalhe')),
       ),
       if (aDecorrer && t.cancelavel)
-        TextButton(onPressed: () => widget.tarefas.cancelar(t.id), child: const Text('Parar')),
+        TextButton(onPressed: () => widget.tarefas.cancelar(t.id), child: Text(tr('Parar'))),
       if (t.estado == EstadoTarefa.falhou && t.repetir != null)
-        TextButton(onPressed: () => t.repetir!(), child: const Text('Tentar de novo')),
+        TextButton(onPressed: () => t.repetir!(), child: Text(tr('Tentar de novo'))),
     ]);
   }
 

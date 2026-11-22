@@ -3,6 +3,7 @@ import 'package:material_ui/material_ui.dart';
 import 'design/movimento.dart';
 import 'design/tokens.dart';
 import 'realce_foco.dart';
+import '../idioma/idioma.dart';
 
 /// As cores da app (atalhos para os [Tokens] do design "cinema").
 abstract final class Cores {
@@ -233,15 +234,15 @@ String dataRelativa(DateTime d, [DateTime? agora]) {
   final a = agora ?? DateTime.now();
   final dias = DateTime(a.year, a.month, a.day).difference(DateTime(d.year, d.month, d.day)).inDays;
   String hm() => '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
-  if (dias <= 0) return 'hoje às ${hm()}';
-  if (dias == 1) return 'ontem às ${hm()}';
-  if (dias < 30) return 'há $dias dias';
+  if (dias <= 0) return tr('hoje às {0}', [hm()]);
+  if (dias == 1) return tr('ontem às {0}', [hm()]);
+  if (dias < 30) return tr('há {0} dias', [dias]);
   return '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
 }
 
 /// "até 16/10/2027", "sem limite" ou "".
 String textoValidade(String v) {
   final m = RegExp(r'^(\d{4})-(\d{2})-(\d{2})$').firstMatch(v);
-  if (m != null) return 'até ${m[3]}/${m[2]}/${m[1]}';
-  return v == 'sem limite' ? 'sem limite' : '';
+  if (m != null) return tr('até {0}/{1}/{2}', [m[3], m[2], m[1]]);
+  return v == 'sem limite' ? tr('sem limite') : '';
 }

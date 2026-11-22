@@ -3,18 +3,31 @@ import 'package:material_ui/material_ui.dart';
 
 import '../design/barra_teclas.dart';
 import '../design/design.dart';
+import '../../idioma/idioma.dart';
 
 const _mesesCurtos = ['jan.', 'fev.', 'mar.', 'abr.', 'mai.', 'jun.', 'jul.', 'ago.', 'set.', 'out.', 'nov.', 'dez.'];
+const _mesesCurtosEn = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const _mesesLongosEn = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December', //
+];
 const _mesesLongos = [
   'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
   'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro', //
 ];
 
 /// "10 nov. 2026" (sem depender de `intl`).
-String dataCurta(DateTime d) => '${d.day} ${_mesesCurtos[d.month - 1]} ${d.year}';
+String dataCurta(DateTime d) => idiomaApp.value == Idioma.en
+    ? '${_mesesCurtosEn[d.month - 1]} ${d.day}, ${d.year}'
+    : '${d.day} ${_mesesCurtos[d.month - 1]} ${d.year}';
 
 /// "10 de novembro de 2026", para os leitores de ecrã.
-String _dataLonga(DateTime d) => '${d.day} de ${_mesesLongos[d.month - 1]} de ${d.year}';
+String _dataLonga(DateTime d) => idiomaApp.value == Idioma.en
+    ? '${_mesLongo(d.month)} ${d.day}, ${d.year}'
+    : '${d.day} de ${_mesLongo(d.month)} de ${d.year}';
+
+/// O nome do mês (1–12) no idioma da app.
+String _mesLongo(int m) => (idiomaApp.value == Idioma.en ? _mesesLongosEn : _mesesLongos)[m - 1];
 
 DateTime _soDia(DateTime d) => DateTime(d.year, d.month, d.day);
 
@@ -291,10 +304,10 @@ class _CalendarioIntervaloState extends State<CalendarioIntervalo> {
           skipTraversal: true,
           onKeyEvent: _teclaMes,
           child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          _seta('‹', 'Mês anterior', _noAnterior, _haMesAntes ? () => _mudarMes(-1) : null),
-          Text('${_mesesLongos[_foco.month - 1]} ${_foco.year}',
+          _seta('‹', tr('Mês anterior'), _noAnterior, _haMesAntes ? () => _mudarMes(-1) : null),
+          Text('${_mesLongo(_foco.month)} ${_foco.year}',
               style: const TextStyle(color: Tokens.texto, fontSize: 20, fontWeight: FontWeight.w700)),
-          _seta('›', 'Mês seguinte', _noSeguinte, _haMesDepois ? () => _mudarMes(1) : null),
+          _seta('›', tr('Mês seguinte'), _noSeguinte, _haMesDepois ? () => _mudarMes(1) : null),
         ])),
         const SizedBox(height: Tokens.e8),
         Row(children: [
@@ -343,18 +356,18 @@ class _CalendarioIntervaloState extends State<CalendarioIntervalo> {
       InkWell(
         canRequestFocus: false,
         onTap: () => Navigator.of(context).maybePop(),
-        child: const Text('‹ Importar · Listas do stbstalker',
+        child: Text(tr('‹ Importar · Listas do stbstalker'),
             style: TextStyle(color: Tokens.texto2, fontSize: 15, fontWeight: FontWeight.w500)),
       ),
       const SizedBox(height: 4),
-      const Text('Escolhe o início e o fim',
+      Text(tr('Escolhe o início e o fim'),
           style: TextStyle(color: Tokens.texto, fontSize: 26, fontWeight: FontWeight.w700)),
       const SizedBox(height: Tokens.e16),
-      _valor('De', _de, destaque: _de == null || _ate != null),
+      _valor(tr('De'), _de, destaque: _de == null || _ate != null),
       const SizedBox(height: Tokens.e12),
-      _valor('Até', _ate, destaque: _de != null && _ate == null),
+      _valor(tr('Até'), _ate, destaque: _de != null && _ate == null),
       const SizedBox(height: Tokens.e16),
-      const Text('1.º OK marca o início, 2.º OK marca o fim. Os dias depois de hoje não se escolhem.',
+      Text(tr('1.º OK marca o início, 2.º OK marca o fim. Os dias depois de hoje não se escolhem.'),
           style: TextStyle(color: Tokens.texto2, fontSize: 15, fontWeight: FontWeight.w500)),
       const SizedBox(height: Tokens.e24),
       Focus(
@@ -362,8 +375,8 @@ class _CalendarioIntervaloState extends State<CalendarioIntervalo> {
         skipTraversal: true,
         onKeyEvent: _teclaPainel,
         child: Wrap(spacing: Tokens.e12, runSpacing: Tokens.e12, children: [
-          FilledButton(focusNode: _noProcurar, onPressed: pronto ? _procurar : null, child: const Text('Procurar e juntar')),
-          OutlinedButton(focusNode: _noRecomecar, onPressed: _recomecar, child: const Text('Recomeçar')),
+          FilledButton(focusNode: _noProcurar, onPressed: pronto ? _procurar : null, child: Text(tr('Procurar e juntar'))),
+          OutlinedButton(focusNode: _noRecomecar, onPressed: _recomecar, child: Text(tr('Recomeçar'))),
         ]),
       ),
     ]);

@@ -6,6 +6,7 @@ import 'componentes.dart';
 import 'ecra.dart';
 import 'movimento.dart';
 import 'tokens.dart';
+import '../../idioma/idioma.dart';
 
 /// O loader de ecrã cheio enquanto se pedem os canais ao servidor: um anel em gradiente
 /// índigo→violeta a girar num painel de vidro, o passo atual ("A pedir as categorias"), a barra
@@ -77,7 +78,7 @@ class _CarregadorCanaisState extends State<CarregadorCanais> with SingleTickerPr
                   ),
                 ),
                 const SizedBox(height: Tokens.e24),
-                Text(widget.titulo,
+                Text(tr(widget.titulo),
                     textAlign: TextAlign.center,
                     style: TextStyle(fontSize: tv ? 22 : 18, fontWeight: FontWeight.w700)),
                 const SizedBox(height: Tokens.e8),
@@ -105,7 +106,7 @@ class _CarregadorCanaisState extends State<CarregadorCanais> with SingleTickerPr
                   focusNode: widget.focoCancelar,
                   autofocus: true,
                   onPressed: widget.aoCancelar,
-                  child: const Text('Cancelar'),
+                  child: Text(tr('Cancelar')),
                 ),
               ]),
             ),

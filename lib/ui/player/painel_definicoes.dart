@@ -5,6 +5,7 @@ import '../design/componentes.dart';
 import '../design/ecra.dart';
 import '../design/tokens.dart';
 import '../realce_foco.dart';
+import '../../idioma/idioma.dart';
 
 /// Um item do painel de definições do player. Sem ação (`aoMudar`/`mais`… nulos) aparece
 /// desligado, com a `nota` a explicar porquê, e o foco salta-o.
@@ -93,12 +94,12 @@ class PainelDefinicoes extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.fromLTRB(Tokens.e12, 0, Tokens.e12, Tokens.e8),
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(titulo,
+                    Text(tr(titulo),
                         style: TextStyle(fontSize: tv ? 22 : 18, fontWeight: FontWeight.w700, color: Tokens.texto)),
                     if (nota != null)
                       Padding(
                         padding: const EdgeInsets.only(top: 2),
-                        child: Text(nota!, style: TextStyle(fontSize: tv ? 14 : 12, color: Tokens.texto2)),
+                        child: Text(tr(nota!), style: TextStyle(fontSize: tv ? 14 : 12, color: Tokens.texto2)),
                       ),
                   ]),
                 ),

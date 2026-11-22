@@ -21,6 +21,8 @@ import '../../verificar/estado.dart';
 import '../../verificar/verificador.dart';
 import '../design/barra_teclas.dart';
 import '../design/mensagens.dart';
+import '../../idioma/idioma.dart';
+import '../../importar/m3u.dart' show semGrupo;
 
 const grupoFavoritos = '★ Favoritos';
 
@@ -263,7 +265,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
   void _continuarA(String id) {
     final canal = _conteudo?.canais.where((c) => c.id == id).firstOrNull;
     if (canal == null) {
-      mostrarMensagem(context, 'O último canal visto já não está nesta lista.');
+      mostrarMensagem(context, tr('O último canal visto já não está nesta lista.'));
       return;
     }
     _limparPesquisa();
@@ -293,7 +295,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
     final l = widget.lista;
     Future<void> gravar(Future<void> f) => f.catchError((Object e) {
           if (mounted) {
-            mostrarMensagem(context, 'Não foi possível guardar (${descreverErro(e)}).', tipo: MensagemTipo.erro);
+            mostrarMensagem(context, tr('Não foi possível guardar ({0}).', [descreverErro(e)]), tipo: MensagemTipo.erro);
           }
         });
     switch (o) {
@@ -302,7 +304,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
         final eraAtual = _grupo == escondido;
         unawaited(gravar(widget.biblioteca.esconderGrupo(l.id, escondido, true)));
         if (!_verEscondidos && eraAtual) _grupo = null;
-        mostrarMensagem(context, 'Grupo "$escondido" escondido', acao: 'Desfazer', aoAcao: () {
+        mostrarMensagem(context, tr('Grupo "{0}" escondido', [escondido]), acao: tr('Desfazer'), aoAcao: () {
           if (!mounted) return;
           unawaited(gravar(widget.biblioteca.esconderGrupo(l.id, escondido, false)));
           setState(() {
@@ -591,7 +593,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
           setState(() => _erro = texto);
         } else {
           // os canais da cache continuam à vista
-          mostrarMensagem(context, 'Não foi possível atualizar: $texto', tipo: MensagemTipo.erro);
+          mostrarMensagem(context, tr('Não foi possível atualizar: {0}', [texto]), tipo: MensagemTipo.erro);
         }
       }
       unawaited(_marcarSeMorta(e));
@@ -808,7 +810,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
     setState(() {
       _aCarregar = false;
       // sem canais, o corpo mostra "Tentar de novo" (com o foco), em vez de ficar vazio
-      if (_conteudo == null) _erro = 'carregamento cancelado';
+      if (_conteudo == null) _erro = tr('carregamento cancelado');
     });
     _devolverFoco();
   }
@@ -877,7 +879,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
                   progresso: progresso,
                   focoCancelar: _focoCancelar,
                   aoCancelar: _cancelarCarregamento,
-                  titulo: _conteudo == null ? 'A carregar os canais' : 'A atualizar os canais',
+                  titulo: _conteudo == null ? tr('A carregar os canais') : tr('A atualizar os canais'),
                 );
               }),
             ),
@@ -914,27 +916,27 @@ class _TelaConteudoState extends State<TelaConteudo> {
       // sai sempre, mesmo com texto na pesquisa (só o Voltar a limpa primeiro): pop() não passa
       // pelo PopScope
       onPressed: () => Navigator.of(context).pop(),
-      child: Text('‹ Início', style: estilo),
+      child: Text(tr('‹ Início'), style: estilo),
     );
     final nome = Text(l.nomeMostrado,
         maxLines: 1, overflow: TextOverflow.ellipsis,
         style: TextStyle(fontSize: tv ? 22 : 18, fontWeight: FontWeight.w700));
     final contagem = total == null
         ? null
-        : Text(total == 1 ? '1 canal' : '$total canais', style: TextStyle(color: Tokens.texto2, fontSize: tamanho));
+        : Text(total == 1 ? tr('1 canal') : tr('{0} canais', [total]), style: TextStyle(color: Tokens.texto2, fontSize: tamanho));
     final ordem = Tooltip(
-      message: 'Opções dos canais',
+      message: tr('Opções dos canais'),
       child: OutlinedButton(
         onPressed: carregado ? _opcoes : null,
-        child: Text('Ordem: ${l.ordemCanais == OrdemCanais.az ? 'A–Z' : 'da lista'}', style: estilo),
+        child: Text(tr('Ordem: {0}', [l.ordemCanais == OrdemCanais.az ? 'A–Z' : tr('da lista')]), style: estilo),
       ),
     );
     final escondidos = OutlinedButton(
       onPressed: carregado && (l.gruposEscondidos.isNotEmpty || _verEscondidos) ? _alternarEscondidos : null,
-      child: Text('Grupos escondidos: ${l.gruposEscondidos.length}', style: estilo),
+      child: Text(tr('Grupos escondidos: {0}', [l.gruposEscondidos.length]), style: estilo),
     );
     final atualizar = IconButton(
-      tooltip: 'Atualizar a lista de canais',
+      tooltip: tr('Atualizar a lista de canais'),
       onPressed: _atualizar,
       icon: const Icon(Icons.refresh),
     );
@@ -1017,19 +1019,19 @@ class _TelaConteudoState extends State<TelaConteudo> {
     // «Atualizar canais» não é uma opção dos canais: vai como o próprio [_atualizar]
     final menu = PopupMenuButton<Object>(
       key: const Key('menu-lista-aberta'),
-      tooltip: 'Mais opções',
+      tooltip: tr('Mais opções'),
       enabled: carregado,
       icon: const Icon(Icons.more_vert),
       onSelected: (o) => o is OpcaoCanais ? _aplicarOpcao(o, null) : _atualizar(),
       itemBuilder: (_) => [
-        item(OpcaoCanais.ordemLista, 'Ordem: da lista', marcado: !az),
-        item(OpcaoCanais.ordemAz, 'Ordem: A–Z', marcado: az),
+        item(OpcaoCanais.ordemLista, tr('Ordem: da lista'), marcado: !az),
+        item(OpcaoCanais.ordemAz, tr('Ordem: A–Z'), marcado: az),
         if (_verEscondidos)
-          item(OpcaoCanais.ocultarEscondidos, 'Ocultar grupos escondidos')
+          item(OpcaoCanais.ocultarEscondidos, tr('Ocultar grupos escondidos'))
         else
-          item(OpcaoCanais.verEscondidos, 'Mostrar grupos escondidos ($n)', ativo: n > 0),
+          item(OpcaoCanais.verEscondidos, tr('Mostrar grupos escondidos ({0})', [n]), ativo: n > 0),
         const PopupMenuDivider(),
-        PopupMenuItem<Object>(value: _atualizar, child: const Text('Atualizar canais')),
+        PopupMenuItem<Object>(value: _atualizar, child: Text(tr('Atualizar canais'))),
       ],
     );
     return Padding(
@@ -1037,7 +1039,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Row(children: [
           IconButton(
-            tooltip: 'Voltar ao Início',
+            tooltip: tr('Voltar ao Início'),
             // sai sempre, mesmo com texto na pesquisa (como o «‹ Início»)
             onPressed: () => Navigator.of(context).pop(),
             icon: const Icon(Icons.arrow_back),
@@ -1082,9 +1084,9 @@ class _TelaConteudoState extends State<TelaConteudo> {
         ),
       Text(
         u == null
-            ? 'Ainda não foi verificada'
+            ? tr('Ainda não foi verificada')
             // "hoje às 14:05", "há 3 dias" ou uma data ("em 02/01/2026")
-            : 'Verificada ${quando.startsWith(RegExp('[0-9]')) ? 'em ' : ''}$quando',
+            : tr('Verificada {0}{1}', [quando.startsWith(RegExp('[0-9]')) ? tr('em ') : '', quando]),
         style: secundario,
       ),
       // os canais vêm da cache: discreto, com a hora (o "Atualizar" está em cima)
@@ -1092,7 +1094,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
         Row(mainAxisSize: MainAxisSize.min, children: [
           Icon(Icons.history_rounded, size: tv ? 16 : 14, color: Tokens.texto2),
           const SizedBox(width: 4),
-          Flexible(child: Text('da cache · ${dataRelativa(_daCache!)}', maxLines: 1,
+          Flexible(child: Text(tr('da cache · {0}', [dataRelativa(_daCache!)]), maxLines: 1,
               overflow: TextOverflow.ellipsis, style: secundario)),
         ]),
     ]);
@@ -1114,9 +1116,9 @@ class _TelaConteudoState extends State<TelaConteudo> {
                 child: Column(mainAxisSize: MainAxisSize.min, children: [
                   const Icon(Icons.error_outline, size: 48, color: Tokens.mau),
                   const SizedBox(height: Tokens.e12),
-                  Text('Não foi possível abrir a lista: $_erro', textAlign: TextAlign.center),
+                  Text(tr('Não foi possível abrir a lista: {0}', [_erro]), textAlign: TextAlign.center),
                   const SizedBox(height: Tokens.e16),
-                  FilledButton(autofocus: true, onPressed: _carregar, child: const Text('Tentar de novo')),
+                  FilledButton(autofocus: true, onPressed: _carregar, child: Text(tr('Tentar de novo'))),
                 ]),
               ),
             ),
@@ -1178,7 +1180,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
           itemBuilder: (_, i) {
             final g = i == 0 ? null : grupos[i - 1];
             return ChoiceChip(
-              label: Text(g ?? 'Todos', maxLines: 1, overflow: TextOverflow.ellipsis),
+              label: Text(g == null ? tr('Todos') : _nomeGrupo(g), maxLines: 1, overflow: TextOverflow.ellipsis),
               // a pesquisa procura no grupo escolhido: ele continua marcado
               selected: g == _grupo,
               onSelected: (_) => _escolherGrupo(g),
@@ -1191,7 +1193,8 @@ class _TelaConteudoState extends State<TelaConteudo> {
   }
 
   /// O nome de um grupo para mostrar (null = «Todos os canais»).
-  static String _nomeGrupo(String? g) => g ?? 'Todos os canais';
+  static String _nomeGrupo(String? g) =>
+      g == null ? tr('Todos os canais') : (g == grupoFavoritos || g == grupoVistos || g == semGrupo ? tr(g) : g);
 
   /// Quantos canais tem o grupo `g` (os virtuais incluídos).
   int _contagemGrupo(String g) => g == grupoFavoritos
@@ -1210,7 +1213,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
           onPressed: _escolherNaFolha,
           child: Row(children: [
             Expanded(
-              child: Text('Grupo: ${_nomeGrupo(_grupo)}', maxLines: 1, overflow: TextOverflow.ellipsis,
+              child: Text(tr('Grupo: {0}', [_nomeGrupo(_grupo)]), maxLines: 1, overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
             ),
             const SizedBox(width: Tokens.e8),
@@ -1313,7 +1316,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
                 Padding(
                   padding: const EdgeInsets.fromLTRB(Tokens.e16, 0, Tokens.e16, Tokens.e8),
                   child: CampoTv(
-                    decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Pesquisar grupos'),
+                    decoration: InputDecoration(prefixIcon: Icon(Icons.search), hintText: tr('Pesquisar grupos')),
                     textInputAction: TextInputAction.search,
                     onChanged: (v) => mudar(() => q = v),
                   ),
@@ -1328,9 +1331,9 @@ class _TelaConteudoState extends State<TelaConteudo> {
                       linha(null, _totalTodos(c)),
                       for (final g in grupos) linha(g, _contagemGrupo(g)),
                       if (busca.isNotEmpty && grupos.isEmpty)
-                        const Padding(
+                        Padding(
                           padding: EdgeInsets.symmetric(horizontal: Tokens.e16, vertical: Tokens.e12),
-                          child: Text('Nenhum grupo', style: TextStyle(color: Tokens.texto2, fontSize: 15)),
+                          child: Text(tr('Nenhum grupo'), style: TextStyle(color: Tokens.texto2, fontSize: 15)),
                         ),
                     ],
                   ),
@@ -1428,7 +1431,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
   /// A pesquisa dos canais: sem grupo, em todos; com grupo, só nele ("Pesquisar em Desporto").
   Widget _campoPesquisaCanais() {
     final g = _grupo;
-    final dica = g == null ? 'Pesquisar canais ou número' : 'Pesquisar em ${g == grupoFavoritos ? 'Favoritos' : g}';
+    final dica = g == null ? tr('Pesquisar canais ou número') : tr('Pesquisar em {0}', [g == grupoFavoritos ? tr('Favoritos') : _nomeGrupo(g)]);
     return _campoColuna(const Key('pesquisa-canais'), _textoPesquisa, _focoPesquisa, Icons.search, dica, _pesquisar,
         _confirmarPesquisa, _setaPesquisaCanais);
   }
@@ -1460,7 +1463,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
       child: Row(children: [
         Expanded(
           child: Text(
-            pesquisa ? '${_grupo ?? 'Canais'} · $n' : (_grupo ?? 'Todos os canais'),
+            pesquisa ? '${_grupo == null ? tr('Canais') : _nomeGrupo(_grupo)} · $n' : _nomeGrupo(_grupo),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: estilo,
@@ -1473,7 +1476,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
         // o «i de n» é para o comando: no telemóvel é só ruído
         if (n > 0 && !ecraTelemovel(context)) ...[
           const SizedBox(width: Tokens.e12),
-          Text('${_indice.clamp(0, n - 1) + 1} de $n', key: const Key('contador-canais'), style: estilo),
+          Text(tr('{0} de {1}', [_indice.clamp(0, n - 1) + 1, n]), key: const Key('contador-canais'), style: estilo),
         ],
       ]),
     );
@@ -1493,7 +1496,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
     final q = _pesquisaGrupos ? semAcentos(_qGrupos.trim()) : '';
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       _campoColuna(const Key('filtro-grupos'), _textoGrupos, _focoFiltroGrupos, Icons.filter_list,
-          'Filtrar grupos', _filtrarGrupos, _confirmarFiltroGrupos, _setaFiltroGrupos),
+          tr('Filtrar grupos'), _filtrarGrupos, _confirmarFiltroGrupos, _setaFiltroGrupos),
       Expanded(
         child: Focus(
           focusNode: _focoColunaGrupos,
@@ -1559,7 +1562,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
           dense: !tv,
           autofocus: _grupo == null,
           selected: _grupo == null,
-          title: Text('Todos os canais', maxLines: 1, overflow: TextOverflow.ellipsis,
+          title: Text(tr('Todos os canais'), maxLines: 1, overflow: TextOverflow.ellipsis,
               style: TextStyle(fontSize: tv ? 17 : 14, fontWeight: FontWeight.w500)),
           trailing: Row(mainAxisSize: MainAxisSize.min, children: [
             Text('${_totalTodos(_conteudo!)}', style: TextStyle(color: Tokens.texto2, fontSize: tv ? 15 : 12.5)),
@@ -1570,7 +1573,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
 
   Widget _listaCanais(List<Canal> canais) {
     if (canais.isEmpty) {
-      return const Center(child: Text('Nenhum canal.', style: TextStyle(color: Tokens.texto2)));
+      return Center(child: Text(tr('Nenhum canal.'), style: TextStyle(color: Tokens.texto2)));
     }
     final tv = ecraTv(context);
     final telemovel = ecraTelemovel(context);
@@ -1633,7 +1636,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
                           : null,
                       trailing: ExcludeFocus(
                         child: IconButton(
-                          tooltip: fav ? 'Tirar dos favoritos' : 'Pôr nos favoritos',
+                          tooltip: fav ? tr('Tirar dos favoritos') : tr('Pôr nos favoritos'),
                           icon: Icon(fav ? Icons.star_rounded : Icons.star_outline_rounded,
                               color: fav ? Tokens.aviso : Tokens.texto2, size: tv ? 28 : 24),
                           onPressed: favorito,
@@ -1782,8 +1785,8 @@ class _TelaConteudoState extends State<TelaConteudo> {
       // o último favorito: os Favoritos desaparecem (também com pesquisa) e fica "Todos os canais"
       saiu = _validarGrupo();
     });
-    mostrarMensagem(context, agora ? '${c.nome} está nos favoritos' : '${c.nome} saiu dos favoritos',
-        acao: 'Desfazer', aoAcao: () => _desfazerFavorito(c.id, agora));
+    mostrarMensagem(context, agora ? tr('{0} está nos favoritos', [c.nome]) : tr('{0} saiu dos favoritos', [c.nome]),
+        acao: tr('Desfazer'), aoAcao: () => _desfazerFavorito(c.id, agora));
     if (!noGrupoFav || agora) return;
     final restantes = _canaisVisiveis();
     if (saiu || restantes.isEmpty) {

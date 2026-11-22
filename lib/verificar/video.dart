@@ -8,6 +8,7 @@ import 'dart:typed_data';
 
 import '../rede/http.dart';
 import 'estado.dart';
+import '../idioma/idioma.dart';
 
 int? syncTs(List<int> b) {
   for (var i = 0; i < 188 && i < b.length; i++) {
@@ -99,27 +100,27 @@ Future<ResultadoVerificacao> lerStream(String url, Map<String, String> headers,
       if (lido.cortado != null) return classificarFalha(lido.cortado!);
       final linhas = utf8.decode(lido.corpo, allowMalformed: true).split('\n')
           .map((l) => l.trim().replaceAll('﻿', '')).where((l) => l.isNotEmpty && !l.startsWith('#'));
-      if (linhas.isEmpty) return const ResultadoVerificacao(EstadoV.inconclusivo, 'playlist sem entradas');
+      if (linhas.isEmpty) return ResultadoVerificacao(EstadoV.inconclusivo, tr('playlist sem entradas'));
       u = lido.urlFinal.resolve(linhas.first);
     }
-    if (nivel > 4) return const ResultadoVerificacao(EstadoV.inconclusivo, 'playlist HLS com demasiados níveis');
+    if (nivel > 4) return ResultadoVerificacao(EstadoV.inconclusivo, tr('playlist HLS com demasiados níveis'));
   } on Cancelado {
     rethrow;
   } catch (e) {
     if (stream401Inc && e is ErroHttp && (e.status == 401 || e.status == 403)) {
       return ResultadoVerificacao(EstadoV.inconclusivo,
-          'stream recusado apesar de conta ativa (${e.status}) — possível limite de ligações',
+          tr('stream recusado apesar de conta ativa ({0}) — possível limite de ligações', [e.status]),
           repeticao: Repeticao.depoisDePausa);
     }
     return classificarFalha(e);
   }
   final l = r!;
   if (l.corpo.length < 376) {
-    return const ResultadoVerificacao(EstadoV.inconclusivo, 'resposta vazia ou curta demais');
+    return ResultadoVerificacao(EstadoV.inconclusivo, tr('resposta vazia ou curta demais'));
   }
   if (!eVideo(l.corpo)) {
     if (l.cortado != null) return classificarFalha(l.cortado!);
-    return const ResultadoVerificacao(EstadoV.naoFunciona, 'resposta não é vídeo');
+    return ResultadoVerificacao(EstadoV.naoFunciona, tr('resposta não é vídeo'));
   }
-  return const ResultadoVerificacao(EstadoV.funciona, 'vídeo recebido');
+  return ResultadoVerificacao(EstadoV.funciona, tr('vídeo recebido'));
 }

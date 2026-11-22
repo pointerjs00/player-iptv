@@ -2,6 +2,7 @@ import 'package:material_ui/material_ui.dart';
 
 import 'ecra.dart';
 import 'tokens.dart';
+import '../../idioma/idioma.dart';
 
 /// A barra de dicas de teclas ("OK ver", "Menu opções"...) em baixo. Só aparece na TV e no
 /// computador ([mostrarDicasComando]; no telemóvel e no tablet não há teclas).
@@ -24,12 +25,12 @@ class BarraTeclas extends StatelessWidget {
                 borderRadius: BorderRadius.circular(6),
                 border: Border.all(color: Tokens.bordaVidro),
               ),
-              child: Text(tecla,
+              child: Text(tr(tecla),
                   style: const TextStyle(color: Tokens.texto, fontSize: 12, fontWeight: FontWeight.w700)),
             ),
             const SizedBox(width: Tokens.e8),
             Flexible(
-              child: Text(acao,
+              child: Text(tr(acao),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(color: Tokens.texto2, fontSize: 13)),

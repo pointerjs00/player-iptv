@@ -19,6 +19,7 @@ import '../rede/http.dart';
 import 'canais_teste.dart';
 import 'estado.dart';
 import 'video.dart';
+import '../idioma/idioma.dart';
 
 const maxCandidatos = 3;
 
@@ -52,7 +53,7 @@ const _dnsInexistente = {11001, -2, 7, 8};
 /// está em baixo) e "o host não existe" não prova nada. Só se pergunta o nome (sem dados da conta).
 const nomesControloDns = ['example.com', 'cloudflare.com', 'google.com'];
 
-const _semRede = ResultadoVerificacao(EstadoV.inconclusivo, 'sem rede (o DNS não confirmou o endereço)');
+final _semRede = ResultadoVerificacao(EstadoV.inconclusivo, tr('sem rede (o DNS não confirmou o endereço)'));
 
 /// Há uma interface de rede (sem ser a de loopback) com endereço? Na dúvida, sim (o nome de
 /// controlo decide).
@@ -91,7 +92,7 @@ Future<ResultadoVerificacao?> resolverDns(String host,
 
   final r1 = await tentar(host);
   if (r1 == null) return null;
-  if (r1 == -1) return const ResultadoVerificacao(EstadoV.inconclusivo, 'DNS sem resposta');
+  if (r1 == -1) return ResultadoVerificacao(EstadoV.inconclusivo, tr('DNS sem resposta'));
   if (!await temInterface()) return _semRede;
   var emLinha = false;
   for (final n in nomesControlo) {
@@ -104,8 +105,8 @@ Future<ResultadoVerificacao?> resolverDns(String host,
   // a rede pode ter voltado a meio: o host tem de falhar outra vez
   final r2 = await tentar(host);
   if (r2 == null) return null;
-  if (r2 == -1) return const ResultadoVerificacao(EstadoV.inconclusivo, 'DNS sem resposta');
-  return ResultadoVerificacao(EstadoV.naoFunciona, 'DNS: $host não existe');
+  if (r2 == -1) return ResultadoVerificacao(EstadoV.inconclusivo, tr('DNS sem resposta'));
+  return ResultadoVerificacao(EstadoV.naoFunciona, tr('DNS: {0} não existe', [host]));
 }
 
 class Verificador {
@@ -155,7 +156,7 @@ class Verificador {
     final relogio = RelogioConta(espera, () {
       if (!esgotou.isCompleted) {
         esgotou.complete(ResultadoVerificacao(
-            EstadoV.inconclusivo, 'tempo esgotado (limite de ${_segundos(espera)}s por ${porLista ? 'lista' : 'conta'})',
+            EstadoV.inconclusivo, tr('tempo esgotado (limite de {0}s por {1})', [_segundos(espera), porLista ? 'lista' : 'conta']),
             tempoEsgotado: true));
       }
       filho.cancelar();
@@ -213,7 +214,7 @@ class Verificador {
         continue;
       }
       // "canal 2/3 · …": o Gestor mostra em que canal de teste vai
-      final avisoCanal = aviso == null ? null : (String t) => aviso('canal ${i + 1}/${perfis.length} · $t');
+      final avisoCanal = aviso == null ? null : (String t) => aviso(tr('canal {0}/{1} · {2}', [i + 1, perfis.length, t]));
       final r = await _testarPerfil(conta, proto, conteudo, p, timeout, cancelamento, avisoCanal);
       progresso?.perfis[p.id] = r;
       porCanal.add((p, r));
@@ -245,7 +246,7 @@ class Verificador {
       if (e is ErroHttp && conta.tipo != Tipo.m3u) {
         return (
           null,
-          ResultadoVerificacao(EstadoV.inconclusivo, 'não foi possível listar os canais (a API respondeu ${e.status})')
+          ResultadoVerificacao(EstadoV.inconclusivo, tr('não foi possível listar os canais (a API respondeu {0})', [e.status]))
         );
       }
       return (null, classificarFalha(e));
@@ -254,9 +255,9 @@ class Verificador {
       return (
         null,
         conta.tipo == Tipo.m3u
-            ? const ResultadoVerificacao(EstadoV.naoFunciona, 'lista vazia ou inválida')
+            ? ResultadoVerificacao(EstadoV.naoFunciona, tr('lista vazia ou inválida'))
             // o painel não tem canais: daqui a um minuto continua sem eles
-            : ResultadoVerificacao(EstadoV.inconclusivo, 'conta sem canais',
+            : ResultadoVerificacao(EstadoV.inconclusivo, tr('conta sem canais'),
                 validade: conteudo.validade, repeticao: Repeticao.inutil)
       );
     }
@@ -268,10 +269,10 @@ class Verificador {
     final cands = candidatos(p, conteudo.canais, (c) => c.nome, (c) => c.id, (c) => c.grupo).take(maxCandidatos).toList();
     if (cands.isEmpty) {
       if (!conteudo.completa) {
-        return ResultadoVerificacao(EstadoV.inconclusivo, '${p.nome} não encontrada (lista de canais incompleta)');
+        return ResultadoVerificacao(EstadoV.inconclusivo, tr('{0} não encontrada (lista de canais incompleta)', [p.nome]));
       }
       return ResultadoVerificacao(EstadoV.naoFunciona,
-          '${p.nome} não existe na ${conta.tipo == Tipo.m3u ? 'lista' : 'conta'}');
+          tr('{0} não existe na {1}', [p.nome, conta.tipo == Tipo.m3u ? 'lista' : 'conta']));
     }
     final resultados = <ResultadoVerificacao>[];
     for (var k = 0; k < cands.length; k++) {
@@ -285,7 +286,7 @@ class Verificador {
     // o active_cons não é fiável: testa-se sempre; o limite só explica uma falha
     if (conteudo.limiteLigacoes.isNotEmpty) {
       return ResultadoVerificacao(EstadoV.inconclusivo,
-          'limite de ligações atingido (${conteudo.limiteLigacoes}) — ${r.motivo}',
+          tr('limite de ligações atingido ({0}) — {1}', [conteudo.limiteLigacoes, r.motivo]),
           canal: r.canal, repeticao: Repeticao.depoisDePausa);
     }
     return r;
@@ -302,7 +303,7 @@ class Verificador {
         rethrow;
       } catch (e) {
         // uma recusa do create_link é problema de sessão, não prova sobre o stream
-        return ResultadoVerificacao(EstadoV.inconclusivo, 'o link do canal falhou: ${descreverErro(e)}');
+        return ResultadoVerificacao(EstadoV.inconclusivo, tr('o link do canal falhou: {0}', [descreverErro(e)]));
       }
       return ler(f.url, f.headers, timeout: timeout, cancelamento: can, stream401Inc: conta.tipo == Tipo.xtream);
     }

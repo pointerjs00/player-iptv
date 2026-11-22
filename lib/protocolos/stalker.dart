@@ -6,6 +6,7 @@ import '../modelo/canal.dart';
 import '../modelo/conta.dart';
 import '../rede/http.dart';
 import 'protocolo.dart';
+import '../idioma/idioma.dart';
 
 const uaMag = 'Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) '
     'MAG254 stbapp ver: 4 rev: 2721 Safari/533.3';
@@ -90,7 +91,7 @@ class Stalker implements Protocolo {
     var todos404 = true;
     for (final base in endpointsStalker(conta.endereco)) {
       final s = _Sessao(base, conta.mac);
-      aviso?.call('a ligar ao portal (${Uri.parse(base).path})');
+      aviso?.call(tr('a ligar ao portal ({0})', [Uri.parse(base).path]));
       try {
         final hs = await s.get({'action': 'handshake', 'token': '', 'prehash': '0', 'mac': conta.mac,
             'sn': '', 'stb_type': 'MAG254', 'device_id': s.deviceId, 'device_id2': s.deviceId},
@@ -108,7 +109,7 @@ class Stalker implements Protocolo {
           _sessoes[chave(conta)] = s;
           return s;
         }
-        ultimoErro = ErroLista('o portal respondeu sem token');
+        ultimoErro = ErroLista(tr('o portal respondeu sem token'));
         todos404 = false;
       } on Cancelado {
         rethrow;
@@ -118,16 +119,15 @@ class Stalker implements Protocolo {
       }
     }
     // só "todos 404" é prova: um 401/403 no handshake pode ser WAF ou bloqueio de IP
-    if (todos404) throw ErroLista('portal não encontrado', definitivo: true);
-    throw ErroLista('não foi possível entrar no portal: '
-        '${ultimoErro == null ? 'sem resposta' : descreverErro(ultimoErro)}');
+    if (todos404) throw ErroLista(tr('portal não encontrado'), definitivo: true);
+    throw ErroLista(tr('não foi possível entrar no portal: {0}', [ultimoErro == null ? tr('sem resposta') : descreverErro(ultimoErro)]));
   }
 
   @override
   Future<ConteudoLista> abrir(Conta conta, {Cancelamento? cancelamento, Aviso? aviso}) async {
     final s = await _entrar(conta, cancelamento, aviso);
     final validade = await _validade(s, cancelamento);
-    aviso?.call('a pedir as categorias');
+    aviso?.call(tr('a pedir as categorias'));
     final generos = <String, String>{};
     try {
       for (final g in _comoLista(await s.get({'type': 'itv', 'action': 'get_genres'}, cancelamento: cancelamento))) {
@@ -137,7 +137,7 @@ class Stalker implements Protocolo {
       rethrow;
     } catch (_) {/* sem categorias: fica tudo em "Sem grupo" */}
 
-    aviso?.call('a pedir a lista de canais');
+    aviso?.call(tr('a pedir a lista de canais'));
     var dados = <Object?>[];
     var completa = true;
     Object? erro;
@@ -161,8 +161,8 @@ class Stalker implements Protocolo {
       erro = erroPaginas ?? erro;
     }
     if (dados.isEmpty) {
-      if (erro != null) throw ErroLista('não foi possível listar os canais (${descreverErro(erro)})');
-      throw ErroLista('o portal não devolveu canais');
+      if (erro != null) throw ErroLista(tr('não foi possível listar os canais ({0})', [descreverErro(erro)]));
+      throw ErroLista(tr('o portal não devolveu canais'));
     }
 
     final canais = <Canal>[];
@@ -204,7 +204,7 @@ class Stalker implements Protocolo {
     final iso = fim.substring(0, 10);
     final hoje = DateTime.now();
     if (data.isBefore(DateTime(hoje.year, hoje.month, hoje.day))) {
-      throw ErroLista('conta expirada em $iso', definitivo: true);
+      throw ErroLista(tr('conta expirada em {0}', [iso]), definitivo: true);
     }
     return iso;
   }
@@ -219,7 +219,7 @@ class Stalker implements Protocolo {
     var totalConhecido = false;
     while (pagina <= totalPaginas) {
       if (pagina > _maxPaginas) return (todos, false, null);
-      aviso?.call('a pedir os canais · página $pagina${totalPaginas > 1 && totalConhecido ? '/$totalPaginas' : ''}');
+      aviso?.call(tr('a pedir os canais · página {0}{1}', [pagina, totalPaginas > 1 && totalConhecido ? '/$totalPaginas' : '']));
       final Object? itv;
       try {
         itv = await s.get({'type': 'itv', 'action': 'get_ordered_list', 'genre': '*',
@@ -266,12 +266,12 @@ class Stalker implements Protocolo {
         final original = limparCmd(canal.cmd);
         if (original.isEmpty || original.toLowerCase().contains('localhost')) {
           if (tentativa == 0) continue;
-          throw ErroLista('o portal não devolveu o link do canal');
+          throw ErroLista(tr('o portal não devolveu o link do canal'));
         }
         link = original;
       }
       return FonteVideo(preencherStream(link, canal), macHeaders(conta.mac, s.referer));
     }
-    throw ErroLista('o portal não devolveu o link do canal');
+    throw ErroLista(tr('o portal não devolveu o link do canal'));
   }
 }

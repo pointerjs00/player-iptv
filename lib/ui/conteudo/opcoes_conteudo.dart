@@ -10,6 +10,7 @@ import 'package:material_ui/material_ui.dart';
 import '../../dados/biblioteca.dart';
 import '../design/design.dart';
 import '../realce_foco.dart';
+import '../../idioma/idioma.dart';
 
 enum OpcaoCanais { esconderGrupo, mostrarGrupo, ordemLista, ordemAz, verEscondidos, ocultarEscondidos }
 
@@ -21,15 +22,15 @@ Future<OpcaoCanais?> mostrarOpcoesCanais(BuildContext context,
   final itens = <(OpcaoCanais, String, String?, IconData, bool)>[
     if (grupo != null)
       grupoEscondido
-          ? (OpcaoCanais.mostrarGrupo, 'Mostrar o grupo', grupo, Icons.visibility_outlined, false)
-          : (OpcaoCanais.esconderGrupo, 'Esconder o grupo', grupo, Icons.visibility_off_outlined, false),
+          ? (OpcaoCanais.mostrarGrupo, tr('Mostrar o grupo'), grupo, Icons.visibility_outlined, false)
+          : (OpcaoCanais.esconderGrupo, tr('Esconder o grupo'), grupo, Icons.visibility_off_outlined, false),
     if (!soGrupo) ...[
-      (OpcaoCanais.ordemLista, 'Ordem da lista', null, Icons.format_list_numbered_rounded, ordem == OrdemCanais.lista),
-      (OpcaoCanais.ordemAz, 'Ordenar A–Z', null, Icons.sort_by_alpha_rounded, ordem == OrdemCanais.az),
+      (OpcaoCanais.ordemLista, tr('Ordem da lista'), null, Icons.format_list_numbered_rounded, ordem == OrdemCanais.lista),
+      (OpcaoCanais.ordemAz, tr('Ordenar A–Z'), null, Icons.sort_by_alpha_rounded, ordem == OrdemCanais.az),
       if (verEscondidos)
-        (OpcaoCanais.ocultarEscondidos, 'Ocultar grupos escondidos', null, Icons.visibility_off_outlined, false)
+        (OpcaoCanais.ocultarEscondidos, tr('Ocultar grupos escondidos'), null, Icons.visibility_off_outlined, false)
       else if (escondidos > 0)
-        (OpcaoCanais.verEscondidos, 'Mostrar grupos escondidos ($escondidos)', null, Icons.visibility_outlined, false),
+        (OpcaoCanais.verEscondidos, tr('Mostrar grupos escondidos ({0})', [escondidos]), null, Icons.visibility_outlined, false),
     ],
   ];
   return showDialog<OpcaoCanais>(

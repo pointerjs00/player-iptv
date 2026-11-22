@@ -2,6 +2,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../../dados/biblioteca.dart';
 import '../design/design.dart';
+import '../../idioma/idioma.dart';
 
 /// "Continuar a ver": o último canal visto, com a lista, em destaque no topo do Player. OK (ou
 /// toque) abre o player logo nesse canal.
@@ -29,10 +30,10 @@ class CartaoContinuar extends StatelessWidget {
     final logo = tv ? 40.0 : 34.0;
     final vazio = Text(_iniciais(visto.nome),
         style: TextStyle(color: Colors.white, fontSize: logo * .36, fontWeight: FontWeight.w800));
-    final detalhe = [if (numero != null) 'Canal $numero', if (visto.grupo.isNotEmpty) visto.grupo].join(' · ');
+    final detalhe = [if (numero != null) tr('Canal {0}', [numero]), if (visto.grupo.isNotEmpty) visto.grupo].join(' · ');
     return letraPresa(Semantics(
       button: true,
-      label: 'Continuar a ver ${visto.nome}, ${lista.nomeMostrado}',
+      label: tr('Continuar a ver {0}, {1}', [visto.nome, lista.nomeMostrado]),
       excludeSemantics: true,
       child: CartaoModerno(
         key: const Key('continuar-a-ver'),
@@ -59,7 +60,7 @@ class CartaoContinuar extends StatelessWidget {
           Expanded(
             child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-              Text('CONTINUAR A VER · lista ${lista.nomeMostrado}',
+              Text(tr('CONTINUAR A VER · lista {0}', [lista.nomeMostrado]),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -92,7 +93,7 @@ class CartaoContinuar extends StatelessWidget {
             child: Row(mainAxisSize: MainAxisSize.min, children: [
               Icon(Icons.play_arrow_rounded, color: Colors.white, size: tv ? 20 : 18),
               const SizedBox(width: 4),
-              Text('Ver', style: TextStyle(color: Colors.white, fontSize: tv ? 15 : 13.5, fontWeight: FontWeight.w700)),
+              Text(tr('Ver'), style: TextStyle(color: Colors.white, fontSize: tv ? 15 : 13.5, fontWeight: FontWeight.w700)),
             ]),
           ),
         ]),
@@ -109,13 +110,13 @@ class CartaoContinuar extends StatelessWidget {
         style: TextStyle(color: Colors.white, fontSize: logo * .36, fontWeight: FontWeight.w800));
     final detalhe = [
       lista.nomeMostrado,
-      if (numero != null) 'Canal $numero',
+      if (numero != null) tr('Canal {0}', [numero]),
       if (visto.grupo.isNotEmpty) visto.grupo,
     ].join(' · ');
     return letraPresa(Semantics(
       container: true,
       button: true,
-      label: 'Continuar a ver ${visto.nome}, ${lista.nomeMostrado}',
+      label: tr('Continuar a ver {0}, {1}', [visto.nome, lista.nomeMostrado]),
       child: CartaoModerno(
         key: const Key('continuar-a-ver'),
         autofocus: autofocus,
@@ -143,7 +144,7 @@ class CartaoContinuar extends StatelessWidget {
                 const SizedBox(width: Tokens.e12),
                 Expanded(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    const Text('Continuar a ver',
+                    Text(tr('Continuar a ver'),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(color: Tokens.acento, fontSize: 12, fontWeight: FontWeight.w700)),
@@ -165,7 +166,7 @@ class CartaoContinuar extends StatelessWidget {
           // só visual (o toque é do cartão), mas lido como «Ver»
           Semantics(
             container: true,
-            label: 'Ver',
+            label: tr('Ver'),
             excludeSemantics: true,
             child: Container(
               width: 36,

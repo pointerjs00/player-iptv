@@ -6,6 +6,7 @@ import 'package:material_ui/material_ui.dart';
 import '../design/componentes.dart';
 import 'diagnostico.dart';
 import 'motor_reproducao.dart';
+import '../../idioma/idioma.dart';
 
 /// Os desenhos da interface do Flutter (`SchedulerBinding.addTimingsCallback`): quantos por segundo
 /// e quanto custa cada um (construção + rasterização). Conta pelos tempos das próprias imagens, não
@@ -47,10 +48,10 @@ class MedidorDesenho {
 /// superfície do sistema, fora do Flutter; o que se mede é só a interface por cima dele.
 List<(String, String)> linhasDesenho(MedidorDesenho m, {bool soInterface = false}) {
   final fps = m.imagensPorSegundo, ms = m.tempoMedioMs;
-  final nota = soInterface ? ' (só a interface por cima do vídeo)' : '';
+  final nota = soInterface ? tr(' (só a interface por cima do vídeo)') : '';
   return [
-    ('Imagens desenhadas/s (interface)', '${fps == null ? '—' : fps.toStringAsFixed(0)}$nota'),
-    ('Tempo de desenho', '${ms == null ? '—' : '${ms.toStringAsFixed(1)} ms'}$nota'),
+    (tr('Imagens desenhadas/s (interface)'), '${fps == null ? '—' : fps.toStringAsFixed(0)}$nota'),
+    (tr('Tempo de desenho'), '${ms == null ? '—' : '${ms.toStringAsFixed(1)} ms'}$nota'),
   ];
 }
 
@@ -165,7 +166,7 @@ class _PainelEstatisticasState extends State<PainelEstatisticas> {
         raio: 14,
         padding: const EdgeInsets.all(14),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('Estatísticas', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
+          Text(tr('Estatísticas'), style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
           const SizedBox(height: 6),
           for (final (r, val) in linhas)
             Padding(
@@ -176,7 +177,7 @@ class _PainelEstatisticasState extends State<PainelEstatisticas> {
               ]),
             ),
           const SizedBox(height: 8),
-          Text('Veredicto: ${v != null ? textoVeredicto(v) : (ultima.largura > 0 ? 'a medir…' : '—')}',
+          Text(tr('Veredicto: {0}', [v != null ? textoVeredicto(v) : (ultima.largura > 0 ? tr('a medir…') : '—')]),
               style: TextStyle(color: _cor(v), fontSize: 14, fontWeight: FontWeight.w600)),
         ]),
       ),

@@ -7,6 +7,7 @@ import '../importar/importar.dart';
 import '../modelo/conta.dart';
 import '../rede/http.dart';
 import '../tarefas/servico_tarefas.dart';
+import '../idioma/idioma.dart';
 
 /// O que uma importação trouxe para o Gestor: os números do painel "Resultado".
 class ResumoImportacao {
@@ -33,13 +34,13 @@ class ResumoImportacao {
 
   /// Uma frase com o resumo ("2 listas novas, 1 já existia.").
   String get texto {
-    if (encontradas == 0 && novas == 0) return erros.isEmpty ? 'Não foi encontrada nenhuma lista.' : erros.join('; ');
+    if (encontradas == 0 && novas == 0) return erros.isEmpty ? tr('Não foi encontrada nenhuma lista.') : erros.join('; ');
     final p = <String>[
-      novas == 1 ? '1 lista nova' : '$novas listas novas',
-      if (repetidas > 0) repetidas == 1 ? '1 já existia' : '$repetidas já existiam',
+      novas == 1 ? tr('1 lista nova') : tr('{0} listas novas', [novas]),
+      if (repetidas > 0) repetidas == 1 ? tr('1 já existia') : tr('{0} já existiam', [repetidas]),
     ];
     var t = '${p.join(', ')}.';
-    if (erros.isNotEmpty) t += ' Com problemas: ${erros.join('; ')}';
+    if (erros.isNotEmpty) t += tr(' Com problemas: {0}', [erros.join('; ')]);
     return t;
   }
 }
@@ -60,7 +61,7 @@ Future<ResumoImportacao> juntarAoGestor(AreaGestor g, Future<int> Function() jun
 /// Pergunta os ficheiros (Accounts.json, .ini, .m3u, .txt, historico.json) e importa-os para o
 /// Gestor. null = não escolheu nenhum.
 Future<ResumoImportacao?> importarFicheiros(AreaGestor b, {Progresso? p}) async {
-  final ficheiros = await FilePicker.pickFiles(dialogTitle: 'Escolher listas');
+  final ficheiros = await FilePicker.pickFiles(dialogTitle: tr('Escolher listas'));
   if (ficheiros.isEmpty) return null;
   return importarEscolhidos(b, ficheiros, p: p);
 }
@@ -86,7 +87,7 @@ Future<ResumoImportacao> importarEscolhidos(AreaGestor b, List<PlatformFile> fic
 /// Junta ao Gestor listas coladas (uma por linha) ou um URL de lista M3U.
 Future<ResumoImportacao> importarTexto(AreaGestor b, String texto) async {
   final contas = lerLinhas(texto);
-  if (contas.isEmpty) return ResumoImportacao(erros: const ['Não foi encontrada nenhuma lista no texto.']);
+  if (contas.isEmpty) return ResumoImportacao(erros: [tr('Não foi encontrada nenhuma lista no texto.')]);
   return juntarAoGestor(b, () => b.adicionar([for (final c in contas) Importada(c)]), encontradas: contas.length);
 }
 
@@ -101,8 +102,9 @@ enum FormaLista {
   m3u('Lista M3U'),
   varias('Várias (colar)');
 
-  const FormaLista(this.nome);
-  final String nome;
+  const FormaLista(this._nome);
+  final String _nome;
+  String get nome => tr(_nome);
 }
 
 final _reMacLivre = RegExp(r'^[0-9A-F]{2}([:-]?[0-9A-F]{2}){5}$');
@@ -132,26 +134,25 @@ String? macNormalizado(String t) {
   final url = _endereco(endereco);
   switch (forma) {
     case FormaLista.portalMac:
-      if (url == null) return erro('Escreva o endereço do portal (por exemplo http://portal.com:8080/c/).');
+      if (url == null) return erro(tr('Escreva o endereço do portal (por exemplo http://portal.com:8080/c/).'));
       final m = macNormalizado(mac);
-      if (m == null) return erro('O MAC tem de ter 6 pares, como 00:1A:79:12:34:56.');
+      if (m == null) return erro(tr('O MAC tem de ter 6 pares, como 00:1A:79:12:34:56.'));
       return (conta: Conta(hostDe(url), Tipo.stalker, url, mac: m), erro: null);
     case FormaLista.xtreamLink:
       final x = url == null ? null : xtreamDeUrl(url);
       if (x == null) {
-        return erro('O link tem de ter o utilizador e a palavra-passe '
-            '(…/get.php?username=…&password=…).');
+        return erro(tr('O link tem de ter o utilizador e a palavra-passe (…/get.php?username=…&password=…).'));
       }
       return (conta: Conta(hostDe(url!), Tipo.xtream, x.$1, utilizador: x.$2, password: x.$3), erro: null);
     case FormaLista.xtreamConta:
-      if (url == null) return erro('Escreva o endereço do servidor (por exemplo http://servidor.com:8080).');
+      if (url == null) return erro(tr('Escreva o endereço do servidor (por exemplo http://servidor.com:8080).'));
       final u = utilizador.trim(), p = password.trim();
-      if (u.isEmpty || p.isEmpty) return erro('Escreva o utilizador e a palavra-passe.');
+      if (u.isEmpty || p.isEmpty) return erro(tr('Escreva o utilizador e a palavra-passe.'));
       // só a raiz do servidor (http://host:porta): um caminho a mais não faz parte da conta
       final s = Uri.parse(url);
       return (conta: Conta(hostDe(url), Tipo.xtream, '${s.scheme}://${s.authority}', utilizador: u, password: p), erro: null);
     case FormaLista.m3u:
-      if (url == null) return erro('Escreva o endereço da lista M3U.');
+      if (url == null) return erro(tr('Escreva o endereço da lista M3U.'));
       return (conta: Conta(hostDe(url), Tipo.m3u, url), erro: null);
     case FormaLista.varias:
       return erro('Use importarTexto para várias listas.');

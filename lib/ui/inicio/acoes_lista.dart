@@ -12,6 +12,7 @@ import '../../modelo/conta.dart';
 import '../campo_tv.dart';
 import '../design/design.dart';
 import '../realce_foco.dart';
+import '../../idioma/idioma.dart';
 
 enum AcaoLista {
   atualizar('Atualizar canais', Icons.refresh_rounded, 'Pede a lista de canais outra vez ao servidor'),
@@ -22,19 +23,21 @@ enum AcaoLista {
   enviarGestor('Enviar para o Gestor', Icons.send_outlined, 'Para verificar ou exportar com as outras'),
   eliminar('Remover lista', Icons.delete_outline_rounded, 'Pede confirmação · os favoritos desta lista saem');
 
-  const AcaoLista(this.rotulo, this.icone, this.explicacao);
-  final String rotulo;
+  const AcaoLista(this._rotulo, this.icone, this._explicacao);
+  final String _rotulo;
+  String get rotulo => tr(_rotulo);
   final IconData icone;
 
   /// A linha pequena por baixo do rótulo (ecrã 3).
-  final String explicacao;
+  final String _explicacao;
+  String get explicacao => tr(_explicacao);
 
   /// O rótulo para esta lista: «Pôr nas favoritas» ou «Tirar das favoritas».
-  String rotuloPara(Lista l) => this == favorita && l.favorita ? 'Tirar das favoritas' : rotulo;
+  String rotuloPara(Lista l) => this == favorita && l.favorita ? tr('Tirar das favoritas') : rotulo;
 
   /// A explicação para esta lista: «Fica à mão…» ao pôr, «Deixa de aparecer…» ao tirar.
   String explicacaoPara(Lista l) =>
-      this == favorita && l.favorita ? 'Deixa de aparecer no filtro «Favoritas»' : explicacao;
+      this == favorita && l.favorita ? tr('Deixa de aparecer no filtro «Favoritas»') : explicacao;
 
   IconData iconePara(Lista l) => this == favorita && l.favorita ? Icons.star_rounded : icone;
 }
@@ -51,14 +54,14 @@ final _reMac = RegExp(r'^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}$');
   final erros = <String, String>{};
   final uri = Uri.tryParse(end);
   if (end.isEmpty) {
-    erros['endereco'] = 'Indique o endereço';
+    erros['endereco'] = tr('Indique o endereço');
   } else if (uri == null || !const {'http', 'https'}.contains(uri.scheme.toLowerCase()) || uri.host.isEmpty) {
-    erros['endereco'] = 'O endereço tem de começar por http:// ou https://';
+    erros['endereco'] = tr('O endereço tem de começar por http:// ou https://');
   }
-  if (m.isNotEmpty && !_reMac.hasMatch(m)) erros['mac'] = 'MAC inválido (ex.: 00:1A:79:00:00:01)';
+  if (m.isNotEmpty && !_reMac.hasMatch(m)) erros['mac'] = tr('MAC inválido (ex.: 00:1A:79:00:00:01)');
   if (m.isEmpty && (u.isEmpty != p.isEmpty)) {
     erros[u.isEmpty ? 'utilizador' : 'password'] =
-        u.isEmpty ? 'Indique o utilizador (ou apague a password)' : 'Indique a password (ou apague o utilizador)';
+        u.isEmpty ? tr('Indique o utilizador (ou apague a password)') : tr('Indique a password (ou apague o utilizador)');
   }
   if (erros.isNotEmpty) return (conta: null, erros: erros);
   final dict = <String, dynamic>{
@@ -154,11 +157,11 @@ Future<bool> confirmarEliminar(BuildContext context, Lista l) async =>
       context: context,
       builder: (ctx) => AlertDialog(
         icon: const Icon(Icons.delete_outline_rounded, color: Tokens.mau, size: 32),
-        title: const Text('Remover lista?'),
-        content: Text('A lista ${l.nomeMostrado} sai de Ver TV (os favoritos e a cache de canais também).'),
+        title: Text(tr('Remover lista?')),
+        content: Text(tr('A lista {0} sai de Ver TV (os favoritos e a cache de canais também).', [l.nomeMostrado])),
         actions: [
-          TextButton(autofocus: true, onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Remover')),
+          TextButton(autofocus: true, onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Cancelar'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Remover'))),
         ],
       ),
     ) ==
@@ -210,12 +213,12 @@ class _DialogoEditarState extends State<_DialogoEditar> {
     try {
       final mantida = await widget.biblioteca.editar(widget.lista.id, r.conta!, nomeProprio: _nome.text);
       if (mounted) {
-        Navigator.pop(context, mantida ? 'Lista guardada.' : 'Lista guardada. Os canais vão ser pedidos de novo ao abrir.');
+        Navigator.pop(context, mantida ? tr('Lista guardada.') : tr('Lista guardada. Os canais vão ser pedidos de novo ao abrir.'));
       }
     } on ErroEdicao catch (e) {
-      if (mounted) setState(() => _erros = {'endereco': 'Não foi guardada: ${e.mensagem}.'});
+      if (mounted) setState(() => _erros = {'endereco': tr('Não foi guardada: {0}.', [e.mensagem])});
     } catch (_) {
-      if (mounted) setState(() => _erros = {'endereco': 'Não foi possível guardar a lista.'});
+      if (mounted) setState(() => _erros = {'endereco': tr('Não foi possível guardar a lista.')});
     } finally {
       if (mounted) setState(() => _aGuardar = false);
     }
@@ -237,26 +240,26 @@ class _DialogoEditarState extends State<_DialogoEditar> {
   @override
   Widget build(BuildContext context) => AlertDialog(
         icon: const Icon(Icons.edit_outlined, color: Tokens.acento2, size: 32),
-        title: const Text('Editar lista'),
+        title: Text(tr('Editar lista')),
         content: SizedBox(
           width: 520,
           child: SingleChildScrollView(
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              _campo('nome', _nome, 'Nome (opcional)',
+              _campo('nome', _nome, tr('Nome (opcional)'),
                   dica: nomeLista(widget.lista.ordem, widget.lista.conta, widget.lista.ultima?.validade ?? ''),
                   primeiro: true),
-              _campo('endereco', _endereco, 'Endereço'),
+              _campo('endereco', _endereco, tr('Endereço')),
               _campo('mac', _mac, 'MAC (Stalker)'),
-              _campo('utilizador', _utilizador, 'Utilizador (Xtream)'),
-              _campo('password', _password, 'Password (Xtream)', segredo: true),
-              const Text('Com MAC é Stalker; com utilizador e password é Xtream; só o endereço é M3U.',
+              _campo('utilizador', _utilizador, tr('Utilizador (Xtream)')),
+              _campo('password', _password, tr('Password (Xtream)'), segredo: true),
+              Text(tr('Com MAC é Stalker; com utilizador e password é Xtream; só o endereço é M3U.'),
                   style: TextStyle(color: Tokens.texto2, fontSize: 12.5)),
             ]),
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
-          FilledButton(onPressed: _aGuardar ? null : _guardar, child: const Text('Guardar')),
+          TextButton(onPressed: () => Navigator.pop(context), child: Text(tr('Cancelar'))),
+          FilledButton(onPressed: _aGuardar ? null : _guardar, child: Text(tr('Guardar'))),
         ],
       );
 }
@@ -276,11 +279,11 @@ Future<OrdemListas?> mostrarOrdemListas(BuildContext context, OrdemListas atual)
               child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                 Padding(
                   padding: const EdgeInsets.fromLTRB(Tokens.e8, Tokens.e4, Tokens.e8, Tokens.e4),
-                  child: Text('Ordenar as listas', style: TextStyle(fontSize: tv ? 20 : 18, fontWeight: FontWeight.w700)),
+                  child: Text(tr('Ordenar as listas'), style: TextStyle(fontSize: tv ? 20 : 18, fontWeight: FontWeight.w700)),
                 ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(Tokens.e8, 0, Tokens.e8, Tokens.e12),
-                  child: Text('As favoritas ficam sempre à frente.',
+                  child: Text(tr('As favoritas ficam sempre à frente.'),
                       style: TextStyle(color: Tokens.texto2, fontSize: tv ? 14 : 12.5)),
                 ),
                 for (final o in OrdemListas.values)

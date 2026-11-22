@@ -2,6 +2,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../design/design.dart';
 import '../realce_foco.dart';
+import '../../idioma/idioma.dart';
 
 /// Abre o ecrã "Como é feita a verificação" (o "i" do Gestor). Voltar fecha-o.
 Future<void> abrirComoVerifica(BuildContext context) => Navigator.of(context).push(
@@ -134,7 +135,7 @@ class TelaComoVerifica extends StatelessWidget {
         backgroundColor: Tokens.fundo,
         appBar: AppBar(
           backgroundColor: Tokens.fundo,
-          title: const Text('Como é feita a verificação'),
+          title: Text(tr('Como é feita a verificação')),
         ),
         body: Center(
           child: ConstrainedBox(
@@ -165,7 +166,9 @@ class _SeccaoTextoState extends State<_SeccaoTexto> {
 
   @override
   Widget build(BuildContext context) {
-    final (titulo, texto) = widget.seccao;
+    final (tituloPt, textoPt) = widget.seccao;
+    final titulo = tr(tituloPt);
+    final texto = [for (final p in textoPt) tr(p)];
     return Padding(
       padding: const EdgeInsets.only(bottom: Tokens.e8),
       child: Focus(

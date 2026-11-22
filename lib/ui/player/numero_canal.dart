@@ -8,6 +8,7 @@ import '../../modelo/canal.dart';
 import '../design/componentes.dart';
 import '../design/ecra.dart';
 import '../design/tokens.dart';
+import '../../idioma/idioma.dart';
 
 /// Quanto se espera pelo algarismo seguinte antes de saltar para o canal escrito.
 const tempoNumero = Duration(seconds: 2);
@@ -83,7 +84,7 @@ class MostradorNumero extends StatelessWidget {
         padding: const EdgeInsets.all(Tokens.e32),
         child: Semantics(
           liveRegion: true,
-          label: 'Canal $numero',
+          label: tr('Canal {0}', [numero]),
           child: SuperficieVidro(
             key: const Key('numero-canal'),
             cor: const Color(0xD90B0F17),

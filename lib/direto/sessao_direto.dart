@@ -24,6 +24,7 @@ import 'armazem.dart';
 import 'espaco.dart';
 import 'gravador.dart';
 import 'servidor.dart';
+import '../idioma/idioma.dart';
 
 /// Cria a sessão de um canal (uma por canal aberto). null no player: sem gravação. `memoria`: o
 /// recuo em Memória (ou o armazenamento acabou neste canal): grava num anel de blocos em RAM.
@@ -87,7 +88,7 @@ abstract interface class SessaoDireto {
 const atrasoDireto = ServidorDireto.atrasoDireto;
 
 /// O aviso quando o armazenamento não chega (no começo ou a meio) e o recuo passa à memória.
-const avisoMemoria = 'Pouco espaço: o recuo fica em memória (cerca de 2 min em HD)';
+String get avisoMemoria => tr('Pouco espaço: o recuo fica em memória (cerca de 2 min em HD)');
 
 /// A memória do recurso quando o armazenamento não chega: 128 MiB.
 const reservaMemoriaRecurso = 128 << 20;
@@ -353,7 +354,7 @@ class SessaoGravada implements SessaoDireto {
             emMemoria = true;
             reserva = reservaMemoria;
           } else {
-            if (r < reservaBytes) _aviso = 'Pouco espaço: o recuo fica com ${r >> 20} MB';
+            if (r < reservaBytes) _aviso = tr('Pouco espaço: o recuo fica com {0} MB', [r >> 20]);
             reserva = r;
           }
         }

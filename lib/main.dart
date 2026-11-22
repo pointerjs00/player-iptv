@@ -29,6 +29,7 @@ import 'ui/principal/tela_principal.dart';
 import 'ui/realce_foco.dart';
 import 'ui/tema.dart';
 import 'verificar/servico.dart';
+import 'idioma/idioma.dart';
 
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -51,6 +52,7 @@ Future<void> main(List<String> args) async {
     // a abertura que a principal manda já pode chegar durante estas esperas: a ligação
     // guarda-a até a app a escutar (ver LigacaoPrincipal.aberturas)
     Preferencias.atual = await Preferencias.abrir(await pastaDados());
+    idiomaApp.value = Preferencias.atual.idioma;
     runApp(AppJanelaPlayer(ligacao: ligacao));
     return;
   }
@@ -58,7 +60,7 @@ Future<void> main(List<String> args) async {
   // uma só instância: duas janelas principais reescreviam a biblioteca uma por cima da outra
   _bloqueio = await Biblioteca.bloquearInstancia(pasta);
   if (_bloqueio == null) {
-    runApp(const _Aviso('A app já está aberta noutra janela. Feche esta e use a outra.'));
+    runApp(_Aviso(tr('A app já está aberta noutra janela. Feche esta e use a outra.')));
     return;
   }
   // só com o bloqueio (outra instância podia estar a gravar): o direto gravado que ficou de um
@@ -70,14 +72,14 @@ Future<void> main(List<String> args) async {
     biblioteca = await Biblioteca.abrir(pasta);
     area = await AreaGestor.abrir(pasta);
   } catch (e) {
-    runApp(_Aviso('Não foi possível ler as listas guardadas (${descreverErro(e)}). '
-        'Feche outros programas que as possam ter abertas e abra a app de novo.'));
+    runApp(_Aviso(tr('Não foi possível ler as listas guardadas ({0}). Feche outros programas que as possam ter abertas e abra a app de novo.', [descreverErro(e)])));
     return;
   }
   await configurarRealceFoco(); // Android TV: o realce do foco sempre visível
   instalarRevelarTopo(); // o topo de uma página com scroll nunca fica cortado
   // o player: desentrelaçamento, formato, descodificação, volume, taxa do ecrã
   Preferencias.atual = await Preferencias.abrir(pasta, tv: EcraTv.nativo);
+  idiomaApp.value = Preferencias.atual.idioma;
   // as novidades: uma vez depois de cada atualização (numa instalação nova, não)
   final novidades = await novidadesPorVer(pasta,
       instalacaoNova: biblioteca.listas.isEmpty && area.listas.isEmpty);
@@ -103,7 +105,7 @@ class _Aviso extends StatelessWidget {
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 Text(texto, textAlign: TextAlign.center, style: const TextStyle(fontSize: 18)),
                 const SizedBox(height: 16),
-                FilledButton(autofocus: true, onPressed: () => exit(0), child: const Text('Fechar')),
+                FilledButton(autofocus: true, onPressed: () => exit(0), child: Text(tr('Fechar'))),
               ]),
             ),
           ),
@@ -111,7 +113,8 @@ class _Aviso extends StatelessWidget {
       );
 }
 
-const _pt = Locale('pt', 'PT');
+/// Os idiomas do Material (datas e botões dos diálogos do sistema).
+final _locales = [for (final i in Idioma.values) i.locale];
 
 class AppPlayerIptv extends StatefulWidget {
   const AppPlayerIptv({super.key, required this.biblioteca, required this.area, this.novidades = false});
@@ -135,7 +138,22 @@ class _AppPlayerIptvState extends State<AppPlayerIptv> {
   final _pedidoGestor = ValueNotifier<EcraGestor?>(null);
 
   @override
+  void initState() {
+    super.initState();
+    idiomaApp.addListener(_mudouIdioma);
+  }
+
+  /// Outro idioma: o Material muda de `locale` e todos os ecrãs voltam a construir os textos
+  /// (sem perder o estado: a secção, a lista aberta e o player ficam onde estavam).
+  void _mudouIdioma() {
+    if (!mounted) return;
+    setState(() {});
+    reconstruirTextos(context);
+  }
+
+  @override
   void dispose() {
+    idiomaApp.removeListener(_mudouIdioma);
     _servico.parar();
     _servicoPlayer.parar();
     _tarefas.dispose();
@@ -155,8 +173,8 @@ class _AppPlayerIptvState extends State<AppPlayerIptv> {
             child: FundoCinema(
                 child: EscalaConformePreferencias(
                     preferencias: Preferencias.atual, child: AnfitriaoMensagens(child: w!)))),
-        locale: _pt,
-        supportedLocales: const [_pt],
+        locale: idiomaApp.value.locale,
+        supportedLocales: _locales,
         localizationsDelegates: GlobalMaterialLocalizations.delegates,
         // três secções fixas que guardam o estado; o "Alterar nas Definições" do Gestor muda de secção
         home: TelaPrincipal(
@@ -189,8 +207,22 @@ class _AppJanelaPlayerState extends State<AppJanelaPlayer> {
   Window? get _janela => WindowManager.instance.getCurrent();
 
   @override
+  void dispose() {
+    idiomaApp.removeListener(_mudouIdioma);
+    super.dispose();
+  }
+
+  /// O idioma mudou na janela principal (lido ao abrir um canal): os textos voltam a construir-se.
+  void _mudouIdioma() {
+    if (!mounted) return;
+    setState(() {});
+    reconstruirTextos(context);
+  }
+
+  @override
   void initState() {
     super.initState();
+    idiomaApp.addListener(_mudouIdioma);
     widget.ligacao.aberturas.stream.listen((a) async {
       // as definições podem ter mudado na janela principal desde a última abertura
       await Preferencias.atual.recarregar();
@@ -217,8 +249,8 @@ class _AppJanelaPlayerState extends State<AppJanelaPlayer> {
         debugShowCheckedModeBanner: false,
         theme: temaApp(),
         builder: (_, w) => TemaConformeRealce(child: w!),
-        locale: _pt,
-        supportedLocales: const [_pt],
+        locale: idiomaApp.value.locale,
+        supportedLocales: _locales,
         localizationsDelegates: GlobalMaterialLocalizations.delegates,
         home: Scaffold(
           backgroundColor: Colors.black,

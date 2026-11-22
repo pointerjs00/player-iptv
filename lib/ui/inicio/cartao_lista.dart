@@ -5,6 +5,7 @@ import '../../modelo/conta.dart';
 import '../design/design.dart';
 import '../tema.dart';
 import 'favoritos_inicio.dart';
+import '../../idioma/idioma.dart';
 
 /// Cartão de uma lista no Player: ícone do tipo, nome, servidor, pílula do último resultado,
 /// validade e motivo (a verificação faz-se no Gestor). Com o foco do comando cresce e brilha
@@ -76,7 +77,7 @@ class CartaoLista extends StatelessWidget {
                     Padding(
                       padding: const EdgeInsets.only(left: Tokens.e4),
                       child: Icon(Icons.star_rounded, key: const Key('lista-favorita'),
-                          color: Tokens.aviso, size: tv ? 22 : 18, semanticLabel: 'Favorita'),
+                          color: Tokens.aviso, size: tv ? 22 : 18, semanticLabel: tr('Favorita')),
                     ),
                 ]),
                 // numa linha: o servidor encolhe primeiro (com reticências); as contagens só
@@ -93,7 +94,7 @@ class CartaoLista extends StatelessWidget {
                         child: Row(mainAxisSize: MainAxisSize.min, children: [
                           Text(' · ', style: secundario),
                           Flexible(
-                            child: Text('${resumo!.canais} canais · ${resumo!.grupos} grupos',
+                            child: Text(tr('{0} canais · {1} grupos', [resumo!.canais, resumo!.grupos]),
                                 maxLines: 1, overflow: TextOverflow.ellipsis, style: secundario),
                           ),
                         ]),
@@ -106,7 +107,7 @@ class CartaoLista extends StatelessWidget {
             if (telemovel && aoMenu != null)
               IconButton(
                 onPressed: aoMenu,
-                tooltip: 'Opções da lista',
+                tooltip: tr('Opções da lista'),
                 icon: const Icon(Icons.more_vert),
                 color: Tokens.texto2,
                 style: IconButton.styleFrom(minimumSize: const Size(48, 48)),
@@ -148,11 +149,11 @@ class CartaoLista extends StatelessWidget {
 /// "verificada há 2 h", "verificada há 3 dias"... (para o detalhe da [PilulaEstado]).
 String verificadaHa(DateTime d, [DateTime? agora]) {
   final dif = (agora ?? DateTime.now()).difference(d);
-  if (dif.inMinutes < 1) return 'verificada agora';
-  if (dif.inMinutes < 60) return 'verificada há ${dif.inMinutes} min';
-  if (dif.inHours < 24) return 'verificada há ${dif.inHours} h';
-  if (dif.inDays < 30) return 'verificada há ${dif.inDays} ${dif.inDays == 1 ? 'dia' : 'dias'}';
-  return 'verificada em ${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
+  if (dif.inMinutes < 1) return tr('verificada agora');
+  if (dif.inMinutes < 60) return tr('verificada há {0} min', [dif.inMinutes]);
+  if (dif.inHours < 24) return tr('verificada há {0} h', [dif.inHours]);
+  if (dif.inDays < 30) return tr('verificada há {0} {1}', [dif.inDays, dif.inDays == 1 ? tr('dia') : tr('dias')]);
+  return tr('verificada em {0}/{1}/{2}', [d.day.toString().padLeft(2, '0'), d.month.toString().padLeft(2, '0'), d.year]);
 }
 
 /// O ícone do tipo de lista num quadrado com o gradiente de acento.

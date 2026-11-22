@@ -18,6 +18,7 @@ import '../navegacao_blocos.dart';
 import '../verificar/dialogos_gestor.dart';
 import 'calendario_intervalo.dart';
 import 'indicador_atividade.dart';
+import '../../idioma/idioma.dart';
 
 /// As origens de onde se importa.
 enum OrigemImportacao { ficheiros, adicionar, stbstalker, doPlayer }
@@ -145,7 +146,7 @@ class _TelaImportarState extends State<TelaImportar> {
   static String _dd(DateTime d) =>
       '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
 
-  static String _n(int n, String um, String varios) => '$n ${n == 1 ? um : varios}';
+  static String _n(int n, String um, String varios) => '$n ${tr(n == 1 ? um : varios)}';
 
   void _aviso(String t) {
     if (mounted) mostrarMensagem(context, t);
@@ -156,21 +157,21 @@ class _TelaImportarState extends State<TelaImportar> {
   Future<void> _escolherFicheiros() async {
     final List<PlatformFile> ficheiros;
     try {
-      ficheiros = await FilePicker.pickFiles(dialogTitle: 'Escolher listas');
+      ficheiros = await FilePicker.pickFiles(dialogTitle: tr('Escolher listas'));
     } catch (e) {
-      return _aviso('Não foi possível abrir os ficheiros: ${descreverErro(e)}');
+      return _aviso(tr('Não foi possível abrir os ficheiros: {0}', [descreverErro(e)]));
     }
     if (ficheiros.isEmpty) return;
     widget.registo.iniciar(
-        widget.tarefas, 'Importar ficheiros', (p) => importarEscolhidos(_g, ficheiros, p: p));
+        widget.tarefas, tr('Importar ficheiros'), (p) => importarEscolhidos(_g, ficheiros, p: p));
   }
 
   /// "Juntar ao Gestor" do "Adicionar lista": a lista dos campos (ou as coladas, em "Várias").
   void _juntar() {
     if (_forma == FormaLista.varias) {
       final texto = _texto.text;
-      if (texto.trim().isEmpty) return _aviso('Cole primeiro as listas, uma por linha.');
-      widget.registo.iniciar(widget.tarefas, 'Importar texto colado', (p) => importarTexto(_g, texto));
+      if (texto.trim().isEmpty) return _aviso(tr('Cole primeiro as listas, uma por linha.'));
+      widget.registo.iniciar(widget.tarefas, tr('Importar texto colado'), (p) => importarTexto(_g, texto));
       _texto.clear();
       return;
     }
@@ -178,7 +179,7 @@ class _TelaImportarState extends State<TelaImportar> {
         endereco: _endereco.text, mac: _mac.text, utilizador: _utilizador.text, password: _password.text);
     if (r.erro != null) return _aviso(r.erro!);
     final c = r.conta!;
-    widget.registo.iniciar(widget.tarefas, 'Adicionar lista · ${c.nome}', (p) => importarConta(_g, c));
+    widget.registo.iniciar(widget.tarefas, tr('Adicionar lista · {0}', [c.nome]), (p) => importarConta(_g, c));
     _endereco.clear();
     _mac.text = _prefixoMac;
     _utilizador.clear();
@@ -189,9 +190,9 @@ class _TelaImportarState extends State<TelaImportar> {
     // as datas podem mudar durante a pesquisa: o resumo fala das que foram pesquisadas
     final inicio = _inicio, fim = _fim, base = widget.baseStb;
     final periodo = inicio == fim ? _dd(inicio) : '${_dd(inicio)} a ${_dd(fim)}';
-    widget.registo.iniciar(widget.tarefas, '$tituloTarefaStb · $periodo', (p) async {
-      p(null, 'a procurar os posts');
-      const parada = _Falha('Pesquisa parada. Nenhuma lista foi junta ao Gestor.');
+    widget.registo.iniciar(widget.tarefas, '${tr(tituloTarefaStb)} · $periodo', (p) async {
+      p(null, tr('a procurar os posts'));
+      final parada = _Falha(tr('Pesquisa parada. Nenhuma lista foi junta ao Gestor.'));
       final ResultadoStb r;
       try {
         r = await importarEntre(inicio, fim,
@@ -202,7 +203,7 @@ class _TelaImportarState extends State<TelaImportar> {
         throw parada;
       } catch (e) {
         if (p.cancelado) throw parada;
-        throw _Falha('Não foi possível pesquisar: ${descreverErro(e)}');
+        throw _Falha(tr('Não foi possível pesquisar: {0}', [descreverErro(e)]));
       }
       // o "Parar" pode chegar com o último post: nada entra no Gestor depois dele
       if (p.cancelado) throw parada;
@@ -217,8 +218,8 @@ class _TelaImportarState extends State<TelaImportar> {
 
   void _importarDoPlayer() {
     final n = _b.listas.length;
-    if (n == 0) return _aviso('Ainda não há listas em Ver TV.');
-    widget.registo.iniciar(widget.tarefas, 'Importar de Ver TV', (p) async {
+    if (n == 0) return _aviso(tr('Ainda não há listas em Ver TV.'));
+    widget.registo.iniciar(widget.tarefas, tr('Importar de Ver TV'), (p) async {
       p(null, _n(n, 'lista', 'listas'));
       return juntarAoGestor(_g, () => _g.importarDoPlayer(_b), encontradas: n);
     });
@@ -231,19 +232,19 @@ class _TelaImportarState extends State<TelaImportar> {
       for (final id in r.idsNovas)
         if (_g.porId(id) case final l? when !widget.servico.aVerificar(id)) l,
     ];
-    if (listas.isEmpty) return _aviso('As listas novas já estão na fila.');
+    if (listas.isEmpty) return _aviso(tr('As listas novas já estão na fila.'));
     widget.servico.verificarVarias(listas);
-    _aviso(listas.length == 1 ? '1 lista entrou na fila.' : '${listas.length} listas entraram na fila.');
+    _aviso(listas.length == 1 ? tr('1 lista entrou na fila.') : tr('{0} listas entraram na fila.', [listas.length]));
   }
 
   Future<void> _limpar() async {
     final n = _g.listas.length;
-    if (n == 0) return _aviso('O Gestor já está vazio.');
+    if (n == 0) return _aviso(tr('O Gestor já está vazio.'));
     final ok = await confirmar(context,
         icone: Icons.delete_sweep_outlined,
-        titulo: 'Limpar o Gestor?',
-        texto: '${n == 1 ? 'A lista do Gestor sai' : 'As $n listas do Gestor saem'}. As listas de Ver TV não mudam.',
-        acao: 'Limpar');
+        titulo: tr('Limpar o Gestor?'),
+        texto: tr('{0}. As listas de Ver TV não mudam.', [n == 1 ? tr('A lista do Gestor sai') : tr('As {0} listas do Gestor saem', [n])]),
+        acao: tr('Limpar'));
     if (!ok) return;
     if (widget.servico.ocupado) widget.servico.parar();
     await _g.limpar();
@@ -285,12 +286,12 @@ class _TelaImportarState extends State<TelaImportar> {
                 : 2;
         final nPlayer = _b.listas.length;
         final origens = <(OrigemImportacao, IconData, String, String)>[
-          (OrigemImportacao.ficheiros, Icons.file_open_outlined, 'Ficheiros', 'Accounts.json, .ini, .m3u, .txt'),
-          (OrigemImportacao.adicionar, Icons.playlist_add_rounded, 'Adicionar lista', 'Portal MAC, Xtream ou M3U'),
-          (OrigemImportacao.stbstalker, Icons.event_note_outlined, 'Listas do stbstalker',
-              'Publicadas entre duas datas'),
-          (OrigemImportacao.doPlayer, Icons.download_for_offline_outlined, 'De Ver TV',
-              nPlayer == 0 ? 'Ainda não há listas em Ver TV' : 'As $nPlayer listas que já tens'),
+          (OrigemImportacao.ficheiros, Icons.file_open_outlined, tr('Ficheiros'), tr('Accounts.json, .ini, .m3u, .txt')),
+          (OrigemImportacao.adicionar, Icons.playlist_add_rounded, tr('Adicionar lista'), tr('Portal MAC, Xtream ou M3U')),
+          (OrigemImportacao.stbstalker, Icons.event_note_outlined, tr('Listas do stbstalker'),
+              tr('Publicadas entre duas datas')),
+          (OrigemImportacao.doPlayer, Icons.download_for_offline_outlined, tr('De Ver TV'),
+              nPlayer == 0 ? tr('Ainda não há listas em Ver TV') : tr('As {0} listas que já tens', [nPlayer])),
         ];
         final cartoes = [
           for (final (i, (o, icone, titulo, sub)) in origens.indexed)
@@ -335,18 +336,18 @@ class _TelaImportarState extends State<TelaImportar> {
     switch (_origem) {
       case OrigemImportacao.ficheiros:
         return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          _titulo('Ficheiros'),
-          _explicacao('Escolha um ou mais ficheiros: Accounts.json, .ini, .m3u ou .txt.'),
+          _titulo(tr('Ficheiros')),
+          _explicacao(tr('Escolha um ou mais ficheiros: Accounts.json, .ini, .m3u ou .txt.')),
           FilledButton.icon(
             onPressed: _escolherFicheiros,
             icon: const Icon(Icons.file_open_outlined),
-            label: const Text('Escolher ficheiros'),
+            label: Text(tr('Escolher ficheiros')),
           ),
         ]);
       case OrigemImportacao.adicionar:
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          _titulo('Nova lista'),
-          _explicacao('Escolha o tipo de lista e preencha os dados.'),
+          _titulo(tr('Nova lista')),
+          _explicacao(tr('Escolha o tipo de lista e preencha os dados.')),
           // os tipos: ESQUERDA/DIREITA passam de um ao outro pela ordem, mesmo partidos em duas linhas;
           // o que tem o foco fica escolhido
           Focus(
@@ -372,39 +373,39 @@ class _TelaImportarState extends State<TelaImportar> {
             child: FilledButton.icon(
               onPressed: _juntar,
               icon: const Icon(Icons.playlist_add_rounded),
-              label: const Text('Juntar ao Gestor'),
+              label: Text(tr('Juntar ao Gestor')),
             ),
           ),
         ]);
       case OrigemImportacao.stbstalker:
         return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          _titulo('Listas do stbstalker'),
-          _explicacao('Junta as listas publicadas no blog entre duas datas, sem duplicar.'),
+          _titulo(tr('Listas do stbstalker')),
+          _explicacao(tr('Junta as listas publicadas no blog entre duas datas, sem duplicar.')),
           Wrap(spacing: Tokens.e8, runSpacing: Tokens.e8, crossAxisAlignment: WrapCrossAlignment.end, children: [
             OutlinedButton.icon(
               onPressed: _escolherDatas,
               icon: const Icon(Icons.calendar_today, size: 16),
-              label: Text('Escolher datas · ${dataCurta(_inicio)} – ${dataCurta(_fim)}'),
+              label: Text(tr('Escolher datas · {0} – {1}', [dataCurta(_inicio), dataCurta(_fim)])),
             ),
             // fica sempre ligado: carregar durante uma pesquisa inicia outra tarefa
             FilledButton.icon(
               onPressed: _procurarStb,
               icon: const Icon(Icons.search),
-              label: const Text('Procurar e juntar'),
+              label: Text(tr('Procurar e juntar')),
             ),
           ]),
         ]);
       case OrigemImportacao.doPlayer:
         final n = _b.listas.length;
         return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          _titulo('De Ver TV'),
+          _titulo(tr('De Ver TV')),
           _explicacao(n == 0
-              ? 'Ainda não há listas em Ver TV.'
-              : 'Copia ${n == 1 ? 'a lista' : 'as $n listas'} de Ver TV para o Gestor, sem duplicar.'),
+              ? tr('Ainda não há listas em Ver TV.')
+              : tr('Copia {0} de Ver TV para o Gestor, sem duplicar.', [n == 1 ? tr('a lista') : tr('as {0} listas', [n])])),
           FilledButton.icon(
             onPressed: _importarDoPlayer,
             icon: const Icon(Icons.download_for_offline_outlined),
-            label: const Text('Importar de Ver TV'),
+            label: Text(tr('Importar de Ver TV')),
           ),
         ]);
     }
@@ -436,22 +437,22 @@ class _TelaImportarState extends State<TelaImportar> {
   /// Os campos do tipo escolhido em "Adicionar lista".
   List<Widget> _campos() => switch (_forma) {
         FormaLista.portalMac => [
-            _campo(_endereco, 'Endereço do portal', 'http://portal.com:8080/c/'),
-            _campo(_mac, 'Endereço MAC', '00:1A:79:12:34:56'),
+            _campo(_endereco, tr('Endereço do portal'), 'http://portal.com:8080/c/'),
+            _campo(_mac, tr('Endereço MAC'), '00:1A:79:12:34:56'),
           ],
         FormaLista.xtreamLink => [
-            _campo(_endereco, 'Link Xtream', 'http://servidor.com:8080/get.php?username=…&password=…'),
+            _campo(_endereco, tr('Link Xtream'), 'http://servidor.com:8080/get.php?username=…&password=…'),
           ],
         FormaLista.xtreamConta => [
-            _campo(_endereco, 'Servidor', 'http://servidor.com:8080'),
-            _campo(_utilizador, 'Utilizador', ''),
-            _campo(_password, 'Palavra-passe', ''),
+            _campo(_endereco, tr('Servidor'), 'http://servidor.com:8080'),
+            _campo(_utilizador, tr('Utilizador'), ''),
+            _campo(_password, tr('Palavra-passe'), ''),
           ],
         FormaLista.m3u => [
-            _campo(_endereco, 'Endereço da lista', 'http://servidor.com/lista.m3u'),
+            _campo(_endereco, tr('Endereço da lista'), 'http://servidor.com/lista.m3u'),
           ],
         FormaLista.varias => [
-            _explicacao('Cole as listas, uma por linha (portal e MAC, ligação Xtream ou M3U).'),
+            _explicacao(tr('Cole as listas, uma por linha (portal e MAC, ligação Xtream ou M3U).')),
             CampoTv(
               controller: _texto,
               minLines: 4,
@@ -484,9 +485,9 @@ class _TelaImportarState extends State<TelaImportar> {
               style: const TextStyle(color: Tokens.texto2)),
         ]);
       case EstadoTarefa.falhou:
-        corpo = Text('Com erro (${t.resultado ?? 'falhou'})', style: const TextStyle(color: Tokens.texto));
+        corpo = Text(tr('Com erro ({0})', [t.resultado ?? 'falhou']), style: const TextStyle(color: Tokens.texto));
       case EstadoTarefa.cancelada:
-        corpo = const Text('Cancelada.', style: TextStyle(color: Tokens.texto2));
+        corpo = Text(tr('Cancelada.'), style: TextStyle(color: Tokens.texto2));
       case EstadoTarefa.terminada:
         final r = widget.registo.resumoDe(t);
         if (r == null) {
@@ -495,13 +496,13 @@ class _TelaImportarState extends State<TelaImportar> {
         }
         final novas = [for (final id in r.idsNovas) if (_g.porId(id) != null) id];
         corpo = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          _numero('Encontradas', r.encontradas),
-          _numero('Novas no Gestor', r.novas),
-          _numero('Já estavam no Gestor', r.repetidas),
+          _numero(tr('Encontradas'), r.encontradas),
+          _numero(tr('Novas no Gestor'), r.novas),
+          _numero(tr('Já estavam no Gestor'), r.repetidas),
           for (final e in r.erros)
             Padding(
               padding: const EdgeInsets.only(top: 2),
-              child: Text('Com erro ($e)', style: const TextStyle(color: Tokens.texto)),
+              child: Text(tr('Com erro ({0})', [e]), style: const TextStyle(color: Tokens.texto)),
             ),
           if (novas.isNotEmpty) ...[
             const SizedBox(height: Tokens.e12),
@@ -510,7 +511,7 @@ class _TelaImportarState extends State<TelaImportar> {
               child: FilledButton.icon(
                 onPressed: () => _verificarNovas(r),
                 icon: const Icon(Icons.playlist_add_check),
-                label: Text(novas.length == 1 ? 'Verificar a 1 nova' : 'Verificar as ${novas.length} novas'),
+                label: Text(novas.length == 1 ? tr('Verificar a 1 nova') : tr('Verificar as {0} novas', [novas.length])),
               ),
             ),
           ],
@@ -519,7 +520,7 @@ class _TelaImportarState extends State<TelaImportar> {
     return Semantics(
       liveRegion: true,
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        const Text('Resultado', style: TextStyle(fontWeight: FontWeight.w600)),
+        Text(tr('Resultado'), style: TextStyle(fontWeight: FontWeight.w600)),
         Padding(
           padding: const EdgeInsets.only(top: 2, bottom: Tokens.e8),
           child: Text(t.titulo, style: const TextStyle(color: Tokens.texto2, fontSize: 12.5)),
@@ -533,7 +534,7 @@ class _TelaImportarState extends State<TelaImportar> {
   /// por um traço, no fim do ecrã); na TV e no Windows o botão de contorno de sempre.
   Widget _botaoLimpar() {
     const icone = Icon(Icons.delete_sweep_outlined);
-    const rotulo = Text('Limpar o Gestor');
+    final rotulo = Text(tr('Limpar o Gestor'));
     if (!ecraTelemovel(context)) {
       return Align(
         alignment: Alignment.centerLeft,

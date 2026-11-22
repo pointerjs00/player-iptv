@@ -2,6 +2,7 @@ import '../modelo/canal.dart';
 import '../modelo/conta.dart';
 import '../rede/http.dart';
 import 'protocolo.dart';
+import '../idioma/idioma.dart';
 
 /// Contas Xtream (`player_api.php`). Porta de `motor/xtream.py`.
 class Xtream implements Protocolo {
@@ -59,24 +60,24 @@ class Xtream implements Protocolo {
 
   @override
   Future<ConteudoLista> abrir(Conta conta, {Cancelamento? cancelamento, Aviso? aviso}) async {
-    aviso?.call('a entrar na conta');
+    aviso?.call(tr('a entrar na conta'));
     final info = await _apiSemProva(conta, const {}, cancelamento, (m) => m);
     final user = info is Map ? info['user_info'] : null;
-    if (user is! Map) throw ErroLista('o servidor não respondeu como um painel Xtream', fixo: true);
-    if (!user.containsKey('auth')) throw ErroLista('resposta do servidor sem estado de autenticação', fixo: true);
+    if (user is! Map) throw ErroLista(tr('o servidor não respondeu como um painel Xtream'), fixo: true);
+    if (!user.containsKey('auth')) throw ErroLista(tr('resposta do servidor sem estado de autenticação'), fixo: true);
     if (!const {'1', 'true'}.contains('${user['auth']}'.toLowerCase())) {
-      throw ErroLista('autenticação recusada', definitivo: true);
+      throw ErroLista(tr('autenticação recusada'), definitivo: true);
     }
     final status = '${user['status'] ?? 'active'}'.toLowerCase();
-    if (status != 'active') throw ErroLista('conta ${user['status']}', definitivo: true);
+    if (status != 'active') throw ErroLista(tr('conta {0}', [user['status']]), definitivo: true);
     final validade = validadeXtream(user);
     final fim = DateTime.tryParse(validade);
     if (fim != null && fim.isBefore(DateTime.now().subtract(const Duration(days: 1)))) {
-      throw ErroLista('conta expirada em $validade', definitivo: true);
+      throw ErroLista(tr('conta expirada em {0}', [validade]), definitivo: true);
     }
     _extensoes[chave(conta)] = extensao(user);
 
-    aviso?.call('a pedir as categorias');
+    aviso?.call(tr('a pedir as categorias'));
     Object? cats;
     try {
       cats = await _api(conta, const {'action': 'get_live_categories'}, cancelamento);
@@ -92,10 +93,10 @@ class Xtream implements Protocolo {
         nomes['${c['category_id']}'] = nome.isEmpty ? 'Sem grupo' : nome;
       }
     }
-    aviso?.call('a pedir os canais');
+    aviso?.call(tr('a pedir os canais'));
     final streams = await _apiSemProva(conta, const {'action': 'get_live_streams'}, cancelamento,
-        (m) => 'não foi possível listar os canais ($m)');
-    if (streams is! List) throw ErroLista('o servidor não devolveu a lista de canais');
+        (m) => tr('não foi possível listar os canais ({0})', [m]));
+    if (streams is! List) throw ErroLista(tr('o servidor não devolveu a lista de canais'));
     final canais = <Canal>[];
     final vistos = <String>{};
     for (final s in streams) {

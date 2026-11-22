@@ -43,12 +43,13 @@ import 'taxa_ecra.dart';
 import 'troca_player.dart';
 import 'ultima_imagem.dart';
 import 'vigia_abertura.dart';
+import '../../idioma/idioma.dart';
 
 /// A mensagem do leitor sem links: nas contas Xtream o link leva o utilizador e a password.
 String mensagemErroPlayer(String e) {
   final limpo = semSegredos(e);
   final semPontuacao = limpo.replaceAll(RegExp(r'[^\p{L}\p{N}]', unicode: true), '');
-  return semPontuacao.isEmpty ? 'o canal não abriu' : 'o canal não abriu ($limpo)';
+  return semPontuacao.isEmpty ? tr('o canal não abriu') : tr('o canal não abriu ({0})', [limpo]);
 }
 
 /// O erro do mpv faz o canal falhar? Não quando é só a queixa do seek que o media_kit faz ao
@@ -79,10 +80,10 @@ MotorReproducao criarMotorMpv(ModoDescodificacao modo, bool hardware) =>
 typedef CriarMotorExo = MotorReproducao Function({required bool tunel});
 
 /// O aviso quando o ExoPlayer não conseguiu tocar um canal e ele abriu no mpv.
-const avisoMotorMpv = 'Este canal abriu com o motor mpv';
+String get avisoMotorMpv => tr('Este canal abriu com o motor mpv');
 
 /// A nota das opções que só existem no mpv, com o ExoPlayer.
-const soNoMpv = 'só no motor mpv';
+String get soNoMpv => tr('só no motor mpv');
 
 /// O player: toca o canal `indice` de `canais`, com a barra de controlos e o painel de
 /// definições ([ControlosPlayer]). As preferências ([Preferencias.atual]) aplicam-se a cada canal.
@@ -1355,9 +1356,9 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     final passo = recuo - atraso;
     if (barra && passo.abs() < const Duration(seconds: 1)) return null;
     final avancar = passo.isNegative;
-    if (!avancar && passo < const Duration(seconds: 1)) return 'Não há mais para recuar';
+    if (!avancar && passo < const Duration(seconds: 1)) return tr('Não há mais para recuar');
     if (recuo - atrasoDireto < RelogioDireto.limiar) {
-      if (avancar && _atrasoGravado < RelogioDireto.limiar) return 'Já está em direto';
+      if (avancar && _atrasoGravado < RelogioDireto.limiar) return tr('Já está em direto');
       _voltarAoDiretoGravado();
       return null;
     }
@@ -1417,8 +1418,8 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     final fim = j.duracao;
     if (fim != null && alvo > fim) alvo = fim;
     final andou = alvo - j.posicao;
-    if (d.isNegative && -andou < const Duration(seconds: 1)) return 'Não há mais para recuar';
-    if (!d.isNegative && andou < const Duration(milliseconds: 500)) return 'Já está no fim do buffer';
+    if (d.isNegative && -andou < const Duration(seconds: 1)) return tr('Não há mais para recuar');
+    if (!d.isNegative && andou < const Duration(milliseconds: 500)) return tr('Já está no fim do buffer');
     await (m as MotorComProcura).seekTo(alvo);
     if (j.direto) andou.isNegative ? _relogio.recuou(-andou) : _relogio.avancou(andou);
     return null;
@@ -1455,7 +1456,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
           _fpsConhecido = (pedido: pedido, fps: fps);
           final hz = await _taxa.ajustarPara(fps);
           final ecra = _hzEcra?.toStringAsFixed(2) ?? '?';
-          final pedidoTexto = hz == null ? 'nada pedido (já certo ou nenhum modo serve)' : 'pedido ${hz.toStringAsFixed(2)} Hz';
+          final pedidoTexto = hz == null ? tr('nada pedido (já certo ou nenhum modo serve)') : 'pedido ${hz.toStringAsFixed(2)} Hz';
           debugPrint('taxa do ecrã: canal a ${fps.toStringAsFixed(2)} imagens/s; ecrã a $ecra Hz; $pedidoTexto');
           if (hz != null && mounted) {
             setState(() => _hzPedidos = hz);
@@ -1500,7 +1501,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
             ultimaTentativa: i == _tentativasRetoma - 1 || cacheNoFim(m['demuxer-cache-state'] ?? ''));
         if (r.esperar) continue;
         final salto = r.salto;
-        final texto = salto == null ? 'sem salto' : 'salta ${salto.toStringAsFixed(1)} s';
+        final texto = salto == null ? tr('sem salto') : 'salta ${salto.toStringAsFixed(1)} s';
         debugPrint('player: reaberto; o que se viu por último fica a ${(alvo - pos).toStringAsFixed(1)} s; $texto');
         if (salto != null) {
           await mpv.command(['seek', salto.toStringAsFixed(3), 'relative']);
@@ -1567,7 +1568,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     }
     if (!mounted || pedido != _pedido) return;
     if (!CompativelNaSessao.instancia.marcar(_chave(_canais[_i]))) return;
-    _mostrarAviso('Modo compatível ativado para este canal');
+    _mostrarAviso(tr('Modo compatível ativado para este canal'));
     _abrir();
   }
 
@@ -1600,7 +1601,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   void _irParaNumero(int n) {
     final i = indicePorNumero(_canais, n);
     if (i == null) {
-      _mostrarAviso('Não há o canal $n nesta lista');
+      _mostrarAviso(tr('Não há o canal {0} nesta lista', [n]));
     } else {
       _irPara(i);
     }
@@ -1699,7 +1700,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   String get _textoDesentrelacamento {
     final l = _tamanhoAgora?.height.round() ?? 0, n = _linhasNoEcra.value;
     if (_deint.meio == MeioDesentrelacamento.shaderFlutter && n != null && n > 0 && !shaderCabe(linhasVideo: l, linhasNoEcra: n)) {
-      return 'desligado (imagem reduzida no ecrã)';
+      return tr('desligado (imagem reduzida no ecrã)');
     }
     return textoDesentrelacamento(_deint.meio,
         ligado: _prefs.desentrelacar, entrelacada: _deint.entrelacada, confirmado: _deint.confirmado);
@@ -1734,19 +1735,19 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   /// Ligado: em todas as imagens (as que o mpv vê como progressivas também).
   String get _notaDesentrelacamento {
     if (_exo) return soNoMpv;
-    if (!_desentrelacamentoPossivel) return 'Este aparelho não permite o desentrelaçamento do player';
+    if (!_desentrelacamentoPossivel) return tr('Este aparelho não permite o desentrelaçamento do player');
     final forcar = _forcarDesentrelacamento;
     if (_deint.filtrosPorSaber) {
-      return forcar ? 'Em todas as imagens, também nas que parecem progressivas' : 'Só nas imagens entrelaçadas (1080i/576i/480i)';
+      return forcar ? tr('Em todas as imagens, também nas que parecem progressivas') : tr('Só nas imagens entrelaçadas (1080i/576i/480i)');
     }
     if (_deint.filtros) {
       return _diretoAndroid
-          ? 'Por campo (50 imagens/s; 60 nos 480i); na descodificação Direta um direto entrelaçado reabre em Compatível'
-          : 'Por campo (50 imagens/s; 60 nos 480i), ${forcar ? 'em todas as imagens' : 'só nas imagens entrelaçadas'}';
+          ? tr('Por campo (50 imagens/s; 60 nos 480i); na descodificação Direta um direto entrelaçado reabre em Compatível')
+          : tr('Por campo (50 imagens/s; 60 nos 480i), {0}', [forcar ? tr('em todas as imagens') : tr('só nas imagens entrelaçadas')]);
     }
     return forcar
-        ? 'Em todas as imagens; limpa as linhas sem dobrar as imagens/s'
-        : 'Só nas imagens entrelaçadas (1080i/576i/480i); limpa as linhas sem dobrar as imagens/s';
+        ? tr('Em todas as imagens; limpa as linhas sem dobrar as imagens/s')
+        : tr('Só nas imagens entrelaçadas (1080i/576i/480i); limpa as linhas sem dobrar as imagens/s');
   }
 
   /// Lê do mpv se a imagem é entrelaçada e se o filtro posto funciona (de uma vez, fora da UI) e põe
@@ -1762,7 +1763,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       // Android direto: o filtro não se aplica, o canal reabre em Compatível (uma vez por canal); e
       // um Compatível com o filtro que perde imagens volta ao direto
       if (_deint.ler(m, ligado: _prefs.desentrelacar, direto: _diretoAndroid, chave: _chave(_canais[_i]))) {
-        _mostrarAviso(_deint.avisoReabrir ?? 'Modo compatível ativado para desentrelaçar este canal');
+        _mostrarAviso(_deint.avisoReabrir ?? tr('Modo compatível ativado para desentrelaçar este canal'));
         _abrir();
         return;
       }
@@ -1806,7 +1807,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     final exo = _exo;
     return [
       DefinicaoEscolha(
-        'Desentrelaçamento',
+        tr('Desentrelaçamento'),
         opcoes: [for (final m in ModoDesentrelacamento.values) m.rotulo],
         atual: (possivel ? _prefs.modoDesentrelacamento : ModoDesentrelacamento.desligado).index,
         aoMudar: possivel
@@ -1815,21 +1816,21 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
         nota: _notaDesentrelacamento,
       ),
       DefinicaoEscolha(
-        'Formato de imagem',
+        tr('Formato de imagem'),
         opcoes: [for (final f in FormatoImagem.values) f.rotulo],
         atual: _prefs.formato.index,
         aoMudar: (i) => _preferir((p) => p.formato = FormatoImagem.values[i]),
       ),
       DefinicaoEscolha(
-        'Qualidade / faixa de vídeo',
+        tr('Qualidade / faixa de vídeo'),
         opcoes: video.opcoes,
         atual: video.atual,
         // só com mais de uma faixa (escolher entre "Automática" e a única não muda nada)
         aoMudar: video.opcoes.length > 2 && _mk != null ? (i) => _mk?.escolherVideo(video.faixa(i)) : null,
-        nota: video.opcoes.length <= 2 ? 'Este canal só tem uma' : null,
+        nota: video.opcoes.length <= 2 ? tr('Este canal só tem uma') : null,
       ),
       DefinicaoEscolha(
-        'Faixa de áudio',
+        tr('Faixa de áudio'),
         opcoes: audio.opcoes,
         atual: audio.atual,
         aoMudar: audio.opcoes.length > 2
@@ -1839,17 +1840,17 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
                 _motor.escolherAudio(faixa);
               }
             : null,
-        nota: audio.opcoes.length <= 2 ? 'Este canal só tem uma' : null,
+        nota: audio.opcoes.length <= 2 ? tr('Este canal só tem uma') : null,
       ),
       DefinicaoEscolha(
-        'Legendas',
+        tr('Legendas'),
         opcoes: legendas.opcoes,
         atual: legendas.atual,
         aoMudar: (i) {
           final faixa = legendas.faixa(i);
           _motor.escolherLegenda(faixa.id == FaixaMotor.nenhuma.id ? null : faixa);
         },
-        nota: legendas.opcoes.length < 2 ? 'Este canal não tem legendas' : null,
+        nota: legendas.opcoes.length < 2 ? tr('Este canal não tem legendas') : null,
       ),
       DefinicaoPassos(
         'Volume',
@@ -1857,18 +1858,18 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
         menos: _prefs.volume > 0 ? () => _mudarVolume(-5) : null,
         mais: _prefs.volume < 100 ? () => _mudarVolume(5) : null,
       ),
-      DefinicaoInterruptor('Silêncio', valor: _sessao.silencio, aoMudar: _definirSilencio),
+      DefinicaoInterruptor(tr('Silêncio'), valor: _sessao.silencio, aoMudar: _definirSilencio),
       DefinicaoPassos(
-        'Atraso do áudio',
+        tr('Atraso do áudio'),
         valor: textoAtrasoAudio(_sessao.atrasoAudio),
-        nota: exo ? soNoMpv : 'Positivo: o som chega mais tarde',
+        nota: exo ? soNoMpv : tr('Positivo: o som chega mais tarde'),
         menos: !exo && _sessao.atrasoAudio > -limiteAtrasoAudio ? () => _mudarAtrasoAudio(-1) : null,
         mais: !exo && _sessao.atrasoAudio < limiteAtrasoAudio ? () => _mudarAtrasoAudio(1) : null,
       ),
       if (_android)
         DefinicaoEscolha(
-          'Descodificação',
-          opcoes: [ModoDescodificacao.direto.rotulo, ModoDescodificacao.compativel.rotulo, 'Software (sem hardware)'],
+          tr('Descodificação'),
+          opcoes: [ModoDescodificacao.direto.rotulo, ModoDescodificacao.compativel.rotulo, tr('Software (sem hardware)')],
           atual: _descodificacaoAndroid,
           aoMudar: exo
               ? null
@@ -1880,23 +1881,23 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
               ? soNoMpv
               : _rotuloModoAtual != [ModoDescodificacao.direto.rotulo, ModoDescodificacao.compativel.rotulo,
                   'Software'][_descodificacaoAndroid]
-              ? 'Este canal está em $_rotuloModoAtual (sem imagem na direta, ou entrelaçado)'
-              : 'Compatível: para imagem preta ou cores erradas',
+              ? tr('Este canal está em {0} (sem imagem na direta, ou entrelaçado)', [_rotuloModoAtual])
+              : tr('Compatível: para imagem preta ou cores erradas'),
         )
       else
         DefinicaoInterruptor(
-          'Descodificação por hardware',
+          tr('Descodificação por hardware'),
           valor: _prefs.hardware,
           aoMudar: (v) => _preferir((p) => p.hardware = v, () async {
             await _mpv?.setProperty('hwdec', hwdecEmTempoReal(_plataforma, hardware: v)!);
             await _aplicarDesentrelacamento();
           }),
-          nota: 'Desligue se a imagem aparecer com defeitos',
+          nota: tr('Desligue se a imagem aparecer com defeitos'),
         ),
       // só na TV (é ela que muda de taxa; no telemóvel a opção não diz nada a quem a vê)
       if (_android && ecraTv(context))
         DefinicaoInterruptor(
-          'Ajustar a taxa do ecrã ao canal',
+          tr('Ajustar a taxa do ecrã ao canal'),
           valor: _prefs.ajustarTaxaEcra,
           aoMudar: (v) => _preferir((p) => p.ajustarTaxaEcra = v, () async {
             if (v) {
@@ -1906,12 +1907,12 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
               if (mounted) setState(() => _hzPedidos = null);
             }
           }),
-          nota: '50 Hz nos canais a 50 imagens/s (sem saltos)',
+          nota: tr('50 Hz nos canais a 50 imagens/s (sem saltos)'),
         ),
       DefinicaoAcao(
-        'Informação do stream',
-        valor: _estatisticas ? 'Esconder' : 'Mostrar',
-        nota: 'Resolução, codec, débito e buffer',
+        tr('Informação do stream'),
+        valor: _estatisticas ? tr('Esconder') : tr('Mostrar'),
+        nota: tr('Resolução, codec, débito e buffer'),
         aoCarregar: alternarEstatisticas,
       ),
     ];
@@ -2100,14 +2101,14 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
                 soInterface: exo,
                 hzEcra: _hzEcra,
                 extra: [
-                  if (_android && !exo) ('Modo de descodificação', _rotuloModoAtual),
-                  if (mk != null) ('Saída · hwdec pedido', '${mk.config.vo} · ${mk.config.hwdec}')
-                  else ('Motor', _motor.nome),
+                  if (_android && !exo) (tr('Modo de descodificação'), _rotuloModoAtual),
+                  if (mk != null) (tr('Saída · hwdec pedido'), '${mk.config.vo} · ${mk.config.hwdec}')
+                  else (tr('Motor'), _motor.nome),
                   // com o ExoPlayer o modo túnel vem nas linhas do motor (se ficou mesmo ativo)
-                  if (!exo) ('Desentrelaçamento', _textoDesentrelacamento),
+                  if (!exo) (tr('Desentrelaçamento'), _textoDesentrelacamento),
                   if (_android && (_linhasNoEcra.value ?? 0) > 0)
-                    ('Linhas no ecrã · do vídeo', '${_linhasNoEcra.value!.round()} · ${_tamanhoAgora?.height.round() ?? 0}'),
-                  if (_hzPedidos != null) ('Taxa do ecrã pedida', '${_hzPedidos!.toStringAsFixed(2)} Hz'),
+                    (tr('Linhas no ecrã · do vídeo'), '${_linhasNoEcra.value!.round()} · ${_tamanhoAgora?.height.round() ?? 0}'),
+                  if (_hzPedidos != null) (tr('Taxa do ecrã pedida'), '${_hzPedidos!.toStringAsFixed(2)} Hz'),
                 ],
               ),
             ),

@@ -3,6 +3,7 @@ import 'package:material_ui/material_ui.dart';
 import '../../tarefas/servico_tarefas.dart';
 import '../../verificar/servico.dart';
 import '../design/design.dart';
+import '../../idioma/idioma.dart';
 
 /// O título das tarefas de pesquisa no stbstalker (o indicador reconhece-as por ele).
 const tituloTarefaStb = 'Pesquisa no stbstalker';
@@ -27,9 +28,9 @@ class IndicadorAtividade extends StatelessWidget {
   /// O texto do indicador ('' sem nada a decorrer).
   static String texto(ServicoVerificacao s, ServicoTarefas tarefas) {
     final n = tarefas.emCurso.length;
-    final stb = [for (final t in tarefas.emCurso) if (t.titulo.startsWith(tituloTarefaStb)) t];
+    final stb = [for (final t in tarefas.emCurso) if (t.titulo.startsWith(tr(tituloTarefaStb))) t];
     return [
-      if (s.ocupado) 'A verificar ${s.feitas}/${s.total}',
+      if (s.ocupado) tr('A verificar {0}/{1}', [s.feitas, s.total]),
       // a pesquisa mais recente: "stbstalker: 24 encontradas"
       if (stb.isNotEmpty) 'stbstalker: ${stb.last.detalhe.isEmpty ? 'a procurar' : stb.last.detalhe}',
       if (n > 0) '$n ${n == 1 ? 'tarefa' : 'tarefas'} a decorrer',
@@ -42,7 +43,7 @@ class IndicadorAtividade extends StatelessWidget {
         builder: (context, _) {
           final t = texto(servico, tarefas);
           final ativo = t.isNotEmpty;
-          final completo = ativo ? t : 'Nada a decorrer';
+          final completo = ativo ? t : tr('Nada a decorrer');
           final telemovel = ecraTelemovel(context);
           // no telemóvel só o ícone e o contador ("2/5", ou o número de tarefas); o texto todo fica
           // na dica (toque longo) e na leitura do ecrã

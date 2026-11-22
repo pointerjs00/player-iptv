@@ -5,6 +5,7 @@ import '../../dados/area_gestor.dart';
 import '../../dados/biblioteca.dart';
 import '../design/design.dart';
 import '../realce_foco.dart';
+import '../../idioma/idioma.dart';
 
 /// O passo 3 do Gestor, "Exportar": à esquerda a marcação das listas (os atalhos
 /// `Marcar:` e uma linha com caixa por lista) e à direita os dois destinos, cada um com o seu
@@ -188,7 +189,7 @@ class PassoEnviarState extends State<PassoEnviar> {
     return KeyEventResult.handled;
   }
 
-  static String _n(int n, String um, String varios) => '$n ${n == 1 ? um : varios}';
+  static String _n(int n, String um, String varios) => '$n ${tr(n == 1 ? um : varios)}';
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
@@ -211,7 +212,7 @@ class PassoEnviarState extends State<PassoEnviar> {
           final rodape = Padding(
             padding: const EdgeInsets.only(top: Tokens.e8),
             // a dica do comando só na TV e no computador
-            child: Text(mostrarDicasComando(context) ? '$marcadas · OK marca/desmarca uma lista' : marcadas,
+            child: Text(mostrarDicasComando(context) ? tr('{0} · OK marca/desmarca uma lista', [marcadas]) : marcadas,
                 style: const TextStyle(color: Tokens.texto2, fontSize: 13, fontWeight: FontWeight.w500)),
           );
           final cartoes = _cartoes(sel);
@@ -222,7 +223,7 @@ class PassoEnviarState extends State<PassoEnviar> {
                 Expanded(
                   child: Semantics(
                     container: true,
-                    label: 'Marcar listas',
+                    label: tr('Marcar listas'),
                     child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                       _marcarBarra(listas),
                       const SizedBox(height: Tokens.e8),
@@ -287,21 +288,21 @@ class PassoEnviarState extends State<PassoEnviar> {
 
     final todasMarcadas = listas.isNotEmpty && listas.every((l) => widget.marcadas.contains(l.id));
     final chips = <Widget>[
-      porEstado('Funcionam', EstadoLista.funciona, _focoChip),
-      porEstado('Inconclusivas', EstadoLista.inconclusiva, _focoInconclusivas),
-      porEstado('Não funcionam', EstadoLista.naoFunciona, _focoNaoFuncionam),
-      porEstado('Por verificar', EstadoLista.porVerificar, _focoPorVerificar),
+      porEstado(tr('Funcionam'), EstadoLista.funciona, _focoChip),
+      porEstado(tr('Inconclusivas'), EstadoLista.inconclusiva, _focoInconclusivas),
+      porEstado(tr('Não funcionam'), EstadoLista.naoFunciona, _focoNaoFuncionam),
+      porEstado(tr('Por verificar'), EstadoLista.porVerificar, _focoPorVerificar),
       // «Todas» liga tudo e fica ligado (para desmarcar há «Nenhuma»)
-      chip('Todas', listas, foco: _focoTodas, ligado: todasMarcadas, aoLigar: () => _marcarEstado([for (final l in listas) l.id], true)),
+      chip(tr('Todas'), listas, foco: _focoTodas, ligado: todasMarcadas, aoLigar: () => _marcarEstado([for (final l in listas) l.id], true)),
       ActionChip(
         focusNode: _focoNenhuma,
-        label: const Text('Nenhuma'),
+        label: Text(tr('Nenhuma')),
         visualDensity: telemovel ? null : VisualDensity.compact,
         materialTapTargetSize: alvo,
         onPressed: () => _marcarEstado([for (final l in listas) l.id], false),
       ),
     ];
-    const rotulo = Text('Marcar:', style: TextStyle(color: Tokens.texto2, fontWeight: FontWeight.w500));
+    final rotulo = Text(tr('Marcar:'), style: TextStyle(color: Tokens.texto2, fontWeight: FontWeight.w500));
     // no telemóvel todos à vista, em várias linhas (a fila única é para o D-pad)
     if (telemovel) {
       return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -402,14 +403,14 @@ class PassoEnviarState extends State<PassoEnviar> {
       onKeyEvent: (_, e) => _teclaCartoes(e),
       child: Semantics(
         container: true,
-        label: 'Para onde',
+        label: tr('Para onde'),
         child: barra
             ? Row(children: [
                 Expanded(
                   child: FilledButton(
                     focusNode: _focoEnviar,
                     onPressed: n == 0 ? null : () => widget.aoEnviar(sel),
-                    child: _TextoQueCabe('Enviar $listas', curto: 'Enviar ($n)'),
+                    child: _TextoQueCabe(tr('Enviar {0}', [listas]), curto: tr('Enviar ({0})', [n])),
                   ),
                 ),
                 const SizedBox(width: Tokens.e8),
@@ -417,28 +418,28 @@ class PassoEnviarState extends State<PassoEnviar> {
                   child: OutlinedButton(
                     focusNode: _focoExportar,
                     onPressed: n == 0 ? null : () => widget.aoExportar(sel),
-                    child: _TextoQueCabe('Exportar $listas', curto: 'Exportar ($n)'),
+                    child: _TextoQueCabe(tr('Exportar {0}', [listas]), curto: tr('Exportar ({0})', [n])),
                   ),
                 ),
               ])
             : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           _cartao(
-            titulo: 'Enviar para Ver TV',
-            texto: 'Adicionar às que já lá estão, ou substituir (escolhes a seguir).',
+            titulo: tr('Enviar para Ver TV'),
+            texto: tr('Adicionar às que já lá estão, ou substituir (escolhes a seguir).'),
             botao: FilledButton(
               focusNode: _focoEnviar,
               onPressed: n == 0 ? null : () => widget.aoEnviar(sel),
-              child: Text('Enviar $listas'),
+              child: Text(tr('Enviar {0}', [listas])),
             ),
           ),
           const SizedBox(height: Tokens.e12),
           _cartao(
-            titulo: 'Exportar para ficheiro',
-            texto: 'Accounts.json (sfvip) ou .ini num zip (Stalker). O ficheiro leva os dados de acesso.',
+            titulo: tr('Exportar para ficheiro'),
+            texto: tr('Accounts.json (sfvip) ou .ini num zip (Stalker). O ficheiro leva os dados de acesso.'),
             botao: OutlinedButton(
               focusNode: _focoExportar,
               onPressed: n == 0 ? null : () => widget.aoExportar(sel),
-              child: Text('Exportar $listas'),
+              child: Text(tr('Exportar {0}', [listas])),
             ),
           ),
         ]),

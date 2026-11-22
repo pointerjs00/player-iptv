@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import 'configuracao_mpv.dart';
 import 'progresso.dart' show eDiretoMpv;
+import '../../idioma/idioma.dart';
 
 /// O desentrelaçamento do player (canais 1080i/576i/480i).
 ///
@@ -24,8 +25,8 @@ import 'progresso.dart' show eDiretoMpv;
 
 /// O texto das definições: as imagens/s por campo dependem do libmpv e do aparelho (sem o filtro, o
 /// shader limpa as linhas às imagens/s do canal).
-const textoDefinicaoDesentrelacamento = 'Limpa as linhas dos canais entrelaçados (1080i/576i/480i). Por campo, '
-    'quando o aparelho o permite: até 50 imagens/s (60 nos 480i); senão às imagens/s do canal.';
+String get textoDefinicaoDesentrelacamento => tr('Limpa as linhas dos canais entrelaçados (1080i/576i/480i). Por campo, '
+    'quando o aparelho o permite: até 50 imagens/s (60 nos 480i); senão às imagens/s do canal.');
 
 /// O rótulo do `idet` no `vf` (Android): o mpv dá o que ele contou em `vf-metadata/<rótulo>`.
 const rotuloIdet = 'pidet';
@@ -238,15 +239,15 @@ Future<int?> aplicarMeioMpv(MotorMpv mpv, MeioDesentrelacamento m,
 String textoDesentrelacamento(MeioDesentrelacamento m,
         {required bool ligado, required bool? entrelacada, bool confirmado = true}) =>
     switch (m) {
-      MeioDesentrelacamento.filtroMpv when !confirmado => 'ligado (bwdif, a medir)',
-      MeioDesentrelacamento.filtroMpv => 'ligado (bwdif, por campo)',
-      MeioDesentrelacamento.d3d11vpp when !confirmado => 'ligado (d3d11vpp, a medir)',
-      MeioDesentrelacamento.d3d11vpp => 'ligado (d3d11vpp, por campo)',
-      MeioDesentrelacamento.shaderMpv || MeioDesentrelacamento.shaderFlutter => 'ligado (shader do player)',
-      MeioDesentrelacamento.nenhum when !ligado => 'desligado',
-      MeioDesentrelacamento.nenhum when entrelacada == null => 'à espera da imagem',
-      MeioDesentrelacamento.nenhum when entrelacada == false => 'desligado (imagem progressiva)',
-      MeioDesentrelacamento.nenhum => 'indisponível neste aparelho',
+      MeioDesentrelacamento.filtroMpv when !confirmado => tr('ligado (bwdif, a medir)'),
+      MeioDesentrelacamento.filtroMpv => tr('ligado (bwdif, por campo)'),
+      MeioDesentrelacamento.d3d11vpp when !confirmado => tr('ligado (d3d11vpp, a medir)'),
+      MeioDesentrelacamento.d3d11vpp => tr('ligado (d3d11vpp, por campo)'),
+      MeioDesentrelacamento.shaderMpv || MeioDesentrelacamento.shaderFlutter => tr('ligado (shader do player)'),
+      MeioDesentrelacamento.nenhum when !ligado => tr('desligado'),
+      MeioDesentrelacamento.nenhum when entrelacada == null => tr('à espera da imagem'),
+      MeioDesentrelacamento.nenhum when entrelacada == false => tr('desligado (imagem progressiva)'),
+      MeioDesentrelacamento.nenhum => tr('indisponível neste aparelho'),
     };
 
 /// Escreve o [shaderMpvDesentrelacar] em `pasta` e devolve o caminho (null se falhar).

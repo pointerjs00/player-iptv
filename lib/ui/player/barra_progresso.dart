@@ -8,6 +8,7 @@ import '../design/movimento.dart';
 import '../design/tokens.dart';
 import '../realce_foco.dart';
 import 'progresso.dart';
+import '../../idioma/idioma.dart';
 
 /// A barra de progresso da barra de controlos: o tempo decorrido à esquerda, a pista (a parte
 /// vista na cor de acento, a já recebida mais clara, e o botão redondo) e o total à direita.
@@ -190,12 +191,12 @@ class _BarraProgressoState extends State<BarraProgresso> {
     final duracao = duracaoAnimada(context, Tokens.duracaoRapida);
     String? valorApos(int sinal) => j == null
         ? null
-        : '${textoTempo(j.decorridoEm(j.deslocado(BarraProgresso.salto * sinal, de: alvo)))} de ${textoTempo(total)}';
+        : tr('{0} de {1}', [textoTempo(j.decorridoEm(j.deslocado(BarraProgresso.salto * sinal, de: alvo))), textoTempo(total)]);
     return Semantics(
       slider: true,
-      label: 'Posição',
-      value: '${textoTempo(decorrido)} de ${textoTempo(total)}',
-      hint: j == null ? null : 'Esquerda e direita: ${BarraProgresso.salto.inSeconds} s para trás ou para a frente',
+      label: tr('Posição'),
+      value: tr('{0} de {1}', [textoTempo(decorrido), textoTempo(total)]),
+      hint: j == null ? null : tr('Esquerda e direita: {0} s para trás ou para a frente', [BarraProgresso.salto.inSeconds]),
       increasedValue: valorApos(1),
       decreasedValue: valorApos(-1),
       onIncrease: j == null ? null : () => _passoLeitor(1),

@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'compativel_sessao.dart';
 import 'configuracao_mpv.dart';
 import 'desentrelacamento.dart';
+import '../../idioma/idioma.dart';
 
 /// O que esta sessão da app (o processo: o mesmo libmpv em todos os players) já sabe dos filtros do
 /// ffmpeg no libmpv. Fica de um canal para o outro e nunca volta atrás por uma leitura vazia.
@@ -159,7 +160,7 @@ class ControloDesentrelacamento {
     }
     if (_naoAguenta(m, chave)) {
       compativel.lento(chave);
-      _avisoReabrir = 'O aparelho perde imagens com o desentrelaçamento por campo: volta a descodificação Direta';
+      _avisoReabrir = tr('O aparelho perde imagens com o desentrelaçamento por campo: volta a descodificação Direta');
       debugPrint('desentrelaçamento: o Compatível com o filtro perde imagens; o canal volta ao direto');
       return true;
     }
@@ -169,7 +170,7 @@ class ControloDesentrelacamento {
         filtros &&
         pareceEntrelacadaNoDireto(m) &&
         compativel.marcarParaFiltro(chave)) {
-      _avisoReabrir = 'Modo compatível ativado para desentrelaçar este canal';
+      _avisoReabrir = tr('Modo compatível ativado para desentrelaçar este canal');
       return true;
     }
     return false;

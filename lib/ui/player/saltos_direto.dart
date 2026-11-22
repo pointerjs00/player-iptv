@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'configuracao_mpv.dart';
 import 'progresso.dart' show fimProcuravel;
 import 'relogio_direto.dart';
+import '../../idioma/idioma.dart';
 
 /// Recuar/avançar 10 s e "Voltar ao direto" num canal em direto, com o cache do mpv (seek
 /// relativo: o mpv não sai do que tem no cache). O [RelogioDireto] fica com o atraso que o mpv
@@ -96,7 +97,7 @@ class SaltosDireto {
         final s = (antes + tocou - depois).clamp(0.0, pedido.inMicroseconds / 1e6 + 1.0);
         recuou = Duration(milliseconds: (s * 1000).round());
       }
-      if (recuou < const Duration(seconds: 1)) return 'Não há mais para recuar';
+      if (recuou < const Duration(seconds: 1)) return tr('Não há mais para recuar');
       relogio.recuou(recuou);
     } catch (e) {
       debugPrint('mpv: recuar falhou ($e)');
@@ -117,7 +118,7 @@ class SaltosDireto {
       return null;
     }
     final d = aFrente == null ? pedido : (pedido < _duracao(aFrente) ? pedido : _duracao(aFrente));
-    if (d < _minimo) return 'Já está no fim do buffer';
+    if (d < _minimo) return tr('Já está no fim do buffer');
     try {
       final antes = _posLida ?? await _posicao();
       await _seek(_s(d));
@@ -131,7 +132,7 @@ class SaltosDireto {
         avancou = Duration(milliseconds: (s * 1000).round());
       }
       relogio.avancou(avancou);
-      if (avancou < _minimo) return 'Já está no fim do buffer';
+      if (avancou < _minimo) return tr('Já está no fim do buffer');
     } catch (e) {
       debugPrint('mpv: avançar falhou ($e)');
     }

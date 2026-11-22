@@ -16,10 +16,11 @@ import 'numero_canal.dart';
 import 'painel_definicoes.dart';
 import 'progresso.dart';
 import 'relogio_direto.dart';
+import '../../idioma/idioma.dart';
 
 /// "Casa › Desporto · em direto": o subtítulo do canal no topo ([EstadoControlos.subtitulo]).
 String subtituloCanal({required String lista, required String grupo}) =>
-    grupo.trim().isEmpty ? '$lista · em direto' : '$lista › ${grupo.trim()} · em direto';
+    grupo.trim().isEmpty ? tr('{0} · em direto', [lista]) : tr('{0} › {1} · em direto', [lista, grupo.trim()]);
 
 /// O que a barra mostra do canal a tocar.
 class EstadoControlos {
@@ -499,9 +500,9 @@ class ControlosPlayerState extends State<ControlosPlayer> {
         style: estiloIcone,
         onPressed: () => _botao(a));
     final alternar =
-        e.podeAlternar ? botao(Icons.swap_horiz_rounded, 'Canal visto antes', AcaoPlayer.alternarCanal) : null;
+        e.podeAlternar ? botao(Icons.swap_horiz_rounded, tr('Canal visto antes'), AcaoPlayer.alternarCanal) : null;
     final velocidade = Tooltip(
-      message: 'Velocidade',
+      message: tr('Velocidade'),
       child: TextButton(
         onPressed: _velocidadeSeguinte,
         // ao alto, na linha do ←: um alvo de toque de 48 como os outros
@@ -512,7 +513,7 @@ class ControlosPlayerState extends State<ControlosPlayer> {
     final definicoes = IconButton(
       focusNode: _botaoDefinicoes,
       icon: Icon(Icons.settings_rounded, size: icone),
-      tooltip: 'Definições',
+      tooltip: tr('Definições'),
       color: Tokens.texto,
       style: estiloIcone,
       onPressed: _abrirPainel,
@@ -520,26 +521,26 @@ class ControlosPlayerState extends State<ControlosPlayer> {
     final voltarAoDireto = emDireto
         ? null
         : Tooltip(
-            message: 'Voltar ao direto',
+            message: tr('Voltar ao direto'),
             child: TextButton.icon(
               onPressed: () => _botao(AcaoPlayer.voltarAoDireto),
               icon: const Icon(Icons.skip_next_rounded, color: Tokens.mau),
-              label: Text('Voltar ao direto', style: TextStyle(fontSize: tv ? 18 : 15, color: Tokens.texto)),
+              label: Text(tr('Voltar ao direto'), style: TextStyle(fontSize: tv ? 18 : 15, color: Tokens.texto)),
             ),
           );
     final transporte = [
-      botao(Icons.skip_previous_rounded, 'Canal anterior', AcaoPlayer.canalAnterior),
-      if (widget.comSaltos) botao(Icons.replay_10_rounded, 'Recuar 10 s', AcaoPlayer.recuar),
+      botao(Icons.skip_previous_rounded, tr('Canal anterior'), AcaoPlayer.canalAnterior),
+      if (widget.comSaltos) botao(Icons.replay_10_rounded, tr('Recuar 10 s'), AcaoPlayer.recuar),
       Tooltip(
-        message: e.aTocar ? 'Pausa' : 'Reproduzir',
+        message: e.aTocar ? tr('Pausa') : tr('Reproduzir'),
         child: FilledButton(
           focusNode: _play,
           onPressed: () => _botao(AcaoPlayer.playPausa),
           child: Icon(e.aTocar ? Icons.pause_rounded : Icons.play_arrow_rounded, size: icone),
         ),
       ),
-      if (widget.comSaltos) botao(Icons.forward_10_rounded, 'Avançar 10 s', AcaoPlayer.avancar),
-      botao(Icons.skip_next_rounded, 'Canal seguinte', AcaoPlayer.canalSeguinte),
+      if (widget.comSaltos) botao(Icons.forward_10_rounded, tr('Avançar 10 s'), AcaoPlayer.avancar),
+      botao(Icons.skip_next_rounded, tr('Canal seguinte'), AcaoPlayer.canalSeguinte),
     ];
     final indicador = _IndicadorDireto(emDireto: emDireto, atraso: atraso);
     final v = widget.volume;
@@ -574,7 +575,7 @@ class ControlosPlayerState extends State<ControlosPlayer> {
             return KeyEventResult.handled;
           },
           child: Row(children: [
-            _Vidro(child: botao(Icons.arrow_back, 'Voltar', AcaoPlayer.sair, foco: _botaoVoltar)),
+            _Vidro(child: botao(Icons.arrow_back, tr('Voltar'), AcaoPlayer.sair, foco: _botaoVoltar)),
             const Spacer(),
             if (alto) ...[
               if (alternar != null) ...[_Vidro(child: alternar), const SizedBox(width: Tokens.e8)],
@@ -583,7 +584,7 @@ class ControlosPlayerState extends State<ControlosPlayer> {
               _Vidro(child: definicoes),
             ],
             if (widget.comEcraInteiro)
-              _Vidro(child: botao(Icons.fullscreen, 'Ecrã inteiro (F11)', AcaoPlayer.ecraInteiro)),
+              _Vidro(child: botao(Icons.fullscreen, tr('Ecrã inteiro (F11)'), AcaoPlayer.ecraInteiro)),
           ]),
         ),
       ),
@@ -740,7 +741,7 @@ class _IndicadorDireto extends StatelessWidget {
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           Icon(emDireto ? Icons.circle : Icons.history_rounded, size: emDireto ? 10 : 16, color: cor),
           const SizedBox(width: 6),
-          Text(emDireto ? 'Em direto' : textoAtraso(atraso),
+          Text(emDireto ? tr('Em direto') : textoAtraso(atraso),
               style: const TextStyle(
                   color: Tokens.texto, fontWeight: FontWeight.w600, fontFeatures: [FontFeature.tabularFigures()])),
         ]),

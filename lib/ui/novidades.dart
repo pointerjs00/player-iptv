@@ -3,6 +3,7 @@ import 'package:material_ui/material_ui.dart';
 import '../dados/novidades.dart';
 import 'design/design.dart';
 import 'realce_foco.dart';
+import '../idioma/idioma.dart';
 
 /// Depois de atualizar: as novidades desta versão, com "Ver todas" (o histórico) e "Fechar".
 Future<void> mostrarNovidadesDaVersao(BuildContext context) async {
@@ -11,14 +12,14 @@ Future<void> mostrarNovidadesDaVersao(BuildContext context) async {
     context: context,
     builder: (ctx) => AlertDialog(
       icon: const Icon(Icons.new_releases_outlined, color: Tokens.acento, size: 32),
-      title: Text('Novidades da versão ${n.versao}'),
+      title: Text(tr('Novidades da versão {0}', [n.versao])),
       content: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 460),
         child: SingleChildScrollView(child: _Itens(n.itens)),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Ver todas')),
-        FilledButton(autofocus: true, onPressed: () => Navigator.pop(ctx, false), child: const Text('Fechar')),
+        TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Ver todas'))),
+        FilledButton(autofocus: true, onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Fechar'))),
       ],
     ),
   );
@@ -37,7 +38,7 @@ class TelaNovidades extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Scaffold(
         backgroundColor: Tokens.fundo,
-        appBar: AppBar(backgroundColor: Tokens.fundo, title: const Text('Novidades')),
+        appBar: AppBar(backgroundColor: Tokens.fundo, title: Text(tr('Novidades'))),
         body: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 760),
@@ -63,7 +64,7 @@ class _Itens extends StatelessWidget {
             padding: const EdgeInsets.only(bottom: Tokens.e8),
             child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
               const Text('•  ', style: TextStyle(color: Tokens.texto2, height: 1.4)),
-              Expanded(child: Text(t, style: const TextStyle(color: Tokens.texto2, height: 1.4))),
+              Expanded(child: Text(tr(t), style: const TextStyle(color: Tokens.texto2, height: 1.4))),
             ]),
           ),
       ]);
@@ -92,7 +93,7 @@ class _VersaoState extends State<_Versao> {
             child: Padding(
               padding: const EdgeInsets.all(Tokens.e12),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Versão ${widget.novidades.versao}',
+                Text(tr('Versão {0}', [widget.novidades.versao]),
                     style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Tokens.texto)),
                 const SizedBox(height: Tokens.e8),
                 _Itens(widget.novidades.itens),

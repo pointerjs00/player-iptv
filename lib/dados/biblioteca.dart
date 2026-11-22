@@ -13,6 +13,7 @@ import '../importar/importar.dart';
 import '../modelo/canal.dart';
 import '../modelo/conta.dart';
 import '../rede/http.dart' show limiteIsolate;
+import '../idioma/idioma.dart';
 
 /// Como se mostram os canais de uma lista.
 enum OrdemCanais {
@@ -47,10 +48,12 @@ enum OrdemListas {
   /// A que acaba mais tarde primeiro (sem limite à frente; sem data no fim).
   validade('Validade', 'A que acaba mais tarde primeiro');
 
-  const OrdemListas(this.rotulo, this.explicacao);
+  const OrdemListas(this._rotulo, this._explicacao);
 
   /// O texto curto (no botão) e a explicação (na escolha).
-  final String rotulo, explicacao;
+  final String _rotulo, _explicacao;
+  String get rotulo => tr(_rotulo);
+  String get explicacao => tr(_explicacao);
 }
 
 const _pesoEstado = {'funciona': 0, 'inconclusivo': 1, 'nao_funciona': 2};
@@ -439,11 +442,11 @@ class Biblioteca extends ChangeNotifier implements ColecaoListas {
   /// nova já for outra lista do Player (nada muda).
   Future<bool> editar(String id, Conta conta, {String nomeProprio = ''}) async {
     final l = porId(id);
-    if (l == null) throw ErroEdicao('a lista já não existe');
+    if (l == null) throw ErroEdicao(tr('a lista já não existe'));
     final k = chave(conta);
     final mesma = k == chave(l.conta);
     if (!mesma && _listas.any((o) => o.id != id && chave(o.conta) == k)) {
-      throw ErroEdicao('já existe outra lista com esta conta');
+      throw ErroEdicao(tr('já existe outra lista com esta conta'));
     }
     final (contaAntes, nomeAntes, ultimaAntes) = (l.conta, l.nomeProprio, l.ultima);
     l

@@ -46,6 +46,7 @@ import '../verificar/video.dart' show syncTs;
 import 'armazem.dart';
 import 'costura.dart';
 import 'espaco.dart' show margemEspaco;
+import '../idioma/idioma.dart';
 
 /// Um problema do gravador, para o player. A mensagem já é para o utilizador e não tem o URL.
 class ErroGravador {
@@ -368,8 +369,8 @@ class GravadorDireto {
             desistiu: true,
             semEspaco: true,
             mensagem: semEspaco
-                ? 'não há espaço no armazenamento para continuar a gravar'
-                : 'não foi possível gravar no armazenamento'));
+                ? tr('não há espaço no armazenamento para continuar a gravar')
+                : tr('não foi possível gravar no armazenamento')));
         break;
       }
       final ultima = ultimaChegada;
@@ -387,7 +388,7 @@ class GravadorDireto {
       }
       _avisar(ErroGravador(
           desistiu: false,
-          mensagem: falha == null ? 'o servidor fechou a ligação' : descreverErro(falha)));
+          mensagem: falha == null ? tr('o servidor fechou a ligação') : descreverErro(falha)));
       // sem vídeo novo, a espera da regra; com ele, só o que falta para [intervaloMinimo] desde o
       // começo desta ligação (um servidor que fecha logo não faz o portal receber um pedido de link
       // atrás do outro)

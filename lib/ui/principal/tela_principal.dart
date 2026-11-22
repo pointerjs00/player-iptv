@@ -11,6 +11,7 @@ import '../gestor/painel_atividade.dart';
 import '../novidades.dart';
 import '../gestor/tela_gestor.dart';
 import 'barra_seccoes.dart';
+import '../../idioma/idioma.dart';
 
 /// As três secções fixas da app.
 enum Seccao { verTv, gestor, definicoes }
@@ -177,7 +178,7 @@ class _TelaPrincipalState extends State<TelaPrincipal> {
     String? acao = t.rotuloAcao;
     VoidCallback? aoAcao = t.aoAcao;
     if (acao == null && falhou && t.repetir != null) {
-      acao = 'Tentar de novo';
+      acao = tr('Tentar de novo');
       aoAcao = () => t.repetir!();
     }
     _mensagens.mostrar(
@@ -201,13 +202,13 @@ class _TelaPrincipalState extends State<TelaPrincipal> {
     if (!acabou) return;
     final resumo = resumoVerificacao(v);
     if (resumo == null) {
-      if (v.parada) _mensagens.mostrar('Verificação parada. Nenhuma lista chegou ao fim.');
+      if (v.parada) _mensagens.mostrar(tr('Verificação parada. Nenhuma lista chegou ao fim.'));
       return;
     }
     _mensagens.mostrar(
       '${v.parada ? 'Verificação parada' : 'Verificação terminada'}: $resumo',
       tipo: v.parada ? MensagemTipo.info : MensagemTipo.sucesso,
-      acao: 'Ver resultados',
+      acao: tr('Ver resultados'),
       aoAcao: _naCasca(() {
         _mudar(Seccao.gestor, focar: false);
         widget.pedidoGestor?.value = EcraGestor.verificacao;
@@ -343,7 +344,7 @@ class _TelaPrincipalState extends State<TelaPrincipal> {
       return;
     }
     _podeSair = Timer(_tempoSair, () {});
-    _mensagens.mostrar('Carregue outra vez em Voltar para sair', duracao: _tempoSair);
+    _mensagens.mostrar(tr('Carregue outra vez em Voltar para sair'), duracao: _tempoSair);
   }
 
   @override
@@ -416,7 +417,7 @@ class _TelaPrincipalState extends State<TelaPrincipal> {
                   onDestinationSelected: (i) => _mudar(Seccao.values[i], focar: false),
                   destinations: [
                     for (final s in Seccao.values)
-                      NavigationDestination(icon: Icon(rotulosSeccoes[s]!.$2), label: rotulosSeccoes[s]!.$1),
+                      NavigationDestination(icon: Icon(rotulosSeccoes[s]!.$2), label: tr(rotulosSeccoes[s]!.$1)),
                   ],
                 ),
         ),

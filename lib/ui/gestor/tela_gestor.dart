@@ -25,6 +25,7 @@ import 'passo_verificar.dart';
 import 'tela_como_verifica.dart';
 import 'tela_importar.dart';
 import 'tela_verificacao.dart';
+import '../../idioma/idioma.dart';
 
 /// Os ecrãs do Gestor: o resumo (ao entrar), os três passos e o progresso da verificação (que
 /// se abre do passo 2).
@@ -283,7 +284,7 @@ class _TelaGestorState extends State<TelaGestor> {
 
   // ---------------------------------------------------------------- ações
 
-  static String _n(int n, String um, String varios) => '$n ${n == 1 ? um : varios}';
+  static String _n(int n, String um, String varios) => '$n ${tr(n == 1 ? um : varios)}';
 
   void _aviso(String t) {
     if (mounted) mostrarMensagem(context, t);
@@ -294,13 +295,13 @@ class _TelaGestorState extends State<TelaGestor> {
 
   /// "Verificar selecionadas" (passo 2): juntam-se à fila, mesmo a meio de uma verificação.
   void _verificarSelecionadas(List<Lista> listas) {
-    if (listas.isEmpty) return _aviso('Selecione as listas a verificar.');
+    if (listas.isEmpty) return _aviso(tr('Selecione as listas a verificar.'));
     final novas = [for (final l in listas) if (!_s.aVerificar(l.id)) l];
     if (novas.isEmpty) {
-      return _aviso(listas.length == 1 ? 'A lista selecionada já está na fila.' : 'As listas selecionadas já estão na fila.');
+      return _aviso(listas.length == 1 ? tr('A lista selecionada já está na fila.') : tr('As listas selecionadas já estão na fila.'));
     }
     _s.verificarVarias(novas);
-    _aviso(novas.length == 1 ? '1 lista entrou na fila.' : '${novas.length} listas entraram na fila.');
+    _aviso(novas.length == 1 ? tr('1 lista entrou na fila.') : tr('{0} listas entraram na fila.', [novas.length]));
   }
 
   /// "Verificar mais (fila)" (no progresso): vai ao passo 2 só com as "Por verificar"; aí
@@ -314,15 +315,15 @@ class _TelaGestorState extends State<TelaGestor> {
   /// "Verificar todas": as que ainda não estão na fila juntam-se a ela; a seleção fica.
   void _verificarTodas() {
     final listas = _g.listas;
-    if (listas.isEmpty) return _aviso('Importe listas primeiro.');
+    if (listas.isEmpty) return _aviso(tr('Importe listas primeiro.'));
     final novas = [for (final l in listas) if (!_s.aVerificar(l.id)) l];
-    if (novas.isEmpty) return _aviso('Todas as listas já estão na fila.');
+    if (novas.isEmpty) return _aviso(tr('Todas as listas já estão na fila.'));
     _s.verificarVarias(novas);
   }
 
   Future<void> _parar() async {
     if (!await confirmarParar(context, _s) || !mounted) return;
-    _aviso('Verificação parada. O relatório fica no ecrã da verificação.');
+    _aviso(tr('Verificação parada. O relatório fica no ecrã da verificação.'));
     // "Parar" desaparece: o foco passa para "Verificar mais (fila)" no progresso, ou para o
     // indicador no passo 2 (depois do frame: o diálogo que fechou devolve o foco ao "Parar" primeiro)
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -349,7 +350,7 @@ class _TelaGestorState extends State<TelaGestor> {
                     key: const ValueKey('pararTopo'),
                     focusNode: _focoPararTopo,
                     onPressed: _parar,
-                    tooltip: 'Parar a verificação',
+                    tooltip: tr('Parar a verificação'),
                     icon: const Icon(Icons.stop_circle_outlined, color: Tokens.mau),
                   )
                 : TextButton.icon(
@@ -357,7 +358,7 @@ class _TelaGestorState extends State<TelaGestor> {
                     focusNode: _focoPararTopo,
                     onPressed: _parar,
                     icon: const Icon(Icons.stop_circle_outlined, color: Tokens.mau),
-                    label: const Text('Parar'),
+                    label: Text(tr('Parar')),
                   ),
           );
         },
@@ -375,8 +376,8 @@ class _TelaGestorState extends State<TelaGestor> {
     final antes = ponto();
     if (antes.prontas.isEmpty) {
       return _aviso(marcadas.length == 1
-          ? 'A lista marcada ainda está a ser verificada.'
-          : 'As listas marcadas ainda estão a ser verificadas.');
+          ? tr('A lista marcada ainda está a ser verificada.')
+          : tr('As listas marcadas ainda estão a ser verificadas.'));
     }
     final escolha = await perguntarEnvio(context, n: antes.prontas.length);
     if (escolha == null || !mounted) return;
@@ -384,24 +385,24 @@ class _TelaGestorState extends State<TelaGestor> {
     // o estado pode ter mudado com o diálogo aberto: conta-se de novo
     final agora = ponto();
     final enviar = agora.prontas;
-    if (enviar.isEmpty) return _aviso('Já não há listas para enviar.');
+    if (enviar.isEmpty) return _aviso(tr('Já não há listas para enviar.'));
     // o que a tarefa precisa, antes de qualquer await
     final b = _b;
     final ctx = context;
     final aDecorrer = agora.aDecorrer;
     final n = enviar.length;
     widget.tarefas.iniciar(
-      'Enviar ${n == 1 ? '1 lista' : '$n listas'} para Ver TV',
+      tr('Enviar {0} para Ver TV', [n == 1 ? tr('1 lista') : tr('{0} listas', [n])]),
       (p) async {
         final ResumoEnvio r;
         try {
           r = await b.receber(enviar, modo, manter: manter);
         } catch (e) {
-          throw _ErroTarefa('Não foi possível enviar (${descreverErro(e)}). As listas de Ver TV não mudaram.');
+          throw _ErroTarefa(tr('Não foi possível enviar ({0}). As listas de Ver TV não mudaram.', [descreverErro(e)]));
         }
         return textoResultadoEnvio(n, r, aDecorrer: aDecorrer);
       },
-      rotuloAcao: 'Ir para Ver TV',
+      rotuloAcao: tr('Ir para Ver TV'),
       aoAcao: () {
         if (ctx.mounted) TelaPrincipal.irPara(ctx, Seccao.verTv);
       },
@@ -415,26 +416,26 @@ class _TelaGestorState extends State<TelaGestor> {
   /// novo" repete tudo com a mesma escolha e volta a perguntar onde guardar.
   Future<void> _exportar(List<Lista> marcadas) async {
     final listas = _atuais(marcadas);
-    if (listas.isEmpty) return _aviso('Marque as listas a exportar.');
+    if (listas.isEmpty) return _aviso(tr('Marque as listas a exportar.'));
     final n = listas.length;
     final formato = await perguntarExportacao(context, n);
     if (formato == null || !mounted) return;
     final String nome, mime, texto;
     final Uint8List bytes;
     if (formato == 'json') {
-      (nome, mime, texto) = ('Accounts.json', 'application/json', '$n listas exportadas.');
+      (nome, mime, texto) = ('Accounts.json', 'application/json', tr('{0} listas exportadas.', [n]));
       bytes = exportarAccountsJson(listas);
     } else {
       final (zip, ignoradas) = exportarZipIni(listas);
-      if (zip == null) return _aviso('Nenhuma das listas marcadas é Stalker (portal + MAC).');
+      if (zip == null) return _aviso(tr('Nenhuma das listas marcadas é Stalker (portal + MAC).'));
       (nome, mime, bytes) = ('listas_stalker.zip', 'application/zip', zip);
-      texto = 'Listas exportadas.${ignoradas > 0 ? ' $ignoradas sem MAC (Xtream/M3U) ficaram de fora.' : ''}';
+      texto = tr('Listas exportadas.{0}', [ignoradas > 0 ? tr(' {0} sem MAC (Xtream/M3U) ficaram de fora.', [ignoradas]) : '']);
     }
     final guardar = widget.guardar;
     final tarefas = widget.tarefas;
     void lancar() {
       tarefas.iniciar(
-        'Exportar ${n == 1 ? '1 lista' : '$n listas'}',
+        tr('Exportar {0}', [n == 1 ? tr('1 lista') : tr('{0} listas', [n])]),
         (p) async {
           final ResultadoGuardar r;
           // a partir daqui o ficheiro está a ser gravado: já não se pode parar
@@ -446,9 +447,9 @@ class _TelaGestorState extends State<TelaGestor> {
           } catch (e) {
             throw _ErroTarefa(mensagemErroGuardar(e));
           }
-          if (r.cancelado) return 'Exportação cancelada.';
+          if (r.cancelado) return tr('Exportação cancelada.');
           if (mounted) setState(() => _ultimaExportacao = DateTime.now());
-          return '$texto Guardado em ${r.destino}';
+          return tr('{0} Guardado em {1}', [texto, r.destino]);
         },
         repetir: () async => lancar(),
       );
@@ -460,21 +461,20 @@ class _TelaGestorState extends State<TelaGestor> {
   /// "Remover do gestor" (passo 2): pede confirmação; as que estão a ser verificadas têm a
   /// verificação cancelada (só essas: as outras continuam).
   Future<void> _removerSelecionadas(List<Lista> listas) async {
-    if (listas.isEmpty) return _aviso('Selecione as listas a remover.');
+    if (listas.isEmpty) return _aviso(tr('Selecione as listas a remover.'));
     final n = listas.length;
     final m = listas.where((l) => _s.aVerificar(l.id)).length;
     final aVerificar = switch (m) {
       0 => '',
-      _ when n == 1 => 'Está a ser verificada: a verificação é cancelada. ',
-      1 => 'Uma delas está a ser verificada: essa verificação é cancelada. ',
-      _ => '$m delas estão a ser verificadas: essas verificações são canceladas. ',
+      _ when n == 1 => tr('Está a ser verificada: a verificação é cancelada. '),
+      1 => tr('Uma delas está a ser verificada: essa verificação é cancelada. '),
+      _ => tr('{0} delas estão a ser verificadas: essas verificações são canceladas. ', [m]),
     };
     final ok = await confirmar(context,
         icone: Icons.remove_circle_outline,
-        titulo: 'Remover do Gestor?',
-        texto: '${n == 1 ? 'A lista selecionada sai' : 'As $n listas selecionadas saem'} do Gestor. '
-            '${aVerificar}As listas de Ver TV não mudam.',
-        acao: 'Remover');
+        titulo: tr('Remover do Gestor?'),
+        texto: tr('{0} do Gestor. {1}As listas de Ver TV não mudam.', [n == 1 ? tr('A lista selecionada sai') : tr('As {0} listas selecionadas saem', [n]), aVerificar]),
+        acao: tr('Remover'));
     if (!ok) return;
     // o estado pode ter mudado enquanto o diálogo estava aberto
     for (final l in listas) {
@@ -569,11 +569,11 @@ class _TelaGestorState extends State<TelaGestor> {
         IndicadorAtividade(servico: _s, tarefas: widget.tarefas, foco: _focoIndicador, aoAbrir: _abrirAtividade);
     if (ecraTelemovel(context)) return _barraTopoTelemovel(indicador);
     final titulo = switch (_ecra) {
-      EcraGestor.resumo => 'Gestor de listas',
-      EcraGestor.importar => 'Importar listas',
-      EcraGestor.verificar => 'Verificar listas',
-      EcraGestor.enviar => 'Exportar listas',
-      EcraGestor.verificacao => 'Verificação',
+      EcraGestor.resumo => tr('Gestor de listas'),
+      EcraGestor.importar => tr('Importar listas'),
+      EcraGestor.verificar => tr('Verificar listas'),
+      EcraGestor.enviar => tr('Exportar listas'),
+      EcraGestor.verificacao => tr('Verificação'),
     };
     return Padding(
       padding: const EdgeInsets.fromLTRB(Tokens.e16, Tokens.e12, Tokens.e16, 0),
@@ -583,7 +583,7 @@ class _TelaGestorState extends State<TelaGestor> {
             focusNode: _focoVoltar,
             onPressed: _voltar,
             icon: const Icon(Icons.arrow_back),
-            label: const Text('Voltar'),
+            label: Text(tr('Voltar')),
           ),
           const SizedBox(width: Tokens.e8),
         ],
@@ -613,8 +613,8 @@ class _TelaGestorState extends State<TelaGestor> {
   /// e no progresso (num passo, a faixa já diz onde se está) e o indicador compacto à direita.
   Widget _barraTopoTelemovel(Widget indicador) {
     final titulo = switch (_ecra) {
-      EcraGestor.resumo => 'Gestor de listas',
-      EcraGestor.verificacao => 'Verificação',
+      EcraGestor.resumo => tr('Gestor de listas'),
+      EcraGestor.verificacao => tr('Verificação'),
       _ => null,
     };
     final resumo = _ecra == EcraGestor.resumo;
@@ -625,7 +625,7 @@ class _TelaGestorState extends State<TelaGestor> {
           IconButton(
             focusNode: _focoVoltar,
             onPressed: _voltar,
-            tooltip: 'Voltar',
+            tooltip: tr('Voltar'),
             icon: const Icon(Icons.arrow_back),
           ),
         Expanded(
@@ -653,7 +653,7 @@ class _TelaGestorState extends State<TelaGestor> {
   Widget _botaoInfo() => IconButton(
         key: const ValueKey('infoVerificacao'),
         onPressed: () => abrirComoVerifica(context),
-        tooltip: 'Como é feita a verificação',
+        tooltip: tr('Como é feita a verificação'),
         icon: const Icon(Icons.info_outline),
       );
 
@@ -668,7 +668,7 @@ class _TelaGestorState extends State<TelaGestor> {
       padding: const EdgeInsets.fromLTRB(Tokens.e16, Tokens.e8, Tokens.e16, 0),
       child: Semantics(
         container: true,
-        label: 'Passos do Gestor',
+        label: tr('Passos do Gestor'),
         child: Focus(
           focusNode: _focoFaixa,
           onKeyEvent: (_, e) => _teclaFaixa(atual, e),
@@ -742,9 +742,9 @@ class _TelaGestorState extends State<TelaGestor> {
           child: telemovel
               ? FittedBox(
                   fit: BoxFit.scaleDown,
-                  child: Text(_nomesCurtos[i], maxLines: 1, softWrap: false, style: estilo),
+                  child: Text(tr(_nomesCurtos[i]), maxLines: 1, softWrap: false, style: estilo),
                 )
-              : Text('${i + 1} · $nome', maxLines: 1, overflow: TextOverflow.ellipsis, style: estilo),
+              : Text('${i + 1} · ${tr(nome)}', maxLines: 1, overflow: TextOverflow.ellipsis, style: estilo),
         ),
       ),
     );
@@ -756,9 +756,9 @@ class _TelaGestorState extends State<TelaGestor> {
   static String _ha(DateTime d) {
     final dif = DateTime.now().difference(d);
     if (dif.inMinutes < 1) return 'agora';
-    if (dif.inMinutes < 60) return 'há ${dif.inMinutes} min';
-    if (dif.inHours < 24) return 'há ${dif.inHours} h';
-    return dif.inDays == 1 ? 'ontem' : 'há ${dif.inDays} dias';
+    if (dif.inMinutes < 60) return tr('há {0} min', [dif.inMinutes]);
+    if (dif.inHours < 24) return tr('há {0} h', [dif.inHours]);
+    return dif.inDays == 1 ? tr('ontem') : tr('há {0} dias', [dif.inDays]);
   }
 
   static const _mut = TextStyle(color: Tokens.texto2, fontSize: 14, fontWeight: FontWeight.w500);
@@ -775,35 +775,35 @@ class _TelaGestorState extends State<TelaGestor> {
           final largo = caixa.maxWidth >= 560;
           final cartoes = [
             _cartao(0, largo, [
-              const Text('Ficheiros, texto, stbstalker ou de Ver TV', style: _mut),
+              Text(tr('Ficheiros, texto, stbstalker ou de Ver TV'), style: _mut),
               if (ultima != null)
-                _linhaCartao('Última importação',
+                _linhaCartao(tr('Última importação'),
                     ultima.estado == EstadoTarefa.aDecorrer ? 'a decorrer' : _ha(ultima.fim ?? ultima.inicio)),
-              if (importada != null) _linhaCartao('Entraram', _n(importada.novas, 'nova', 'novas')),
+              if (importada != null) _linhaCartao(tr('Entraram'), _n(importada.novas, 'nova', 'novas')),
             ]),
             _cartao(1, largo, [
               if (vazio)
-                const Text('Importe listas primeiro', style: _mut)
+                Text(tr('Importe listas primeiro'), style: _mut)
               else ...[
-                _numeroGrande(conta(EstadoLista.porVerificar), Tokens.aviso, 'por verificar'),
-                _linhaCartao('Funcionam', '${conta(EstadoLista.funciona)}', cor: Tokens.ok),
-                _linhaCartao('Não funcionam', '${conta(EstadoLista.naoFunciona)}', cor: Tokens.mau),
+                _numeroGrande(conta(EstadoLista.porVerificar), Tokens.aviso, tr('por verificar')),
+                _linhaCartao(tr('Funcionam'), '${conta(EstadoLista.funciona)}', cor: Tokens.ok),
+                _linhaCartao(tr('Não funcionam'), '${conta(EstadoLista.naoFunciona)}', cor: Tokens.mau),
               ],
             ]),
             _cartao(2, largo, [
               if (vazio)
-                const Text('Importe listas primeiro', style: _mut)
+                Text(tr('Importe listas primeiro'), style: _mut)
               else ...[
                 _numeroGrande(conta(EstadoLista.funciona), Tokens.texto, 'prontas a enviar'),
               ],
-              _linhaCartao('Em Ver TV', _n(_b.listas.length, 'lista', 'listas')),
-              if (_ultimaExportacao case final quando?) _linhaCartao('Última exportação', _ha(quando)),
+              _linhaCartao(tr('Em Ver TV'), _n(_b.listas.length, 'lista', 'listas')),
+              if (_ultimaExportacao case final quando?) _linhaCartao(tr('Última exportação'), _ha(quando)),
             ]),
           ];
           return SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(Tokens.e16, Tokens.e4, Tokens.e16, Tokens.e16),
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              Text('${_n(listas.length, 'lista', 'listas')} no Gestor · escolhe por onde começar', style: _mut),
+              Text(tr('{0} no Gestor · escolhe por onde começar', [_n(listas.length, 'lista', 'listas')]), style: _mut),
               const SizedBox(height: Tokens.e12),
               if (largo)
                 IntrinsicHeight(
@@ -843,7 +843,7 @@ class _TelaGestorState extends State<TelaGestor> {
             ),
             const SizedBox(width: Tokens.e8),
             Expanded(
-              child: Text(_nomesPassos[i],
+              child: Text(tr(_nomesPassos[i]),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Tokens.texto)),
@@ -855,7 +855,7 @@ class _TelaGestorState extends State<TelaGestor> {
           if (dica) ...[
             // lado a lado (com a mesma altura), "OK: abrir →" fica em baixo em todos
             if (largo) const Spacer() else const SizedBox(height: Tokens.e4),
-            const Text('OK: abrir →',
+            Text(tr('OK: abrir →'),
                 style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Tokens.anelFoco)),
           ],
         ]),
@@ -908,7 +908,7 @@ class _TelaGestorState extends State<TelaGestor> {
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: Tokens.e16, vertical: Tokens.e12),
               child: Row(children: [
-                Text('A verificar ${_s.feitas}/${_s.total}',
+                Text(tr('A verificar {0}/{1}', [_s.feitas, _s.total]),
                     style: const TextStyle(color: Tokens.texto, fontSize: 14, fontWeight: FontWeight.w600)),
                 const SizedBox(width: Tokens.e12),
                 Expanded(

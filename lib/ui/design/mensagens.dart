@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
 import 'tokens.dart';
+import '../../idioma/idioma.dart';
 
 enum MensagemTipo { info, sucesso, erro, progresso }
 
@@ -252,7 +253,7 @@ class _Cartao extends StatelessWidget {
             if (m.acao != null)
               Padding(
                 padding: const EdgeInsets.only(top: Tokens.e4),
-                child: Text('Menu: ${m.acao}',
+                child: Text(tr('Menu: {0}', [m.acao]),
                     style: const TextStyle(color: Tokens.anelFoco, fontSize: 13, fontWeight: FontWeight.w600)),
               ),
           ]),

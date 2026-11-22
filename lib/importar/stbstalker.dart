@@ -4,6 +4,7 @@ library;
 
 import '../modelo/conta.dart';
 import '../rede/http.dart';
+import '../idioma/idioma.dart';
 
 const stbBase = 'https://stbstalker.alaaeldinee.com/';
 
@@ -144,8 +145,8 @@ Future<ResultadoStb> importarEntre(DateTime inicio, DateTime fim,
   if (fim.isBefore(inicio)) throw ArgumentError('a data de fim é anterior à data de início');
   final posts = await postsEntre(inicio, fim, base: base, timeout: timeout, cancelado: cancelado);
   if (posts.isEmpty) {
-    final periodo = inicio == fim ? 'em ${_legivel(inicio)}' : 'entre ${_legivel(inicio)} e ${_legivel(fim)}';
-    return ResultadoStb(erro: 'Nenhum post publicado $periodo.');
+    final periodo = inicio == fim ? tr('em {0}', [_legivel(inicio)]) : tr('entre {0} e {1}', [_legivel(inicio), _legivel(fim)]);
+    return ResultadoStb(erro: tr('Nenhum post publicado {0}.', [periodo]));
   }
   final linhas = <String>[];
   final vistos = <String>{};

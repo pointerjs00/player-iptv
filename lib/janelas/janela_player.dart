@@ -22,6 +22,7 @@ import '../dados/biblioteca.dart';
 import '../modelo/canal.dart';
 import '../protocolos/protocolo.dart';
 import '../rede/http.dart';
+import '../idioma/idioma.dart';
 
 /// Lado da janela principal.
 typedef LancarPlayer = Future<void> Function(int porta, String token);
@@ -81,13 +82,13 @@ class JanelaPlayer {
     } catch (e) {
       // sem isto o player nunca mais abria até reiniciar a app
       _desistir();
-      throw ErroLista('Não foi possível abrir o player (${descreverErro(e)}).');
+      throw ErroLista(tr('Não foi possível abrir o player ({0}).', [descreverErro(e)]));
     }
     // se a janela não ligar a tempo, desiste-se e avisa-se (o próximo clique tenta de novo)
     Timer(prazo, () {
       if (_ligacao != null || tentativa != _tentativa || !_aLancar) return;
       _desistir();
-      aoFalhar?.call('A janela do player não abriu a tempo. Tente de novo.');
+      aoFalhar?.call(tr('A janela do player não abriu a tempo. Tente de novo.'));
     });
   }
 

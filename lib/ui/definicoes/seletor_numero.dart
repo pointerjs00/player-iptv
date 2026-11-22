@@ -4,6 +4,7 @@ import 'package:material_ui/material_ui.dart';
 import '../design/design.dart';
 import '../realce_foco.dart';
 import 'linha_opcao.dart';
+import '../../idioma/idioma.dart';
 
 /// Uma linha das Definições com um número: título e descrição à esquerda, `− valor +` à direita.
 /// A linha toda é uma paragem do foco. Com o comando, OK entra na edição: aí ← → mudam o valor em
@@ -126,14 +127,14 @@ class _SeletorNumeroState extends State<SeletorNumero> {
                       child: Padding(
                         padding: const EdgeInsets.all(Tokens.e4),
                         child: Row(mainAxisSize: MainAxisSize.min, children: [
-                          _Botao('−', 'Menos', valor > min ? () => _mudar(-1) : null, lado: lado),
+                          _Botao('−', tr('Menos'), valor > min ? () => _mudar(-1) : null, lado: lado),
                           ConstrainedBox(
                             constraints: const BoxConstraints(minWidth: 72),
                             child: Text(_texto(valor),
                                 textAlign: TextAlign.center,
                                 style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Tokens.texto)),
                           ),
-                          _Botao('+', 'Mais', valor < max ? () => _mudar(1) : null, lado: lado),
+                          _Botao('+', tr('Mais'), valor < max ? () => _mudar(1) : null, lado: lado),
                         ]),
                       ),
                     ),

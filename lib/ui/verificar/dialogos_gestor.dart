@@ -3,6 +3,7 @@ import 'package:material_ui/material_ui.dart';
 import '../../dados/biblioteca.dart';
 import '../../verificar/servico.dart';
 import '../design/design.dart';
+import '../../idioma/idioma.dart';
 
 /// Uma opção de um [escolherOpcao]: um cartão com ícone, título e descrição.
 class OpcaoDialogo<T> {
@@ -61,7 +62,7 @@ Future<T?> escolherOpcao<T>(BuildContext context,
             ]),
           ),
         ),
-        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar'))],
+        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('Cancelar')))],
       );
     },
   );
@@ -121,21 +122,22 @@ class _CartaoEscolha extends StatelessWidget {
   }
 }
 
-String _listas(int n) => n == 1 ? '1 lista' : '$n listas';
+String _listas(int n) => n == 1 ? tr('1 lista') : tr('{0} listas', [n]);
 
 /// O resultado de um envio, com o que mudou em Ver TV ([ResumoEnvio]):
 /// "8 listas enviadas para Ver TV · 5 novas, 3 atualizadas, 2 removidas · 1 ainda a verificar".
 /// As contagens a zero não aparecem.
 String textoResultadoEnvio(int n, ResumoEnvio r, {int aDecorrer = 0}) {
-  String c(int v, String um, String varios) => '$v ${v == 1 ? um : varios}';
+  String c(int v, String um, String varios) => '$v ${tr(v == 1 ? um : varios)}';
   final partes = [
     if (r.adicionadas > 0) c(r.adicionadas, 'nova', 'novas'),
     if (r.atualizadas > 0) c(r.atualizadas, 'atualizada', 'atualizadas'),
     if (r.removidas > 0) c(r.removidas, 'removida', 'removidas'),
   ];
-  return '${n == 1 ? '1 lista enviada' : '$n listas enviadas'} para Ver TV'
-      ' · ${partes.isEmpty ? 'já lá estavam iguais' : partes.join(', ')}'
-      '${aDecorrer > 0 ? ' · $aDecorrer ainda a verificar' : ''}';
+  final enviadas = n == 1 ? tr('1 lista enviada para Ver TV') : tr('{0} listas enviadas para Ver TV', [n]);
+  final mudou = partes.isEmpty ? tr('já lá estavam iguais') : partes.join(', ');
+  final falta = aDecorrer > 0 ? tr(' · {0} ainda a verificar', [aDecorrer]) : '';
+  return '$enviadas · $mudou$falta';
 }
 
 /// "Enviar n listas para Ver TV": como — adicionar, ou substituir (e o que manter das que já lá
@@ -164,13 +166,13 @@ class _DialogoEnvioState extends State<_DialogoEnvio> {
 
   String get _descricaoSubstituir {
     final partes = [
-      if (_manter.contains(ManterAoSubstituir.favoritas)) 'as favoritas',
-      if (_manter.contains(ManterAoSubstituir.funcionam)) 'as que funcionam',
-      if (_manter.contains(ManterAoSubstituir.inconclusivas)) 'as inconclusivas',
+      if (_manter.contains(ManterAoSubstituir.favoritas)) tr('as favoritas'),
+      if (_manter.contains(ManterAoSubstituir.funcionam)) tr('as que funcionam'),
+      if (_manter.contains(ManterAoSubstituir.inconclusivas)) tr('as inconclusivas'),
     ];
-    if (partes.isEmpty) return 'Ver TV fica só com estas.';
+    if (partes.isEmpty) return tr('Ver TV fica só com estas.');
     final juntas = partes.length == 1 ? partes.single : '${partes.take(partes.length - 1).join(', ')} e ${partes.last}';
-    return 'Ver TV fica com estas e com $juntas.';
+    return tr('Ver TV fica com estas e com {0}.', [juntas]);
   }
 
   /// O que o diálogo devolve com a escolha de agora.
@@ -180,15 +182,15 @@ class _DialogoEnvioState extends State<_DialogoEnvio> {
   /// Os filtros «manter» (ao substituir).
   List<Widget> _chipsManter() => [
         FilterChip(
-          label: const Text('Nenhuma'),
+          label: Text(tr('Nenhuma')),
           selected: _manter.isEmpty,
           showCheckmark: true,
           onSelected: (_) => setState(_manter.clear),
         ),
         for (final (m, rotulo) in [
-          (ManterAoSubstituir.favoritas, 'Favoritas'),
-          (ManterAoSubstituir.funcionam, 'As que funcionam'),
-          (ManterAoSubstituir.inconclusivas, 'As inconclusivas'),
+          (ManterAoSubstituir.favoritas, tr('Favoritas')),
+          (ManterAoSubstituir.funcionam, tr('As que funcionam')),
+          (ManterAoSubstituir.inconclusivas, tr('As inconclusivas')),
         ])
           FilterChip(
             label: Text(rotulo),
@@ -206,7 +208,7 @@ class _DialogoEnvioState extends State<_DialogoEnvio> {
     final espaco = SizedBox(height: baixo ? Tokens.e8 : Tokens.e12);
     return AlertDialog(
       insetPadding: EdgeInsets.symmetric(horizontal: 40, vertical: baixo ? 8 : 24),
-      title: Text('Enviar ${_listas(n)} para Ver TV'),
+      title: Text(tr('Enviar {0} para Ver TV', [_listas(n)])),
       content: SizedBox(
         width: ecraTv(context) ? 560 : 480,
         child: SingleChildScrollView(
@@ -216,8 +218,8 @@ class _DialogoEnvioState extends State<_DialogoEnvio> {
               autofocus: true,
               compacto: baixo,
               icone: Icons.playlist_add_rounded,
-              titulo: 'Adicionar às listas de Ver TV',
-              descricao: 'As que já lá estão ficam. Repetidas não se duplicam.',
+              titulo: tr('Adicionar às listas de Ver TV'),
+              descricao: tr('As que já lá estão ficam. Repetidas não se duplicam.'),
               escolhido: !_substituir,
               aoEscolher: () => setState(() => _substituir = false),
             ),
@@ -225,14 +227,14 @@ class _DialogoEnvioState extends State<_DialogoEnvio> {
             _CartaoEscolha(
               compacto: baixo,
               icone: Icons.delete_sweep_outlined,
-              titulo: 'Substituir as listas de Ver TV',
+              titulo: tr('Substituir as listas de Ver TV'),
               descricao: _descricaoSubstituir,
               escolhido: _substituir,
               aoEscolher: () => setState(() => _substituir = true),
             ),
             if (_substituir) ...[
               espaco,
-              const Text('Das listas que já estão em Ver TV, manter:', style: TextStyle(fontWeight: FontWeight.w600)),
+              Text(tr('Das listas que já estão em Ver TV, manter:'), style: TextStyle(fontWeight: FontWeight.w600)),
               const SizedBox(height: Tokens.e8),
               Wrap(spacing: Tokens.e8, runSpacing: Tokens.e8, children: _chipsManter()),
             ],
@@ -240,10 +242,10 @@ class _DialogoEnvioState extends State<_DialogoEnvio> {
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+        TextButton(onPressed: () => Navigator.pop(context), child: Text(tr('Cancelar'))),
         FilledButton(
           onPressed: () => Navigator.pop(context, _escolha),
-          child: Text('Enviar ${_listas(n)}'),
+          child: Text(tr('Enviar {0}', [_listas(n)])),
         ),
       ],
     );
@@ -262,10 +264,10 @@ class _DialogoEnvioState extends State<_DialogoEnvio> {
           Padding(
             padding: const EdgeInsets.fromLTRB(Tokens.e4, Tokens.e4, Tokens.e16, 0),
             child: Row(children: [
-              IconButton(tooltip: 'Cancelar', icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
+              IconButton(tooltip: tr('Cancelar'), icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
               const SizedBox(width: Tokens.e4),
               Expanded(
-                child: Text('Enviar ${_listas(n)} para Ver TV',
+                child: Text(tr('Enviar {0} para Ver TV', [_listas(n)]),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Tokens.texto)),
@@ -282,19 +284,19 @@ class _DialogoEnvioState extends State<_DialogoEnvio> {
                   RadioListTile<bool>(
                     value: false,
                     autofocus: true,
-                    title: const Text('Adicionar às listas de Ver TV'),
-                    subtitle: const Text('As que já lá estão ficam. Repetidas não se duplicam.', style: fraco),
+                    title: Text(tr('Adicionar às listas de Ver TV')),
+                    subtitle: Text(tr('As que já lá estão ficam. Repetidas não se duplicam.'), style: fraco),
                   ),
                   RadioListTile<bool>(
                     value: true,
-                    title: const Text('Substituir as listas de Ver TV'),
+                    title: Text(tr('Substituir as listas de Ver TV')),
                     subtitle: Text(_descricaoSubstituir, style: fraco),
                   ),
                   if (_substituir)
                     Padding(
                       padding: const EdgeInsets.fromLTRB(Tokens.e16, Tokens.e8, Tokens.e16, 0),
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        const Text('Das listas que já estão em Ver TV, manter:',
+                        Text(tr('Das listas que já estão em Ver TV, manter:'),
                             style: TextStyle(fontWeight: FontWeight.w600)),
                         const SizedBox(height: Tokens.e4),
                         Wrap(spacing: Tokens.e8, children: _chipsManter()),
@@ -309,7 +311,7 @@ class _DialogoEnvioState extends State<_DialogoEnvio> {
             child: FilledButton(
               style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(Tokens.alvoToque)),
               onPressed: () => Navigator.pop(context, _escolha),
-              child: Text('Enviar ${_listas(n)}'),
+              child: Text(tr('Enviar {0}', [_listas(n)])),
             ),
           ),
         ]),
@@ -339,7 +341,7 @@ class _DialogoExportacaoState extends State<_DialogoExportacao> {
     final baixo = MediaQuery.sizeOf(context).height < 640;
     return AlertDialog(
       insetPadding: EdgeInsets.symmetric(horizontal: 40, vertical: baixo ? 8 : 24),
-      title: Text('Exportar ${_listas(widget.n)}'),
+      title: Text(tr('Exportar {0}', [_listas(widget.n)])),
       content: SizedBox(
         width: ecraTv(context) ? 560 : 480,
         child: SingleChildScrollView(
@@ -350,7 +352,7 @@ class _DialogoExportacaoState extends State<_DialogoExportacao> {
               compacto: baixo,
               icone: Icons.description_outlined,
               titulo: 'Accounts.json',
-              descricao: 'Para o sfvip player',
+              descricao: tr('Para o sfvip player'),
               escolhido: _formato == 'json',
               aoEscolher: () => setState(() => _formato = 'json'),
             ),
@@ -358,17 +360,17 @@ class _DialogoExportacaoState extends State<_DialogoExportacao> {
             _CartaoEscolha(
               compacto: baixo,
               icone: Icons.folder_zip_outlined,
-              titulo: 'Ficheiros .ini num zip',
-              descricao: 'Para o Stalker Portal Player',
+              titulo: tr('Ficheiros .ini num zip'),
+              descricao: tr('Para o Stalker Portal Player'),
               escolhido: _formato == 'ini',
               aoEscolher: () => setState(() => _formato = 'ini'),
             ),
             SizedBox(height: baixo ? Tokens.e8 : Tokens.e16),
-            const Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Icon(Icons.warning_amber_rounded, color: Tokens.aviso, size: 20),
               SizedBox(width: Tokens.e8),
               Expanded(
-                child: Text('O ficheiro leva os dados de acesso das listas. Guarda-o num sítio seguro.',
+                child: Text(tr('O ficheiro leva os dados de acesso das listas. Guarda-o num sítio seguro.'),
                     style: TextStyle(color: Tokens.texto2)),
               ),
             ]),
@@ -376,8 +378,8 @@ class _DialogoExportacaoState extends State<_DialogoExportacao> {
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
-        FilledButton(onPressed: () => Navigator.pop(context, _formato), child: const Text('Escolher onde guardar')),
+        TextButton(onPressed: () => Navigator.pop(context), child: Text(tr('Cancelar'))),
+        FilledButton(onPressed: () => Navigator.pop(context, _formato), child: Text(tr('Escolher onde guardar'))),
       ],
     );
   }
@@ -394,7 +396,7 @@ Future<bool> confirmar(BuildContext context,
       // sem limite, o texto corria numa só linha da largura do ecrã
       content: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 420), child: Text(texto)),
       actions: [
-        TextButton(autofocus: true, onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+        TextButton(autofocus: true, onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Cancelar'))),
         FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(acao)),
       ],
     ),
@@ -406,10 +408,9 @@ Future<bool> confirmar(BuildContext context,
 Future<bool> confirmarParar(BuildContext context, ServicoVerificacao servico) async {
   final ok = await confirmar(context,
       icone: Icons.stop_circle_outlined,
-      titulo: 'Parar a verificação?',
-      texto: 'As listas que já foram verificadas ficam com o resultado guardado e o relatório '
-          'mostra-as. As que estão na fila ou a meio ficam como estavam.',
-      acao: 'Parar');
+      titulo: tr('Parar a verificação?'),
+      texto: tr('As listas que já foram verificadas ficam com o resultado guardado e o relatório mostra-as. As que estão na fila ou a meio ficam como estavam.'),
+      acao: tr('Parar'));
   if (!ok || !servico.ocupado) return false;
   servico.parar();
   return true;

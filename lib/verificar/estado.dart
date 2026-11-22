@@ -5,6 +5,7 @@ import 'dart:async';
 import 'dart:io';
 
 import '../rede/http.dart';
+import '../idioma/idioma.dart';
 
 enum EstadoV {
   funciona('funciona'),
@@ -70,19 +71,19 @@ const _httpInconclusivos = {
 ResultadoVerificacao classificarFalha(Object e) {
   if (e is ErroHttp) {
     final d = _httpDefinitivos[e.status];
-    if (d != null) return ResultadoVerificacao(EstadoV.naoFunciona, d);
+    if (d != null) return ResultadoVerificacao(EstadoV.naoFunciona, tr(d));
     final limite = _httpInconclusivos[e.status];
     return limite != null
-        ? ResultadoVerificacao(EstadoV.inconclusivo, limite, repeticao: Repeticao.depoisDePausa)
-        : ResultadoVerificacao(EstadoV.inconclusivo, 'erro do servidor (${e.status})');
+        ? ResultadoVerificacao(EstadoV.inconclusivo, tr(limite), repeticao: Repeticao.depoisDePausa)
+        : ResultadoVerificacao(EstadoV.inconclusivo, tr('erro do servidor ({0})', [e.status]));
   }
-  if (e is TimeoutException) return const ResultadoVerificacao(EstadoV.inconclusivo, 'tempo esgotado');
+  if (e is TimeoutException) return ResultadoVerificacao(EstadoV.inconclusivo, tr('tempo esgotado'));
   if (e is ErroTamanho) {
-    return ResultadoVerificacao(EstadoV.inconclusivo, 'resposta grande demais (mais de ${e.maxBytes ~/ (1024 * 1024)} MB)');
+    return ResultadoVerificacao(EstadoV.inconclusivo, tr('resposta grande demais (mais de {0} MB)', [e.maxBytes ~/ (1024 * 1024)]));
   }
   if (e is SocketException) {
-    return ResultadoVerificacao(EstadoV.inconclusivo, 'ligação falhou (${semSegredos(e.osError?.message ?? e.message)})');
+    return ResultadoVerificacao(EstadoV.inconclusivo, tr('ligação falhou ({0})', [semSegredos(e.osError?.message ?? e.message)]));
   }
-  if (e is HttpException) return const ResultadoVerificacao(EstadoV.inconclusivo, 'ligação cortada pelo servidor');
+  if (e is HttpException) return ResultadoVerificacao(EstadoV.inconclusivo, tr('ligação cortada pelo servidor'));
   return ResultadoVerificacao(EstadoV.inconclusivo, descreverErro(e));
 }

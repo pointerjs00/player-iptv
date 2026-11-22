@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../rede/http.dart' show Cancelado;
 import 'segredos.dart';
+import '../idioma/idioma.dart';
 
 enum EstadoTarefa { aDecorrer, terminada, falhou, cancelada }
 
@@ -110,7 +111,7 @@ class ServicoTarefas extends ChangeNotifier {
       resultado = await trabalho(p);
       fim = EstadoTarefa.terminada;
     } on Cancelado {
-      resultado = 'Parada antes de acabar.';
+      resultado = tr('Parada antes de acabar.');
       fim = EstadoTarefa.cancelada;
     } catch (e) {
       resultado = '$e';

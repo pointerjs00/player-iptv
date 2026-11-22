@@ -21,6 +21,7 @@ import 'cartao_continuar.dart';
 import 'cartao_lista.dart';
 import 'favoritos_inicio.dart';
 import '../design/mensagens.dart';
+import '../../idioma/idioma.dart';
 
 /// Ver TV, o Início: "Continuar a ver" (o último canal visto), os favoritos de todas as listas e
 /// as listas em cartões (com o estado da última verificação, pesquisa e filtro por estado). Sem
@@ -219,10 +220,10 @@ class _TelaInicioState extends State<TelaInicio> {
       case AcaoLista.copiarLink:
         // nunca se mostra o link (pode ter credenciais)
         await Clipboard.setData(ClipboardData(text: linkParaCopiar(l.conta)));
-        _avisar('Link copiado');
+        _avisar(tr('Link copiado'));
       case AcaoLista.enviarGestor:
         final novas = await area!.adicionar([Importada(l.conta, l.ultima)]);
-        _avisar(novas > 0 ? 'Enviada para o Gestor' : 'Já estava no Gestor');
+        _avisar(novas > 0 ? tr('Enviada para o Gestor') : tr('Já estava no Gestor'));
       case AcaoLista.eliminar:
         await _eliminar(l);
     }
@@ -233,13 +234,13 @@ class _TelaInicioState extends State<TelaInicio> {
   Future<void> _atualizarCanais(Lista l) async {
     final avisar = mensageiroDe(context);
     final nome = l.nomeMostrado;
-    avisar('A atualizar os canais de $nome…', tipo: MensagemTipo.progresso, duracao: const Duration(minutes: 2));
+    avisar(tr('A atualizar os canais de {0}…', [nome]), tipo: MensagemTipo.progresso, duracao: const Duration(minutes: 2));
     try {
       final c = await (widget.abrirLista ?? _abrirPeloProtocolo)(l.conta);
       await widget.biblioteca.guardarCanais(l.id, c);
-      avisar('Canais de $nome atualizados · ${c.canais.length}', tipo: MensagemTipo.sucesso);
+      avisar(tr('Canais de {0} atualizados · {1}', [nome, c.canais.length]), tipo: MensagemTipo.sucesso);
     } catch (e) {
-      avisar('Não foi possível atualizar $nome: ${e is ErroLista ? e.mensagem : descreverErro(e)}',
+      avisar(tr('Não foi possível atualizar {0}: {1}', [nome, e is ErroLista ? e.mensagem : descreverErro(e)]),
           tipo: MensagemTipo.erro);
     }
   }
@@ -250,7 +251,7 @@ class _TelaInicioState extends State<TelaInicio> {
     if (servico == null) return;
     final avisar = mensageiroDe(context);
     final nome = l.nomeMostrado;
-    avisar('A verificar $nome…', tipo: MensagemTipo.progresso, duracao: const Duration(minutes: 2));
+    avisar(tr('A verificar {0}…', [nome]), tipo: MensagemTipo.progresso, duracao: const Duration(minutes: 2));
     await servico.verificar(l);
     final atual = widget.biblioteca.porId(l.id);
     if (atual == null) return;
@@ -314,7 +315,7 @@ class _TelaInicioState extends State<TelaInicio> {
     final f = favoritosDeResumos(widget.biblioteca.listas, _resumos);
     if (f.isEmpty) return const SizedBox.shrink();
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      _titulo('Favoritos · ${f.length}', tv),
+      _titulo(tr('Favoritos · {0}', [f.length]), tv),
       SizedBox(
         // com margem para o cartão focado crescer; cresce com a letra do sistema
         height: (tv ? 96 : 80) * fatorTexto(context) + 16,
@@ -356,14 +357,14 @@ class _TelaInicioState extends State<TelaInicio> {
   Widget _pesquisaEFiltros() {
     final pesquisa = CampoTv(
       controller: _pesquisa,
-      decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Pesquisar listas'),
+      decoration: InputDecoration(prefixIcon: Icon(Icons.search), hintText: tr('Pesquisar listas')),
       onChanged: (v) => setState(() => _q = v),
     );
     final chips = [
       for (final (v, t) in _filtros)
         ChoiceChip(
           focusNode: v == _filtroFavoritas ? _focoChipFavoritas : null,
-          label: Text(t),
+          label: Text(tr(t)),
           selected: _filtro == v,
           onSelected: (_) => setState(() => _filtro = v),
         ),
@@ -371,8 +372,8 @@ class _TelaInicioState extends State<TelaInicio> {
       ActionChip(
         key: const Key('ordenar-listas'),
         avatar: const Icon(Icons.sort_rounded, size: 18),
-        label: Text('Ordenar: ${widget.biblioteca.ordemListas.rotulo}'),
-        tooltip: 'Ordenar as listas',
+        label: Text(tr('Ordenar: {0}', [widget.biblioteca.ordemListas.rotulo])),
+        tooltip: tr('Ordenar as listas'),
         onPressed: _escolherOrdem,
       ),
     ];
@@ -422,7 +423,7 @@ class _TelaInicioState extends State<TelaInicio> {
           return CustomScrollView(slivers: [
             SliverToBoxAdapter(child: _continuar(tv)),
             SliverToBoxAdapter(child: _filaFavoritos(tv)),
-            SliverToBoxAdapter(child: _titulo('Listas · ${todas.length}', tv)),
+            SliverToBoxAdapter(child: _titulo(tr('Listas · {0}', [todas.length]), tv)),
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(Tokens.e16, 0, Tokens.e16, Tokens.e4),
@@ -430,10 +431,10 @@ class _TelaInicioState extends State<TelaInicio> {
               ),
             ),
             if (vis.isEmpty)
-              const SliverToBoxAdapter(
+              SliverToBoxAdapter(
                 child: Padding(
                   padding: EdgeInsets.all(Tokens.e32),
-                  child: Center(child: Text('Nenhuma lista com este filtro.', style: TextStyle(color: Tokens.texto2))),
+                  child: Center(child: Text(tr('Nenhuma lista com este filtro.'), style: TextStyle(color: Tokens.texto2))),
                 ),
               )
             else
@@ -494,18 +495,18 @@ class _TelaInicioState extends State<TelaInicio> {
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 860),
           child: entradaEmCascata(0, Column(mainAxisSize: MainAxisSize.min, children: [
-            const Text('Ainda não há listas para ver',
+            Text(tr('Ainda não há listas para ver'),
                 textAlign: TextAlign.center, style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700)),
             const SizedBox(height: Tokens.e8),
-            const Text(
-                'As listas entram pelo Gestor. Lá podes importá-las, ver quais funcionam e enviar as boas para aqui.',
+            Text(
+                tr('As listas entram pelo Gestor. Lá podes importá-las, ver quais funcionam e enviar as boas para aqui.'),
                 textAlign: TextAlign.center,
                 style: TextStyle(color: Tokens.texto2)),
             const SizedBox(height: Tokens.e24),
             Wrap(spacing: Tokens.e16, runSpacing: Tokens.e16, alignment: WrapAlignment.center, children: [
-              _passo(1, 'Importar', 'Ficheiro, texto colado ou listas do stbstalker', tv),
-              _passo(2, 'Verificar', 'Testamos 3 canais de cada lista', tv),
-              _passo(3, 'Enviar', 'As que funcionam aparecem aqui', tv),
+              _passo(1, tr('Importar'), tr('Ficheiro, texto colado ou listas do stbstalker'), tv),
+              _passo(2, tr('Verificar'), tr('Testamos 3 canais de cada lista'), tv),
+              _passo(3, tr('Enviar'), tr('As que funcionam aparecem aqui'), tv),
             ]),
             // dentro da casca: muda para o Gestor e o foco vai para "Adicionar listas". A cópia de
             // segurança não se importa a partir daqui (é nas Definições): não há segundo botão.
@@ -515,7 +516,7 @@ class _TelaInicioState extends State<TelaInicio> {
                 autofocus: true,
                 onPressed: () => TelaPrincipal.irPara(context, Seccao.gestor),
                 icon: const Icon(Icons.arrow_forward_rounded),
-                label: const Text('Ir para o Gestor'),
+                label: Text(tr('Ir para o Gestor')),
               ),
             ],
           ])),

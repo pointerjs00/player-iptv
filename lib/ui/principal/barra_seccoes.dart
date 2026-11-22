@@ -4,6 +4,7 @@ import '../../marca.dart';
 import '../design/design.dart';
 import '../realce_foco.dart';
 import 'tela_principal.dart';
+import '../../idioma/idioma.dart';
 
 /// O nome e o ícone de cada secção (a barra lateral e a NavigationBar do telemóvel).
 const rotulosSeccoes = {
@@ -57,7 +58,7 @@ class BarraSeccoes extends StatelessWidget {
                     textColor: Tokens.texto2,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Tokens.raioBotao)),
                     leading: Icon(rotulosSeccoes[s]!.$2),
-                    title: Text(rotulosSeccoes[s]!.$1, style: const TextStyle(fontWeight: FontWeight.w600)),
+                    title: Text(tr(rotulosSeccoes[s]!.$1), style: const TextStyle(fontWeight: FontWeight.w600)),
                     onFocusChange: aoMudarFoco,
                     onTap: () => aoEscolher(s),
                   ),

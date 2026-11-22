@@ -9,6 +9,7 @@ import '../design/design.dart';
 import '../design/mensagens.dart';
 import '../campo_tv.dart';
 import '../realce_foco.dart';
+import '../../idioma/idioma.dart';
 
 /// As ações do menu «Ações».
 enum _Acao { verificarSelecionadas, verificarTodas, parar, remover }
@@ -223,13 +224,13 @@ class PassoVerificarState extends State<PassoVerificar> {
     if (d == null) return 'nunca';
     final dif = agora.difference(d);
     if (dif.inMinutes < 1) return 'agora';
-    if (dif.inMinutes < 60) return 'há ${dif.inMinutes} min';
+    if (dif.inMinutes < 60) return tr('há {0} min', [dif.inMinutes]);
     final dia = DateTime(d.year, d.month, d.day);
     final hoje = DateTime(agora.year, agora.month, agora.day);
     final dias = hoje.difference(dia).inDays;
-    if (dias == 0) return 'há ${dif.inHours} h';
-    if (dias == 1) return 'ontem';
-    if (dias < 30) return 'há $dias dias';
+    if (dias == 0) return tr('há {0} h', [dif.inHours]);
+    if (dias == 1) return tr('ontem');
+    if (dias < 30) return tr('há {0} dias', [dias]);
     return '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
   }
 
@@ -276,7 +277,7 @@ class PassoVerificarState extends State<PassoVerificar> {
   Future<void> abrirAcoes() async {
     if (_g.listas.isEmpty) {
       // sem listas todos os itens ficariam desligados e o menu abria sem foco: diz-se e o foco fica no botão
-      mostrarMensagem(context, 'O Gestor está vazio');
+      mostrarMensagem(context, tr('O Gestor está vazio'));
       return;
     }
     final botao = _focoAcoes.context?.findRenderObject() as RenderBox?;
@@ -288,11 +289,11 @@ class PassoVerificarState extends State<PassoVerificar> {
     );
     final n = _selecionadas.length;
     final itens = [
-      (_Acao.verificarSelecionadas, 'Verificar selecionadas', Icons.playlist_add_check, n > 0),
-      (_Acao.verificarTodas, 'Verificar todas', Icons.fact_check_outlined, _g.listas.isNotEmpty),
+      (_Acao.verificarSelecionadas, tr('Verificar selecionadas'), Icons.playlist_add_check, n > 0),
+      (_Acao.verificarTodas, tr('Verificar todas'), Icons.fact_check_outlined, _g.listas.isNotEmpty),
       if (widget.aoParar != null && widget.servico.ocupado && !widget.servico.parada)
-        (_Acao.parar, 'Parar a verificação', Icons.stop_circle_outlined, true),
-      (_Acao.remover, 'Remover do gestor', Icons.remove_circle_outline, n > 0),
+        (_Acao.parar, tr('Parar a verificação'), Icons.stop_circle_outlined, true),
+      (_Acao.remover, tr('Remover do gestor'), Icons.remove_circle_outline, n > 0),
     ];
     final primeiro = itens.indexWhere((i) => i.$4);
     final escolha = await showMenu<_Acao>(
@@ -359,14 +360,14 @@ class PassoVerificarState extends State<PassoVerificar> {
             // visíveis passa para a barra de Ações)
             final telemovel = ecraTelemovel(context);
             final agora = _agora;
-            const semListas = Padding(
+            final semListas = Padding(
               padding: EdgeInsets.all(Tokens.e16),
-              child: Text('Ainda não há listas. Comece pelo passo 1: importe as listas.',
+              child: Text(tr('Ainda não há listas. Comece pelo passo 1: importe as listas.'),
                   style: TextStyle(color: Tokens.texto2)),
             );
-            const semVisiveis = Padding(
+            final semVisiveis = Padding(
               padding: EdgeInsets.all(Tokens.e16),
-              child: Text('Nenhuma lista com estes estados.', style: TextStyle(color: Tokens.texto2)),
+              child: Text(tr('Nenhuma lista com estes estados.'), style: TextStyle(color: Tokens.texto2)),
             );
             final lado = telemovel ? Tokens.e8 : Tokens.e16;
             final linhas = SliverPadding(
@@ -389,9 +390,9 @@ class PassoVerificarState extends State<PassoVerificar> {
                 SliverToBoxAdapter(child: _linhaDeCima(caixa.maxWidth, contagens, telemovel: true)),
                 PinnedHeaderSliver(child: _barraSelecao(visiveis)),
                 if (listas.isEmpty)
-                  const SliverToBoxAdapter(child: semListas)
+                  SliverToBoxAdapter(child: semListas)
                 else if (visiveis.isEmpty)
-                  const SliverToBoxAdapter(child: semVisiveis),
+                  SliverToBoxAdapter(child: semVisiveis),
                 linhas,
               ]);
             }
@@ -422,7 +423,7 @@ class PassoVerificarState extends State<PassoVerificar> {
         ),
         onPressed: abrirAcoes,
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Text('Ações (${_selecionadas.length})'),
+          Text(tr('Ações ({0})', [_selecionadas.length])),
           const SizedBox(width: Tokens.e4),
           const Icon(Icons.arrow_drop_down, size: 20),
         ]),
@@ -452,7 +453,7 @@ class PassoVerificarState extends State<PassoVerificar> {
       // baixa (40), como os estados e Ações: a linha de cima não come linhas à tabela; no
       // telemóvel, com o alvo de toque de 48
       decoration: InputDecoration(
-        hintText: 'Pesquisar listas…',
+        hintText: tr('Pesquisar listas…'),
         prefixIcon: const Icon(Icons.search),
         prefixIconConstraints: const BoxConstraints(minWidth: 40, minHeight: 36),
         contentPadding: EdgeInsets.symmetric(horizontal: Tokens.e12, vertical: telemovel ? 14 : 10),
@@ -463,7 +464,7 @@ class PassoVerificarState extends State<PassoVerificar> {
       for (final (i, (e, t)) in _estados.indexed)
         FilterChip(
           focusNode: _focosEstados[i],
-          label: Text('$t · ${contagens[e] ?? 0}'),
+          label: Text('${tr(t)} · ${contagens[e] ?? 0}'),
           selected: _filtro.contains(e),
           showCheckmark: true,
           // no telemóvel, o alvo de toque de 48
@@ -557,7 +558,7 @@ class PassoVerificarState extends State<PassoVerificar> {
                 focusNode: _focoCabecalho,
                 tristate: true,
                 value: _estadoCabecalho(visiveis),
-                semanticLabel: 'Selecionar as visíveis',
+                semanticLabel: tr('Selecionar as visíveis'),
                 visualDensity: _densidade,
                 materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 onChanged: visiveis.isEmpty ? null : (_) => _alternarVisiveis(),
@@ -566,7 +567,7 @@ class PassoVerificarState extends State<PassoVerificar> {
           ),
         ),
         const SizedBox(width: _espacoTitulo),
-        Expanded(child: _colunas(largo, t('LISTA'), t('ESTADO'), t('MOTIVO'), t('TESTE'))),
+        Expanded(child: _colunas(largo, t(tr('LISTA')), t(tr('ESTADO')), t(tr('MOTIVO')), t(tr('TESTE')))),
       ]),
     );
   }
@@ -574,7 +575,7 @@ class PassoVerificarState extends State<PassoVerificar> {
   /// A ☐ «Selecionar visíveis» do telemóvel (na linha de cima, com o texto e o alvo de 48): faz
   /// o mesmo que a do cabeçalho.
   Widget _selecionarVisiveis(List<Lista> visiveis) => Tooltip(
-      message: 'Selecionar todas as visíveis',
+      message: tr('Selecionar todas as visíveis'),
       excludeFromSemantics: true,
       child: RealceFoco(
         raio: 8,
@@ -586,7 +587,7 @@ class PassoVerificarState extends State<PassoVerificar> {
           value: _estadoCabecalho(visiveis),
           onChanged: visiveis.isEmpty ? null : (_) => _alternarVisiveis(),
           // curto, para caber ao lado de Ações com a letra grande; a leitura do ecrã diz tudo
-          title: const Text('Todas', maxLines: 1, semanticsLabel: 'Selecionar todas as visíveis'),
+          title: Text(tr('Todas'), maxLines: 1, semanticsLabel: tr('Selecionar todas as visíveis')),
           contentPadding: EdgeInsets.zero,
           horizontalTitleGap: Tokens.e4,
           minTileHeight: Tokens.alvoToque,
@@ -605,7 +606,7 @@ class PassoVerificarState extends State<PassoVerificar> {
     final pilula = PilulaEstado(estadoDe(l));
     final Widget estado = passo == null
         ? (telemovel ? pilula : Align(alignment: Alignment.centerLeft, child: pilula))
-        : Text(passo == 'na fila' ? 'Na fila' : 'A verificar · $passo',
+        : Text(passo == 'na fila' ? tr('Na fila') : tr('A verificar · {0}', [tr(passo)]),
             maxLines: telemovel ? null : 1,
             overflow: telemovel ? null : TextOverflow.ellipsis,
             style: const TextStyle(color: Tokens.anelFoco, fontWeight: FontWeight.w600));

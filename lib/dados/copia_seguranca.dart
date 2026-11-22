@@ -21,6 +21,7 @@ import '../rede/http.dart' show descreverErro;
 import 'area_gestor.dart';
 import 'biblioteca.dart';
 import 'preferencias.dart';
+import '../idioma/idioma.dart';
 
 const _formato = 'player-iptv-copia';
 
@@ -103,38 +104,38 @@ CopiaLida lerCopia(String texto) {
   try {
     raiz = jsonDecode(texto);
   } on FormatException {
-    throw ErroCopia('O ficheiro não é uma cópia de segurança: não tem JSON válido.');
+    throw ErroCopia(tr('O ficheiro não é uma cópia de segurança: não tem JSON válido.'));
   }
   if (raiz is! Map || raiz['formato'] != _formato) {
-    throw ErroCopia('Este ficheiro não é uma cópia de segurança do $nomeApp.');
+    throw ErroCopia(tr('Este ficheiro não é uma cópia de segurança do {0}.', [nomeApp]));
   }
   final versao = raiz['versao'];
   if (versao is! int || versao < 1) {
-    throw ErroCopia('A cópia de segurança não indica a versão e não se pode importar.');
+    throw ErroCopia(tr('A cópia de segurança não indica a versão e não se pode importar.'));
   }
   if (versao > versaoCopia) {
-    throw ErroCopia('Esta cópia foi criada por uma versão mais recente da app. Atualize a app para a importar.');
+    throw ErroCopia(tr('Esta cópia foi criada por uma versão mais recente da app. Atualize a app para a importar.'));
   }
 
   List<Lista>? listasDe(Object? seccao, String nome) {
     if (seccao == null) return null;
     final lista = seccao is Map ? seccao['listas'] : null;
-    if (lista is! List) throw ErroCopia('A cópia de segurança está estragada: as listas $nome não se conseguem ler.');
+    if (lista is! List) throw ErroCopia(tr('A cópia de segurança está estragada: as listas {0} não se conseguem ler.', [nome]));
     final r = <Lista>[];
     for (final (i, j) in lista.indexed) {
       final l = Lista.deJson(j);
       if (l == null) {
-        throw ErroCopia('A cópia de segurança está estragada: a lista ${i + 1} $nome não se consegue ler.');
+        throw ErroCopia(tr('A cópia de segurança está estragada: a lista {0} {1} não se consegue ler.', [i + 1, nome]));
       }
       r.add(l);
     }
     return r;
   }
 
-  final player = listasDe(raiz['biblioteca'], 'de Ver TV');
-  final gestor = listasDe(raiz['gestor'], 'do Gestor');
+  final player = listasDe(raiz['biblioteca'], tr('de Ver TV'));
+  final gestor = listasDe(raiz['gestor'], tr('do Gestor'));
   if (player == null && gestor == null) {
-    throw ErroCopia('A cópia de segurança está vazia: não tem listas nem de Ver TV nem do Gestor.');
+    throw ErroCopia(tr('A cópia de segurança está vazia: não tem listas nem de Ver TV nem do Gestor.'));
   }
   final ct = raiz['biblioteca'] is Map ? (raiz['biblioteca'] as Map)['canais_teste'] : null;
   final prefs = raiz['preferencias'];
@@ -194,8 +195,8 @@ Future<ResumoRestauro> restaurarCopia(CopiaLida copia, ModoRestauro modo,
     final causa = e is FileSystemException || e is Exception ? descreverErro(e) : '$e';
     throw ErroCopia(
         falhou
-            ? 'A importação falhou ($causa) e não foi possível repor tudo: confira as listas e as definições.'
-            : 'Não foi possível importar ($causa).',
+            ? tr('A importação falhou ({0}) e não foi possível repor tudo: confira as listas e as definições.', [causa])
+            : tr('Não foi possível importar ({0}).', [causa]),
         alterou: falhou);
   }
   if (p != null) await biblioteca.apagarCaches(p.idsSemCache);

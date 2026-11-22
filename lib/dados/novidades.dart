@@ -14,6 +14,11 @@ class Novidades {
 /// Todas as versões, a mais recente primeiro. A primeira é a versão da app: ao mudar a versão no
 /// pubspec.yaml, junta-se aqui a entrada dela (um teste confirma que batem certo).
 const historicoNovidades = <Novidades>[
+  Novidades('1.0.12', [
+    'Definições › Idioma · Language: a app pode ficar em inglês (English). Muda logo, sem reiniciar.',
+    'Ao ver um canal: ao carregar em OK na barra do volume, ela dá um pulo e mostra as setas ‹ › '
+        'enquanto se ajusta.',
+  ]),
   Novidades('1.0.11', [
     'Gestor › Verificar: quando a verificação acaba, as listas selecionadas que deixaram de '
         'aparecer com os filtros ativos saem da seleção (o "Ações (N)" conta só as que se veem).',

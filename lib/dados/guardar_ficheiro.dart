@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart';
+import '../idioma/idioma.dart';
 
 /// Onde o ficheiro ficou (ou que o utilizador cancelou a janela "Guardar como").
 class ResultadoGuardar {
@@ -49,12 +50,12 @@ String mensagemErroGuardar(Object e) {
   if (e is ErroGuardar) return e.mensagem;
   if (e is PlatformException) {
     if (e.code == 'permissao') {
-      return 'Sem permissão para guardar nas Transferências. Permita o acesso ao armazenamento e tente de novo.';
+      return tr('Sem permissão para guardar nas Transferências. Permita o acesso ao armazenamento e tente de novo.');
     }
     final d = e.message;
-    return 'Não foi possível guardar o ficheiro${d == null || d.isEmpty ? '' : ': $d'}.';
+    return tr('Não foi possível guardar o ficheiro{0}.', [d == null || d.isEmpty ? '' : ': $d']);
   }
-  return 'Não foi possível guardar o ficheiro: $e';
+  return tr('Não foi possível guardar o ficheiro: {0}', [e]);
 }
 
 class _DestinoNativo implements DestinoTransferencias {
@@ -67,7 +68,7 @@ class _DestinoNativo implements DestinoTransferencias {
   @override
   Future<String> escrever(String nome, Uint8List bytes, String mimeType) async {
     final r = await _canal.invokeMethod<String>('guardar', {'nome': nome, 'bytes': bytes, 'mime': mimeType});
-    if (r == null) throw const ErroGuardar('O Android não devolveu o destino do ficheiro.');
+    if (r == null) throw ErroGuardar(tr('O Android não devolveu o destino do ficheiro.'));
     return r;
   }
 }
@@ -85,9 +86,9 @@ Future<ResultadoGuardar> guardarFicheiro(
     if (android ?? Platform.isAndroid) {
       final d = destino ?? _DestinoNativo();
       final nomeFinal = nomeSemColisao(nome, await d.existentes());
-      return ResultadoGuardar('Transferências/${await d.escrever(nomeFinal, bytes, mimeType)}');
+      return ResultadoGuardar(tr('Transferências/{0}', [await d.escrever(nomeFinal, bytes, mimeType)]));
     }
-    final uri = await FilePicker.saveFile(fileName: nome, bytes: bytes, mimeType: mimeType, dialogTitle: 'Guardar $nome');
+    final uri = await FilePicker.saveFile(fileName: nome, bytes: bytes, mimeType: mimeType, dialogTitle: tr('Guardar {0}', [nome]));
     return uri == null ? const ResultadoGuardar.cancelado() : ResultadoGuardar(uri.toString());
   } on ErroGuardar {
     rethrow;

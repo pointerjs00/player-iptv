@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 
 import '../ui/player/configuracao_mpv.dart';
 import 'biblioteca.dart' show escreverAtomico;
+import '../idioma/idioma.dart';
 
 /// Como a imagem ocupa o ecrã.
 enum FormatoImagem {
@@ -26,13 +27,14 @@ enum FormatoImagem {
   /// Aumenta a imagem ajustada em 25 % (tira as barras pretas gravadas na própria imagem).
   zoom('zoom', 'Zoom');
 
-  const FormatoImagem(this.nome, this.rotulo);
+  const FormatoImagem(this.nome, this._rotulo);
 
   /// O nome guardado nas preferências.
   final String nome;
 
   /// O texto mostrado.
-  final String rotulo;
+  final String _rotulo;
+  String get rotulo => tr(_rotulo);
 
   static FormatoImagem deNome(String? n) => values.firstWhere((f) => f.nome == n, orElse: () => ajustar);
 }
@@ -47,13 +49,14 @@ enum ModoDesentrelacamento {
 
   desligado('desligado', 'Desligado');
 
-  const ModoDesentrelacamento(this.nome, this.rotulo);
+  const ModoDesentrelacamento(this.nome, this._rotulo);
 
   /// O nome guardado nas preferências.
   final String nome;
 
   /// O texto mostrado.
-  final String rotulo;
+  final String _rotulo;
+  String get rotulo => tr(_rotulo);
 
   /// null: nome desconhecido.
   static ModoDesentrelacamento? deNome(String? n) => values.where((m) => m.nome == n).firstOrNull;
@@ -67,10 +70,11 @@ enum TamanhoInterface {
   /// O tamanho de antes.
   normal('Normal');
 
-  const TamanhoInterface(this.rotulo);
+  const TamanhoInterface(this._rotulo);
 
   /// O texto mostrado (o nome guardado é o `name`).
-  final String rotulo;
+  final String _rotulo;
+  String get rotulo => tr(_rotulo);
 
   static TamanhoInterface deNome(String? n) => values.firstWhere((t) => t.name == n, orElse: () => compacto);
 }
@@ -109,16 +113,18 @@ enum RecuoDireto {
   /// anel pequeno em RAM, só para coser as religações (sem recuo nem pausa com gravação).
   desligado('desligado', 'Desligado', 'Sem recuo no direto.');
 
-  const RecuoDireto(this.nome, this.rotulo, this.descricao);
+  const RecuoDireto(this.nome, this._rotulo, this._descricao);
 
   /// O nome guardado nas preferências.
   final String nome;
 
   /// O texto mostrado.
-  final String rotulo;
+  final String _rotulo;
+  String get rotulo => tr(_rotulo);
 
   /// A explicação nas Definições (a da escolha atual).
-  final String descricao;
+  final String _descricao;
+  String get descricao => tr(_descricao);
 
   /// Um nome desconhecido dá Armazenamento (a omissão).
   static RecuoDireto deNome(String? n) => values.firstWhere((r) => r.nome == n, orElse: () => armazenamento);
@@ -181,6 +187,7 @@ class Preferencias extends ChangeNotifier {
   TamanhoInterface _tamanhoInterface = TamanhoInterface.compacto;
   RecuoDireto _recuoDireto = RecuoDireto.armazenamento;
   int _reservaDiretoGb = padraoReservaDiretoGb;
+  Idioma _idioma = Idioma.pt;
 
   /// As chaves mudadas aqui e ainda não gravadas: só essas se escrevem (as outras são da outra janela).
   final _sujas = <String>{};
@@ -289,6 +296,14 @@ class Preferencias extends ChangeNotifier {
     _mudar('reservaDiretoGb', _reservaDiretoGb != n, () => _reservaDiretoGb = n);
   }
 
+  /// O idioma da interface (português por omissão). Na preferência atual ([atual]) muda logo o
+  /// [idiomaApp] (os ecrãs reconstroem-se com os textos novos).
+  Idioma get idioma => _idioma;
+  set idioma(Idioma v) {
+    _mudar('idioma', _idioma != v, () => _idioma = v);
+    if (identical(this, atual)) idiomaApp.value = v;
+  }
+
   void _mudar(String chave, bool mudou, VoidCallback f) {
     if (!mudou) return;
     f();
@@ -379,6 +394,8 @@ class Preferencias extends ChangeNotifier {
     if (recuo != null) _recuoDireto = RecuoDireto.deNome(recuo);
     final reserva = campo<num>('reservaDiretoGb');
     if (reserva != null) _reservaDiretoGb = reserva.toInt().clamp(minReservaDiretoGb, maxReservaDiretoGb);
+    final idioma = campo<String>('idioma');
+    if (idioma != null) _idioma = Idioma.deNome(idioma);
     return ok;
   }
 
@@ -400,6 +417,7 @@ class Preferencias extends ChangeNotifier {
         'tamanhoInterface': _tamanhoInterface.name,
         'recuoDireto': _recuoDireto.nome,
         'reservaDiretoGb': _reservaDiretoGb,
+        'idioma': _idioma.nome,
       };
 
   /// Todas as definições, para a cópia de segurança.
@@ -428,6 +446,7 @@ class Preferencias extends ChangeNotifier {
     if (lidas.contains('tamanhoInterface')) tamanhoInterface = outro._tamanhoInterface;
     if (lidas.contains('recuoDireto')) recuoDireto = outro._recuoDireto;
     if (lidas.contains('reservaDiretoGb')) reservaDiretoGb = outro._reservaDiretoGb;
+    if (lidas.contains('idioma')) idioma = outro._idioma;
   }
 
   /// O mapa do ficheiro: vazio se não existe, null se existe mas está estragado (não é um mapa
@@ -477,6 +496,7 @@ class Preferencias extends ChangeNotifier {
     }
     final antes = jsonEncode(_mapa());
     _ler(m);
+    if (identical(this, atual)) idiomaApp.value = _idioma;
     if (jsonEncode(_mapa()) != antes) notifyListeners();
   }
 

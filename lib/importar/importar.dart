@@ -6,6 +6,7 @@ import 'dart:convert';
 
 import '../modelo/conta.dart';
 import 'm3u.dart';
+import '../idioma/idioma.dart';
 
 /// O último resultado conhecido de uma lista (vem do verificador ou da própria app).
 class UltimaVerificacao {
@@ -56,7 +57,7 @@ List<Conta> lerAccountsJson(String texto) {
   try {
     dados = jsonDecode(_semBom(texto));
   } on FormatException {
-    throw ErroImportacao('o ficheiro não é JSON válido');
+    throw ErroImportacao(tr('o ficheiro não é JSON válido'));
   }
   final lista = dados is List ? dados : (dados is Map ? [dados] : const []);
   return [for (final d in lista) ?contaDeDict(d)];
@@ -86,9 +87,9 @@ List<Importada> lerHistoricoVerificador(String texto) {
   try {
     dados = jsonDecode(_semBom(texto));
   } on FormatException {
-    throw ErroImportacao('o histórico não é JSON válido');
+    throw ErroImportacao(tr('o histórico não é JSON válido'));
   }
-  if (dados is! List) throw ErroImportacao('o ficheiro não é um histórico do verificador');
+  if (dados is! List) throw ErroImportacao(tr('o ficheiro não é um histórico do verificador'));
   final porChave = <String, Importada>{};
   final entradas = [for (final e in dados) if (e is Map) e]
     ..sort((a, b) => '${a['data_hora']}'.compareTo('${b['data_hora']}'));
@@ -121,7 +122,7 @@ List<Importada> importarFicheiro(String nome, String texto, {String? caminho}) {
   final t = _semBom(texto).trimLeft();
   if (n.endsWith('.ini')) {
     final c = lerIni(texto, nome);
-    if (c == null) throw ErroImportacao('$nome: falta o Address ou o Mac');
+    if (c == null) throw ErroImportacao(tr('{0}: falta o Address ou o Mac', [nome]));
     return [Importada(c)];
   }
   if (pareceM3u(t)) {
@@ -135,7 +136,7 @@ List<Importada> importarFicheiro(String nome, String texto, {String? caminho}) {
     return [for (final c in lerAccountsJson(texto)) Importada(c)];
   }
   final linhas = lerLinhas(texto);
-  if (linhas.isEmpty) throw ErroImportacao('$nome: não foi encontrada nenhuma lista');
+  if (linhas.isEmpty) throw ErroImportacao(tr('{0}: não foi encontrada nenhuma lista', [nome]));
   return [for (final c in linhas) Importada(c)];
 }
 

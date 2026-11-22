@@ -25,6 +25,7 @@ import '../principal/tela_principal.dart';
 import 'linha_opcao.dart';
 import 'seletor_numero.dart';
 import '../realce_foco.dart';
+import '../../idioma/idioma.dart';
 
 /// Escolhe um ficheiro e devolve o seu texto (null = cancelado).
 typedef EscolherCopia = Future<String?> Function();
@@ -33,11 +34,11 @@ typedef EscolherCopia = Future<String?> Function();
 const _maxCopia = 64 * 1024 * 1024;
 
 Future<String?> _escolherCopiaNativo() async {
-  final ficheiros = await FilePicker.pickFiles(dialogTitle: 'Escolher a cópia de segurança');
+  final ficheiros = await FilePicker.pickFiles(dialogTitle: tr('Escolher a cópia de segurança'));
   if (ficheiros.isEmpty) return null;
   final f = ficheiros.first;
   final bytes = await f.readAsBytes();
-  if (bytes.length > _maxCopia) throw ErroCopia('O ficheiro é demasiado grande para ser uma cópia de segurança.');
+  if (bytes.length > _maxCopia) throw ErroCopia(tr('O ficheiro é demasiado grande para ser uma cópia de segurança.'));
   return utf8.decode(bytes, allowMalformed: true);
 }
 
@@ -47,21 +48,24 @@ enum _Categoria {
   verificacao('Verificação', Icons.timer_outlined),
   ligacao('Ligação', Icons.wifi_rounded),
   copia('Cópia de segurança', Icons.cloud_download_outlined),
+  // em português diz também "Language", para quem procura o inglês
+  idioma('Idioma · Language', Icons.translate_rounded),
   sobre('Sobre e licenças', Icons.info_outline_rounded);
 
-  const _Categoria(this.titulo, this.icone);
-  final String titulo;
+  const _Categoria(this._titulo, this.icone);
+  final String _titulo;
+  String get titulo => tr(_titulo);
   final IconData icone;
 }
 
 /// O que se diz ao mudar uma opção: as do player só valem a partir do próximo canal.
-const _guardado = 'Guardado';
+String get _guardado => tr('Guardado');
 /// A verificação lê as definições ao começar cada lista: o que muda vale para as que ainda não começaram.
-const _guardadoListas = 'Guardado · vale para as próximas listas';
-const _guardadoPlayer = 'Guardado · vale a partir do próximo canal';
+String get _guardadoListas => tr('Guardado · vale para as próximas listas');
+String get _guardadoPlayer => tr('Guardado · vale a partir do próximo canal');
 
 /// A nota das opções que só o mpv tem, com o ExoPlayer escolhido.
-const _soNoMpv = 'só no motor mpv';
+String get _soNoMpv => tr('só no motor mpv');
 
 /// Definições por categorias (a lista à esquerda, as opções da categoria à direita; no telemóvel,
 /// uma lista que abre cada categoria). Cada opção explica-se e grava logo ao mudar.
@@ -179,9 +183,9 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
       final r = widget.guardarCopia != null
           ? await widget.guardarCopia!(nome, bytes)
           : await guardarFicheiro(nome, bytes, 'application/json');
-      _aviso(r.cancelado ? 'Exportação cancelada.' : 'Cópia guardada em ${r.destino}');
+      _aviso(r.cancelado ? tr('Exportação cancelada.') : tr('Cópia guardada em {0}', [r.destino]));
     } catch (e) {
-      _aviso(e is ErroGuardar ? e.mensagem : 'Não foi possível exportar: ${descreverErro(e)}');
+      _aviso(e is ErroGuardar ? e.mensagem : tr('Não foi possível exportar: {0}', [descreverErro(e)]));
     } finally {
       if (mounted) setState(() => _ocupado = false);
     }
@@ -198,14 +202,12 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
       if (modo == null) return;
       final r = await restaurarCopia(copia, modo,
           biblioteca: widget.biblioteca, area: widget.area, preferencias: _p);
-      _aviso('Cópia importada: ${r.listasPlayer} em Ver TV, ${r.listasGestor} no Gestor'
-          '${r.atualizadas > 0 ? ', ${r.atualizadas} atualizadas' : ''}'
-          '${r.removidas > 0 ? ', ${r.removidas} removidas' : ''}.');
+      _aviso(tr('Cópia importada: {0} em Ver TV, {1} no Gestor{2}{3}.', [r.listasPlayer, r.listasGestor, r.atualizadas > 0 ? ', ${r.atualizadas} atualizadas' : '', r.removidas > 0 ? ', ${r.removidas} removidas' : '']));
       _ua.text = _p.userAgent;
     } on ErroCopia catch (e) {
-      _aviso(e.alterou ? e.mensagem : '${e.mensagem} Nada foi alterado.');
+      _aviso(e.alterou ? e.mensagem : tr('{0} Nada foi alterado.', [e.mensagem]));
     } catch (e) {
-      _aviso('Não foi possível importar (${descreverErro(e)}). Nada foi alterado.');
+      _aviso(tr('Não foi possível importar ({0}). Nada foi alterado.', [descreverErro(e)]));
     } finally {
       if (mounted) setState(() => _ocupado = false);
     }
@@ -215,16 +217,13 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
         context: context,
         builder: (ctx) => AlertDialog(
           icon: const Icon(Icons.settings_backup_restore_rounded, color: Tokens.acento2, size: 32),
-          title: const Text('Importar cópia de segurança'),
-          content: Text('A cópia tem ${c.player.length} listas de Ver TV e ${c.gestor.length} do Gestor'
-              '${c.preferencias != null ? ', mais as definições' : ''}.\n\n'
-              'Juntar: acrescenta o que falta, sem duplicar, e une favoritos e resultados.\n'
-              'Substituir: apaga as listas atuais e fica só com as da cópia.'),
+          title: Text(tr('Importar cópia de segurança')),
+          content: Text(tr('A cópia tem {0} listas de Ver TV e {1} do Gestor{2}.\n\nJuntar: acrescenta o que falta, sem duplicar, e une favoritos e resultados.\nSubstituir: apaga as listas atuais e fica só com as da cópia.', [c.player.length, c.gestor.length, c.preferencias != null ? tr(', mais as definições') : ''])),
           actions: [
-            TextButton(autofocus: true, onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+            TextButton(autofocus: true, onPressed: () => Navigator.pop(ctx), child: Text(tr('Cancelar'))),
             OutlinedButton(
-                onPressed: () => Navigator.pop(ctx, ModoRestauro.substituir), child: const Text('Substituir tudo')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, ModoRestauro.juntar), child: const Text('Juntar')),
+                onPressed: () => Navigator.pop(ctx, ModoRestauro.substituir), child: Text(tr('Substituir tudo'))),
+            FilledButton(onPressed: () => Navigator.pop(ctx, ModoRestauro.juntar), child: Text(tr('Juntar'))),
           ],
         ),
       );
@@ -351,45 +350,44 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
         return [
           // no telemóvel a escala é sempre 100 %: a opção não faria nada
           if (escalaPara(context, TamanhoInterface.compacto) != 1)
-            _opcao('Tamanho da interface', 'Compacto mostra mais em cada ecrã (80 % na TV e no Windows).',
+            _opcao(tr('Tamanho da interface'), tr('Compacto mostra mais em cada ecrã (80 % na TV e no Windows).'),
                 controlo: _escolhas(TamanhoInterface.values, (t) => t.rotulo, _p.tamanhoInterface,
                     (t) => _mudou(() => _p.tamanhoInterface = t))),
           if (_android) ...[
-            _opcao('Motor do player',
-                'O ExoPlayer é o mais fluido. Se um canal não abrir nele, abre sozinho no mpv.',
+            _opcao(tr('Motor do player'),
+                tr('O ExoPlayer é o mais fluido. Se um canal não abrir nele, abre sozinho no mpv.'),
                 controlo: _escolhas(MotorAndroid.values, (m) => m.rotulo, _p.motorAndroid,
                     (m) => _mudou(() => _p.motorAndroid = m, player: true))),
-            _interruptor('Modo túnel',
-                'Só em aparelhos que o suportam. Pode ajudar a fluidez; se a imagem falhar, desliga.',
+            _interruptor(tr('Modo túnel'),
+                tr('Só em aparelhos que o suportam. Pode ajudar a fluidez; se a imagem falhar, desliga.'),
                 _p.modoTunel, (v) => _p.modoTunel = v),
           ],
           _opcao(
-              'Desentrelaçamento',
-              'Evita riscas nos canais entrelaçados. Automático só o liga quando é preciso.'
-              '${_android ? ' Na descodificação Direta, um direto entrelaçado reabre em Compatível.' : ''}',
+              tr('Desentrelaçamento'),
+              tr('Evita riscas nos canais entrelaçados. Automático só o liga quando é preciso.{0}', [_android ? tr(' Na descodificação Direta, um direto entrelaçado reabre em Compatível.') : '']),
               nota: soMpv,
               controlo: _escolhas(ModoDesentrelacamento.values, (m) => m.rotulo, _p.modoDesentrelacamento,
                   (m) => _mudou(() => _p.modoDesentrelacamento = m, player: true),
                   ativo: soMpv == null)),
-          _interruptor('Descodificação por hardware', 'Mais leve. Desliga se a imagem falhar.', _p.hardware,
+          _interruptor(tr('Descodificação por hardware'), tr('Mais leve. Desliga se a imagem falhar.'), _p.hardware,
               (v) => _p.hardware = v, nota: soMpv),
           if (_android) ...[
             // só na TV: no telemóvel não há taxa do ecrã a ajustar
             if (ecraTv(context))
-              _interruptor('Ajustar a taxa do ecrã ao canal', 'Evita soluços nas imagens (Android TV)',
+              _interruptor(tr('Ajustar a taxa do ecrã ao canal'), tr('Evita soluços nas imagens (Android TV)'),
                   _p.ajustarTaxaEcra, (v) => _p.ajustarTaxaEcra = v),
-            _opcao('Descodificação no Android',
-                'Direta é a mais leve. Compatível serve se o direto mostrar ecrã preto ou cores erradas.',
+            _opcao(tr('Descodificação no Android'),
+                tr('Direta é a mais leve. Compatível serve se o direto mostrar ecrã preto ou cores erradas.'),
                 nota: soMpv,
                 controlo: _escolhas(ModoDescodificacao.values, (m) => m.rotulo, _p.modoAndroid,
                     (m) => _mudou(() => _p.modoAndroid = m, player: true),
                     ativo: soMpv == null)),
           ],
-          _opcao('Formato da imagem', 'Vale para todos os canais',
+          _opcao(tr('Formato da imagem'), tr('Vale para todos os canais'),
               empilhar: true,
               controlo: _escolhas(FormatoImagem.values, (f) => f.rotulo, _p.formato,
                   (f) => _mudou(() => _p.formato = f, player: true))),
-          _opcao('Volume ao abrir', 'O volume com que cada canal começa.',
+          _opcao(tr('Volume ao abrir'), tr('O volume com que cada canal começa.'),
               controlo: _deslizador(
                   min: 0,
                   max: 100,
@@ -399,9 +397,8 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
                   aoMudar: (v) => _mudou(() => _p.volume = v, player: true))),
           // telemóvel Android: o volume do sistema ao abrir (no canal, os deslizes laterais mudam-no)
           if (_android && !EcraTv.nativo)
-            _opcao('Volume inicial do sistema',
-                'Ao abrir um canal, o volume do telemóvel passa a esta percentagem do máximo. '
-                'No canal, deslize no lado direito do ecrã para o volume e no esquerdo para o brilho.',
+            _opcao(tr('Volume inicial do sistema'),
+                tr('Ao abrir um canal, o volume do telemóvel passa a esta percentagem do máximo. No canal, deslize no lado direito do ecrã para o volume e no esquerdo para o brilho.'),
                 controlo: _deslizador(
                     min: 0,
                     max: 100,
@@ -410,12 +407,12 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
                     texto: '${_p.volumeInicialSistema} %',
                     aoMudar: (v) => _mudou(() => _p.volumeInicialSistema = v.round(), player: true))),
           // a explicação é a da escolha atual
-          _opcao('Recuar no direto', _p.recuoDireto.descricao,
+          _opcao(tr('Recuar no direto'), _p.recuoDireto.descricao,
               controlo: _escolhas(RecuoDireto.values, (r) => r.rotulo, _p.recuoDireto,
                   (r) => _mudou(() => _p.recuoDireto = r, player: true))),
           // só o Armazenamento grava
           if (_p.recuoDireto == RecuoDireto.armazenamento)
-            _opcao('Espaço reservado', 'Quanto do armazenamento interno se usa, no máximo.',
+            _opcao(tr('Espaço reservado'), tr('Quanto do armazenamento interno se usa, no máximo.'),
                 controlo: _escolhas(
                     [for (var g = Preferencias.minReservaDiretoGb; g <= Preferencias.maxReservaDiretoGb; g++) g],
                     (g) => '$g GB',
@@ -425,15 +422,15 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
       case _Categoria.verificacao:
         return [
           SeletorNumero(
-              titulo: 'Listas ao mesmo tempo',
-              descricao: 'Quantas listas se verificam em simultâneo (1 a 20). Mais é mais rápido, mas pesa na rede.',
+              titulo: tr('Listas ao mesmo tempo'),
+              descricao: tr('Quantas listas se verificam em simultâneo (1 a 20). Mais é mais rápido, mas pesa na rede.'),
               valor: _p.listasEmSimultaneo,
               min: Preferencias.minListasEmSimultaneo,
               max: Preferencias.maxListasEmSimultaneo,
               aoMudar: (v) => _mudou(() => _p.listasEmSimultaneo = v, mensagem: _guardadoListas)),
           SeletorNumero(
-              titulo: 'Tempo limite por lista',
-              descricao: 'Se uma lista não acabar neste tempo, fica inconclusiva e passa à seguinte.',
+              titulo: tr('Tempo limite por lista'),
+              descricao: tr('Se uma lista não acabar neste tempo, fica inconclusiva e passa à seguinte.'),
               valor: _p.tempoLimiteLista,
               min: Preferencias.minTempoLimiteLista,
               max: Preferencias.maxTempoLimiteLista,
@@ -441,14 +438,14 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
               formatar: (v) => '$v s',
               aoMudar: (v) => _mudou(() => _p.tempoLimiteLista = v, mensagem: _guardadoListas)),
           SeletorNumero(
-              titulo: 'Tempo por canal',
-              descricao: 'Quanto se espera por cada canal de teste.',
+              titulo: tr('Tempo por canal'),
+              descricao: tr('Quanto se espera por cada canal de teste.'),
               valor: _p.timeoutVerificacao,
               min: Preferencias.minTimeoutVerificacao,
               max: Preferencias.maxTimeoutVerificacao,
               formatar: (v) => '$v s',
               aoMudar: (v) => _mudou(() => _p.timeoutVerificacao = v, mensagem: _guardadoListas)),
-          _opcao('Canais de teste', 'A lista funciona se um deles abrir.',
+          _opcao(tr('Canais de teste'), tr('A lista funciona se um deles abrir.'),
               empilhar: true,
               controlo: Wrap(spacing: Tokens.e8, runSpacing: Tokens.e8, children: [
                 for (final p in perfisCanais.values)
@@ -460,7 +457,7 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
                         for (final id in perfisCanais.keys)
                           if (id == p.id ? on : b.canaisTeste.contains(id)) id
                       ];
-                      if (novo.isEmpty) return _aviso('Escolha pelo menos um canal.');
+                      if (novo.isEmpty) return _aviso(tr('Escolha pelo menos um canal.'));
                       _mudou(() => b.definirCanaisTeste(novo));
                     },
                   ),
@@ -468,21 +465,19 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
           Padding(
             padding: const EdgeInsets.fromLTRB(Tokens.e8, Tokens.e12, Tokens.e8, 0),
             child: Text(
-                'Com uma verificação a decorrer, as mudanças valem para as próximas listas.'
-                // as teclas só na TV e no computador (no telemóvel não há setas)
-                '${mostrarDicasComando(context) ? ' OK para mudar um valor, depois ← →; ↑ ↓ mudam de opção.' : ''}',
+                tr('Com uma verificação a decorrer, as mudanças valem para as próximas listas.{0}', [mostrarDicasComando(context) ? tr(' OK para mudar um valor, depois ← →; ↑ ↓ mudam de opção.') : '']),
                 style: const TextStyle(fontSize: 13, color: Tokens.texto2)),
           ),
         ];
       case _Categoria.ligacao:
         return [
-          _opcao('User-agent', 'Opcional: nos pedidos das listas M3U e Xtream (o Stalker mantém o da box MAG).',
+          _opcao(tr('User-agent'), tr('Opcional: nos pedidos das listas M3U e Xtream (o Stalker mantém o da box MAG).'),
               empilhar: true,
               controlo: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 CampoTv(
                   controller: _ua,
                   decoration:
-                      const InputDecoration(labelText: 'User-agent personalizado', hintText: 'Em branco: o do VLC'),
+                      InputDecoration(labelText: tr('User-agent personalizado'), hintText: tr('Em branco: o do VLC')),
                   onChanged: (v) => _mudou(() => _p.userAgent = v),
                 ),
                 const SizedBox(height: Tokens.e8),
@@ -492,15 +487,14 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
                     _mudou(() => _p.userAgent = '');
                   },
                   icon: const Icon(Icons.restart_alt_rounded),
-                  label: const Text('Repor o por omissão'),
+                  label: Text(tr('Repor o por omissão')),
                 ),
               ])),
         ];
       case _Categoria.copia:
         return [
-          _opcao('Exportar e importar',
-              'Guarda as listas, favoritos, resultados, o Gestor e as definições num ficheiro .json. '
-              'O ficheiro inclui as credenciais das listas: guarde-o em local seguro.',
+          _opcao(tr('Exportar e importar'),
+              tr('Guarda as listas, favoritos, resultados, o Gestor e as definições num ficheiro .json. O ficheiro inclui as credenciais das listas: guarde-o em local seguro.'),
               empilhar: true,
               controlo: Wrap(spacing: Tokens.e8, runSpacing: Tokens.e8, children: [
                 FilledButton.icon(
@@ -508,35 +502,40 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
                     if (!_ocupado) _exportar();
                   },
                   icon: const Icon(Icons.upload_file_rounded),
-                  label: const Text('Exportar cópia'),
+                  label: Text(tr('Exportar cópia')),
                 ),
                 OutlinedButton.icon(
                   onPressed: () {
                     if (!_ocupado) _importar();
                   },
                   icon: const Icon(Icons.download_rounded),
-                  label: const Text('Importar cópia'),
+                  label: Text(tr('Importar cópia')),
                 ),
               ])),
         ];
+      case _Categoria.idioma:
+        return [
+          _opcao(tr('Idioma da aplicação'), tr('Os textos de todos os ecrãs mudam logo.'),
+              controlo: _escolhas(Idioma.values, (i) => i.rotulo, _p.idioma, (i) => _mudou(() => _p.idioma = i))),
+        ];
       case _Categoria.sobre:
         return [
-          _opcao('Novidades', 'O que mudou em cada versão. Esta é a $versaoApp.',
+          _opcao(tr('Novidades'), tr('O que mudou em cada versão. Esta é a {0}.', [versaoApp]),
               controlo: Align(
                 alignment: Alignment.centerLeft,
                 child: OutlinedButton.icon(
                   onPressed: () => abrirNovidades(context),
                   icon: const Icon(Icons.new_releases_outlined),
-                  label: const Text('Ver novidades'),
+                  label: Text(tr('Ver novidades')),
                 ),
               )),
-          _opcao('Licenças', 'O player usa o mpv e o ffmpeg (GPLv3).',
+          _opcao(tr('Licenças'), tr('O player usa o mpv e o ffmpeg (GPLv3).'),
               controlo: Align(
                 alignment: Alignment.centerLeft,
                 child: OutlinedButton.icon(
                   onPressed: () => showLicensePage(context: context, applicationName: nomeApp),
                   icon: const Icon(Icons.description_outlined),
-                  label: const Text('Ver licenças'),
+                  label: Text(tr('Ver licenças')),
                 ),
               )),
         ];
@@ -633,9 +632,9 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
               }
               if (!_aberta) {
                 return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                  const Padding(
+                  Padding(
                     padding: EdgeInsets.fromLTRB(Tokens.e16, Tokens.e16, Tokens.e16, 0),
-                    child: Text('Definições', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700)),
+                    child: Text(tr('Definições'), style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700)),
                   ),
                   Expanded(child: _listaCategorias(largo: false)),
                 ]);
@@ -644,7 +643,7 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
                 Padding(
                   padding: const EdgeInsets.fromLTRB(Tokens.e8, Tokens.e8, Tokens.e16, 0),
                   child: Row(children: [
-                    IconButton(onPressed: _fechar, tooltip: 'Voltar', icon: const Icon(Icons.arrow_back)),
+                    IconButton(onPressed: _fechar, tooltip: tr('Voltar'), icon: const Icon(Icons.arrow_back)),
                     Expanded(
                       child: Text(_cat.titulo,
                           maxLines: 1,

@@ -6,6 +6,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
 import 'dart:typed_data';
+import '../idioma/idioma.dart';
 
 class ErroHttp implements Exception {
   ErroHttp(this.status, [this.url = '', this.retryAfter]);
@@ -341,19 +342,19 @@ String descreverErro(Object e) {
   if (e is ErroLegivel) return semSegredos(e.mensagem);
   if (e is ErroHttp) {
     return switch (e.status) {
-      401 || 403 => 'acesso recusado (${e.status})',
-      404 => 'não encontrado (404)',
-      456 => 'o painel recusa a ligação (456) — MAC em uso noutro aparelho?',
-      _ => 'erro do servidor (${e.status})',
+      401 || 403 => tr('acesso recusado ({0})', [e.status]),
+      404 => tr('não encontrado (404)'),
+      456 => tr('o painel recusa a ligação (456) — MAC em uso noutro aparelho?'),
+      _ => tr('erro do servidor ({0})', [e.status]),
     };
   }
-  if (e is TimeoutException) return 'o servidor não respondeu a tempo';
-  if (e is ErroTamanho) return 'a resposta do servidor é grande demais';
-  if (e is TlsException) return 'falha na ligação segura (certificado ou TLS)';
-  if (e is SocketException) return 'não foi possível ligar ao servidor';
-  if (e is HttpException) return 'a ligação foi cortada pelo servidor';
-  if (e is FormatException) return 'endereço ou resposta inválidos';
-  if (e is FileSystemException) return 'não foi possível ler o ficheiro';
+  if (e is TimeoutException) return tr('o servidor não respondeu a tempo');
+  if (e is ErroTamanho) return tr('a resposta do servidor é grande demais');
+  if (e is TlsException) return tr('falha na ligação segura (certificado ou TLS)');
+  if (e is SocketException) return tr('não foi possível ligar ao servidor');
+  if (e is HttpException) return tr('a ligação foi cortada pelo servidor');
+  if (e is FormatException) return tr('endereço ou resposta inválidos');
+  if (e is FileSystemException) return tr('não foi possível ler o ficheiro');
   if (e is Cancelado) return 'cancelado';
-  return 'falha inesperada';
+  return tr('falha inesperada');
 }

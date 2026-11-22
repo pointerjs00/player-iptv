@@ -5,6 +5,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
 import 'continuar_direto.dart';
+import '../../idioma/idioma.dart';
 
 /// Onde o player corre (decide a saída de vídeo e a descodificação).
 enum PlataformaVideo {
@@ -28,13 +29,14 @@ enum ModoDescodificacao {
   /// é o mesmo nos dois modos: um shader no Flutter, ver `desentrelacamento.dart`.)
   compativel('compativel', 'Compatível');
 
-  const ModoDescodificacao(this.nome, this.rotulo);
+  const ModoDescodificacao(this.nome, this._rotulo);
 
   /// O nome guardado nas preferências.
   final String nome;
 
   /// O texto mostrado ao utilizador.
-  final String rotulo;
+  final String _rotulo;
+  String get rotulo => tr(_rotulo);
 
   static ModoDescodificacao deNome(String? n) =>
       values.firstWhere((m) => m.nome == n, orElse: () => direto);

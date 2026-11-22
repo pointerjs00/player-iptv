@@ -8,6 +8,7 @@ import '../../rede/http.dart';
 import '../design/componentes.dart';
 import '../design/ecra.dart';
 import 'motor_reproducao.dart';
+import '../../idioma/idioma.dart';
 
 /// A fábrica do [MotorExo] do ecrã do player (o `CriarMotorExo` dele).
 MotorReproducao novoMotorExo({required bool tunel}) => MotorExo(tunel: tunel);
@@ -159,7 +160,7 @@ class MotorExo implements MotorReproducao, MotorComProcura {
     } catch (e) {
       // sem o lado nativo (outra plataforma, versão antiga): o ecrã pode passar ao mpv
       debugPrint('exoplayer: não foi possível criar o player (${e.runtimeType})');
-      _erro('o ExoPlayer não está disponível neste aparelho', formato: true);
+      _erro(tr('o ExoPlayer não está disponível neste aparelho'), formato: true);
       return null;
     }
   }
@@ -175,7 +176,7 @@ class MotorExo implements MotorReproducao, MotorComProcura {
       return await canal.invokeMethod<T>(metodo, {'id': id, ...args});
     } on PlatformException catch (e) {
       debugPrint('exoplayer: $metodo recusado (${e.code})');
-      _erro(e.message ?? 'o ExoPlayer recusou o pedido');
+      _erro(e.message ?? tr('o ExoPlayer recusou o pedido'));
       return null;
     } on MissingPluginException {
       return null;
@@ -370,7 +371,7 @@ class MotorExo implements MotorReproducao, MotorComProcura {
   void _perdeuPlayer() {
     if (_descartado || _substituido) return;
     _substituido = true;
-    _erro('o player foi aberto noutro ecrã');
+    _erro(tr('o player foi aberto noutro ecrã'));
   }
 
   // ---------------------------------------------------------------- eventos
@@ -382,7 +383,7 @@ class MotorExo implements MotorReproducao, MotorComProcura {
     final url = _url;
     if (url != null && url.isNotEmpty) m = m.replaceAll(url, '');
     m = semSegredos(m);
-    if (m.replaceAll(RegExp(r'[^\p{L}\p{N}]', unicode: true), '').isEmpty) m = 'o ExoPlayer não conseguiu tocar o canal';
+    if (m.replaceAll(RegExp(r'[^\p{L}\p{N}]', unicode: true), '').isEmpty) m = tr('o ExoPlayer não conseguiu tocar o canal');
     _erros.add(ErroMotor(m, formato: formato, rede: rede));
   }
 

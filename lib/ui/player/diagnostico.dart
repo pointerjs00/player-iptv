@@ -2,6 +2,7 @@
 library;
 
 import 'motor_reproducao.dart';
+import '../../idioma/idioma.dart';
 
 /// As propriedades lidas a cada segundo para as estatísticas.
 const propriedadesDiagnostico = [
@@ -104,8 +105,8 @@ enum Veredicto { rede, descodificacao, ecra, fluido }
 
 String textoVeredicto(Veredicto v) => switch (v) {
       Veredicto.rede => 'rede (buffer a esvaziar)',
-      Veredicto.descodificacao => 'descodificação (imagens perdidas no descodificador)',
-      Veredicto.ecra => 'ecrã (imagens perdidas na saída / 50 fps num ecrã a 60 Hz)',
+      Veredicto.descodificacao => tr('descodificação (imagens perdidas no descodificador)'),
+      Veredicto.ecra => tr('ecrã (imagens perdidas na saída / 50 fps num ecrã a 60 Hz)'),
       Veredicto.fluido => 'fluido',
     };
 
@@ -174,16 +175,16 @@ List<(String, String)> linhasEstatisticas(AmostraMpv a, {double? hzEcra}) {
   final br = a.bitrate;
   final buffer = a.bufferSegundos;
   return [
-    ('Descodificação', hw),
+    (tr('Descodificação'), hw),
     ('Codec', a.codec.isEmpty ? '—' : a.codec),
-    ('Resolução', a.largura > 0 ? '${a.largura}×${a.altura}' : '—'),
-    ('Imagens/s (canal · medido)', '${fps(a.fpsContentor)} · ${fps(a.fpsEstimado)}'),
-    ('Ecrã (Hz)', a.fpsEcra != null || hzEcra == null ? fps(a.fpsEcra) : '${fps(hzEcra)} (sistema)'),
-    ('Perdidas (saída · descodificador)', '${a.dropsSaida} · ${a.dropsDescodificador}'),
+    (tr('Resolução'), a.largura > 0 ? '${a.largura}×${a.altura}' : '—'),
+    (tr('Imagens/s (canal · medido)'), '${fps(a.fpsContentor)} · ${fps(a.fpsEstimado)}'),
+    (tr('Ecrã (Hz)'), a.fpsEcra != null || hzEcra == null ? fps(a.fpsEcra) : tr('{0} (sistema)', [fps(hzEcra)])),
+    (tr('Perdidas (saída · descodificador)'), '${a.dropsSaida} · ${a.dropsDescodificador}'),
     ('Buffer', buffer == null ? '—' : '${buffer.toStringAsFixed(1)} s'),
-    ('Estado do buffer', a.estadoBuffer == null ? '—' : '${a.estadoBuffer}%'),
-    ('Débito do vídeo', br == null || br <= 0 ? '—' : '${(br / 1e6).toStringAsFixed(1)} Mb/s'),
-    ('À espera da rede', a.pausadoParaCache ? 'sim' : 'não'),
+    (tr('Estado do buffer'), a.estadoBuffer == null ? '—' : '${a.estadoBuffer}%'),
+    (tr('Débito do vídeo'), br == null || br <= 0 ? '—' : '${(br / 1e6).toStringAsFixed(1)} Mb/s'),
+    (tr('À espera da rede'), a.pausadoParaCache ? tr('sim') : tr('não')),
   ];
 }
 
@@ -206,17 +207,17 @@ List<(String, String)> linhasEstatisticasMotor(EstatisticasMotor e, {double? hzE
   final r = e.resolucao, br = e.bitrate, buffer = e.buffer;
   final hw = switch (e.hardware) { true => ' (hardware)', false => ' (software)', null => '' };
   // em túnel o ExoPlayer não conta as imagens perdidas: o 0 não quer dizer que não as há
-  final notaTunel = e.tunelAtivo == true ? ' (em túnel as perdidas não são contadas)' : '';
+  final notaTunel = e.tunelAtivo == true ? tr(' (em túnel as perdidas não são contadas)') : '';
   return [
     ('Codec', e.codec ?? '—'),
-    ('Descodificador', e.descodificador == null ? '—' : '${e.descodificador}$hw'),
-    ('Resolução', r == null ? '—' : '${r.width.round()}×${r.height.round()}'),
-    ('Imagens/s', fps(e.fps)),
-    ('Ecrã (Hz)', hzEcra == null ? '—' : '${fps(hzEcra)} (sistema)'),
-    ('Imagens (perdidas · mostradas)', '${e.perdidas ?? '—'} · ${e.renderizadas ?? '—'}$notaTunel'),
+    (tr('Descodificador'), e.descodificador == null ? '—' : '${e.descodificador}$hw'),
+    (tr('Resolução'), r == null ? '—' : '${r.width.round()}×${r.height.round()}'),
+    (tr('Imagens/s'), fps(e.fps)),
+    (tr('Ecrã (Hz)'), hzEcra == null ? '—' : tr('{0} (sistema)', [fps(hzEcra)])),
+    (tr('Imagens (perdidas · mostradas)'), '${e.perdidas ?? '—'} · ${e.renderizadas ?? '—'}$notaTunel'),
     if (e.tunelPedido != null || e.tunelAtivo != null)
-      ('Modo túnel', e.tunelAtivo == true ? 'ativo' : (e.tunelPedido == true ? 'pedido, mas não ficou ativo' : 'desligado')),
+      (tr('Modo túnel'), e.tunelAtivo == true ? tr('ativo') : (e.tunelPedido == true ? tr('pedido, mas não ficou ativo') : tr('desligado'))),
     ('Buffer', buffer == null ? '—' : '${(buffer.inMilliseconds / 1000).toStringAsFixed(1)} s'),
-    ('Débito do vídeo', br == null || br <= 0 ? '—' : '${(br / 1e6).toStringAsFixed(1)} Mb/s'),
+    (tr('Débito do vídeo'), br == null || br <= 0 ? '—' : '${(br / 1e6).toStringAsFixed(1)} Mb/s'),
   ];
 }

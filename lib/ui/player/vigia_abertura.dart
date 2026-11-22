@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../../idioma/idioma.dart';
 
 /// Decide quando um canal abriu de facto (há imagem no ecrã), para o player nunca ficar preto e
 /// mudo, e para o indicador "a abrir" ficar até à primeira imagem.
@@ -39,7 +40,7 @@ class VigiaAbertura {
     _prazo = Timer(limite, () {
       if (!_aVigiar) return;
       _aVigiar = false;
-      aoFalhar('o canal não começou a tempo (sem imagem em ${_segundos(limite)} s)');
+      aoFalhar(tr('o canal não começou a tempo (sem imagem em {0} s)', [_segundos(limite)]));
     });
   }
 
