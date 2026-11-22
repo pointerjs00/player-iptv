@@ -62,8 +62,8 @@ class Xtream implements Protocolo {
     aviso?.call('a entrar na conta');
     final info = await _apiSemProva(conta, const {}, cancelamento, (m) => m);
     final user = info is Map ? info['user_info'] : null;
-    if (user is! Map) throw ErroLista('o servidor não respondeu como um painel Xtream');
-    if (!user.containsKey('auth')) throw ErroLista('resposta do servidor sem estado de autenticação');
+    if (user is! Map) throw ErroLista('o servidor não respondeu como um painel Xtream', fixo: true);
+    if (!user.containsKey('auth')) throw ErroLista('resposta do servidor sem estado de autenticação', fixo: true);
     if (!const {'1', 'true'}.contains('${user['auth']}'.toLowerCase())) {
       throw ErroLista('autenticação recusada', definitivo: true);
     }

@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:collection';
 
 import 'package:flutter/foundation.dart';
 
@@ -11,10 +10,13 @@ import 'estado.dart';
 import 'verificador.dart';
 
 /// Corre verificações e guarda os resultados na coleção verificada, como a `Analise` do Python:
-/// - 1.ª volta com no máximo `workers` ao mesmo tempo, um MAC de cada vez, preferindo
-///   servidores que não estejam já a ser testados, e um pedido de cada vez por servidor;
-/// - as inconclusivas voltam a ser testadas (com o dobro do tempo) depois da 1.ª volta,
-///   uma de cada vez, com uma pausa antes de cada uma;
+/// - no máximo `workers` ao mesmo tempo, um MAC de cada vez, preferindo servidores que não
+///   estejam já a ser testados, e um pedido de cada vez por servidor;
+/// - as inconclusivas cujo motivo pode mudar voltam a ser testadas (com o dobro do tempo) logo
+///   que haja vaga num servidor e num MAC livres, a par das outras; a 2.ª volta continua onde a
+///   1.ª ficou ([ProgressoVerificacao]) e só espera uma pausa se o servidor recusou por limite;
+/// - as que já eram inconclusivas na verificação anterior vão à frente e começam logo com o
+///   dobro do tempo;
 /// - cada volta de uma conta tem um limite de tempo;
 /// - pode-se juntar listas à fila a meio e cancelar uma só sem parar as outras.
 class ServicoVerificacao extends ChangeNotifier {
@@ -57,12 +59,11 @@ class ServicoVerificacao extends ChangeNotifier {
   /// id da lista -> o passo em curso ("a pedir os canais", "na fila"...).
   final passos = <String, String>{};
   final _fila = <_Tarefa>[];
-  final _reteste = Queue<_Tarefa>();
+  final _reteste = <_Tarefa>[];
   final _emCurso = <_Tarefa>{};
   final _macsOcupados = <String>{};
   final _hostsOcupados = <String, int>{};
   int _aCorrer = 0;
-  bool _aRetestar = false;
   Cancelamento _cancelamento = Cancelamento();
   int feitas = 0, total = 0;
 
@@ -109,14 +110,29 @@ class ServicoVerificacao extends ChangeNotifier {
     if (passos.isEmpty) parada = false;
     passos[l.id] = 'na fila';
     total++;
-    _fila.add(t);
+    // as que já eram inconclusivas são as mais lentas: vão à frente (pela ordem em que chegam)
+    t.lenta = _jaInconclusiva(l);
+    final antes = t.lenta ? _fila.indexWhere((x) => !x.lenta) : -1;
+    if (antes >= 0) {
+      _fila.insert(antes, t);
+    } else {
+      _fila.add(t);
+    }
     notifyListeners();
     _servir();
     return t.acabou.future;
   }
 
-  /// Pode ser chamado com o serviço ocupado: as novas juntam-se à fila e `total` cresce.
-  Future<void> verificarVarias(Iterable<Lista> ls) => Future.wait([for (final l in ls) verificar(l)]);
+  /// Pode ser chamado com o serviço ocupado: as novas juntam-se à fila e `total` cresce. As que
+  /// já eram inconclusivas entram primeiro (a primeira arranca logo, antes de as outras chegarem).
+  Future<void> verificarVarias(Iterable<Lista> ls) {
+    final todas = ls.toList();
+    return Future.wait([
+      for (final l in [...todas.where(_jaInconclusiva), ...todas.where((l) => !_jaInconclusiva(l))]) verificar(l),
+    ]);
+  }
+
+  static bool _jaInconclusiva(Lista l) => l.ultima?.estado == EstadoV.inconclusivo.valor;
 
   /// Pára tudo: as que estão a meio ficam com o resultado que tinham (as que esperavam a
   /// 2.ª volta ficam com o da 1.ª).
@@ -179,18 +195,13 @@ class ServicoVerificacao extends ChangeNotifier {
   static String _host(Conta c) => hostDe(c.endereco).toLowerCase();
 
   /// Ocupa o MAC, o servidor e a vaga (da 1.ª volta ou do reteste) desta tarefa.
-  void _ocupar(_Tarefa t, {required bool segunda}) {
+  void _ocupar(_Tarefa t) {
     final c = t.lista.conta;
     final m = _mac(c);
     if (m.isNotEmpty) _macsOcupados.add(m);
     _hostsOcupados.update(_host(c), (n) => n + 1, ifAbsent: () => 1);
-    if (segunda) {
-      _aRetestar = true;
-    } else {
-      _aCorrer++;
-    }
+    _aCorrer++;
     t
-      ..segunda = segunda
       ..largada = false
       ..aGravar = false
       ..cancelamento = _cancelamento.filho();
@@ -213,11 +224,7 @@ class ServicoVerificacao extends ChangeNotifier {
     } else {
       _hostsOcupados[h] = n;
     }
-    if (t.segunda) {
-      _aRetestar = false;
-    } else {
-      _aCorrer--;
-    }
+    _aCorrer--;
   }
 
   /// A próxima da fila cujo MAC não esteja em uso; entre essas, uma de um servidor livre.
@@ -233,34 +240,51 @@ class ServicoVerificacao extends ChangeNotifier {
     return primeira;
   }
 
+  /// A próxima à espera da 2.ª volta com o MAC e o servidor livres: a 2.ª volta não junta
+  /// carga a um servidor que já está a ser testado.
+  int? _proximaReteste() {
+    for (var i = 0; i < _reteste.length; i++) {
+      final c = _reteste[i].lista.conta;
+      final m = _mac(c);
+      if (m.isNotEmpty && _macsOcupados.contains(m)) continue;
+      if ((_hostsOcupados[_host(c)] ?? 0) == 0) return i;
+    }
+    return null;
+  }
+
   void _servir() {
     while (_aCorrer < workers) {
+      // a 2.ª volta primeiro (são as mais lentas), logo que o servidor dela esteja livre
+      final j = _proximaReteste();
+      if (j != null) {
+        final t = _reteste.removeAt(j);
+        _ocupar(t);
+        _segundaVolta(t).whenComplete(() {
+          _largar(t);
+          if (!t.cancelada) _concluir(t);
+          notifyListeners();
+          _servir();
+        });
+        continue;
+      }
       final i = _proxima();
       if (i == null) break;
       final t = _fila.removeAt(i);
-      _ocupar(t, segunda: false);
+      _ocupar(t);
       _primeiraVolta(t).then((r) {
         _largar(t);
         if (t.cancelada) {
           // já saiu das contas ao cancelar
-        } else if (r != null && r.estado == EstadoV.inconclusivo && !t.cancelamento!.cancelado) {
+        } else if (r != null &&
+            r.estado == EstadoV.inconclusivo &&
+            r.repeticao != Repeticao.inutil &&
+            !t.cancelamento!.cancelado) {
           passos[t.id] = 'inconclusiva: à espera da 2.ª volta';
           t.r1 = r;
           _reteste.add(t);
         } else {
           _concluir(t);
         }
-        notifyListeners();
-        _servir();
-      });
-    }
-    // a 2.ª volta só quando a 1.ª acabou, e uma de cada vez
-    if (_aCorrer == 0 && _fila.isEmpty && !_aRetestar && _reteste.isNotEmpty) {
-      final t = _reteste.removeFirst();
-      _ocupar(t, segunda: true);
-      _segundaVolta(t).whenComplete(() {
-        _largar(t);
-        if (!t.cancelada) _concluir(t);
         notifyListeners();
         _servir();
       });
@@ -282,11 +306,12 @@ class ServicoVerificacao extends ChangeNotifier {
         }
       };
 
-  /// Uma volta com o tempo por canal `timeout` e o limite da lista `limite`.
+  /// Uma volta com o tempo por canal `timeout` e o limite da lista `limite`; continua o que as
+  /// voltas anteriores desta lista já conseguiram.
   Future<ResultadoVerificacao> _umaVolta(_Tarefa t, Duration timeout, Duration limite) => runZoned(
       () => verificador.verificarComLimite(t.lista.conta, biblioteca.canaisTeste,
           timeout: timeout, limite: limite, cancelamento: t.cancelamento, aviso: _aviso(t)),
-      zoneValues: {ritmoZona: ritmo});
+      zoneValues: {ritmoZona: ritmo, progressoZona: t.progresso});
 
   /// Grava o resultado da volta; enquanto grava, `cancelar` ignora-a. Devolve false se a
   /// gravação falhou (a lista acaba na mesma, com o resultado que tinha).
@@ -310,8 +335,11 @@ class ServicoVerificacao extends ChangeNotifier {
     notifyListeners();
     ResultadoVerificacao r;
     var falhou = false;
+    // já era inconclusiva: começa logo com o tempo da 2.ª volta (os tempos são máximos, um
+    // servidor rápido acaba depressa na mesma)
+    final dobro = t.lenta ? 2 : 1;
     try {
-      r = await _umaVolta(t, _timeout, _limiteLista);
+      r = await _umaVolta(t, _timeout * dobro, _limiteLista * dobro);
     } on Cancelado {
       return null; // parada: fica o resultado anterior
     } catch (e) {
@@ -330,7 +358,8 @@ class ServicoVerificacao extends ChangeNotifier {
     passos[t.id] = 'inconclusiva: a testar outra vez';
     notifyListeners();
     try {
-      await esperarCancelavel(verificador.pausaReteste, can);
+      // a pausa só serve a um servidor que recusou por limite (ligações, 429, MAC em uso)
+      if (r1.repeticao == Repeticao.depoisDePausa) await esperarCancelavel(verificador.pausaReteste, can);
       // no reteste, o dobro do tempo: por canal e por lista
       final r2 = await _umaVolta(t, _timeout * 2, _limiteLista * 2);
       if (can.cancelado) return; // parada ou cancelada: fica o resultado da 1.ª volta
@@ -356,7 +385,13 @@ class _Tarefa {
   /// O cancelamento da volta em curso (filho do do serviço: `parar()` cancela-o também).
   Cancelamento? cancelamento;
   ResultadoVerificacao? r1;
-  bool segunda = false, largada = true, cancelada = false;
+  bool largada = true, cancelada = false;
+
+  /// Já era inconclusiva na verificação anterior: vai à frente e começa com o dobro do tempo.
+  bool lenta = false;
+
+  /// O que as voltas desta lista já conseguiram (a 2.ª continua daí).
+  final progresso = ProgressoVerificacao();
 
   /// A gravar o resultado da volta: `cancelar` ignora-a (o resultado seria gravado na mesma).
   bool aGravar = false;

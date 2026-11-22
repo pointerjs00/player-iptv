@@ -129,7 +129,7 @@ void main() {
       expect(bib.listas.every((l) => l.ultima?.estado == 'funciona'), isTrue);
     });
 
-    test('I3: a 2.ª volta só começa depois da 1.ª e corre em série', () async {
+    test('a 2.ª volta começa logo que o servidor da lista está livre, sem esperar pelas outras', () async {
       await juntar(['http://rapida.com/c/ 00:1A:79:00:00:01', 'http://lenta.com/c/ 00:1A:79:00:00:02',
           'http://boa.com/c/ 00:1A:79:00:00:03']);
       final f = _Falso((c, volta, can) async {
@@ -142,12 +142,56 @@ void main() {
       final s = ServicoVerificacao(bib, verificador: f, ritmo: RitmoHost(intervalo: Duration.zero));
       await s.verificarVarias(bib.listas).timeout(const Duration(seconds: 5));
       final ultimoFimVolta1 = f.eventos.lastIndexWhere((e) => e.$1 == 'fim' && e.$3 == 1);
-      final primeiroInicioVolta2 = f.eventos.indexWhere((e) => e.$1 == 'início' && e.$3 == 2);
-      expect(primeiroInicioVolta2, greaterThan(ultimoFimVolta1));
-      expect(f.picoVolta2, 1);
+      final reteste = f.eventos.indexWhere((e) => e.$1 == 'início' && e.$3 == 2 && e.$2.contains('rapida'));
+      expect(reteste, lessThan(ultimoFimVolta1), reason: 'a rápida não espera pelas lentas: ${f.eventos}');
       expect(f.eventos.where((e) => e.$1 == 'início' && e.$3 == 2), hasLength(2));
       expect(bib.listas.map((l) => l.ultima!.estado), ['funciona', 'funciona', 'funciona']);
       expect(s.ocupado, isFalse);
+    });
+
+    test('a 2.ª volta nunca junta carga a um servidor que está a ser testado', () async {
+      // duas listas no mesmo servidor (MACs diferentes): a 1.ª fica INC depressa, a 2.ª demora
+      await juntar(['http://mesmo.com/c/ 00:1A:79:00:00:01', 'http://mesmo.com/stalker_portal/c/ 00:1A:79:00:00:02']);
+      final f = _Falso((c, volta, can) async {
+        if (volta == 1 && c.endereco.contains('stalker_portal')) {
+          await _esperar(200, can);
+          return const ResultadoVerificacao(EstadoV.funciona, 'ok');
+        }
+        return volta == 1
+            ? const ResultadoVerificacao(EstadoV.inconclusivo, 'tempo esgotado')
+            : const ResultadoVerificacao(EstadoV.funciona, 'abriu na 2.ª volta');
+      });
+      final s = ServicoVerificacao(bib, verificador: f, ritmo: RitmoHost(intervalo: Duration.zero));
+      await s.verificarVarias(bib.listas).timeout(const Duration(seconds: 5));
+      final fimLenta = f.eventos.indexWhere((e) => e.$1 == 'fim' && e.$2.contains('stalker_portal'));
+      final reteste = f.eventos.indexWhere((e) => e.$1 == 'início' && e.$3 == 2);
+      expect(reteste, greaterThan(fimLenta), reason: '${f.eventos}');
+      expect(bib.listas.map((l) => l.ultima!.estado), ['funciona', 'funciona']);
+    });
+
+    test('inconclusiva com um motivo que não muda ("conta sem canais") não tem 2.ª volta', () async {
+      await juntar(['http://vazia.com/c/ 00:1A:79:00:00:01']);
+      final f = _Falso((c, volta, can) async =>
+          const ResultadoVerificacao(EstadoV.inconclusivo, 'conta sem canais', repeticao: Repeticao.inutil));
+      final s = ServicoVerificacao(bib, verificador: f, ritmo: RitmoHost(intervalo: Duration.zero));
+      await s.verificarVarias(bib.listas).timeout(const Duration(seconds: 5));
+      expect(f.eventos.where((e) => e.$1 == 'início'), hasLength(1));
+      expect(bib.listas.single.ultima!.motivo, 'conta sem canais');
+    });
+
+    test('as que já eram inconclusivas vão à frente e começam com o dobro do tempo', () async {
+      await juntar(['http://a.com/c/ 00:1A:79:00:00:01', 'http://b.com/c/ 00:1A:79:00:00:02',
+          'http://c.com/c/ 00:1A:79:00:00:03']);
+      final c = bib.listas.firstWhere((l) => l.conta.endereco.contains('c.com'));
+      await bib.registarVerificacao(c.id,
+          UltimaVerificacao(estado: 'inconclusivo', motivo: 'tempo esgotado', data: DateTime(2026, 11, 1)));
+      final f = _Falso((c, volta, can) async => const ResultadoVerificacao(EstadoV.funciona, 'ok'));
+      final s = ServicoVerificacao(bib, verificador: f, workers: 1, ritmo: RitmoHost(intervalo: Duration.zero));
+      await s.verificarVarias(bib.listas).timeout(const Duration(seconds: 5));
+      final inicios = f.eventos.where((e) => e.$1 == 'início').toList();
+      expect(inicios.first.$2, contains('c.com'));
+      expect(inicios.first.$3, 2, reason: 'o _Falso vê o dobro do tempo como 2.ª volta');
+      expect(inicios.skip(1).map((e) => e.$3), [1, 1]);
     });
 
     test('I3: uma conta que não acaba fica INC com "tempo esgotado (limite …)"', () async {

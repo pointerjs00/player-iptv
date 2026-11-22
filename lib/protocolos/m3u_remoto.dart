@@ -18,7 +18,7 @@ class M3uRemoto implements Protocolo {
       rethrow;
     }
     // R13: HTML, login ou captive portal é o ambiente, não prova sobre a lista
-    if (!pareceListaM3u(texto)) throw ErroLista('o endereço não devolveu uma lista M3U');
+    if (!pareceListaM3u(texto)) throw ErroLista('o endereço não devolveu uma lista M3U', fixo: true);
     aviso?.call('a ler os canais');
     return lerM3uAsync(texto);
   }

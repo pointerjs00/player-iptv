@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:player_iptv/modelo/conta.dart';
 import 'package:player_iptv/protocolos/stalker.dart';
 import 'package:player_iptv/protocolos/xtream.dart';
+import 'package:player_iptv/rede/http.dart';
 import 'package:player_iptv/verificar/canais_teste.dart';
 import 'package:player_iptv/verificar/estado.dart';
 import 'package:player_iptv/verificar/verificador.dart';
@@ -186,6 +188,49 @@ void main() {
       expect(r.estado, EstadoV.inconclusivo);
       // 1.ª volta + 2.ª volta, cada uma com 2 leituras
       expect(srv.pedidos.where((p) => p.uri.path.startsWith('/live/')), hasLength(4));
+    });
+
+    test('a 2.ª volta usa os canais da 1.ª e só repete o canal de teste inconclusivo', () async {
+      // RTP 1 não existe (prova); o DAZN 1 dá erro 500 (INC, pode mudar)
+      srv.responder = (p) => painel(p, temRtp: false, streamStatus: 500);
+      final r = await v.verificar(conta(), ['rtp1', 'dazn1']);
+      expect(r.estado, EstadoV.inconclusivo);
+      final api = srv.pedidos.where((p) => p.uri.path == '/player_api.php');
+      expect(api.where((p) => p.uri.queryParameters['action'] == 'get_live_streams'), hasLength(1));
+      // o DAZN 1: 2 leituras em cada volta
+      expect(srv.pedidos.where((p) => p.uri.path.startsWith('/live/')), hasLength(4));
+      expect(r.canais.map((c) => (c['id'], c['estado'])), [('rtp1', 'nao_funciona'), ('dazn1', 'inconclusivo')]);
+    });
+
+    test('"conta sem canais" não tem 2.ª volta (daqui a um minuto continua sem canais)', () async {
+      srv.responder = (p) => p.uri.queryParameters['action'] == 'get_live_streams' ? (200, []) : painel(p);
+      final r = await v.verificar(conta(), ['rtp1']);
+      expect((r.estado, r.motivo, r.repeticao), (EstadoV.inconclusivo, 'conta sem canais', Repeticao.inutil));
+      expect(srv.pedidos.where((p) => p.uri.path == '/player_api.php' && p.uri.queryParameters['action'] == null),
+          hasLength(1));
+    });
+
+    test('o tempo esgota-se depois de um canal de teste abrir: funciona', () async {
+      srv.responder = (p) => painel(p);
+      // o RTP 1 abre; o DAZN 1 nunca responde
+      final v2 = Verificador(dns: _semDns, espera: Duration.zero, pausaReteste: Duration.zero,
+          ler: (url, headers, {timeout = const Duration(seconds: 8), cancelamento, stream401Inc = false}) async {
+        if (url.contains('/1.')) return const ResultadoVerificacao(EstadoV.funciona, 'vídeo recebido');
+        while (true) {
+          cancelamento?.verificar();
+          await Future<void>.delayed(const Duration(milliseconds: 10));
+        }
+      });
+      final r = await runZoned(
+          () => v2.verificarComLimite(conta(), ['rtp1', 'dazn1'], limite: const Duration(milliseconds: 400)),
+          zoneValues: {progressoZona: ProgressoVerificacao()});
+      expect(r.estado, EstadoV.funciona);
+      expect(r.canais.map((c) => (c['id'], c['estado'])), [('rtp1', 'funciona'), ('dazn1', 'inconclusivo')]);
+    });
+
+    test('limite de ligações pede pausa antes da 2.ª volta; um erro 500 não', () {
+      expect(classificarFalha(ErroHttp(459, 'x')).repeticao, Repeticao.depoisDePausa);
+      expect(classificarFalha(ErroHttp(500, 'x')).repeticao, Repeticao.imediata);
     });
 
     test('DNS inexistente é prova', () async {

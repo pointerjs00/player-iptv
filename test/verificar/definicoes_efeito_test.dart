@@ -89,11 +89,12 @@ void main() {
     final s = ServicoVerificacao(bib, verificador: f, preferencias: prefs);
     await s.verificar(bib.listas.first);
     expect(f.tempos, [const Duration(seconds: 20), const Duration(seconds: 40)]);
-    // mudar nas definições vale já para a verificação seguinte
+    // mudar nas definições vale já para a verificação seguinte (a lista ficou inconclusiva:
+    // começa logo com o dobro)
     f.tempos.clear();
     prefs.timeoutVerificacao = 5;
     await s.verificar(bib.listas.first);
-    expect(f.tempos.first, const Duration(seconds: 5));
+    expect(f.tempos.first, const Duration(seconds: 10));
   });
 
   test('sem preferências dadas, usa as da app (8 s por omissão)', () async {

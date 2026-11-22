@@ -227,7 +227,12 @@ void main() {
   });
 
   test('cancelar a que espera a 2.ª volta: fica o resultado da 1.ª e não é retestada', () async {
-    final ls = await juntar(2);
+    // as duas no mesmo servidor: a 2.ª volta da 1.ª espera que o servidor fique livre
+    await bib.adicionar([
+      Importada(contaDeLinha('http://mesmo.com/c/ 00:1A:79:00:00:01')!),
+      Importada(contaDeLinha('http://mesmo.com/stalker_portal/c/ 00:1A:79:00:00:02')!),
+    ]);
+    final ls = bib.listas.where((l) => l.conta.endereco.contains('//mesmo')).toList();
     var voltas2 = 0;
     final soltar = Completer<void>();
     final f = _Funcao((c, volta, can) async {

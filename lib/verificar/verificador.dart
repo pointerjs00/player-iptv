@@ -22,6 +22,22 @@ import 'video.dart';
 
 const maxCandidatos = 3;
 
+/// O que as voltas de uma lista já conseguiram, para a 2.ª continuar daí: não volta a pedir os
+/// canais (se a lista veio inteira) nem testa outra vez os canais de teste que já deram resposta.
+class ProgressoVerificacao {
+  /// Os canais da lista, se uma volta os chegou a ler.
+  ConteudoLista? conteudo;
+
+  /// O resultado de cada canal de teste já testado (pelo id do perfil: "rtp1"...).
+  final perfis = <String, ResultadoVerificacao>{};
+}
+
+/// Chave da zona com o [ProgressoVerificacao] da lista em verificação (o serviço dá um por
+/// lista; sem ele, cada volta começa do zero).
+const progressoZona = #progressoVerificacao;
+
+ProgressoVerificacao? get _progresso => Zone.current[progressoZona] as ProgressoVerificacao?;
+
 /// Lê o stream de um canal (substituível nos testes).
 typedef LerStream = Future<ResultadoVerificacao> Function(String url, Map<String, String> headers,
     {Duration timeout, Cancelamento? cancelamento, bool stream401Inc});
@@ -108,16 +124,20 @@ class Verificador {
   /// Antes de voltar a testar uma conta inconclusiva.
   final Duration pausaReteste;
 
-  /// Verifica com uma 2.ª volta se o resultado for inconclusivo.
+  /// Verifica com uma 2.ª volta se o resultado for inconclusivo e o motivo puder mudar; a 2.ª
+  /// continua onde a 1.ª ficou.
   Future<ResultadoVerificacao> verificar(Conta conta, List<String> canaisTeste,
-      {Duration timeout = const Duration(seconds: 8), Cancelamento? cancelamento, Aviso? aviso}) async {
-    final r1 = await verificarComLimite(conta, canaisTeste, timeout: timeout, cancelamento: cancelamento, aviso: aviso);
-    if (r1.estado != EstadoV.inconclusivo) return r1;
-    aviso?.call('inconclusiva: a testar outra vez');
-    await esperarCancelavel(pausaReteste, cancelamento);
-    final r2 = await verificarComLimite(conta, canaisTeste, timeout: timeout * 2, cancelamento: cancelamento, aviso: aviso);
-    return r2.validade.isEmpty && r1.validade.isNotEmpty ? r2.com(validade: r1.validade) : r2;
-  }
+          {Duration timeout = const Duration(seconds: 8), Cancelamento? cancelamento, Aviso? aviso}) =>
+      runZoned(() async {
+        final r1 =
+            await verificarComLimite(conta, canaisTeste, timeout: timeout, cancelamento: cancelamento, aviso: aviso);
+        if (r1.estado != EstadoV.inconclusivo || r1.repeticao == Repeticao.inutil) return r1;
+        aviso?.call('inconclusiva: a testar outra vez');
+        if (r1.repeticao == Repeticao.depoisDePausa) await esperarCancelavel(pausaReteste, cancelamento);
+        final r2 = await verificarComLimite(conta, canaisTeste,
+            timeout: timeout * 2, cancelamento: cancelamento, aviso: aviso);
+        return r2.validade.isEmpty && r1.validade.isNotEmpty ? r2.com(validade: r1.validade) : r2;
+      }, zoneValues: {progressoZona: _progresso ?? ProgressoVerificacao()});
 
   /// Uma volta com o limite de tempo da conta ([limite] se dado, senão `limiteConta` × nº de
   /// canais de teste). O relógio
@@ -145,13 +165,25 @@ class Verificador {
       final trabalho = runZoned(
           () => verificarUmaVez(conta, canaisTeste, timeout: timeout, cancelamento: filho, aviso: aviso),
           zoneValues: {relogioZona: relogio});
-      return await Future.any([trabalho, esgotou.future]);
+      return _comOQueAbriu(await Future.any([trabalho, esgotou.future]), canaisTeste);
     } on Cancelado {
-      if (esgotou.isCompleted && !(cancelamento?.cancelado ?? false)) return esgotou.future;
+      if (esgotou.isCompleted && !(cancelamento?.cancelado ?? false)) {
+        return _comOQueAbriu(await esgotou.future, canaisTeste);
+      }
       rethrow;
     } finally {
       relogio.parar();
     }
+  }
+
+  /// O tempo esgotou-se, mas um canal de teste já tinha aberto: isso prova que a lista
+  /// funciona (os que faltaram ficam com o tempo esgotado).
+  static ResultadoVerificacao _comOQueAbriu(ResultadoVerificacao r, List<String> canaisTeste) {
+    final p = _progresso;
+    if (!r.tempoEsgotado || p == null || !p.perfis.values.any((x) => x.estado == EstadoV.funciona)) return r;
+    final porCanal = [for (final pf in perfisDe(canaisTeste)) (pf, p.perfis[pf.id] ?? r)];
+    final j = porCanal.length == 1 ? porCanal.single.$2 : juntar(porCanal);
+    return j.com(validade: p.conteudo?.validade ?? '');
   }
 
   static String _segundos(Duration d) =>
@@ -159,39 +191,76 @@ class Verificador {
 
   Future<ResultadoVerificacao> verificarUmaVez(Conta conta, List<String> canaisTeste,
       {Duration timeout = const Duration(seconds: 8), Cancelamento? cancelamento, Aviso? aviso}) async {
+    final progresso = _progresso;
+    final proto = Protocolo.para(conta);
+    var conteudo = progresso?.conteudo;
+    if (conteudo != null && conteudo.completa && conteudo.canais.isNotEmpty) {
+      // 2.ª volta: a lista de canais não muda em minutos; só se testam os canais outra vez
+      aviso?.call('a usar os canais lidos na 1.ª volta');
+    } else {
+      final (lido, falha) = await _abrir(conta, proto, cancelamento, aviso);
+      if (falha != null) return falha;
+      conteudo = lido!;
+      progresso?.conteudo = conteudo;
+    }
+    final perfis = perfisDe(canaisTeste);
+    final porCanal = <(PerfilCanal, ResultadoVerificacao)>[];
+    for (final (i, p) in perfis.indexed) {
+      // um canal de teste que já deu resposta (abriu ou provou que não abre) não se repete
+      final ja = progresso?.perfis[p.id];
+      if (ja != null && ja.estado != EstadoV.inconclusivo) {
+        porCanal.add((p, ja));
+        continue;
+      }
+      // "canal 2/3 · …": o Gestor mostra em que canal de teste vai
+      final avisoCanal = aviso == null ? null : (String t) => aviso('canal ${i + 1}/${perfis.length} · $t');
+      final r = await _testarPerfil(conta, proto, conteudo, p, timeout, cancelamento, avisoCanal);
+      progresso?.perfis[p.id] = r;
+      porCanal.add((p, r));
+    }
+    final r = porCanal.length == 1 ? porCanal.single.$2 : juntar(porCanal);
+    return r.com(validade: conteudo.validade);
+  }
+
+  /// DNS e a lista de canais: o conteúdo, ou o resultado se não se chegou aos canais.
+  Future<(ConteudoLista?, ResultadoVerificacao?)> _abrir(
+      Conta conta, Protocolo proto, Cancelamento? cancelamento, Aviso? aviso) async {
     aviso?.call('a resolver o DNS');
     final rDns = await dns(hostDe(conta.endereco));
-    if (rDns != null) return rDns;
+    if (rDns != null) return (null, rDns);
     final ConteudoLista conteudo;
-    final proto = Protocolo.para(conta);
     try {
       conteudo = await proto.abrir(conta, cancelamento: cancelamento, aviso: aviso);
     } on Cancelado {
       rethrow;
     } on ErroLista catch (e) {
-      return ResultadoVerificacao(e.definitivo ? EstadoV.naoFunciona : EstadoV.inconclusivo, e.mensagem);
+      return (
+        null,
+        ResultadoVerificacao(e.definitivo ? EstadoV.naoFunciona : EstadoV.inconclusivo, e.mensagem,
+            repeticao: e.fixo ? Repeticao.inutil : Repeticao.imediata)
+      );
     } catch (e) {
       // um erro HTTP de uma API ou lista não prova nada (`_falha_api`); só o download de uma
       // M3U com 404/410 é prova (como em motor/m3u.py)
       if (e is ErroHttp && conta.tipo != Tipo.m3u) {
-        return ResultadoVerificacao(EstadoV.inconclusivo, 'não foi possível listar os canais (a API respondeu ${e.status})');
+        return (
+          null,
+          ResultadoVerificacao(EstadoV.inconclusivo, 'não foi possível listar os canais (a API respondeu ${e.status})')
+        );
       }
-      return classificarFalha(e);
+      return (null, classificarFalha(e));
     }
     if (conteudo.canais.isEmpty) {
-      return conta.tipo == Tipo.m3u
-          ? const ResultadoVerificacao(EstadoV.naoFunciona, 'lista vazia ou inválida')
-          : ResultadoVerificacao(EstadoV.inconclusivo, 'conta sem canais', validade: conteudo.validade);
+      return (
+        null,
+        conta.tipo == Tipo.m3u
+            ? const ResultadoVerificacao(EstadoV.naoFunciona, 'lista vazia ou inválida')
+            // o painel não tem canais: daqui a um minuto continua sem eles
+            : ResultadoVerificacao(EstadoV.inconclusivo, 'conta sem canais',
+                validade: conteudo.validade, repeticao: Repeticao.inutil)
+      );
     }
-    final perfis = perfisDe(canaisTeste);
-    final porCanal = <(PerfilCanal, ResultadoVerificacao)>[];
-    for (final (i, p) in perfis.indexed) {
-      // "canal 2/3 · …": o Gestor mostra em que canal de teste vai
-      final avisoCanal = aviso == null ? null : (String t) => aviso('canal ${i + 1}/${perfis.length} · $t');
-      porCanal.add((p, await _testarPerfil(conta, proto, conteudo, p, timeout, cancelamento, avisoCanal)));
-    }
-    final r = porCanal.length == 1 ? porCanal.single.$2 : juntar(porCanal);
-    return r.com(validade: conteudo.validade);
+    return (conteudo, null);
   }
 
   Future<ResultadoVerificacao> _testarPerfil(Conta conta, Protocolo proto, ConteudoLista conteudo, PerfilCanal p,
@@ -216,7 +285,8 @@ class Verificador {
     // o active_cons não é fiável: testa-se sempre; o limite só explica uma falha
     if (conteudo.limiteLigacoes.isNotEmpty) {
       return ResultadoVerificacao(EstadoV.inconclusivo,
-          'limite de ligações atingido (${conteudo.limiteLigacoes}) — ${r.motivo}', canal: r.canal);
+          'limite de ligações atingido (${conteudo.limiteLigacoes}) — ${r.motivo}',
+          canal: r.canal, repeticao: Repeticao.depoisDePausa);
     }
     return r;
   }
@@ -247,7 +317,7 @@ class Verificador {
     }
     if (r1.estado == EstadoV.naoFunciona && r2.estado == EstadoV.naoFunciona) return r2.com(canal: c.nome);
     final duvida = r2.estado == EstadoV.inconclusivo ? r2 : r1;
-    return ResultadoVerificacao(EstadoV.inconclusivo, duvida.motivo, canal: c.nome);
+    return ResultadoVerificacao(EstadoV.inconclusivo, duvida.motivo, canal: c.nome, repeticao: duvida.repeticao);
   }
 }
 
@@ -258,9 +328,14 @@ ResultadoVerificacao juntar(List<(PerfilCanal, ResultadoVerificacao)> rs) {
       ? EstadoV.funciona
       : estados.every((e) => e == EstadoV.naoFunciona) ? EstadoV.naoFunciona : EstadoV.inconclusivo;
   final melhor = rs.firstWhere((e) => e.$2.estado == estado, orElse: () => rs.first).$2;
+  // a 2.ª volta vale a pena se algum canal inconclusivo puder mudar (com pausa, se algum pedir)
+  final reps = {for (final e in rs) if (e.$2.estado == EstadoV.inconclusivo) e.$2.repeticao};
   return ResultadoVerificacao(
     estado,
     rs.map((e) => '${e.$1.nome}: ${e.$2.motivo}').join(' · '),
+    repeticao: reps.contains(Repeticao.depoisDePausa)
+        ? Repeticao.depoisDePausa
+        : reps.contains(Repeticao.imediata) || reps.isEmpty ? Repeticao.imediata : Repeticao.inutil,
     canal: melhor.canal,
     canais: [
       for (final (p, r) in rs) {'id': p.id, 'nome': p.nome, 'estado': r.estado.valor, 'motivo': r.motivo},

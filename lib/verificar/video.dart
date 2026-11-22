@@ -108,7 +108,8 @@ Future<ResultadoVerificacao> lerStream(String url, Map<String, String> headers,
   } catch (e) {
     if (stream401Inc && e is ErroHttp && (e.status == 401 || e.status == 403)) {
       return ResultadoVerificacao(EstadoV.inconclusivo,
-          'stream recusado apesar de conta ativa (${e.status}) — possível limite de ligações');
+          'stream recusado apesar de conta ativa (${e.status}) — possível limite de ligações',
+          repeticao: Repeticao.depoisDePausa);
     }
     return classificarFalha(e);
   }
