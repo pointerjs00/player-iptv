@@ -145,7 +145,7 @@ void main() {
       expect(em(c, '$n'), findsOneWidget, reason: 'cartão $n');
       expect(em(c, 'OK: abrir →'), findsOneWidget, reason: 'cartão $n');
     }
-    expect(em(c1, 'Ficheiros, texto, stbstalker ou de Ver TV'), findsOneWidget);
+    expect(em(c1, 'Ficheiros, texto, stbstalker, Telegram ou de Ver TV'), findsOneWidget);
     expect(em(c1, 'Última importação'), findsNothing, reason: 'só depois de uma importação nesta sessão');
     expect(em(c2, '5'), findsOneWidget);
     expect(em(c2, 'por verificar'), findsOneWidget);

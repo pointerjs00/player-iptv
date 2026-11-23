@@ -12,6 +12,7 @@ class SistemaAudioBrilho {
   const SistemaAudioBrilho();
 
   static const _canal = MethodChannel('player_iptv/sistema');
+  static const _eventosVolume = EventChannel('player_iptv/sistema_volume');
 
   /// (atual, máximo) do volume da música; null se o canal falhar.
   Future<(int, int)?> volume() async {
@@ -51,12 +52,13 @@ class SistemaAudioBrilho {
     }
   }
 
-  /// Põe o volume do sistema a `percentagem` (0–100) do máximo.
-  Future<void> volumeInicial(int percentagem) async {
-    final v = await volume();
-    if (v == null) return;
-    await definirVolume((v.$2 * percentagem / 100).round().clamp(0, v.$2));
-  }
+  /// (atual, máximo) sempre que o volume da música muda (teclas do aparelho, outra app, esta).
+  /// Sem o canal (testes, Windows) não dá nada.
+  Stream<(int, int)> mudancasVolume() => _eventosVolume
+      .receiveBroadcastStream()
+      .handleError((Object _) {})
+      .where((e) => e is Map && e['atual'] is int && e['max'] is int && (e['max'] as int) > 0)
+      .map((e) => ((e as Map)['atual'] as int, e['max'] as int));
 }
 
 /// O que um deslize vertical está a mudar.
@@ -68,7 +70,10 @@ class AjusteToque extends ChangeNotifier {
   AjusteToque({this.sistema = const SistemaAudioBrilho()}) {
     unawaited(_lerVolume());
     unawaited(_lerBrilho());
+    _mudancas = sistema.mudancasVolume().listen(_aoMudarSistema);
   }
+
+  StreamSubscription<(int, int)>? _mudancas;
 
   final SistemaAudioBrilho sistema;
 
@@ -90,6 +95,9 @@ class AjusteToque extends ChangeNotifier {
   double _volume = 0.5;
   int _maxVolume = 15;
   int _indiceVolume = -1;
+
+  /// O volume antes do silêncio (para o repor ao ligar o som).
+  int _antesSilencio = 0;
   double _brilho = 0.5;
   bool _brilhoMudado = false;
   bool _fechado = false;
@@ -102,14 +110,59 @@ class AjusteToque extends ChangeNotifier {
 
   /// 0–1.
   double get nivelVolume => _volume;
+
+  /// Quantos degraus tem o volume do sistema (o passo da barra do player é um degrau).
+  int get maxVolume => _maxVolume;
+
+  /// O volume do sistema está a zero.
+  bool get silencio => _indiceVolume == 0;
   double get nivelBrilho => _brilho;
 
   Future<void> _lerVolume() async {
     final v = await sistema.volume();
     if (v == null || _fechado || (_zona == ZonaAjuste.volume && _movido)) return;
-    _maxVolume = v.$2;
-    _indiceVolume = v.$1;
-    _volume = v.$1 / v.$2;
+    _guardarSistema(v.$1, v.$2);
+  }
+
+  void _guardarSistema(int atual, int max) {
+    if (atual == _indiceVolume && max == _maxVolume) return;
+    _maxVolume = max;
+    _indiceVolume = atual;
+    _volume = atual / max;
+    notifyListeners();
+  }
+
+  /// O sistema avisou que o volume mudou: a barra do player e a lateral acompanham-no (durante
+  /// um deslize manda o dedo).
+  void _aoMudarSistema((int, int) v) {
+    if (_fechado || (_zona == ZonaAjuste.volume && _movido)) return;
+    _guardarSistema(v.$1, v.$2);
+  }
+
+  /// A barra do volume do player (0–1): muda o volume do sistema, ao degrau.
+  void definirVolume(double fracao) {
+    final i = (fracao.clamp(0.0, 1.0) * _maxVolume).round();
+    _volume = i / _maxVolume;
+    if (i != _indiceVolume) {
+      _indiceVolume = i;
+      unawaited(sistema.definirVolume(i));
+    }
+    notifyListeners();
+  }
+
+  /// Um degrau para cima (+1) ou para baixo (-1).
+  void passoVolume(int degraus) => definirVolume((_indiceVolume.clamp(0, _maxVolume) + degraus) / _maxVolume);
+
+  /// O silêncio do player no telemóvel é o volume do sistema a zero; ligar o som repõe o de antes.
+  void silenciar(bool sim) {
+    if (sim == silencio) return;
+    if (sim) {
+      _antesSilencio = _indiceVolume;
+      definirVolume(0);
+    } else {
+      final i = _antesSilencio > 0 ? _antesSilencio : (_maxVolume / 2).ceil();
+      definirVolume(i / _maxVolume);
+    }
   }
 
   Future<void> _lerBrilho() async {
@@ -179,6 +232,7 @@ class AjusteToque extends ChangeNotifier {
   void dispose() {
     _fechado = true;
     _esconder?.cancel();
+    unawaited(_mudancas?.cancel());
     if (_brilhoMudado) unawaited(sistema.definirBrilho(null));
     super.dispose();
   }

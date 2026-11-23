@@ -1,8 +1,8 @@
 """Gera em dist/ os pacotes a partilhar: APK Android (arm64, armv7) e zip Windows.
 
 Uso: python ferramentas/empacotar.py [--so-android | --so-windows] [--partilha]
-Com --partilha gera a edição de partilha (sem a pesquisa de listas do stbstalker) em
-dist/partilha/: corre antes os testes dessa edição e recusa pacotes que ainda tragam o stbstalker.
+Com --partilha gera a edição de partilha (sem a importação automática: stbstalker e Telegram)
+em dist/partilha/: corre antes os testes dessa edição e recusa pacotes que ainda a tragam.
 Nunca altera definições do sistema.
 """
 import argparse
@@ -39,7 +39,7 @@ LICENCAS_APK = [
 FICHEIRO_SHA256 = RAIZ / "third_party" / "libmpv_completo" / "SHA256.txt"
 # a edição de partilha (lib/edicao.dart): o que não pode estar no código compilado dela
 DEFINE_PARTILHA = "--dart-define=PARTILHA=true"
-PROIBIDOS_PARTILHA = [b"alaaeldinee", b"stbstalker"]
+PROIBIDOS_PARTILHA = [b"alaaeldinee", b"stbstalker", b"michelstv4", b"t.me/s/"]
 # o código Dart compilado: no APK (por ABI) e na pasta do Windows
 LIBAPP_APK = "lib/{abi}/libapp.so"
 APP_WINDOWS = Path("data/app.so")
@@ -138,8 +138,8 @@ def verificar_libmpv(pasta: Path) -> None:
             raise SystemExit(f"Empacotamento recusado: falta licencas-libmpv/{nome} (licença do libmpv/ffmpeg).")
 
 
-def verificar_sem_stbstalker(codigo: bytes, nome: str) -> None:
-    """Edição de partilha: recusa o código compilado que ainda traga o stbstalker."""
+def verificar_sem_importacao_auto(codigo: bytes, nome: str) -> None:
+    """Edição de partilha: recusa o código compilado que ainda traga a importação automática."""
     for p in PROIBIDOS_PARTILHA:
         if p in codigo:
             raise SystemExit(
@@ -164,7 +164,7 @@ def verificar_apk(apk: Path, abi: str) -> None:
             if a not in nomes:
                 raise SystemExit(f"Empacotamento recusado: {Path(apk).name} sem {a} (licença do libmpv/ffmpeg).")
         if DEFINE_PARTILHA in DEFINES:
-            verificar_sem_stbstalker(z.read(LIBAPP_APK.format(abi=abi)), Path(apk).name)
+            verificar_sem_importacao_auto(z.read(LIBAPP_APK.format(abi=abi)), Path(apk).name)
 
 
 def copiar_apks(origem: Path, dist: Path) -> list[Path]:
@@ -189,7 +189,7 @@ def criar_zip_windows(pasta_release: Path, destino: Path) -> Path:
     verificar_conteudo(pasta_release)
     verificar_libmpv(pasta_release)
     if DEFINE_PARTILHA in DEFINES:
-        verificar_sem_stbstalker((pasta_release / APP_WINDOWS).read_bytes(), "o TVIntel.exe")
+        verificar_sem_importacao_auto((pasta_release / APP_WINDOWS).read_bytes(), "o TVIntel.exe")
     destino = Path(destino)
     destino.parent.mkdir(parents=True, exist_ok=True)
     destino.unlink(missing_ok=True)

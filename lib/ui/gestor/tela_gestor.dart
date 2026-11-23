@@ -7,6 +7,7 @@ import '../../dados/area_gestor.dart';
 import '../../dados/biblioteca.dart';
 import '../../dados/guardar_ficheiro.dart';
 import '../../importar/stbstalker.dart';
+import '../../importar/telegram.dart';
 import '../../rede/http.dart';
 import '../../tarefas/servico_tarefas.dart';
 import '../../verificar/exportar.dart';
@@ -43,10 +44,16 @@ enum EcraGestor { resumo, importar, verificar, enviar, verificacao }
 /// junta à fila; remover uma lista a ser verificada cancela só essa). Os ecrãs vivem num
 /// [IndexedStack]: trocar de ecrã (ou de secção) não perde o filtro, a seleção nem o que lá estava.
 /// Voltar num passo regressa ao resumo, com o foco no cartão desse passo; no progresso regressa
+/// Guarda um ficheiro exportado: no telemóvel e no Windows escolhe-se a pasta ("Guardar como");
+/// na TV vai para Transferências.
+Future<ResultadoGuardar> guardarNoAparelho(String nome, Uint8List bytes, String mimeType) =>
+    guardarFicheiro(nome, bytes, mimeType, tv: EcraTv.nativo);
+
 /// ao passo 2, com o foco onde estava.
 class TelaGestor extends StatefulWidget {
   const TelaGestor({super.key, required this.biblioteca, required this.area, required this.servico,
-      required this.tarefas, this.pedido, this.baseStb = edicaoPartilha ? '' : stbBase, this.guardar = guardarFicheiro});
+      required this.tarefas, this.pedido, this.baseStb = edicaoPartilha ? '' : stbBase,
+      this.baseTelegram = edicaoPartilha ? '' : telegramBase, this.guardar = guardarNoAparelho});
 
   /// As listas de Ver TV (recebem os envios) e os canais de teste.
   final Biblioteca biblioteca;
@@ -64,6 +71,7 @@ class TelaGestor extends StatefulWidget {
 
   /// O blog a pesquisar (injetável para os testes).
   final String baseStb;
+  final String baseTelegram;
 
   /// Guarda o ficheiro exportado (injetável para os testes; por omissão, a janela do sistema).
   final Future<ResultadoGuardar> Function(String nome, Uint8List bytes, String mimeType) guardar;
@@ -513,6 +521,7 @@ class _TelaGestorState extends State<TelaGestor> {
                 tarefas: widget.tarefas,
                 registo: _registo,
                 baseStb: widget.baseStb,
+                baseTelegram: widget.baseTelegram,
                 focoOrigens: _focoOrigens,
               ),
             ),
@@ -776,7 +785,7 @@ class _TelaGestorState extends State<TelaGestor> {
           final largo = caixa.maxWidth >= 560;
           final cartoes = [
             _cartao(0, largo, [
-              Text(edicaoPartilha ? tr('Ficheiros, texto ou de Ver TV') : tr('Ficheiros, texto, stbstalker ou de Ver TV'), style: _mut),
+              Text(edicaoPartilha ? tr('Ficheiros, texto ou de Ver TV') : tr('Ficheiros, texto, stbstalker, Telegram ou de Ver TV'), style: _mut),
               if (ultima != null)
                 _linhaCartao(tr('Última importação'),
                     ultima.estado == EstadoTarefa.aDecorrer ? 'a decorrer' : _ha(ultima.fim ?? ultima.inicio)),

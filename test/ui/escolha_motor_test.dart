@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:player_iptv/dados/preferencias.dart';
 import 'package:player_iptv/modelo/canal.dart';
+import 'package:player_iptv/ui/design/ecra.dart';
 import 'package:player_iptv/ui/player/barra_progresso.dart';
 import 'package:player_iptv/ui/player/configuracao_mpv.dart';
 import 'package:player_iptv/ui/player/motor_na_sessao.dart';
@@ -555,7 +556,9 @@ void main() {
       await _sair(t);
     });
 
-    testWidgets('o silêncio no ExoPlayer é o volume a 0 (e volta ao volume da preferência)', (t) async {
+    testWidgets('na TV, o silêncio no ExoPlayer é o volume a 0 (e volta ao volume da preferência)', (t) async {
+      EcraTv.nativo = true;
+      addTearDown(() => EcraTv.nativo = false);
       final m = _Montagem();
       await m.montar(t);
       await _abrirComImagem(t, m.exos.single);
@@ -566,6 +569,21 @@ void main() {
       await t.tap(find.text('Silêncio'));
       await t.pump();
       expect(m.exos.single.pedidos.last, 'volume 100.0');
+      await _sair(t);
+    });
+
+    testWidgets('no telemóvel o motor fica a 100 % (o volume é o do sistema) e o silêncio não lhe toca', (t) async {
+      final m = _Montagem();
+      await m.montar(t);
+      Preferencias.atual.volume = 40; // o volume do player já não conta no telemóvel
+      await _abrirComImagem(t, m.exos.single);
+      final volumes = m.exos.single.pedidos.where((p) => p.startsWith('volume'));
+      expect(volumes, isNotEmpty);
+      expect(volumes, everyElement('volume 100.0'));
+      await _abrirPainel(t);
+      await t.tap(find.text('Silêncio'));
+      await t.pump();
+      expect(m.exos.single.pedidos, isNot(contains('volume 0.0')));
       await _sair(t);
     });
 

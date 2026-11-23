@@ -259,11 +259,12 @@ class LeiaMe(unittest.TestCase):
 
 
 class EdicaoPartilha(unittest.TestCase):
-    def test_codigo_com_o_stbstalker_recusa(self):
-        empacotar.verificar_sem_stbstalker(b"codigo sem nada", "app.so")
-        for mau in [b"x https://stbstalker.alaaeldinee.com/ y", b"Listas do stbstalker"]:
+    def test_codigo_com_importacao_auto_recusa(self):
+        empacotar.verificar_sem_importacao_auto(b"codigo sem nada", "app.so")
+        for mau in [b"x https://stbstalker.alaaeldinee.com/ y", b"Listas do stbstalker",
+                    b"michelstv4", b"https://t.me/s/canal"]:
             with self.assertRaises(SystemExit):
-                empacotar.verificar_sem_stbstalker(mau, "app.so")
+                empacotar.verificar_sem_importacao_auto(mau, "app.so")
 
     def test_partilha_vai_para_dist_partilha_com_os_testes_e_o_define(self):
         with tempfile.TemporaryDirectory() as t:

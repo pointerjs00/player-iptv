@@ -73,23 +73,42 @@ class _DestinoNativo implements DestinoTransferencias {
   }
 }
 
-/// Guarda [bytes] como [nome]. No Android (telemóvel e TV) vai direto para Transferências,
-/// sem janela; no Windows abre o "Guardar como". Lança [ErroGuardar] com mensagem clara se falhar.
+/// A janela "Guardar como" (escolhe-se a pasta e o nome); null = cancelada.
+typedef GuardarComo = Future<Uri?> Function(String nome, Uint8List bytes, String mimeType);
+
+Future<Uri?> _guardarComoSistema(String nome, Uint8List bytes, String mimeType) =>
+    FilePicker.saveFile(fileName: nome, bytes: bytes, mimeType: mimeType, dialogTitle: tr('Guardar {0}', [nome]));
+
+/// Onde ficou, de forma legível: um `content://…/primary%3ADownload%2FAccounts.json` do Android
+/// fica "Download/Accounts.json"; um caminho do Windows fica como está.
+String destinoLegivel(Uri uri) {
+  if (uri.scheme != 'content') return uri.scheme == 'file' ? uri.toFilePath() : uri.toString();
+  final ultimo = uri.pathSegments.isEmpty ? '' : Uri.decodeComponent(uri.pathSegments.last);
+  final dois = ultimo.indexOf(':');
+  final caminho = dois >= 0 ? ultimo.substring(dois + 1) : ultimo;
+  return caminho.isEmpty ? uri.toString() : caminho;
+}
+
+/// Guarda [bytes] como [nome]. No telemóvel Android e no Windows abre o "Guardar como" (escolhe-se
+/// a pasta); na TV (`tv`, sem essa janela no Fire TV) vai direto para Transferências.
+/// Lança [ErroGuardar] com mensagem clara se falhar.
 Future<ResultadoGuardar> guardarFicheiro(
   String nome,
   Uint8List bytes,
   String mimeType, {
   DestinoTransferencias? destino,
   bool? android,
+  bool tv = false,
+  GuardarComo guardarComo = _guardarComoSistema,
 }) async {
   try {
-    if (android ?? Platform.isAndroid) {
+    if ((android ?? Platform.isAndroid) && tv) {
       final d = destino ?? _DestinoNativo();
       final nomeFinal = nomeSemColisao(nome, await d.existentes());
       return ResultadoGuardar(tr('Transferências/{0}', [await d.escrever(nomeFinal, bytes, mimeType)]));
     }
-    final uri = await FilePicker.saveFile(fileName: nome, bytes: bytes, mimeType: mimeType, dialogTitle: tr('Guardar {0}', [nome]));
-    return uri == null ? const ResultadoGuardar.cancelado() : ResultadoGuardar(uri.toString());
+    final uri = await guardarComo(nome, bytes, mimeType);
+    return uri == null ? const ResultadoGuardar.cancelado() : ResultadoGuardar(destinoLegivel(uri));
   } on ErroGuardar {
     rethrow;
   } catch (e) {

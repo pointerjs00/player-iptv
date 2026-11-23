@@ -23,6 +23,7 @@ class ControloVolume extends StatefulWidget {
     this.largura = 120,
     this.tamanhoIcone = 26,
     this.estiloIcone,
+    this.passo = 5,
   });
 
   /// 0–100.
@@ -39,7 +40,8 @@ class ControloVolume extends StatefulWidget {
   final double tamanhoIcone;
   final ButtonStyle? estiloIcone;
 
-  static const passo = 5.0;
+  /// Quanto muda cada ← → (em %): no telemóvel, um degrau do volume do sistema.
+  final double passo;
 
   @override
   State<ControloVolume> createState() => _ControloVolumeState();
@@ -95,7 +97,7 @@ class _ControloVolumeState extends State<ControloVolume> with SingleTickerProvid
     }
     if (k != LogicalKeyboardKey.arrowLeft && k != LogicalKeyboardKey.arrowRight) return KeyEventResult.ignored;
     if (e is! KeyUpEvent) {
-      _mudar(widget.volume + (k == LogicalKeyboardKey.arrowLeft ? -ControloVolume.passo : ControloVolume.passo));
+      _mudar(widget.volume + (k == LogicalKeyboardKey.arrowLeft ? -widget.passo : widget.passo));
     }
     return KeyEventResult.handled;
   }
@@ -132,10 +134,10 @@ class _ControloVolumeState extends State<ControloVolume> with SingleTickerProvid
             slider: true,
             label: 'Volume',
             value: '${widget.volume.round()} %',
-            increasedValue: '${(widget.volume + ControloVolume.passo).clamp(0, 100).round()} %',
-            decreasedValue: '${(widget.volume - ControloVolume.passo).clamp(0, 100).round()} %',
-            onIncrease: widget.volume < 100 ? () => _mudar(widget.volume + ControloVolume.passo) : null,
-            onDecrease: widget.volume > 0 ? () => _mudar(widget.volume - ControloVolume.passo) : null,
+            increasedValue: '${(widget.volume + widget.passo).clamp(0, 100).round()} %',
+            decreasedValue: '${(widget.volume - widget.passo).clamp(0, 100).round()} %',
+            onIncrease: widget.volume < 100 ? () => _mudar(widget.volume + widget.passo) : null,
+            onDecrease: widget.volume > 0 ? () => _mudar(widget.volume - widget.passo) : null,
             child: ExcludeSemantics(
               child: ScaleTransition(
                 key: const ValueKey('volumePulo'),

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:player_iptv/ui/player/ajuste_toque.dart';
 
@@ -14,8 +16,9 @@ class _Falso implements SistemaAudioBrilho {
   Future<double?> brilho() async => 0.5;
   @override
   Future<void> definirBrilho(double? v) async => pedidosBrilho.add(v);
+  final mudancas = StreamController<(int, int)>.broadcast();
   @override
-  Future<void> volumeInicial(int percentagem) async {}
+  Stream<(int, int)> mudancasVolume() => mudancas.stream;
 }
 
 void main() {
@@ -53,5 +56,77 @@ void main() {
     a.terminar();
     a.dispose();
     expect(s.pedidosBrilho.last, isNull);
+  });
+
+  group('o volume do sistema é o das barras (telemóvel)', () {
+    test('as teclas do aparelho (aviso do sistema) mudam o nível e avisam quem ouve', () async {
+      final s = _Falso();
+      final a = AjusteToque(sistema: s);
+      await pumpEventQueue();
+      var avisos = 0;
+      a.addListener(() => avisos++);
+      s.mudancas.add((8, 10));
+      await pumpEventQueue();
+      expect(a.nivelVolume, closeTo(0.8, 1e-9));
+      expect(avisos, 1);
+      // o eco do que já se sabe não volta a avisar
+      s.mudancas.add((8, 10));
+      await pumpEventQueue();
+      expect(avisos, 1);
+      a.dispose();
+    });
+
+    test('durante um deslize, um aviso atrasado não desfaz o dedo', () async {
+      final s = _Falso();
+      final a = AjusteToque(sistema: s);
+      await pumpEventQueue();
+      a.comecar(0.9);
+      await pumpEventQueue();
+      a.mover(0.12); // 5 -> 7
+      s.mudancas.add((5, 10));
+      await pumpEventQueue();
+      expect(a.nivelVolume, closeTo(0.7, 1e-9));
+      a.dispose();
+    });
+
+    test('a barra do player muda o volume do sistema ao degrau, e um passo é um degrau', () async {
+      final s = _Falso();
+      final a = AjusteToque(sistema: s);
+      await pumpEventQueue();
+      expect(a.maxVolume, 10);
+      a.definirVolume(0.32);
+      expect(s.pedidosVolume.last, 3);
+      expect(a.nivelVolume, closeTo(0.3, 1e-9));
+      a.passoVolume(1);
+      expect(s.pedidosVolume.last, 4);
+      a.passoVolume(-1);
+      expect(s.pedidosVolume.last, 3);
+      a.dispose();
+    });
+
+    test('o silêncio põe o sistema a zero e ligar o som repõe o de antes', () async {
+      final s = _Falso();
+      final a = AjusteToque(sistema: s);
+      await pumpEventQueue();
+      expect(a.silencio, isFalse);
+      a.silenciar(true);
+      expect(s.pedidosVolume.last, 0);
+      expect(a.silencio, isTrue);
+      a.silenciar(false);
+      expect(s.pedidosVolume.last, 5);
+      expect(a.silencio, isFalse);
+      a.dispose();
+    });
+
+    test('mexer na barra com o som desligado não repõe o volume de antes por cima', () async {
+      final s = _Falso();
+      final a = AjusteToque(sistema: s);
+      await pumpEventQueue();
+      a.silenciar(true);
+      a.definirVolume(0.2); // como a barra faz: muda primeiro…
+      a.silenciar(false); // …e depois tira o silêncio
+      expect(s.pedidosVolume.last, 2);
+      a.dispose();
+    });
   });
 }

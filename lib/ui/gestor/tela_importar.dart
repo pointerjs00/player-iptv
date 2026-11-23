@@ -6,6 +6,7 @@ import '../../dados/area_gestor.dart';
 import '../../dados/biblioteca.dart';
 import '../../importar/importar.dart';
 import '../../importar/stbstalker.dart';
+import '../../importar/telegram.dart';
 import '../../modelo/conta.dart';
 import '../../rede/http.dart';
 import '../../tarefas/servico_tarefas.dart';
@@ -22,7 +23,7 @@ import '../../idioma/idioma.dart';
 import '../../edicao.dart';
 
 /// As origens de onde se importa.
-enum OrigemImportacao { ficheiros, adicionar, stbstalker, doPlayer }
+enum OrigemImportacao { ficheiros, adicionar, stbstalker, telegram, doPlayer }
 
 /// Uma pesquisa/importação que falhou: a mensagem é a que se mostra (sem "Exception:").
 class _Falha implements Exception {
@@ -73,6 +74,7 @@ class TelaImportar extends StatefulWidget {
     required this.tarefas,
     required this.registo,
     required this.baseStb,
+    required this.baseTelegram,
     required this.focoOrigens,
   });
 
@@ -82,6 +84,7 @@ class TelaImportar extends StatefulWidget {
   final ServicoTarefas tarefas;
   final RegistoImportacoes registo;
   final String baseStb;
+  final String baseTelegram;
 
   /// O foco da primeira origem (recebe o foco ao abrir o ecrã).
   final FocusNode focoOrigens;
@@ -103,6 +106,9 @@ class _TelaImportarState extends State<TelaImportar> {
   final _utilizador = TextEditingController();
   final _password = TextEditingController();
   final _focosFormas = [for (final f in FormaLista.values) FocusNode(debugLabel: 'Tipo ${f.nome}')];
+
+  /// O canal do Telegram (michelstv4 por omissão; o campo fica aberto a outros canais públicos).
+  final _canalTg = TextEditingController(text: edicaoPartilha ? '' : telegramCanalOmissao);
 
   /// Os blocos para CIMA/BAIXO: origens, painel da origem, resultado e "Limpar o Gestor".
   final _blocos = [
@@ -127,7 +133,7 @@ class _TelaImportarState extends State<TelaImportar> {
 
   @override
   void dispose() {
-    for (final c in [_texto, _endereco, _mac, _utilizador, _password]) {
+    for (final c in [_texto, _endereco, _mac, _utilizador, _password, _canalTg]) {
       c.dispose();
     }
     for (final f in _focosFormas) {
@@ -218,6 +224,34 @@ class _TelaImportarState extends State<TelaImportar> {
     });
   }
 
+  void _procurarTelegram() {
+    if (edicaoPartilha) return;
+    final canal = canalDeTexto(_canalTg.text);
+    if (canal == null) return _aviso(tr('Escreva o nome do canal (por exemplo @michelstv4).'));
+    final inicio = _inicio, fim = _fim, base = widget.baseTelegram;
+    final periodo = inicio == fim ? _dd(inicio) : '${_dd(inicio)} a ${_dd(fim)}';
+    widget.registo.iniciar(widget.tarefas, '${tr(tituloTarefaTelegram)} · @$canal · $periodo', (p) async {
+      p(null, tr('a procurar as mensagens'));
+      final parada = _Falha(tr('Pesquisa parada. Nenhuma lista foi junta ao Gestor.'));
+      final ResultadoTelegram r;
+      try {
+        r = await importarTelegram(canal, inicio, fim,
+            base: base,
+            aoProgresso: (lidas, encontradas) => p(null, tr('{0} encontradas', [encontradas])),
+            cancelado: () => p.cancelado);
+      } on Cancelado {
+        throw parada;
+      } catch (e) {
+        if (p.cancelado) throw parada;
+        throw _Falha(tr('Não foi possível pesquisar: {0}', [descreverErro(e)]));
+      }
+      if (p.cancelado) throw parada;
+      if (r.erro != null) return ResumoImportacao(erros: [r.erro!]);
+      final contas = [for (final c in r.contas) Importada(c)];
+      return juntarAoGestor(_g, () => _g.adicionar(contas), encontradas: contas.length);
+    });
+  }
+
   void _importarDoPlayer() {
     final n = _b.listas.length;
     if (n == 0) return _aviso(tr('Ainda não há listas em Ver TV.'));
@@ -261,7 +295,11 @@ class _TelaImportarState extends State<TelaImportar> {
       _inicio = r.start;
       _fim = r.end;
     });
-    _procurarStb();
+    if (_origem == OrigemImportacao.telegram) {
+      _procurarTelegram();
+    } else {
+      _procurarStb();
+    }
   }
 
   // ---------------------------------------------------------------- construção
@@ -281,21 +319,22 @@ class _TelaImportarState extends State<TelaImportar> {
   /// uma por linha (ícone, título e descrição lado a lado: nada se parte a meio da palavra).
   Widget _origens() => LayoutBuilder(builder: (context, caixa) {
         final telemovel = ecraTelemovel(context);
-        final colunas = telemovel
-            ? 1
-            : caixa.maxWidth >= 560
-                ? 4
-                : 2;
         final nPlayer = _b.listas.length;
         final origens = <(OrigemImportacao, IconData, String, String)>[
           (OrigemImportacao.ficheiros, Icons.file_open_outlined, tr('Ficheiros'), tr('Accounts.json, .ini, .m3u, .txt')),
           (OrigemImportacao.adicionar, Icons.playlist_add_rounded, tr('Adicionar lista'), tr('Portal MAC, Xtream ou M3U')),
-          if (!edicaoPartilha)
+          if (!edicaoPartilha) ...[
             (OrigemImportacao.stbstalker, Icons.event_note_outlined, tr('Listas do stbstalker'),
                 tr('Publicadas entre duas datas')),
+            (OrigemImportacao.telegram, Icons.send_outlined, tr('Listas do Telegram'),
+                tr('De um canal público')),
+          ],
           (OrigemImportacao.doPlayer, Icons.download_for_offline_outlined, tr('De Ver TV'),
               nPlayer == 0 ? tr('Ainda não há listas em Ver TV') : tr('As {0} listas que já tens', [nPlayer])),
         ];
+        // todas as origens numa só linha (assim, BAIXO de qualquer uma vai ao painel, não a outra
+        // origem); num ecrã estreito (telemóvel) ficam uma por linha
+        final colunas = telemovel ? 1 : origens.length;
         final cartoes = [
           for (final (i, (o, icone, titulo, sub)) in origens.indexed)
             _CartaoOrigem(
@@ -394,6 +433,27 @@ class _TelaImportarState extends State<TelaImportar> {
             // fica sempre ligado: carregar durante uma pesquisa inicia outra tarefa
             FilledButton.icon(
               onPressed: _procurarStb,
+              icon: const Icon(Icons.search),
+              label: Text(tr('Procurar e juntar')),
+            ),
+          ]),
+        ]);
+      case OrigemImportacao.telegram:
+        if (edicaoPartilha) return const SizedBox.shrink();
+        return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          _titulo(tr('Listas do Telegram')),
+          _explicacao(tr('Junta as listas de um canal público do Telegram, entre duas datas. '
+              'Lê o texto das mensagens (Xtream, M3U e portal MAC); não lê ficheiros anexados.')),
+          _campo(_canalTg, tr('Canal do Telegram'), '@michelstv4'),
+          const SizedBox(height: Tokens.e8),
+          Wrap(spacing: Tokens.e8, runSpacing: Tokens.e8, crossAxisAlignment: WrapCrossAlignment.end, children: [
+            OutlinedButton.icon(
+              onPressed: _escolherDatas,
+              icon: const Icon(Icons.calendar_today, size: 16),
+              label: Text(tr('Escolher datas · {0} – {1}', [dataCurta(_inicio), dataCurta(_fim)])),
+            ),
+            FilledButton.icon(
+              onPressed: _procurarTelegram,
               icon: const Icon(Icons.search),
               label: Text(tr('Procurar e juntar')),
             ),

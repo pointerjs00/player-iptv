@@ -138,7 +138,10 @@ enum RecuoDireto {
 /// ficheiro antes de gravar e usa um ficheiro temporário único; [recarregar] apanha o que a
 /// outra janela gravou. A velocidade não é preferência: cada canal começa a 1×.
 class Preferencias extends ChangeNotifier {
-  Preferencias._(this._pasta, {required bool tv}) : _ajustarTaxaEcra = tv;
+  /// O motor por omissão: o ExoPlayer na TV, o mpv no telemóvel.
+  Preferencias._(this._pasta, {required bool tv})
+      : _ajustarTaxaEcra = tv,
+        _motorAndroid = tv ? MotorAndroid.exoplayer : MotorAndroid.mpv;
 
   /// Sem ficheiro (testes, ou antes de [abrir]): os valores por omissão.
   Preferencias.omissao({bool tv = false}) : this._(null, tv: tv);
@@ -178,7 +181,7 @@ class Preferencias extends ChangeNotifier {
   int _volumeInicialSistema = padraoVolumeInicialSistema;
   ModoDescodificacao _modoAndroid = ModoDescodificacao.direto;
   bool _ajustarTaxaEcra;
-  MotorAndroid _motorAndroid = MotorAndroid.exoplayer;
+  MotorAndroid _motorAndroid;
   bool _modoTunel = false;
   int _timeoutVerificacao = padraoTimeoutVerificacao;
   int _listasEmSimultaneo = padraoListasEmSimultaneo;
@@ -240,7 +243,8 @@ class Preferencias extends ChangeNotifier {
   bool get ajustarTaxaEcra => _ajustarTaxaEcra;
   set ajustarTaxaEcra(bool v) => _mudar('ajustarTaxaEcra', _ajustarTaxaEcra != v, () => _ajustarTaxaEcra = v);
 
-  /// O motor do player no Android (o ExoPlayer por omissão; no Windows é sempre o mpv).
+  /// O motor do player no Android (por omissão o ExoPlayer na TV e o mpv no telemóvel; no
+  /// Windows é sempre o mpv).
   MotorAndroid get motorAndroid => _motorAndroid;
   set motorAndroid(MotorAndroid v) => _mudar('motorAndroid', _motorAndroid != v, () => _motorAndroid = v);
 

@@ -69,10 +69,14 @@ class ControlosPlayer extends StatefulWidget {
     this.aoNumero,
     this.ajusteToque,
     this.volume,
+    this.passoVolume = 5,
   });
 
   /// O volume na barra (o do player, 0–100, e o silêncio); null = sem ele.
   final ({double valor, bool silencio, ValueChanged<double> aoMudar, ValueChanged<bool> aoSilencio})? volume;
+
+  /// Quanto muda o volume em cada ← → da barra (%); no telemóvel, um degrau do sistema.
+  final double passoVolume;
 
   /// Telemóvel Android: os deslizes nas laterais mudam o volume (direita) e o brilho (esquerda).
   final AjusteToque? ajusteToque;
@@ -552,6 +556,7 @@ class ControlosPlayerState extends State<ControlosPlayer> {
             silencio: v.silencio,
             aoMudar: v.aoMudar,
             aoSilencio: v.aoSilencio,
+            passo: widget.passoVolume,
             aoAtividade: _agendar,
             largura: tv ? 140 : (alto ? 160 : 110),
             tamanhoIcone: icone,

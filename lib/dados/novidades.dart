@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import '../edicao.dart';
+
 /// O que mudou numa versão (as novidades que a app mostra depois de atualizar).
 class Novidades {
   const Novidades(this.versao, this.itens);
@@ -14,6 +16,17 @@ class Novidades {
 /// Todas as versões, a mais recente primeiro. A primeira é a versão da app: ao mudar a versão no
 /// pubspec.yaml, junta-se aqui a entrada dela (um teste confirma que batem certo).
 const historicoNovidades = <Novidades>[
+  Novidades('1.0.14', [
+    if (!edicaoPartilha)
+      'Gestor › Importar: novo «Listas do Telegram», que junta as listas publicadas num canal público '
+          '(por omissão o @michelstv4) entre as datas escolhidas.',
+    'No telemóvel: as barras do volume e o deslize na lateral do ecrã mudam o volume do sistema e '
+        'acompanham as teclas do telefone. Saiu a opção «Volume inicial do sistema».',
+    'No telemóvel: o motor do player passa a ser o mpv por omissão.',
+    'No telemóvel: ao exportar (Accounts.json ou a cópia de segurança) escolhe-se a pasta onde gravar.',
+    'Ao desinstalar, a app já não deixa as listas nem o «Continuar a ver» numa cópia de segurança do '
+        'Android.',
+  ]),
   Novidades('1.0.13', [
     'Em inglês: o progresso da verificação («Testing channel 2 of 3») e o das páginas ao carregar '
         'um portal voltam a aparecer, e as últimas frases que ficavam em português foram traduzidas.',

@@ -124,6 +124,7 @@ void main() {
   testWidgets('Android TV a 80 %: «Motor do player» e «Modo túnel» são linhas e as desativadas recebem o foco',
       (t) async {
     ecraTvTeste(t);
+    prefs.motorAndroid = MotorAndroid.exoplayer; // a omissão na TV
     await t.pumpWidget(casca(android: true));
     await t.pump();
     expect(t.takeException(), isNull);

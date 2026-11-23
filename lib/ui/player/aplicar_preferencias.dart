@@ -62,12 +62,13 @@ Future<void> aplicarAoAbrir(MotorMpv mpv, Preferencias p, SessaoPlayer s,
     bool? hardware,
     bool limparFiltro = false,
     bool manterDesentrelacamento = false,
-    bool reabrirDireto = false}) async {
+    bool reabrirDireto = false,
+    double? volume}) async {
   try {
     await mpv.setProperty('cache-pause-wait',
         '${reabrirDireto ? ConfiguracaoMpv.esperaCacheReabrir : ConfiguracaoMpv.esperaCache}');
     await mpv.setRate(1.0);
-    await mpv.setVolume(p.volume);
+    await mpv.setVolume(volume ?? p.volume);
     await mpv.setProperty('mute', s.silencio ? 'yes' : 'no');
     await mpv.setProperty('audio-delay', _segundos(s.atrasoAudio));
     final hwdec = hwdecEmTempoReal(plataforma, hardware: hardware ?? p.hardware);

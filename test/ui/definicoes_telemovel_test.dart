@@ -77,6 +77,14 @@ void main() {
     });
   });
 
+  noAndroid('Imagem e som: sem opções de volume (no canal o volume é o do sistema)', (t, ecra) async {
+    await abrir(t, 'Imagem e som');
+    await ateAoFim(t, aCada: () {
+      expect(find.text('Volume inicial do sistema'), findsNothing);
+      expect(find.text('Volume ao abrir'), findsNothing);
+    });
+  });
+
   noAndroid('Verificação: sem a nota «← → mudam o valor» e os números por baixo do título', (t, ecra) async {
     await abrir(t, 'Verificação');
     for (final titulo in ['Listas ao mesmo tempo', 'Tempo limite por lista', 'Tempo por canal']) {

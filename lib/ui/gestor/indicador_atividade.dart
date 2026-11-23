@@ -8,6 +8,7 @@ import '../../edicao.dart';
 
 /// O título das tarefas de pesquisa no stbstalker (o indicador reconhece-as por ele).
 const tituloTarefaStb = 'Pesquisa no stbstalker';
+const tituloTarefaTelegram = 'Pesquisa no Telegram';
 
 /// O que está a decorrer no Gestor, numa linha: "A verificar 11/17 · 1 tarefa a decorrer".
 /// Sem nada a decorrer diz "Nada a decorrer". Com [aoAbrir] é um botão (abre o painel de

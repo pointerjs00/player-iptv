@@ -169,15 +169,15 @@ void main() {
     expect(find.text('Modo túnel'), findsOneWidget);
     expect(find.text('Só em aparelhos que o suportam. Pode ajudar a fluidez; se a imagem falhar, desliga.'),
         findsOneWidget);
-    final exo = t.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'ExoPlayer'));
-    expect(exo.selected, isTrue, reason: 'o ExoPlayer é a omissão');
+    final mpv = t.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'mpv'));
+    expect(mpv.selected, isTrue, reason: 'no telemóvel o mpv é a omissão');
     expect(t.widget<SwitchListTile>(find.widgetWithText(SwitchListTile, 'Modo túnel')).value, isFalse);
     await t.tap(find.widgetWithText(SwitchListTile, 'Modo túnel'));
     await t.pump();
     expect(prefs.modoTunel, isTrue);
-    await t.tap(find.widgetWithText(ChoiceChip, 'mpv'));
+    await t.tap(find.widgetWithText(ChoiceChip, 'ExoPlayer'));
     await t.pump();
-    expect(prefs.motorAndroid, MotorAndroid.mpv);
+    expect(prefs.motorAndroid, MotorAndroid.exoplayer);
     expect(find.text('Guardado · vale a partir do próximo canal'), findsOneWidget);
   });
 
@@ -185,6 +185,7 @@ void main() {
     t.view.physicalSize = const Size(1000, 2400);
     t.view.devicePixelRatio = 1;
     addTearDown(t.view.reset);
+    prefs.motorAndroid = MotorAndroid.exoplayer;
     await t.pumpWidget(_app(TelaDefinicoes(biblioteca: bib, area: area, preferencias: prefs, android: true)));
     await t.pump();
     expect(find.text('só no motor mpv'), findsNWidgets(3));

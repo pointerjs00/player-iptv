@@ -1,8 +1,11 @@
 package pt.playeriptv.player_iptv
 
 import android.Manifest
+import android.content.BroadcastReceiver
 import android.content.ContentValues
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.media.AudioManager
 import android.os.Build
@@ -18,6 +21,7 @@ import io.flutter.embedding.android.RenderMode
 import io.flutter.embedding.android.TransparencyMode
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.engine.renderer.FlutterRenderer
+import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
 
@@ -168,6 +172,45 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+        // O volume da música mudou (teclas do aparelho, gestos, outra app): o player acompanha-o
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, "player_iptv/sistema_volume").setStreamHandler(
+            object : EventChannel.StreamHandler {
+                private var recetor: BroadcastReceiver? = null
+
+                override fun onListen(argumentos: Any?, destino: EventChannel.EventSink) {
+                    val audio = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+                    fun enviar() = destino.success(
+                        mapOf(
+                            "atual" to audio.getStreamVolume(AudioManager.STREAM_MUSIC),
+                            "max" to audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                        )
+                    )
+                    val r = object : BroadcastReceiver() {
+                        override fun onReceive(c: Context?, i: Intent?) = enviar()
+                    }
+                    val filtro = IntentFilter("android.media.VOLUME_CHANGED_ACTION")
+                    // uma emissão do sistema chega na mesma a um recetor não exportado
+                    if (Build.VERSION.SDK_INT >= 33) {
+                        registerReceiver(r, filtro, Context.RECEIVER_NOT_EXPORTED)
+                    } else {
+                        registerReceiver(r, filtro)
+                    }
+                    recetor = r
+                    enviar()
+                }
+
+                override fun onCancel(argumentos: Any?) {
+                    recetor?.let {
+                        try {
+                            unregisterReceiver(it)
+                        } catch (e: IllegalArgumentException) {
+                            // já não estava registado
+                        }
+                    }
+                    recetor = null
+                }
+            }
+        )
         // Guardar em Transferências (telemóvel e TV): MediaStore no Android 10+, pasta pública no 9-
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "player_iptv/ficheiros").setMethodCallHandler { call, result ->
             when (call.method) {

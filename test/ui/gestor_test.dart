@@ -342,7 +342,7 @@ void main() {
       expect(_focado(), 'Ir para o Gestor');
       await _tecla(t, LogicalKeyboardKey.select);
       await t.pumpAndSettle();
-      expect(_focado(), '1 | Importar | Ficheiros, texto, stbstalker ou de Ver TV');
+      expect(_focado(), '1 | Importar | Ficheiros, texto, stbstalker, Telegram ou de Ver TV');
       await _tecla(t, LogicalKeyboardKey.select);
       await t.pumpAndSettle();
       expect(find.text('Listas do stbstalker').hitTestable(), findsOneWidget);

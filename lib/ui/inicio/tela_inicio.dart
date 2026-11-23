@@ -506,7 +506,7 @@ class _TelaInicioState extends State<TelaInicio> {
             const SizedBox(height: Tokens.e24),
             Wrap(spacing: Tokens.e16, runSpacing: Tokens.e16, alignment: WrapAlignment.center, children: [
               _passo(1, tr('Importar'),
-                  edicaoPartilha ? tr('Ficheiro ou texto colado') : tr('Ficheiro, texto colado ou listas do stbstalker'), tv),
+                  edicaoPartilha ? tr('Ficheiro ou texto colado') : tr('Ficheiro, texto colado, stbstalker ou Telegram'), tv),
               _passo(2, tr('Verificar'), tr('Testamos 3 canais de cada lista'), tv),
               _passo(3, tr('Enviar'), tr('As que funcionam aparecem aqui'), tv),
             ]),

@@ -209,7 +209,7 @@ void main() {
 
   testWidgets('na TV: DIREITA alcança os cartões e os botões ao lado (as origens da importação, '
       'Enviar e Exportar...)', (t) async {
-    // o Gestor com a largura de antes da barra lateral (960): as quatro origens na mesma linha
+    // o Gestor com a largura de antes da barra lateral (960): as origens em grelha de 4
     ecraTvTeste(t, largura: 960 + BarraSeccoes.largura);
     await comListas(t);
     await t.pumpWidget(appTeste(casca()));
@@ -238,8 +238,10 @@ void main() {
     await teclaDpad(t, LogicalKeyboardKey.arrowRight);
     expect(textosFocados(), startsWith('Listas do stbstalker'));
     await teclaDpad(t, LogicalKeyboardKey.arrowRight);
+    expect(textosFocados(), startsWith('Listas do Telegram'));
+    await teclaDpad(t, LogicalKeyboardKey.arrowRight);
     expect(textosFocados(), startsWith('De Ver TV'));
-    for (var i = 0; i < 3; i++) {
+    for (var i = 0; i < 4; i++) {
       await teclaDpad(t, LogicalKeyboardKey.arrowLeft);
     }
     expect(textosFocados(), startsWith('Ficheiros'));

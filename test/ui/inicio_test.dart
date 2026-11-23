@@ -253,7 +253,7 @@ void main() {
       for (final s in ['Importar', 'Verificar', 'Enviar']) {
         expect(find.text(s), findsOneWidget);
       }
-      expect(find.text('Ficheiro, texto colado ou listas do stbstalker'), findsOneWidget);
+      expect(find.text('Ficheiro, texto colado, stbstalker ou Telegram'), findsOneWidget);
       expect(find.text('Testamos 3 canais de cada lista'), findsOneWidget);
       expect(find.text('As que funcionam aparecem aqui'), findsOneWidget);
       // o Início não oferece importar a cópia de segurança (é nas Definições)

@@ -32,7 +32,7 @@ void main() {
       } on FileSystemException {/* Windows */}
     });
 
-    testWidgets('o Gestor não fala do stbstalker: nem no resumo nem nas origens da importação', (t) async {
+    testWidgets('o Gestor não fala do stbstalker nem do Telegram: nem no resumo nem nas origens', (t) async {
       t.view.physicalSize = const Size(1200, 1800);
       t.view.devicePixelRatio = 1;
       addTearDown(t.view.reset);
@@ -58,6 +58,7 @@ void main() {
       expect(find.text('Adicionar lista'), findsWidgets);
       expect(find.text('De Ver TV'), findsWidgets);
       expect(find.textContaining('stbstalker'), findsNothing);
+      expect(find.textContaining('Telegram'), findsNothing);
     }, skip: soNaPartilha != null);
 
     test('o indicador da atividade ignora uma tarefa com o título do stbstalker', () async {
@@ -70,8 +71,8 @@ void main() {
       expect(texto, '1 tarefa a decorrer');
     }, skip: soNaPartilha);
 
-    test('as traduções do stbstalker não estão no pacote', () {
-      expect(textosIngles.keys.where((k) => k.contains('stbstalker')), isEmpty);
+    test('as traduções da importação automática não estão no pacote', () {
+      expect(textosIngles.keys.where((k) => k.contains('stbstalker') || k.contains('Telegram')), isEmpty);
     }, skip: soNaPartilha);
   });
 }

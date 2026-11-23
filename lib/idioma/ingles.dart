@@ -420,10 +420,6 @@ const textosIngles = <String, String>{
       'Volume on opening',
   'O volume com que cada canal começa.':
       'The volume each channel starts with.',
-  'Volume inicial do sistema':
-      'Initial system volume',
-  'Ao abrir um canal, o volume do telemóvel passa a esta percentagem do máximo. No canal, deslize no lado direito do ecrã para o volume e no esquerdo para o brilho.':
-      'When a channel opens, the phone volume is set to this percentage of the maximum. On the channel, swipe on the right side of the screen for volume and on the left for brightness.',
   'Recuar no direto':
       'Rewind in live TV',
   'Espaço reservado':
@@ -1586,17 +1582,44 @@ const textosIngles = <String, String>{
       'Connecting…',
   'Em inglês: o progresso da verificação («Testing channel 2 of 3») e o das páginas ao carregar um portal voltam a aparecer, e as últimas frases que ficavam em português foram traduzidas.':
       'In English: the check progress ("Testing channel 2 of 3") and the page progress when loading a portal show again, and the last sentences still in Portuguese were translated.',
+  'No telemóvel: as barras do volume e o deslize na lateral do ecrã mudam o volume do sistema e acompanham as teclas do telefone. Saiu a opção «Volume inicial do sistema».':
+      'On phones: the volume bars and the swipe on the side of the screen change the system volume and follow the phone\'s keys. The "Initial system volume" option was removed.',
+  'No telemóvel: o motor do player passa a ser o mpv por omissão.':
+      'On phones: the player engine is now mpv by default.',
+  'No telemóvel: ao exportar (Accounts.json ou a cópia de segurança) escolhe-se a pasta onde gravar.':
+      'On phones: when exporting (Accounts.json or the backup) you choose the folder to save to.',
+  'Ao desinstalar, a app já não deixa as listas nem o «Continuar a ver» numa cópia de segurança do Android.':
+      'When uninstalled, the app no longer leaves the lists or "Continue watching" in an Android backup.',
   // o stbstalker não existe na edição de partilha (nem as traduções dele)
   if (!edicaoPartilha) ...{
+    'Gestor › Importar: novo «Listas do Telegram», que junta as listas publicadas num canal público (por omissão o @michelstv4) entre as datas escolhidas.':
+        'Manager › Import: new "Telegram lists", which adds the lists posted on a public channel (@michelstv4 by default) between the chosen dates.',
     '‹ Importar · Listas do stbstalker':
         '‹ Import · stbstalker lists',
     'Pesquisa no stbstalker':
         'stbstalker search',
-    'Ficheiros, texto, stbstalker ou de Ver TV':
-        'Files, text, stbstalker or from Watch TV',
+    'Ficheiros, texto, stbstalker, Telegram ou de Ver TV':
+        'Files, text, stbstalker, Telegram or from Watch TV',
     'Listas do stbstalker':
         'stbstalker lists',
-    'Ficheiro, texto colado ou listas do stbstalker':
-        'File, pasted text or stbstalker lists',
+    'Ficheiro, texto colado, stbstalker ou Telegram':
+        'File, pasted text, stbstalker or Telegram',
+    // Telegram
+    'Pesquisa no Telegram':
+        'Telegram search',
+    'Listas do Telegram':
+        'Telegram lists',
+    'De um canal público':
+        'From a public channel',
+    'Junta as listas de um canal público do Telegram, entre duas datas. Lê o texto das mensagens (Xtream, M3U e portal MAC); não lê ficheiros anexados.':
+        'Adds the lists from a public Telegram channel, between two dates. It reads the message text (Xtream, M3U and MAC portal); it does not read attached files.',
+    'Canal do Telegram':
+        'Telegram channel',
+    'Escreva o nome do canal (por exemplo @michelstv4).':
+        'Enter the channel name (for example @michelstv4).',
+    'a procurar as mensagens':
+        'searching the messages',
+    'Nenhuma mensagem publicada {0}.':
+        'No message published {0}.',
   },
 };

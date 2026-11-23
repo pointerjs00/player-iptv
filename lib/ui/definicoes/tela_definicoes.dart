@@ -182,7 +182,7 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
       final nome = nomeFicheiroCopia();
       final r = widget.guardarCopia != null
           ? await widget.guardarCopia!(nome, bytes)
-          : await guardarFicheiro(nome, bytes, 'application/json');
+          : await guardarFicheiro(nome, bytes, 'application/json', tv: EcraTv.nativo);
       _aviso(r.cancelado ? tr('Exportação cancelada.') : tr('Cópia guardada em {0}', [r.destino]));
     } catch (e) {
       _aviso(e is ErroGuardar ? e.mensagem : tr('Não foi possível exportar: {0}', [descreverErro(e)]));
@@ -387,25 +387,17 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
               empilhar: true,
               controlo: _escolhas(FormatoImagem.values, (f) => f.rotulo, _p.formato,
                   (f) => _mudou(() => _p.formato = f, player: true))),
-          _opcao(tr('Volume ao abrir'), tr('O volume com que cada canal começa.'),
-              controlo: _deslizador(
-                  min: 0,
-                  max: 100,
-                  divisions: 20,
-                  value: _p.volume,
-                  texto: '${_p.volume.round()} %',
-                  aoMudar: (v) => _mudou(() => _p.volume = v, player: true))),
-          // telemóvel Android: o volume do sistema ao abrir (no canal, os deslizes laterais mudam-no)
-          if (_android && !EcraTv.nativo)
-            _opcao(tr('Volume inicial do sistema'),
-                tr('Ao abrir um canal, o volume do telemóvel passa a esta percentagem do máximo. No canal, deslize no lado direito do ecrã para o volume e no esquerdo para o brilho.'),
+          // no telemóvel Android o volume é sempre o do sistema (a barra do canal e os deslizes
+          // mudam-no): o do player não se escolhe
+          if (!_android || EcraTv.nativo)
+            _opcao(tr('Volume ao abrir'), tr('O volume com que cada canal começa.'),
                 controlo: _deslizador(
                     min: 0,
                     max: 100,
                     divisions: 20,
-                    value: _p.volumeInicialSistema.toDouble(),
-                    texto: '${_p.volumeInicialSistema} %',
-                    aoMudar: (v) => _mudou(() => _p.volumeInicialSistema = v.round(), player: true))),
+                    value: _p.volume,
+                    texto: '${_p.volume.round()} %',
+                    aoMudar: (v) => _mudou(() => _p.volume = v, player: true))),
           // a explicação é a da escolha atual
           _opcao(tr('Recuar no direto'), _p.recuoDireto.descricao,
               controlo: _escolhas(RecuoDireto.values, (r) => r.rotulo, _p.recuoDireto,

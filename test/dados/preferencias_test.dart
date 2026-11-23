@@ -370,14 +370,22 @@ void main() {
     });
   });
   group('motor do player no Android (ExoPlayer / mpv) e modo túnel', () {
-    test('por omissão: ExoPlayer e túnel desligado', () async {
+    test('por omissão: mpv no telemóvel, ExoPlayer na TV, e túnel desligado', () async {
       final p = await Preferencias.abrir(pasta);
-      expect(p.motorAndroid, MotorAndroid.exoplayer);
+      expect(p.motorAndroid, MotorAndroid.mpv);
       expect(p.modoTunel, isFalse);
+      expect((await Preferencias.abrir(pasta, tv: true)).motorAndroid, MotorAndroid.exoplayer);
+      expect(Preferencias.omissao().motorAndroid, MotorAndroid.mpv);
+      expect(Preferencias.omissao(tv: true).motorAndroid, MotorAndroid.exoplayer);
+    });
+
+    test('a escolha guardada vale mais que a omissão (o ExoPlayer num telemóvel fica)', () async {
+      await (Preferencias.abrir(pasta).then((p) => (p..motorAndroid = MotorAndroid.exoplayer).guardar()));
+      expect((await Preferencias.abrir(pasta)).motorAndroid, MotorAndroid.exoplayer);
     });
 
     test('guardam-se e voltam a ler-se; um nome desconhecido dá o ExoPlayer', () async {
-      final p = await Preferencias.abrir(pasta);
+      final p = await Preferencias.abrir(pasta, tv: true);
       p
         ..motorAndroid = MotorAndroid.mpv
         ..modoTunel = true;
@@ -391,7 +399,7 @@ void main() {
     });
 
     test('a cópia de segurança leva-os e aplicar repõe-nos', () async {
-      final p = await Preferencias.abrir(pasta);
+      final p = await Preferencias.abrir(pasta, tv: true);
       expect(p.paraJson(), containsPair('motorAndroid', 'exoplayer'));
       expect(p.paraJson(), containsPair('modoTunel', false));
       p.aplicar({'motorAndroid': 'mpv', 'modoTunel': true});

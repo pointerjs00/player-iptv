@@ -467,6 +467,8 @@ void main() {
       'Portal MAC, Xtream ou M3U',
       'Listas do stbstalker',
       'Publicadas entre duas datas',
+      'Listas do Telegram',
+      'De um canal público',
       'De Ver TV',
       'Ainda não há listas em Ver TV',
     ]) {

@@ -133,7 +133,7 @@ void main() {
   }
 
   group('ecrã de importar', () {
-    testWidgets('mostra as 4 origens com os subtítulos aprovados e o painel da escolhida', (t) async {
+    testWidgets('mostra as 5 origens com os subtítulos aprovados e o painel da escolhida', (t) async {
       await abrir(t, base: () => 'http://127.0.0.1:1/');
       await t.runAsync(() => bib.adicionar([
             Importada(contaDeLinha('http://a.com/l.m3u')!),
@@ -147,6 +147,8 @@ void main() {
         'Portal MAC, Xtream ou M3U',
         'Listas do stbstalker',
         'Publicadas entre duas datas',
+        'Listas do Telegram',
+        'De um canal público',
         'De Ver TV',
         'As 2 listas que já tens',
       ]) {

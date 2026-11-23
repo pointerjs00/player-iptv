@@ -371,8 +371,8 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    // o volume do sistema começa no das Definições (uma vez, ao abrir o player)
-    if (_ajuste != null) unawaited(_ajuste.sistema.volumeInicial(_prefs.volumeInicialSistema));
+    // telemóvel: as barras do volume mostram o do sistema e acompanham-no
+    _ajuste?.addListener(_aoMudarAjuste);
     if (_android && FiltroDesentrelacamento.suportado) {
       FiltroDesentrelacamento.programa().then((p) {
         if (mounted) setState(() => _programaFlutter = p);
@@ -397,7 +397,24 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   bool get _exo => _tipo == TipoMotor.exoplayer || _motor is MotorExo;
 
   /// O volume que vai para o motor: sem mpv não há "mute", o silêncio é o volume a 0.
-  double get _volumeMotor => _mpv == null && _sessao.silencio ? 0 : _prefs.volume;
+  /// O volume do motor. No telemóvel fica sempre a 100 %: quem manda é o volume do sistema.
+  double get _volumeMotor => _ajuste != null
+      ? 100
+      : _mpv == null && _sessao.silencio
+          ? 0
+          : _prefs.volume;
+
+  /// O volume do sistema que a barra mostra (%): só se reconstrói quando ele muda.
+  int _volumeSistemaVisto = -1;
+
+  void _aoMudarAjuste() {
+    final a = _ajuste;
+    if (a == null || !mounted) return;
+    final v = (a.nivelVolume * 100).round();
+    if (v == _volumeSistemaVisto) return;
+    _volumeSistemaVisto = v;
+    setState(() {});
+  }
 
   void _criarPlayer(TipoMotor tipo) {
     _tipo = tipo;
@@ -912,7 +929,8 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
             limparFiltro: desentrelacamento.limpar,
             manterDesentrelacamento: desentrelacamento.manter,
             // um direto reaberto depois de um corte: a ligação nova traz logo a rajada (1 s chega)
-            reabrirDireto: continuar && _retomarEm == null);
+            reabrirDireto: continuar && _retomarEm == null,
+            volume: _ajuste != null ? 100 : null);
       } else {
         // outro motor: só o que a interface tem (1× e o volume; o silêncio é o volume a 0)
         await _motor.velocidade(1);
@@ -1854,11 +1872,11 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
       ),
       DefinicaoPassos(
         'Volume',
-        valor: '${_prefs.volume.round()} %',
-        menos: _prefs.volume > 0 ? () => _mudarVolume(-5) : null,
-        mais: _prefs.volume < 100 ? () => _mudarVolume(5) : null,
+        valor: '${_volumeVisivel.round()} %',
+        menos: _volumeVisivel > 0 ? () => _mudarVolume(-5) : null,
+        mais: _volumeVisivel < 100 ? () => _mudarVolume(5) : null,
       ),
-      DefinicaoInterruptor(tr('Silêncio'), valor: _sessao.silencio, aoMudar: _definirSilencio),
+      DefinicaoInterruptor(tr('Silêncio'), valor: _silencioVisivel, aoMudar: _definirSilencio),
       DefinicaoPassos(
         tr('Atraso do áudio'),
         valor: textoAtrasoAudio(_sessao.atrasoAudio),
@@ -1918,11 +1936,22 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     ];
   }
 
-  void _mudarVolume(int passo) => _definirVolume(_prefs.volume + passo);
+  /// O volume que as barras mostram (%): o do sistema no telemóvel, o do player nos outros.
+  double get _volumeVisivel => _ajuste == null ? _prefs.volume : _ajuste.nivelVolume * 100;
+  bool get _silencioVisivel => _ajuste?.silencio ?? _sessao.silencio;
+
+  void _mudarVolume(int passo) {
+    final a = _ajuste;
+    if (a != null) return a.passoVolume(passo.sign);
+    _definirVolume(_prefs.volume + passo);
+  }
 
   /// O volume do player (0–100): a barra do volume e o painel. Ouve-se logo; grava-se quando se
   /// pára de mexer (arrastar a barra mudava-o dezenas de vezes por segundo).
   void _definirVolume(double v) {
+    // telemóvel: a barra muda o volume do sistema (o motor fica a 100 %)
+    final a = _ajuste;
+    if (a != null) return a.definirVolume(v / 100);
     setState(() => _prefs.volume = v);
     _motor.volume(_volumeMotor);
     _gravarVolume?.cancel();
@@ -1934,6 +1963,8 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   Timer? _gravarVolume;
 
   void _definirSilencio(bool v) {
+    final a = _ajuste;
+    if (a != null) return a.silenciar(v);
     if (v == _sessao.silencio) return;
     setState(() => _sessao.silencio = v);
     // durante a espera do salto o som fica desligado; o silêncio aplica-se no fim dela
@@ -1954,6 +1985,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     _vigiaLink?.cancel();
     _linkSeguinte.esquecer();
     _pararVigiaSemDados();
+    _ajuste?.removeListener(_aoMudarAjuste);
     _ajuste?.dispose(); // o brilho volta ao do sistema
     _esconderAviso?.cancel();
     _soltarEcra?.cancel();
@@ -2042,11 +2074,12 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
         ),
         aoNumero: _irParaNumero,
         volume: (
-          valor: _prefs.volume,
-          silencio: _sessao.silencio,
+          valor: _volumeVisivel,
+          silencio: _silencioVisivel,
           aoMudar: _definirVolume,
           aoSilencio: _definirSilencio,
         ),
+        passoVolume: _ajuste == null ? 5 : 100 / _ajuste.maxVolume,
         atraso: () => _comRecuo ? _atrasoGravado : _relogio.atraso,
         // sem mpv: a informação vem das estatísticas do motor e não há barra de progresso nem
         // saltos (só o mpv salta no que já recebeu)

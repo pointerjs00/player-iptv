@@ -11,6 +11,9 @@
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:banner="@drawable/banner"
+        android:allowBackup="false"
+        android:fullBackupContent="@xml/sem_copia_antiga"
+        android:dataExtractionRules="@xml/sem_copia"
         android:usesCleartextTraffic="true">
         <!-- O vídeo usa texturas GL (SurfaceTexture, ver MainActivity.onCreate): o Flutter só as garante
              com o Impeller em OpenGL ES. -->
