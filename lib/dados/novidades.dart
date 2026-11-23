@@ -14,6 +14,10 @@ class Novidades {
 /// Todas as versões, a mais recente primeiro. A primeira é a versão da app: ao mudar a versão no
 /// pubspec.yaml, junta-se aqui a entrada dela (um teste confirma que batem certo).
 const historicoNovidades = <Novidades>[
+  Novidades('1.0.13', [
+    'Em inglês: o progresso da verificação («Testing channel 2 of 3») e o das páginas ao carregar '
+        'um portal voltam a aparecer, e as últimas frases que ficavam em português foram traduzidas.',
+  ]),
   Novidades('1.0.12', [
     'Definições › Idioma · Language: a app pode ficar em inglês (English). Muda logo, sem reiniciar.',
     'Ao ver um canal: ao carregar em OK na barra do volume, ela dá um pulo e mostra as setas ‹ › '
