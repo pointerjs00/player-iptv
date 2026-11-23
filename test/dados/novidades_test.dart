@@ -26,6 +26,18 @@ void main() {
     }
   });
 
+  test('cada versão tem a data de lançamento (aaaa-mm-dd), da mais recente para a mais antiga', () {
+    DateTime? antes;
+    for (final n in historicoNovidades) {
+      expect(n.data, matches(RegExp(r'^\d{4}-\d{2}-\d{2}$')), reason: n.versao);
+      final d = DateTime.parse(n.data);
+      if (antes != null) expect(d.isAfter(antes), isFalse, reason: n.versao);
+      antes = d;
+    }
+    expect(historicoNovidades.firstWhere((n) => n.versao == '1.0.12').data, '2026-11-22');
+    expect(dataNovidades(historicoNovidades.firstWhere((n) => n.versao == '1.0.12')), '22/11/2026');
+  });
+
   test('instalação nova: não mostra; depois de atualizar: mostra uma vez', () async {
     expect(await novidadesPorVer(pasta, instalacaoNova: true), isFalse);
     expect(await novidadesPorVer(pasta, instalacaoNova: false), isFalse, reason: 'já registou esta versão');
@@ -62,9 +74,12 @@ void main() {
     await t.pumpAndSettle();
     expect(find.text('Novidades da versão $versaoApp'), findsOneWidget);
     expect(find.text(historicoNovidades.first.itens.first), findsOneWidget);
+    final data = dataNovidades(historicoNovidades.first);
+    expect(find.text(data), findsOneWidget, reason: 'a data da versão na janela');
     await t.tap(find.text('Ver todas'));
     await t.pumpAndSettle();
     expect(find.text('Novidades da versão $versaoApp'), findsNothing);
     expect(find.text('Versão $versaoApp'), findsOneWidget);
+    expect(find.text(data), findsWidgets, reason: 'a data ao lado de cada versão no histórico');
   });
 }

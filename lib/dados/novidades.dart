@@ -4,10 +4,13 @@ import '../edicao.dart';
 
 /// O que mudou numa versão (as novidades que a app mostra depois de atualizar).
 class Novidades {
-  const Novidades(this.versao, this.itens);
+  const Novidades(this.versao, this.data, this.itens);
 
   /// "1.0.9" (a `version` do pubspec.yaml, sem o número da compilação).
   final String versao;
+
+  /// O dia do lançamento, "aaaa-mm-dd".
+  final String data;
 
   /// As correções e novidades, em linguagem simples.
   final List<String> itens;
@@ -16,7 +19,10 @@ class Novidades {
 /// Todas as versões, a mais recente primeiro. A primeira é a versão da app: ao mudar a versão no
 /// pubspec.yaml, junta-se aqui a entrada dela (um teste confirma que batem certo).
 const historicoNovidades = <Novidades>[
-  Novidades('1.0.14', [
+  Novidades('1.0.15', '2026-11-23', [
+    'Novidades: cada versão mostra a data em que saiu.',
+  ]),
+  Novidades('1.0.14', '2026-11-23', [
     if (!edicaoPartilha)
       'Gestor › Importar: novo «Listas do Telegram», que junta as listas publicadas num canal público '
           '(por omissão o @michelstv4) entre as datas escolhidas.',
@@ -27,27 +33,27 @@ const historicoNovidades = <Novidades>[
     'Ao desinstalar, a app já não deixa as listas nem o «Continuar a ver» numa cópia de segurança do '
         'Android.',
   ]),
-  Novidades('1.0.13', [
+  Novidades('1.0.13', '2026-11-23', [
     'Em inglês: o progresso da verificação («Testing channel 2 of 3») e o das páginas ao carregar '
         'um portal voltam a aparecer, e as últimas frases que ficavam em português foram traduzidas.',
   ]),
-  Novidades('1.0.12', [
+  Novidades('1.0.12', '2026-11-22', [
     'Definições › Idioma · Language: a app pode ficar em inglês (English). Muda logo, sem reiniciar.',
     'Ao ver um canal: ao carregar em OK na barra do volume, ela dá um pulo e mostra as setas ‹ › '
         'enquanto se ajusta.',
   ]),
-  Novidades('1.0.11', [
+  Novidades('1.0.11', '2026-11-22', [
     'Gestor › Verificar: quando a verificação acaba, as listas selecionadas que deixaram de '
         'aparecer com os filtros ativos saem da seleção (o "Ações (N)" conta só as que se veem).',
   ]),
-  Novidades('1.0.10', [
+  Novidades('1.0.10', '2026-11-22', [
     'Ver TV: → num grupo vai sempre ao primeiro canal desse grupo.',
     'Ver TV: sempre que o grupo muda (também ao esconder o grupo aberto), a lista dos canais volta '
         'ao topo.',
     'Gestor › Nova lista: os campos de cada tipo aparecem logo ao passar pelo botão do tipo, sem '
         'ser preciso carregar nele.',
   ]),
-  Novidades('1.0.9', [
+  Novidades('1.0.9', '2026-11-22', [
     'Gestor: no passo "Verificar", o botão da atividade abre a Atividade com todos os relatórios, '
         'como nos outros passos.',
     'Atividade: todos os cartões têm "Ver detalhe", também o de uma verificação parada.',
@@ -56,29 +62,36 @@ const historicoNovidades = <Novidades>[
     'Novidades: este resumo aparece depois de cada atualização e pode ser visto de novo em '
         'Definições › Sobre e licenças.',
   ]),
-  Novidades('1.0.8', [
+  Novidades('1.0.8', '2026-11-22', [
     'Gestor: "Parar" no passo "Verificar", na barra de cima e no menu Ações.',
     'Ao ver um canal: barra de volume com botão de silêncio, em todas as plataformas. No comando, OK e '
         'depois ← → mudam o volume.',
   ]),
-  Novidades('1.0.7', [
+  Novidades('1.0.7', '2026-11-22', [
     'Gestor: o "i" da verificação fica no canto da barra de cima.',
     'Atividade: depois de parar ou terminar, a verificação fica com o resumo e o relatório.',
     'As janelas de confirmação ficaram mais estreitas e fáceis de ler.',
   ]),
-  Novidades('1.0.6', [
+  Novidades('1.0.6', '2026-11-22', [
     'Parar a verificação pede confirmação e mostra o relatório das listas que chegaram ao fim.',
     'Novo ecrã "Como é feita a verificação" (o botão "i").',
     'O passo 3 do Gestor passa a chamar-se "Exportar".',
     '"Adicionar lista": Portal MAC, Xtream (link ou servidor e conta), lista M3U ou várias coladas.',
     'Definições de verificação na TV: carregar em OK para mudar um valor; ← vai ao menu lateral.',
   ]),
-  Novidades('1.0.5', [
+  Novidades('1.0.5', '2026-11-22', [
     'A verificação das listas inconclusivas ficou mais rápida e já não atrasa as outras.',
   ]),
 ];
 
 /// A versão da app ("1.0.9").
+/// A data do lançamento para mostrar: "22/11/2026".
+String dataNovidades(Novidades n) {
+  final d = DateTime.parse(n.data);
+  String dois(int x) => x.toString().padLeft(2, '0');
+  return '${dois(d.day)}/${dois(d.month)}/${d.year}';
+}
+
 String get versaoApp => historicoNovidades.first.versao;
 
 /// O ficheiro com a última versão cujas novidades se mostraram.

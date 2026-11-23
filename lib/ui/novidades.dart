@@ -15,7 +15,13 @@ Future<void> mostrarNovidadesDaVersao(BuildContext context) async {
       title: Text(tr('Novidades da versão {0}', [n.versao])),
       content: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 460),
-        child: SingleChildScrollView(child: _Itens(n.itens)),
+        child: SingleChildScrollView(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(dataNovidades(n), style: const TextStyle(color: Tokens.texto2, fontSize: 13)),
+            const SizedBox(height: Tokens.e12),
+            _Itens(n.itens),
+          ]),
+        ),
       ),
       actions: [
         TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Ver todas'))),
@@ -93,8 +99,15 @@ class _VersaoState extends State<_Versao> {
             child: Padding(
               padding: const EdgeInsets.all(Tokens.e12),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(tr('Versão {0}', [widget.novidades.versao]),
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Tokens.texto)),
+                Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
+                  Flexible(
+                    child: Text(tr('Versão {0}', [widget.novidades.versao]),
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Tokens.texto)),
+                  ),
+                  const SizedBox(width: Tokens.e12),
+                  Text(dataNovidades(widget.novidades),
+                      style: const TextStyle(fontSize: 13, color: Tokens.texto2)),
+                ]),
                 const SizedBox(height: Tokens.e8),
                 _Itens(widget.novidades.itens),
               ]),

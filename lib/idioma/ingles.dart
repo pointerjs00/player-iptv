@@ -1584,6 +1584,8 @@ const textosIngles = <String, String>{
       'In English: the check progress ("Testing channel 2 of 3") and the page progress when loading a portal show again, and the last sentences still in Portuguese were translated.',
   'No telemóvel: as barras do volume e o deslize na lateral do ecrã mudam o volume do sistema e acompanham as teclas do telefone. Saiu a opção «Volume inicial do sistema».':
       'On phones: the volume bars and the swipe on the side of the screen change the system volume and follow the phone\'s keys. The "Initial system volume" option was removed.',
+  'Novidades: cada versão mostra a data em que saiu.':
+      'What\'s new: each version shows the date it was released.',
   'No telemóvel: o motor do player passa a ser o mpv por omissão.':
       'On phones: the player engine is now mpv by default.',
   'No telemóvel: ao exportar (Accounts.json ou a cópia de segurança) escolhe-se a pasta onde gravar.':
