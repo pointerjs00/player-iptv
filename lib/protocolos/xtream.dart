@@ -8,16 +8,24 @@ import '../idioma/idioma.dart';
 class Xtream implements Protocolo {
   final _extensoes = <String, String>{};
 
-  String _raiz(Conta c) {
+  /// "http://servidor:porta" de uma conta Xtream.
+  static String raiz(Conta c) {
     final u = Uri.parse(c.endereco.trim());
     return '${u.scheme}://${u.authority}';
   }
 
-  Future<Object?> _api(Conta c, Map<String, String> extra, Cancelamento? cancelamento) {
+  static String _raiz(Conta c) => raiz(c);
+
+  /// Um pedido ao `player_api.php` (com o utilizador e a palavra-passe da conta).
+  static Future<Object?> api(Conta c, Map<String, String> extra, Cancelamento? cancelamento,
+      {Duration timeout = const Duration(seconds: 30)}) {
     final q = Uri(queryParameters: {'username': c.utilizador, 'password': c.password, ...extra}).query;
     return obterJson('${_raiz(c)}/player_api.php?$q', headers: {'User-Agent': uaListas()},
-        timeout: const Duration(seconds: 30), cancelamento: cancelamento);
+        timeout: timeout, cancelamento: cancelamento);
   }
+
+  Future<Object?> _api(Conta c, Map<String, String> extra, Cancelamento? cancelamento) =>
+      api(c, extra, cancelamento);
 
   /// "ts", ou "m3u8" quando o servidor diz que ts não é permitido mas m3u8 é.
   static String extensao(Map userInfo) {
@@ -104,7 +112,8 @@ class Xtream implements Protocolo {
       final grupo = nomes['${s['category_id']}'] ?? 'Sem grupo';
       if (vistos.add(grupo)) grupos.add(grupo);
       canais.add(Canal(id: '${s['stream_id']}', nome: '${s['name'] ?? ''}'.trim(), grupo: grupo,
-          logo: '${s['stream_icon'] ?? ''}', numero: numeroCanal(s['num'])));
+          logo: '${s['stream_icon'] ?? ''}', numero: numeroCanal(s['num']),
+          epg: '${s['epg_channel_id'] ?? ''}'.trim()));
     }
     // a ordem das categorias do painel, com as que não têm canais no fim
     final ordem = [for (final n in nomes.values) if (vistos.contains(n)) n];

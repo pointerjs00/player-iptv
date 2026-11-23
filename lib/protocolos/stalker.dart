@@ -246,6 +246,22 @@ class Stalker implements Protocolo {
     return (todos, true, null);
   }
 
+  /// Um pedido ao portal com a sessão da conta (entra se ainda não entrou; com o token
+  /// expirado, entra de novo e repete uma vez). Para o guia (`get_short_epg`, `get_epg_info`).
+  Future<Object?> pedir(Conta conta, Map<String, String> params,
+      {Cancelamento? cancelamento, Duration timeout = const Duration(seconds: 15)}) async {
+    for (var tentativa = 0;; tentativa++) {
+      final s = (tentativa == 0 ? _sessoes[chave(conta)] : null) ?? await _entrar(conta, cancelamento, null);
+      try {
+        return await s.get(params, cancelamento: cancelamento, timeout: timeout);
+      } on Cancelado {
+        rethrow;
+      } catch (_) {
+        if (tentativa > 0) rethrow;
+      }
+    }
+  }
+
   @override
   Future<FonteVideo> fonte(Conta conta, Canal canal, {Cancelamento? cancelamento}) async {
     for (var tentativa = 0; tentativa < 2; tentativa++) {

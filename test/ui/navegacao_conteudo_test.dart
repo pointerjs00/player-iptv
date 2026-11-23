@@ -407,7 +407,8 @@ void main() {
       return bib.listas.single;
     }
 
-    testWidgets('cada canal ocupa uma linha inteira (mesmo dx, dy diferente) e não há painel à direita', (t) async {
+    testWidgets('cada canal ocupa uma linha inteira (mesmo dx, dy diferente); os detalhes ficam numa coluna à direita',
+        (t) async {
       final l = await comCanais(t, 54);
       await mostrar(t, l);
       final a = t.getTopLeft(find.widgetWithText(ListTile, 'Canal 1'));
@@ -415,8 +416,16 @@ void main() {
       expect(b.dx, a.dx);
       expect(b.dy, greaterThan(a.dy));
       expect(b.dy - a.dy, 56);
-      // a linha vai de ponta a ponta da área dos canais
-      expect(t.getSize(find.widgetWithText(ListTile, 'Canal 1')).width, greaterThan(700));
+      // a linha vai de ponta a ponta da área dos canais, e a coluna dos detalhes fica à direita dela
+      final linha = t.getRect(find.widgetWithText(ListTile, 'Canal 1'));
+      final detalhes = t.getRect(find.byKey(const Key('coluna-detalhes')));
+      expect(linha.width, greaterThan(450));
+      expect(detalhes.left, greaterThan(linha.right));
+      expect(
+          find.descendant(
+              of: find.byKey(const Key('coluna-detalhes')), matching: find.text('Canal 1', findRichText: true)),
+          findsOneWidget,
+          reason: 'sem foco num canal, os detalhes são os do primeiro');
     });
 
     testWidgets('o cabeçalho mostra o grupo e "2 de 54" com o foco no 2.º canal', (t) async {

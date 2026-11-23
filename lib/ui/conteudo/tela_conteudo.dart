@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../dados/biblioteca.dart';
+import '../../guia/servico_guia.dart';
 import '../../modelo/canal.dart';
 import '../../modelo/conta.dart';
 import '../../protocolos/protocolo.dart';
@@ -14,8 +15,10 @@ import '../../rede/http.dart';
 import '../campo_tv.dart';
 import '../design/design.dart';
 import '../player/abrir_canal.dart';
+import '../poupanca_dados.dart';
 import '../realce_foco.dart';
 import 'opcoes_conteudo.dart';
+import 'painel_canal.dart';
 import '../tema.dart';
 import '../../verificar/estado.dart';
 import '../../verificar/verificador.dart';
@@ -52,7 +55,7 @@ Future<ConteudoLista> _abrirPeloProtocolo(Conta conta, {Cancelamento? cancelamen
 class TelaConteudo extends StatefulWidget {
   const TelaConteudo({super.key, required this.biblioteca, required this.lista, this.abrir,
       this.atualizar = false, AbrirLista? abrirLista, this.dns = resolverDns, this.continuar,
-      this.indexar})
+      this.indexar, this.guia})
       : abrirLista = abrirLista ?? _abrirPeloProtocolo;
 
   final Biblioteca biblioteca;
@@ -75,6 +78,9 @@ class TelaConteudo extends StatefulWidget {
 
   /// Para testes: em vez do isolate, indexa os nomes de uma lista grande (5000 canais ou mais).
   final Future<IndiceNomes> Function(List<String> nomes)? indexar;
+
+  /// O guia (EPG) da lista; null = o do tipo da lista ([guiaDaLista]). Substituível nos testes.
+  final ServicoGuia? Function(Lista lista)? guia;
 
   @override
   State<TelaConteudo> createState() => _TelaConteudoState();
@@ -169,6 +175,15 @@ class _TelaConteudoState extends State<TelaConteudo> {
   /// O canal com o foco na lista visível (0 = o primeiro): o "i" do "i de n".
   int _indice = 0;
 
+  /// O guia da lista (null = o tipo da lista não tem guia).
+  ServicoGuia? _guia;
+
+  /// O canal mostrado na coluna dos detalhes (o último que teve o foco; null = o primeiro à vista).
+  Canal? _canalDetalhe;
+
+  /// Na pesquisa: os canais encontrados pelo programa (por id), com o programa.
+  Map<String, EncontradoPeloPrograma> _pelPrograma = const {};
+
   /// Os dígitos carregados para ir a um canal pelo número (apagam-se ao fim de 1,5 s).
   String _digitos = '';
   Timer? _atrasoDigitos;
@@ -180,9 +195,10 @@ class _TelaConteudoState extends State<TelaConteudo> {
     if (!ecraTelemovel(context)) return 56;
     // o nome (15) em duas linhas e, com pesquisa, o grupo (12); a altura de cada linha de texto
     // nos ListTile (Material 3) é 1,5 vezes a letra; mais 8 em cima e em baixo
-    final letra = 2 * 15 + (_pesquisaCanais ? 12 : 0);
+    final comLinha = _pesquisaCanais || _guia != null;
+    final letra = 2 * 15 + (comLinha ? 12 : 0);
     final precisa = (Tokens.e16 + fatorTexto(context) * letra * 1.5).ceilToDouble();
-    final minimo = _pesquisaCanais ? 72.0 : 64.0;
+    final minimo = comLinha ? 72.0 : 64.0;
     return precisa < minimo ? minimo : precisa;
   }
 
@@ -191,7 +207,23 @@ class _TelaConteudoState extends State<TelaConteudo> {
   @override
   void initState() {
     super.initState();
+    final criar = widget.guia ??
+        (l) => guiaDaLista(l, manter: {for (final x in widget.biblioteca.listas) chaveGuia(x)});
+    _guia = criar(widget.lista)
+      ?..addListener(_aoMudarGuia)
+      // com dados móveis, pergunta antes de descarregar o guia de todos os canais
+      ..autorizarTodos = () async =>
+          mounted && await PoupancaDados.atual.autorizar(context, AcaoDados.guia, automatico: true);
     _iniciar();
+  }
+
+  void _aoMudarGuia() {
+    if (mounted) setState(() {});
+  }
+
+  /// O foco chegou a um canal: passa a ser o da coluna dos detalhes.
+  void _destacar(Canal c) {
+    if (!identical(_canalDetalhe, c)) setState(() => _canalDetalhe = c);
   }
 
   @override
@@ -200,6 +232,8 @@ class _TelaConteudoState extends State<TelaConteudo> {
     _atrasoPesquisa?.cancel();
     _atrasoFiltro?.cancel();
     _atrasoDigitos?.cancel();
+    _guia?.removeListener(_aoMudarGuia);
+    _guia?.dispose();
     _scrollCanais.dispose();
     _scrollGrupos.dispose();
     _textoGrupos.dispose();
@@ -253,6 +287,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
       _validarGrupo();
     });
     _indexarNomes(c);
+    unawaited(_guia?.usarCanais(c.canais));
     if (widget.continuar != null && !_continuou) {
       _continuou = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -562,6 +597,12 @@ class _TelaConteudoState extends State<TelaConteudo> {
   }
 
   Future<void> _carregar() async {
+    // com dados móveis, pergunta antes (uma lista grande tem vários MB)
+    if (!await PoupancaDados.atual.autorizar(context, AcaoDados.canais)) {
+      if (mounted && _conteudo == null) setState(() => _erro = tr('carregamento adiado para poupar dados móveis'));
+      return;
+    }
+    if (!mounted) return;
     _cancelamento?.cancelar();
     final can = _cancelamento = Cancelamento();
     final antes = FocusManager.instance.primaryFocus;
@@ -690,11 +731,13 @@ class _TelaConteudoState extends State<TelaConteudo> {
         ? 'f:$_versaoFavoritos'
         : _grupo == grupoVistos ? 'v:${widget.lista.vistos.join(',')}' : 'g:${_grupo ?? ''}';
     final chave = '${ordem.name}|${_verEscondidos ? '' : escondidos.join('\u0000')}|$grupo|'
-        '${q.isNotEmpty ? 'q:$q' : ''}';
+        '${q.isNotEmpty ? 'q:$q|g:${_guia?.versaoDados}' : ''}';
     if (chave == _chaveVisiveis) return _visiveis;
     _chaveVisiveis = chave;
     _indice = 0;
     _aOrdenar = false;
+    _pelPrograma = const {};
+    _canalDetalhe = null;
     // sem grupo, os grupos escondidos ficam de fora (também da pesquisa)
     final semEscondidos = _verEscondidos || escondidos.isEmpty;
     bool visivel(int i) => semEscondidos || !escondidos.contains(c.canais[i].grupo);
@@ -755,7 +798,25 @@ class _TelaConteudoState extends State<TelaConteudo> {
         _aOrdenar = true; // ainda não está pronta: a ordem original, troca-se depois
       }
     }
-    return _visiveis = [for (final i in pos) c.canais[i]];
+    // depois dos encontrados pelo nome, os encontrados pelo programa a dar ou o seguinte (no
+    // mesmo grupo e sem os grupos escondidos, como a pesquisa pelo nome)
+    final extra = <int>[];
+    final achados = q.length >= 2 && numero == null
+        ? (_guia?.procurar(q) ?? const <String, EncontradoPeloPrograma>{})
+        : const <String, EncontradoPeloPrograma>{};
+    if (achados.isNotEmpty) {
+      final ja = pos.toSet();
+      bool serve(int i) => !ja.contains(i) && achados.containsKey(c.canais[i].id);
+      if (_grupo == grupoFavoritos) {
+        extra.addAll([for (var i = 0; i < c.canais.length; i++) if (favoritos.contains(c.canais[i].id) && serve(i)) i]);
+      } else if (_grupo != null) {
+        extra.addAll([for (final i in _posicoesPorGrupo[_grupo] ?? const <int>[]) if (serve(i)) i]);
+      } else {
+        extra.addAll([for (var i = 0; i < c.canais.length; i++) if (visivel(i) && serve(i)) i]);
+      }
+      _pelPrograma = {for (final i in extra) c.canais[i].id: achados[c.canais[i].id]!};
+    }
+    return _visiveis = [for (final i in pos) c.canais[i], for (final i in extra) c.canais[i]];
   }
 
   /// Quantos canais tem "Todos os canais" (sem os dos grupos escondidos, se não estão à vista).
@@ -1132,26 +1193,38 @@ class _TelaConteudoState extends State<TelaConteudo> {
     final lista = _listaCanais(canais);
     final pesquisa = _pesquisaCanais;
     if (largo) {
+      final largura = MediaQuery.sizeOf(context).width;
+      final detalhes = _comDetalhes();
       return Padding(
         padding: const EdgeInsets.fromLTRB(Tokens.e16, 0, Tokens.e16, Tokens.e16),
         child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          SizedBox(width: 280, child: SuperficieVidro(child: _colunaGrupos())),
+          SizedBox(width: detalhes && largura < 1200 ? 240 : 280, child: SuperficieVidro(child: _colunaGrupos())),
           const SizedBox(width: Tokens.e16),
           Expanded(
             child: SuperficieVidro(
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                 _campoPesquisaCanais(),
                 _cabecalhoCanais(canais.length, pesquisa),
+                ?_notaGuiaPesquisa(),
                 Expanded(child: lista),
               ]),
             ),
           ),
+          if (detalhes) ...[
+            const SizedBox(width: Tokens.e16),
+            SizedBox(
+              key: const Key('coluna-detalhes'),
+              width: (largura * .3).clamp(280.0, 400.0),
+              child: SuperficieVidro(child: _painelDetalhe(canais)),
+            ),
+          ],
         ]),
       );
     }
     final corpoCanais = [
       _campoPesquisaCanais(),
       _cabecalhoCanais(canais.length, pesquisa),
+      ?_notaGuiaPesquisa(),
       Expanded(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(Tokens.e12, 0, Tokens.e12, Tokens.e12),
@@ -1190,6 +1263,87 @@ class _TelaConteudoState extends State<TelaConteudo> {
       ),
       ...corpoCanais,
     ]);
+  }
+
+  /// A coluna dos detalhes do canal: na TV e no computador, com espaço (no telemóvel, o toque
+  /// longo abre-os numa folha).
+  bool _comDetalhes() => !ecraTelemovel(context) && MediaQuery.sizeOf(context).width >= 900;
+
+  /// O canal da coluna dos detalhes: o que tem (ou teve por último) o foco, ou o primeiro à vista.
+  Widget _painelDetalhe(List<Canal> canais) {
+    if (canais.isEmpty) return const SizedBox.shrink();
+    final noFoco = _focoColunaCanais.hasFocus && _indice < canais.length ? canais[_indice] : null;
+    final c = noFoco ?? _canalDetalhe ?? canais.first;
+    return PainelCanal(
+      canal: c,
+      numero: '${c.numero ?? canais.indexOf(c) + 1}',
+      grupo: _nomeGrupo(c.grupo),
+      guia: _guia,
+      favorito: widget.lista.favoritos.contains(c.id),
+    );
+  }
+
+  /// Com pesquisa e sem o guia de todos os canais, diz porque é que não aparece nada pelo programa.
+  Widget? _notaGuiaPesquisa() {
+    final g = _guia;
+    if (g == null || !_pesquisaCanais || g.pesquisaDisponivel) return null;
+    final texto = g.poupado
+        ? tr('A programação de todos os canais ficou por descarregar (dados móveis): a pesquisa é só pelo nome.')
+        : g.estado == EstadoGuia.aCarregar
+            ? tr('A carregar a programação: a pesquisa pelo programa ainda não está completa.')
+            : tr('Esta lista não tem a programação de todos os canais: a pesquisa é só pelo nome.');
+    return Padding(
+      key: const Key('nota-guia-pesquisa'),
+      padding: const EdgeInsets.fromLTRB(Tokens.e16, 0, Tokens.e16, Tokens.e4),
+      child: Text(texto, style: TextStyle(color: Tokens.texto2, fontSize: ecraTv(context) ? 14 : 12.5)),
+    );
+  }
+
+  /// No telemóvel: os detalhes do canal numa folha, com «Ver» e os favoritos.
+  Future<void> _detalhesNoTelemovel(List<Canal> canais, int i) async {
+    final c = canais[i];
+    final fav = widget.lista.favoritos.contains(c.id);
+    final r = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      useSafeArea: true,
+      builder: (ctx) => SingleChildScrollView(
+        key: const Key('folha-detalhes'),
+        padding: const EdgeInsets.fromLTRB(Tokens.e16, 0, Tokens.e16, Tokens.e16),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          PainelCanal(canal: c, numero: '${c.numero ?? i + 1}', grupo: _nomeGrupo(c.grupo), guia: _guia,
+              favorito: fav, compacto: true),
+          const SizedBox(height: Tokens.e24),
+          Row(children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(Tokens.alvoToque)),
+                icon: Icon(fav ? Icons.star_rounded : Icons.star_outline_rounded),
+                label: Text(fav ? tr('Tirar dos favoritos') : tr('Pôr nos favoritos'), maxLines: 1,
+                    overflow: TextOverflow.ellipsis),
+                onPressed: () => Navigator.pop(ctx, 'favorito'),
+              ),
+            ),
+            const SizedBox(width: Tokens.e12),
+            Expanded(
+              child: FilledButton.icon(
+                style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(Tokens.alvoToque)),
+                icon: const Icon(Icons.play_arrow_rounded),
+                label: Text(tr('Ver')),
+                onPressed: () => Navigator.pop(ctx, 'ver'),
+              ),
+            ),
+          ]),
+        ]),
+      ),
+    );
+    if (!mounted) return;
+    if (r == 'ver') {
+      unawaited(_abrirCanal(canais, i));
+    } else if (r == 'favorito') {
+      _alternarFavorito(canais, i);
+    }
   }
 
   /// O nome de um grupo para mostrar (null = «Todos os canais»).
@@ -1463,7 +1617,10 @@ class _TelaConteudoState extends State<TelaConteudo> {
       child: Row(children: [
         Expanded(
           child: Text(
-            pesquisa ? '${_grupo == null ? tr('Canais') : _nomeGrupo(_grupo)} · $n' : _nomeGrupo(_grupo),
+            pesquisa
+                ? '${_grupo == null ? tr('Canais') : _nomeGrupo(_grupo)} · $n'
+                    '${_pelPrograma.isEmpty ? '' : ' · ${tr('{0} pelo programa', [_pelPrograma.length])}'}'
+                : _nomeGrupo(_grupo),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: estilo,
@@ -1620,20 +1777,18 @@ class _TelaConteudoState extends State<TelaConteudo> {
                       onFocusChange: (f) {
                         aoMudarFoco(f);
                         if (f && _indice != i) setState(() => _indice = i);
+                        if (f) _destacar(c);
                       },
                       focusNode: identical(c, _canalAFocar) ? _focoRegresso : null,
                       autofocus: focarPrimeiro && i == 0,
                       contentPadding: EdgeInsets.only(
                           left: (telemovel ? Tokens.e8 : Tokens.e16) + larguraNumero, right: telemovel ? 0 : Tokens.e8),
-                      leading: _Logo(c.logo, c.nome, tamanho: tv ? 52 : 40),
+                      leading: LogoCanal(c.logo, c.nome, tamanho: tv ? 52 : 40),
                       minLeadingWidth: tv ? 52 : 40,
                       horizontalTitleGap: telemovel ? Tokens.e12 : null,
                       title: _comRealce(c.nome, q, TextStyle(fontSize: tv ? 19 : 15, fontWeight: FontWeight.w500),
                           linhas: telemovel ? 2 : 1),
-                      subtitle: pesquisa
-                          ? Text(c.grupo, maxLines: 1, overflow: TextOverflow.ellipsis,
-                              style: TextStyle(fontSize: tv ? 14 : 12, color: Tokens.texto2))
-                          : null,
+                      subtitle: _subtitulo(c, pesquisa, q, tv: tv, telemovel: telemovel),
                       trailing: ExcludeFocus(
                         child: IconButton(
                           tooltip: fav ? tr('Tirar dos favoritos') : tr('Pôr nos favoritos'),
@@ -1649,7 +1804,8 @@ class _TelaConteudoState extends State<TelaConteudo> {
                         ),
                       ),
                       onTap: abrir,
-                      onLongPress: favorito,
+                      // no telemóvel o toque longo abre os detalhes (com os favoritos lá dentro)
+                      onLongPress: telemovel ? () => _detalhesNoTelemovel(canais, i) : favorito,
                     ),
                   ),
                   Positioned(
@@ -1673,6 +1829,29 @@ class _TelaConteudoState extends State<TelaConteudo> {
         ),
       ),
     );
+  }
+
+  /// Por baixo do nome: encontrado pelo programa, «A dar: …» ou «A seguir: …»; com pesquisa, o
+  /// grupo; no telemóvel, o programa a dar («Agora: …»).
+  Widget? _subtitulo(Canal c, bool pesquisa, String q, {required bool tv, required bool telemovel}) {
+    final estilo = TextStyle(fontSize: tv ? 14 : 12, color: Tokens.texto2);
+    final achado = pesquisa ? _pelPrograma[c.id] : null;
+    if (achado != null) {
+      final t = achado.programa.titulo;
+      return _comRealce(achado.aDar ? tr('A dar: {0}', [t]) : tr('A seguir: {0}', [t]), q, estilo);
+    }
+    if (pesquisa) return Text(c.grupo, maxLines: 1, overflow: TextOverflow.ellipsis, style: estilo);
+    final g = _guia;
+    if (!telemovel || g == null) return null;
+    final (atual, seguinte) = g.agoraESeguinteDe(c);
+    if (atual != null) {
+      return Text(tr('Agora: {0}', [atual.titulo]), key: const Key('linha-agora'), maxLines: 1,
+          overflow: TextOverflow.ellipsis, style: estilo);
+    }
+    if (seguinte != null) {
+      return Text(tr('A seguir: {0}', [seguinte.titulo]), maxLines: 1, overflow: TextOverflow.ellipsis, style: estilo);
+    }
+    return null;
   }
 
   /// Quantos algarismos tem o maior número de `canais` (o do portal ou a posição), pelo menos 2.
@@ -1800,50 +1979,6 @@ class _TelaConteudoState extends State<TelaConteudo> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _focoRegresso.requestFocus();
     });
-  }
-}
-
-/// O logótipo do canal num quadrado de vidro (ou as iniciais do nome, sem logótipo).
-class _Logo extends StatelessWidget {
-  const _Logo(this.url, this.nome, {required this.tamanho});
-  final String url;
-  final String nome;
-  final double tamanho;
-
-  /// "PT: RTP 1 HD" → "PR": a 1.ª letra de até duas palavras (uma só palavra: as duas primeiras).
-  static String iniciais(String nome) {
-    final alfanum = RegExp(r'[^\p{L}\p{N}]', unicode: true);
-    final palavras = [
-      for (final p in nome.split(RegExp(r'\s+')))
-        if (p.replaceAll(alfanum, '').isNotEmpty) p.replaceAll(alfanum, ''),
-    ];
-    if (palavras.isEmpty) return '';
-    final r = palavras.length == 1
-        ? palavras.first.characters.take(2).toString()
-        : '${palavras[0].characters.first}${palavras[1].characters.first}';
-    return r.toUpperCase();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final ini = iniciais(nome);
-    final vazio = ini.isEmpty
-        ? Icon(Icons.tv_rounded, color: Tokens.texto2, size: tamanho * .5)
-        // RichText (não Text): as iniciais são só decoração, o nome já está ao lado
-        : Center(child: ExcludeSemantics(child: RichText(maxLines: 1, text: TextSpan(text: ini,
-            style: TextStyle(color: Tokens.texto2, fontSize: tamanho * .36, fontWeight: FontWeight.w700)))));
-    return Container(
-      key: const Key('logo-canal'),
-      width: tamanho,
-      height: tamanho,
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(color: Tokens.vidro, borderRadius: BorderRadius.circular(tamanho * .22)),
-      child: url.startsWith('http')
-          ? Image.network(url, fit: BoxFit.contain, errorBuilder: (_, _, _) => vazio,
-              // descodificado no tamanho mostrado (poupa memória com muitos logótipos)
-              cacheWidth: (tamanho * MediaQuery.devicePixelRatioOf(context)).round())
-          : vazio,
-    );
   }
 }
 

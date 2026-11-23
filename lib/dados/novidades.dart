@@ -19,6 +19,16 @@ class Novidades {
 /// Todas as versões, a mais recente primeiro. A primeira é a versão da app: ao mudar a versão no
 /// pubspec.yaml, junta-se aqui a entrada dela (um teste confirma que batem certo).
 const historicoNovidades = <Novidades>[
+  Novidades('1.0.16', '2026-11-23', [
+    'Ver TV: programação (EPG) nas listas Xtream e nos portais MAC. Na TV e no computador, uma coluna '
+        'à direita mostra o canal com o foco, o programa a dar (com o progresso e a descrição) e os '
+        'seguintes.',
+    'Ver TV: a pesquisa também encontra os canais pelo programa a dar ou pelo seguinte.',
+    'No telemóvel: «Agora: …» por baixo de cada canal; o toque longo abre os detalhes, com «Ver» e '
+        'os favoritos.',
+    'No telemóvel: Definições › Ligação › «Poupar dados móveis». Com dados móveis, a app pergunta '
+        'antes de descarregar a programação, carregar canais ou verificar listas.',
+  ]),
   Novidades('1.0.15', '2026-11-23', [
     'Novidades: cada versão mostra a data em que saiu.',
   ]),

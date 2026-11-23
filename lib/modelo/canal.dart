@@ -12,6 +12,7 @@ class Canal {
     this.userAgent,
     this.referer,
     this.numero,
+    this.epg = '',
   });
 
   /// Identificador estável dentro da lista (id do portal ou o URL).
@@ -31,11 +32,15 @@ class Canal {
   /// O número do canal no portal/lista (Stalker `number`, Xtream `num`, M3U `tvg-chno`); null = sem.
   final int? numero;
 
+  /// O id do canal no guia (Xtream `epg_channel_id`); '' = sem (no Stalker o guia usa o [id]).
+  final String epg;
+
   Map<String, dynamic> paraJson() => {
         'id': id, 'nome': nome, 'grupo': grupo, 'url': url, 'logo': logo, 'cmd': cmd,
         if (userAgent != null) 'ua': userAgent,
         if (referer != null) 'referer': referer,
         if (numero != null) 'num': numero,
+        if (epg.isNotEmpty) 'epg': epg,
       };
 
   static Canal deJson(Map<String, dynamic> j) => Canal(
@@ -43,6 +48,7 @@ class Canal {
         logo: '${j['logo'] ?? ''}', cmd: '${j['cmd'] ?? ''}',
         userAgent: j['ua'] as String?, referer: j['referer'] as String?,
         numero: numeroCanal(j['num']),
+        epg: j['epg'] is String ? j['epg'] as String : '',
       );
 }
 

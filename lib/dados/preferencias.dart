@@ -183,6 +183,7 @@ class Preferencias extends ChangeNotifier {
   bool _ajustarTaxaEcra;
   MotorAndroid _motorAndroid;
   bool _modoTunel = false;
+  bool _pouparDados = true;
   int _timeoutVerificacao = padraoTimeoutVerificacao;
   int _listasEmSimultaneo = padraoListasEmSimultaneo;
   int _tempoLimiteLista = padraoTempoLimiteLista;
@@ -247,6 +248,11 @@ class Preferencias extends ChangeNotifier {
   /// Windows é sempre o mpv).
   MotorAndroid get motorAndroid => _motorAndroid;
   set motorAndroid(MotorAndroid v) => _mudar('motorAndroid', _motorAndroid != v, () => _motorAndroid = v);
+
+  /// No telemóvel Android, com dados móveis (ou numa rede limitada): pedir confirmação antes do
+  /// que pode gastar muitos dados (o guia de todos os canais, carregar canais, verificar listas).
+  bool get pouparDados => _pouparDados;
+  set pouparDados(bool v) => _mudar('pouparDados', _pouparDados != v, () => _pouparDados = v);
 
   /// O túnel de vídeo do ExoPlayer (desligado por omissão: só alguns aparelhos o suportam bem).
   bool get modoTunel => _modoTunel;
@@ -378,6 +384,7 @@ class Preferencias extends ChangeNotifier {
     final motor = campo<String>('motorAndroid');
     if (motor != null) _motorAndroid = MotorAndroid.deNome(motor);
     _modoTunel = campo<bool>('modoTunel') ?? _modoTunel;
+    _pouparDados = campo<bool>('pouparDados') ?? _pouparDados;
     final tempo = campo<num>('timeoutVerificacao');
     if (tempo != null) {
       _timeoutVerificacao = tempo.toInt().clamp(minTimeoutVerificacao, maxTimeoutVerificacao);
@@ -414,6 +421,7 @@ class Preferencias extends ChangeNotifier {
         'ajustarTaxaEcra': _ajustarTaxaEcra,
         'motorAndroid': _motorAndroid.nome,
         'modoTunel': _modoTunel,
+        'pouparDados': _pouparDados,
         'timeoutVerificacao': _timeoutVerificacao,
         'listasEmSimultaneo': _listasEmSimultaneo,
         'tempoLimiteLista': _tempoLimiteLista,
@@ -443,6 +451,7 @@ class Preferencias extends ChangeNotifier {
     if (lidas.contains('ajustarTaxaEcra')) ajustarTaxaEcra = outro._ajustarTaxaEcra;
     if (lidas.contains('motorAndroid')) motorAndroid = outro._motorAndroid;
     if (lidas.contains('modoTunel')) modoTunel = outro._modoTunel;
+    if (lidas.contains('pouparDados')) pouparDados = outro._pouparDados;
     if (lidas.contains('timeoutVerificacao')) timeoutVerificacao = outro._timeoutVerificacao;
     if (lidas.contains('listasEmSimultaneo')) listasEmSimultaneo = outro._listasEmSimultaneo;
     if (lidas.contains('tempoLimiteLista')) tempoLimiteLista = outro._tempoLimiteLista;

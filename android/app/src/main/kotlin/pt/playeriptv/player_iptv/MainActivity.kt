@@ -1,5 +1,7 @@
 package pt.playeriptv.player_iptv
 
+import android.net.NetworkCapabilities
+import android.net.ConnectivityManager
 import android.Manifest
 import android.content.BroadcastReceiver
 import android.content.ContentValues
@@ -168,6 +170,23 @@ class MainActivity : FlutterActivity() {
                             if (v < 0) WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE else v.toFloat().coerceIn(0.01f, 1f)
                     }
                     result.success(true)
+                }
+                else -> result.notImplemented()
+            }
+        }
+        // Poupar dados móveis: a ligação ativa é por dados móveis, ou uma rede limitada (a cobrar por MB)?
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "player_iptv/rede").setMethodCallHandler { call, result ->
+            when (call.method) {
+                "ligacao" -> {
+                    val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+                    val movel = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        cm.getNetworkCapabilities(cm.activeNetwork)
+                            ?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true
+                    } else {
+                        @Suppress("DEPRECATION")
+                        cm.activeNetworkInfo?.type == ConnectivityManager.TYPE_MOBILE
+                    }
+                    result.success(mapOf("movel" to movel, "limitada" to cm.isActiveNetworkMetered))
                 }
                 else -> result.notImplemented()
             }

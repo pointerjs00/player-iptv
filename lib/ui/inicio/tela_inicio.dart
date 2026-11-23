@@ -22,6 +22,7 @@ import 'cartao_lista.dart';
 import 'favoritos_inicio.dart';
 import '../design/mensagens.dart';
 import '../../idioma/idioma.dart';
+import '../poupanca_dados.dart';
 import '../../edicao.dart';
 
 /// Ver TV, o Início: "Continuar a ver" (o último canal visto), os favoritos de todas as listas e
@@ -250,6 +251,7 @@ class _TelaInicioState extends State<TelaInicio> {
   Future<void> _verificar(Lista l) async {
     final servico = widget.servico;
     if (servico == null) return;
+    if (!await PoupancaDados.atual.autorizar(context, AcaoDados.verificacao) || !mounted) return;
     final avisar = mensageiroDe(context);
     final nome = l.nomeMostrado;
     avisar(tr('A verificar {0}…', [nome]), tipo: MensagemTipo.progresso, duracao: const Duration(minutes: 2));

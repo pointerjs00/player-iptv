@@ -1592,6 +1592,76 @@ const textosIngles = <String, String>{
       'On phones: when exporting (Accounts.json or the backup) you choose the folder to save to.',
   'Ao desinstalar, a app já não deixa as listas nem o «Continuar a ver» numa cópia de segurança do Android.':
       'When uninstalled, the app no longer leaves the lists or "Continue watching" in an Android backup.',
+  // o guia (EPG) em Ver TV
+  'falta 1 min':
+      '1 min left',
+  'faltam {0} min':
+      '{0} min left',
+  'falta {0} h {1}':
+      '{0} h {1} left',
+  'Canal {0} · {1}':
+      'Channel {0} · {1}',
+  'Nos favoritos':
+      'In favourites',
+  'Esta lista não tem programação.':
+      'This list has no TV guide.',
+  'A carregar a programação…':
+      'Loading the TV guide…',
+  'Sem programação disponível.':
+      'No TV guide available.',
+  'AGORA':
+      'NOW',
+  'A SEGUIR':
+      'NEXT',
+  'A carregar a programação: a pesquisa pelo programa ainda não está completa.':
+      'Loading the TV guide: searching by programme is not complete yet.',
+  'Esta lista não tem a programação de todos os canais: a pesquisa é só pelo nome.':
+      'This list has no TV guide for all channels: search is by name only.',
+  '{0} pelo programa':
+      '{0} by programme',
+  'A dar: {0}':
+      'On now: {0}',
+  'A seguir: {0}':
+      'Next: {0}',
+  'Agora: {0}':
+      'Now: {0}',
+  'A programação de todos os canais ficou por descarregar (dados móveis): a pesquisa é só pelo nome.':
+      'The TV guide for all channels was not downloaded (mobile data): search is by name only.',
+  'Ver TV: programação (EPG) nas listas Xtream e nos portais MAC. Na TV e no computador, uma coluna à direita mostra o canal com o foco, o programa a dar (com o progresso e a descrição) e os seguintes.':
+      'Watch TV: TV guide (EPG) for Xtream lists and MAC portals. On TV and computer, a column on the right shows the focused channel, the programme on now (with progress and description) and the next ones.',
+  'Ver TV: a pesquisa também encontra os canais pelo programa a dar ou pelo seguinte.':
+      'Watch TV: search also finds channels by the programme on now or the next one.',
+  'No telemóvel: «Agora: …» por baixo de cada canal; o toque longo abre os detalhes, com «Ver» e os favoritos.':
+      'On phones: "Now: …" under each channel; a long press opens the details, with "Watch" and favourites.',
+  'No telemóvel: Definições › Ligação › «Poupar dados móveis». Com dados móveis, a app pergunta antes de descarregar a programação, carregar canais ou verificar listas.':
+      'On phones: Settings › Connection › "Save mobile data". On mobile data, the app asks before downloading the TV guide, loading channels or checking lists.',
+  // poupar dados móveis
+  'Poupar dados móveis':
+      'Save mobile data',
+  'Com dados móveis ou numa rede limitada, pergunta antes de descarregar a programação de todos os canais, carregar os canais de uma lista ou verificar listas.':
+      'On mobile data or a metered network, asks before downloading the TV guide for all channels, loading a list\'s channels or checking lists.',
+  'Está a usar dados móveis':
+      'You are on mobile data',
+  'Está numa rede limitada':
+      'You are on a metered network',
+  'Descarregar a programação de todos os canais desta lista? Pode gastar dezenas de MB. Sem ela, a programação de um canal só é pedida quando o escolhe (poucos dados), e a pesquisa é só pelo nome.':
+      'Download the TV guide for all channels in this list? It can use tens of MB. Without it, a channel\'s guide is only fetched when you pick it (little data), and search is by name only.',
+  'Descarregar':
+      'Download',
+  'Carregar os canais desta lista do servidor? Uma lista grande pode gastar vários MB.':
+      'Load this list\'s channels from the server? A large list can use several MB.',
+  'Carregar':
+      'Load',
+  'Verificar a lista? Descarrega os canais dela e testa alguns: pode gastar vários MB.':
+      'Check the list? It downloads its channels and tests some: it can use several MB.',
+  'Verificar {0} listas? Cada uma descarrega os canais e testa alguns: pode gastar muitos MB.':
+      'Check {0} lists? Each one downloads its channels and tests some: it can use many MB.',
+  'Pode desligar este aviso em Definições › Ligação › Poupar dados móveis.':
+      'You can turn this off in Settings › Connection › Save mobile data.',
+  'Agora não':
+      'Not now',
+  'carregamento adiado para poupar dados móveis':
+      'loading postponed to save mobile data',
   // o stbstalker não existe na edição de partilha (nem as traduções dele)
   if (!edicaoPartilha) ...{
     'Gestor › Importar: novo «Listas do Telegram», que junta as listas publicadas num canal público (por omissão o @michelstv4) entre as datas escolhidas.':

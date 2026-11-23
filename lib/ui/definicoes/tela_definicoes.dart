@@ -463,6 +463,13 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
         ];
       case _Categoria.ligacao:
         return [
+          // só no telemóvel Android (a TV e o computador estão quase sempre numa rede fixa)
+          if (_android && !EcraTv.nativo)
+            _interruptor(
+                tr('Poupar dados móveis'),
+                tr('Com dados móveis ou numa rede limitada, pergunta antes de descarregar a programação de todos os canais, carregar os canais de uma lista ou verificar listas.'),
+                _p.pouparDados,
+                (v) => _p.pouparDados = v),
           _opcao(tr('User-agent'), tr('Opcional: nos pedidos das listas M3U e Xtream (o Stalker mantém o da box MAG).'),
               empilhar: true,
               controlo: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

@@ -20,6 +20,7 @@ import '../verificar/dialogos_gestor.dart';
 import 'calendario_intervalo.dart';
 import 'indicador_atividade.dart';
 import '../../idioma/idioma.dart';
+import '../poupanca_dados.dart';
 import '../../edicao.dart';
 
 /// As origens de onde se importa.
@@ -263,12 +264,15 @@ class _TelaImportarState extends State<TelaImportar> {
 
   /// "Verificar as n novas": só as novas desta importação entram na fila (as que já lá estão ou
   /// que entretanto saíram do Gestor ficam de fora).
-  void _verificarNovas(ResumoImportacao r) {
+  Future<void> _verificarNovas(ResumoImportacao r) async {
     final listas = [
       for (final id in r.idsNovas)
         if (_g.porId(id) case final l? when !widget.servico.aVerificar(id)) l,
     ];
     if (listas.isEmpty) return _aviso(tr('As listas novas já estão na fila.'));
+    if (!await PoupancaDados.atual.autorizar(context, AcaoDados.verificacao, quantas: listas.length) || !mounted) {
+      return;
+    }
     widget.servico.verificarVarias(listas);
     _aviso(listas.length == 1 ? tr('1 lista entrou na fila.') : tr('{0} listas entraram na fila.', [listas.length]));
   }

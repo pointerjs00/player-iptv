@@ -27,6 +27,7 @@ import 'tela_como_verifica.dart';
 import 'tela_importar.dart';
 import 'tela_verificacao.dart';
 import '../../idioma/idioma.dart';
+import '../poupanca_dados.dart';
 import '../../edicao.dart';
 
 /// Os ecrãs do Gestor: o resumo (ao entrar), os três passos e o progresso da verificação (que
@@ -303,12 +304,13 @@ class _TelaGestorState extends State<TelaGestor> {
   List<Lista> _atuais(List<Lista> listas) => [for (final l in listas) ?_g.porId(l.id)];
 
   /// "Verificar selecionadas" (passo 2): juntam-se à fila, mesmo a meio de uma verificação.
-  void _verificarSelecionadas(List<Lista> listas) {
+  Future<void> _verificarSelecionadas(List<Lista> listas) async {
     if (listas.isEmpty) return _aviso(tr('Selecione as listas a verificar.'));
     final novas = [for (final l in listas) if (!_s.aVerificar(l.id)) l];
     if (novas.isEmpty) {
       return _aviso(listas.length == 1 ? tr('A lista selecionada já está na fila.') : tr('As listas selecionadas já estão na fila.'));
     }
+    if (!await PoupancaDados.atual.autorizar(context, AcaoDados.verificacao, quantas: novas.length) || !mounted) return;
     _s.verificarVarias(novas);
     _aviso(novas.length == 1 ? tr('1 lista entrou na fila.') : tr('{0} listas entraram na fila.', [novas.length]));
   }
@@ -322,11 +324,12 @@ class _TelaGestorState extends State<TelaGestor> {
   }
 
   /// "Verificar todas": as que ainda não estão na fila juntam-se a ela; a seleção fica.
-  void _verificarTodas() {
+  Future<void> _verificarTodas() async {
     final listas = _g.listas;
     if (listas.isEmpty) return _aviso(tr('Importe listas primeiro.'));
     final novas = [for (final l in listas) if (!_s.aVerificar(l.id)) l];
     if (novas.isEmpty) return _aviso(tr('Todas as listas já estão na fila.'));
+    if (!await PoupancaDados.atual.autorizar(context, AcaoDados.verificacao, quantas: novas.length) || !mounted) return;
     _s.verificarVarias(novas);
   }
 
