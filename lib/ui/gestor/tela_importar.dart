@@ -19,6 +19,7 @@ import '../verificar/dialogos_gestor.dart';
 import 'calendario_intervalo.dart';
 import 'indicador_atividade.dart';
 import '../../idioma/idioma.dart';
+import '../../edicao.dart';
 
 /// As origens de onde se importa.
 enum OrigemImportacao { ficheiros, adicionar, stbstalker, doPlayer }
@@ -187,6 +188,7 @@ class _TelaImportarState extends State<TelaImportar> {
   }
 
   void _procurarStb() {
+    if (edicaoPartilha) return;
     // as datas podem mudar durante a pesquisa: o resumo fala das que foram pesquisadas
     final inicio = _inicio, fim = _fim, base = widget.baseStb;
     final periodo = inicio == fim ? _dd(inicio) : '${_dd(inicio)} a ${_dd(fim)}';
@@ -197,7 +199,7 @@ class _TelaImportarState extends State<TelaImportar> {
       try {
         r = await importarEntre(inicio, fim,
             base: base,
-            aoProgresso: (lidos, posts, linhas) => p(lidos / posts, '$linhas encontradas'),
+            aoProgresso: (lidos, posts, linhas) => p(lidos / posts, tr('{0} encontradas', [linhas])),
             cancelado: () => p.cancelado);
       } on Cancelado {
         throw parada;
@@ -288,8 +290,9 @@ class _TelaImportarState extends State<TelaImportar> {
         final origens = <(OrigemImportacao, IconData, String, String)>[
           (OrigemImportacao.ficheiros, Icons.file_open_outlined, tr('Ficheiros'), tr('Accounts.json, .ini, .m3u, .txt')),
           (OrigemImportacao.adicionar, Icons.playlist_add_rounded, tr('Adicionar lista'), tr('Portal MAC, Xtream ou M3U')),
-          (OrigemImportacao.stbstalker, Icons.event_note_outlined, tr('Listas do stbstalker'),
-              tr('Publicadas entre duas datas')),
+          if (!edicaoPartilha)
+            (OrigemImportacao.stbstalker, Icons.event_note_outlined, tr('Listas do stbstalker'),
+                tr('Publicadas entre duas datas')),
           (OrigemImportacao.doPlayer, Icons.download_for_offline_outlined, tr('De Ver TV'),
               nPlayer == 0 ? tr('Ainda não há listas em Ver TV') : tr('As {0} listas que já tens', [nPlayer])),
         ];
@@ -378,6 +381,7 @@ class _TelaImportarState extends State<TelaImportar> {
           ),
         ]);
       case OrigemImportacao.stbstalker:
+        if (edicaoPartilha) return const SizedBox.shrink();
         return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           _titulo(tr('Listas do stbstalker')),
           _explicacao(tr('Junta as listas publicadas no blog entre duas datas, sem duplicar.')),
@@ -481,7 +485,7 @@ class _TelaImportarState extends State<TelaImportar> {
         corpo = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           LinearProgressIndicator(value: t.progresso, minHeight: 6),
           const SizedBox(height: Tokens.e4),
-          Text(t.detalhe.isEmpty ? 'A importar…' : 'A importar · ${t.detalhe}',
+          Text(t.detalhe.isEmpty ? tr('A importar…') : tr('A importar · {0}', [t.detalhe]),
               style: const TextStyle(color: Tokens.texto2)),
         ]);
       case EstadoTarefa.falhou:

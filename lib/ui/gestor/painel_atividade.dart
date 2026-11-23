@@ -103,7 +103,7 @@ class _PainelAtividadeState extends State<PainelAtividade> {
                             style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Tokens.texto)),
                         Semantics(
                           liveRegion: true,
-                          child: Text('$aDecorrer a decorrer · $terminadas terminadas',
+                          child: Text(tr('{0} a decorrer · {1} terminadas', [aDecorrer, terminadas]),
                               style: const TextStyle(fontSize: 13, color: Tokens.texto2)),
                         ),
                       ]),

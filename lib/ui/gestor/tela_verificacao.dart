@@ -57,14 +57,17 @@ class TelaVerificacao extends StatelessWidget {
   /// O passo do serviço ("canal 2/3 · a pedir os canais") como "A testar canal 2 de 3".
   static String textoPasso(String passo) {
     final m = RegExp(r'^canal (\d+)/(\d+)(?: · (.*))?$').firstMatch(passo);
-    if (m == null) return passo.isEmpty ? passo : passo[0].toUpperCase() + passo.substring(1);
+    if (m == null) {
+      final t = tr(passo);
+      return t.isEmpty ? t : t[0].toUpperCase() + t.substring(1);
+    }
     return tr('A testar canal {0} de {1}', [m[1], m[2]]);
   }
 
   /// O detalhe do passo (depois do "canal i/n · "), em letra mais pequena.
   static String detalhePasso(String passo) {
     final m = RegExp(r'^canal \d+/\d+ · (.*)$').firstMatch(passo);
-    return m?[1] ?? '';
+    return m == null ? '' : tr(m[1]!);
   }
 
   /// "3 de 3 canais com imagem" quando se sabe canal a canal; senão o motivo.

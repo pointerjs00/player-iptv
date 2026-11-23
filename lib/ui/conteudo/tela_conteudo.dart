@@ -36,9 +36,9 @@ typedef AbrirLista = Future<ConteudoLista> Function(Conta conta, {Cancelamento? 
 /// canais · página 3/12" e 0.25) e o progresso quando há total. Sem o caminho do portal no fim.
 (String, double?) passoCarregamento(String aviso) {
   var t = aviso.trim().replaceFirst(RegExp(r'\s*\([^)]*\)$'), '');
-  if (t.isEmpty) return ('A ligar…', null);
+  if (t.isEmpty) return (tr('A ligar…'), null);
   t = t[0].toUpperCase() + t.substring(1);
-  final m = RegExp(r'página (\d+)/(\d+)').firstMatch(t);
+  final m = RegExp(r'(?:página|page) (\d+)/(\d+)').firstMatch(t);
   final total = m == null ? 0 : int.parse(m[2]!);
   return (t, total > 0 ? (int.parse(m![1]!) / total).clamp(0.0, 1.0) : null);
 }

@@ -213,8 +213,8 @@ class Verificador {
         porCanal.add((p, ja));
         continue;
       }
-      // "canal 2/3 · …": o Gestor mostra em que canal de teste vai
-      final avisoCanal = aviso == null ? null : (String t) => aviso(tr('canal {0}/{1} · {2}', [i + 1, perfis.length, t]));
+      // "canal 2/3 · …": o Gestor mostra em que canal de teste vai (não se traduz: o Gestor lê-o)
+      final avisoCanal = aviso == null ? null : (String t) => aviso('canal ${i + 1}/${perfis.length} · $t');
       final r = await _testarPerfil(conta, proto, conteudo, p, timeout, cancelamento, avisoCanal);
       progresso?.perfis[p.id] = r;
       porCanal.add((p, r));
@@ -346,6 +346,6 @@ ResultadoVerificacao juntar(List<(PerfilCanal, ResultadoVerificacao)> rs) {
 
 /// O resultado no formato guardado na biblioteca.
 UltimaVerificacao paraUltima(ResultadoVerificacao r, [DateTime? quando]) => UltimaVerificacao(
-      estado: r.estado.valor, motivo: r.estado == EstadoV.funciona && r.canal.isNotEmpty ? 'abriu ${r.canal}' : r.motivo,
+      estado: r.estado.valor, motivo: r.estado == EstadoV.funciona && r.canal.isNotEmpty ? tr('abriu {0}', [r.canal]) : r.motivo,
       data: quando ?? DateTime.now(), validade: r.validade, canais: r.canais,
     );

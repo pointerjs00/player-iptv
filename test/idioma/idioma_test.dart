@@ -10,6 +10,8 @@ import 'package:player_iptv/idioma/idioma.dart';
 import 'package:player_iptv/idioma/ingles.dart';
 import 'package:player_iptv/main.dart';
 import 'package:player_iptv/ui/adicionar.dart';
+import 'package:player_iptv/ui/conteudo/tela_conteudo.dart';
+import 'package:player_iptv/ui/gestor/tela_verificacao.dart';
 import 'package:player_iptv/ui/inicio/acoes_lista.dart';
 import 'package:player_iptv/ui/player/configuracao_mpv.dart';
 
@@ -73,6 +75,15 @@ void main() {
     idiomaApp.value = Idioma.en;
     expect(tr('Grupo: {0}', ['Desporto']), 'Group: Desporto');
     expect(tr('um texto sem tradução'), 'um texto sem tradução');
+  });
+
+  test('em inglês, o progresso das páginas e dos canais de teste continua a ler-se', () {
+    idiomaApp.value = Idioma.en;
+    expect(passoCarregamento(tr('a pedir os canais · página {0}{1}', [3, '/12'])),
+        ('Requesting the channels · page 3/12', .25));
+    expect(TelaVerificacao.textoPasso('canal 2/3 · a começar'), 'Testing channel 2 of 3');
+    expect(TelaVerificacao.detalhePasso('canal 2/3 · a começar'), 'starting');
+    expect(TelaVerificacao.textoPasso('na fila'), 'Queued');
   });
 
   test('os rótulos das enumerações e das listas fixas também se traduzem', () {

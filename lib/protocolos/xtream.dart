@@ -54,7 +54,7 @@ class Xtream implements Protocolo {
     try {
       return await _api(c, extra, cancelamento);
     } on ErroHttp catch (e) {
-      throw ErroLista(mensagem('a API respondeu ${e.status}'));
+      throw ErroLista(mensagem(tr('a API respondeu {0}', [e.status])));
     }
   }
 

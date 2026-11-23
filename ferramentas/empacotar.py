@@ -1,6 +1,8 @@
 """Gera em dist/ os pacotes a partilhar: APK Android (arm64, armv7) e zip Windows.
 
-Uso: python ferramentas/empacotar.py [--so-android | --so-windows]
+Uso: python ferramentas/empacotar.py [--so-android | --so-windows] [--partilha]
+Com --partilha gera a edição de partilha (sem a pesquisa de listas do stbstalker) em
+dist/partilha/: corre antes os testes dessa edição e recusa pacotes que ainda tragam o stbstalker.
 Nunca altera definições do sistema.
 """
 import argparse
@@ -35,6 +37,14 @@ LICENCAS_APK = [
     "assets/flutter_assets/third_party/libmpv_completo/licencas/LGPL-2.1.txt",
 ]
 FICHEIRO_SHA256 = RAIZ / "third_party" / "libmpv_completo" / "SHA256.txt"
+# a edição de partilha (lib/edicao.dart): o que não pode estar no código compilado dela
+DEFINE_PARTILHA = "--dart-define=PARTILHA=true"
+PROIBIDOS_PARTILHA = [b"alaaeldinee", b"stbstalker"]
+# o código Dart compilado: no APK (por ABI) e na pasta do Windows
+LIBAPP_APK = "lib/{abi}/libapp.so"
+APP_WINDOWS = Path("data/app.so")
+# os --dart-define da compilação (a edição de partilha junta o DEFINE_PARTILHA)
+DEFINES: list[str] = []
 
 
 def ler_sha256_libmpv_android(ficheiro: Path = FICHEIRO_SHA256) -> dict[str, str]:
@@ -128,6 +138,15 @@ def verificar_libmpv(pasta: Path) -> None:
             raise SystemExit(f"Empacotamento recusado: falta licencas-libmpv/{nome} (licença do libmpv/ffmpeg).")
 
 
+def verificar_sem_stbstalker(codigo: bytes, nome: str) -> None:
+    """Edição de partilha: recusa o código compilado que ainda traga o stbstalker."""
+    for p in PROIBIDOS_PARTILHA:
+        if p in codigo:
+            raise SystemExit(
+                f"Empacotamento recusado: {nome} da edição de partilha ainda tem '{p.decode()}' (lib/edicao.dart)."
+            )
+
+
 def verificar_apk(apk: Path, abi: str) -> None:
     """Recusa um APK sem o libmpv completo no ABI dele (SHA-256 fixado) ou sem os textos das licenças."""
     with zipfile.ZipFile(apk) as z:
@@ -144,6 +163,8 @@ def verificar_apk(apk: Path, abi: str) -> None:
         for a in LICENCAS_APK:
             if a not in nomes:
                 raise SystemExit(f"Empacotamento recusado: {Path(apk).name} sem {a} (licença do libmpv/ffmpeg).")
+        if DEFINE_PARTILHA in DEFINES:
+            verificar_sem_stbstalker(z.read(LIBAPP_APK.format(abi=abi)), Path(apk).name)
 
 
 def copiar_apks(origem: Path, dist: Path) -> list[Path]:
@@ -167,6 +188,8 @@ def criar_zip_windows(pasta_release: Path, destino: Path) -> Path:
     pasta_release = Path(pasta_release)
     verificar_conteudo(pasta_release)
     verificar_libmpv(pasta_release)
+    if DEFINE_PARTILHA in DEFINES:
+        verificar_sem_stbstalker((pasta_release / APP_WINDOWS).read_bytes(), "o TVIntel.exe")
     destino = Path(destino)
     destino.parent.mkdir(parents=True, exist_ok=True)
     destino.unlink(missing_ok=True)
@@ -203,7 +226,7 @@ def _flutter() -> str:
 
 
 def construir_android(dist: Path) -> list[Path]:
-    r = subprocess.run([_flutter(), "build", "apk", "--release", "--split-per-abi"], cwd=RAIZ)
+    r = subprocess.run([_flutter(), "build", "apk", "--release", "--split-per-abi", *DEFINES], cwd=RAIZ)
     if r.returncode != 0:
         raise SystemExit("Falhou 'flutter build apk'.")
     return copiar_apks(RAIZ / PASTA_APK, dist)
@@ -211,7 +234,7 @@ def construir_android(dist: Path) -> list[Path]:
 
 def construir_windows(dist: Path) -> Path | None:
     """Devolve o zip, ou None se faltar o suporte de symlinks (Modo de Programador)."""
-    r = subprocess.run([_flutter(), "build", "windows", "--release"], cwd=RAIZ,
+    r = subprocess.run([_flutter(), "build", "windows", "--release", *DEFINES], cwd=RAIZ,
                        capture_output=True, text=True, encoding="utf-8", errors="replace")
     saida = (r.stdout or "") + (r.stderr or "")
     print(saida)
@@ -222,18 +245,29 @@ def construir_windows(dist: Path) -> Path | None:
     return criar_zip_windows(RAIZ / PASTA_WINDOWS, dist / "TVIntel-windows.zip")
 
 
+def testar_partilha() -> None:
+    """Os testes da edição de partilha (test/edicao), compilados como ela."""
+    r = subprocess.run([_flutter(), "test", DEFINE_PARTILHA, "test/edicao"], cwd=RAIZ)
+    if r.returncode != 0:
+        raise SystemExit("Falharam os testes da edição de partilha (test/edicao).")
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
     g = p.add_mutually_exclusive_group()
     g.add_argument("--so-android", action="store_true")
     g.add_argument("--so-windows", action="store_true")
+    p.add_argument("--partilha", action="store_true", help="a edição de partilha, em dist/partilha/")
     a = p.parse_args(argv)
     configurar_saida(sys.stdout, sys.stderr)
-    dist = RAIZ / "dist"
-    dist.mkdir(exist_ok=True)
+    DEFINES[:] = [DEFINE_PARTILHA] if a.partilha else []
+    dist = RAIZ / "dist" / "partilha" if a.partilha else RAIZ / "dist"
+    dist.mkdir(parents=True, exist_ok=True)
     limpar_saidas(dist, android=not a.so_windows, windows=not a.so_android)
     avisos = []
     gerados = []
+    if a.partilha:
+        testar_partilha()
 
     if not a.so_windows:
         gerados += construir_android(dist)
@@ -251,7 +285,7 @@ def main(argv=None) -> int:
 
     (dist / "LEIA-ME.txt").write_text(LEIA_ME, encoding="utf-8")
     gerados.append(dist / "LEIA-ME.txt")
-    print("\nGerado em dist/:")
+    print(f"\nGerado em {dist.relative_to(RAIZ).as_posix()}/:")
     for g_ in gerados:
         print(f"  {g_.name}  ({g_.stat().st_size / 1e6:.1f} MB)")
     for av in avisos:

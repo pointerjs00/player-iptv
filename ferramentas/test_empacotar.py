@@ -258,5 +258,48 @@ class LeiaMe(unittest.TestCase):
         self.assertIn("conteúdo", empacotar.LEIA_ME)
 
 
+class EdicaoPartilha(unittest.TestCase):
+    def test_codigo_com_o_stbstalker_recusa(self):
+        empacotar.verificar_sem_stbstalker(b"codigo sem nada", "app.so")
+        for mau in [b"x https://stbstalker.alaaeldinee.com/ y", b"Listas do stbstalker"]:
+            with self.assertRaises(SystemExit):
+                empacotar.verificar_sem_stbstalker(mau, "app.so")
+
+    def test_partilha_vai_para_dist_partilha_com_os_testes_e_o_define(self):
+        with tempfile.TemporaryDirectory() as t:
+            vistos = {}
+
+            def android(d):
+                vistos["dist"] = d
+                vistos["defines"] = list(empacotar.DEFINES)
+                return []
+
+            orig = (empacotar.RAIZ, empacotar.construir_android, empacotar.testar_partilha)
+            empacotar.RAIZ, empacotar.construir_android = Path(t), android
+            empacotar.testar_partilha = lambda: vistos.setdefault("testes", True)
+            try:
+                empacotar.main(["--so-android", "--partilha"])
+            finally:
+                empacotar.RAIZ, empacotar.construir_android, empacotar.testar_partilha = orig
+                empacotar.DEFINES.clear()
+            self.assertEqual(vistos["dist"], Path(t) / "dist" / "partilha")
+            self.assertEqual(vistos["defines"], [empacotar.DEFINE_PARTILHA])
+            self.assertTrue(vistos["testes"])
+            self.assertTrue((Path(t) / "dist" / "partilha" / "LEIA-ME.txt").exists())
+
+    def test_sem_partilha_nao_ha_define(self):
+        with tempfile.TemporaryDirectory() as t:
+            vistos = {}
+            orig = (empacotar.RAIZ, empacotar.construir_android)
+            empacotar.RAIZ = Path(t)
+            empacotar.construir_android = lambda d: vistos.update(defines=list(empacotar.DEFINES), dist=d) or []
+            try:
+                empacotar.main(["--so-android"])
+            finally:
+                empacotar.RAIZ, empacotar.construir_android = orig
+            self.assertEqual(vistos["defines"], [])
+            self.assertEqual(vistos["dist"], Path(t) / "dist")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1,3 +1,5 @@
+import '../edicao.dart';
+
 /// As traduções inglesas: chave = o texto português (como está no código, com {0}, {1}…).
 const textosIngles = <String, String>{
   'Adição':
@@ -496,8 +498,6 @@ const textosIngles = <String, String>{
       'Previous month',
   'Mês seguinte':
       'Next month',
-  '‹ Importar · Listas do stbstalker':
-      '‹ Import · stbstalker lists',
   'Escolhe o início e o fim':
       'Choose the start and the end',
   'De':
@@ -512,8 +512,6 @@ const textosIngles = <String, String>{
       'Start over',
   'sair sem mudar':
       'leave without changing',
-  'Pesquisa no stbstalker':
-      'stbstalker search',
   'Nada a decorrer':
       'Nothing running',
   '{0} funcionam, {1} não{2}':
@@ -772,8 +770,6 @@ const textosIngles = <String, String>{
       'Export lists',
   'Passos do Gestor':
       'Manager steps',
-  'Ficheiros, texto, stbstalker ou de Ver TV':
-      'Files, text, stbstalker or from Watch TV',
   'Última importação':
       'Last import',
   'Entraram':
@@ -826,8 +822,6 @@ const textosIngles = <String, String>{
       'Add list',
   'Portal MAC, Xtream ou M3U':
       'MAC portal, Xtream or M3U',
-  'Listas do stbstalker':
-      'stbstalker lists',
   'Publicadas entre duas datas':
       'Published between two dates',
   'De Ver TV':
@@ -1376,8 +1370,6 @@ const textosIngles = <String, String>{
       'Lists come in through the Manager. There you can import them, see which ones work and send the good ones here.',
   'Importar':
       'Import',
-  'Ficheiro, texto colado ou listas do stbstalker':
-      'File, pasted text or stbstalker lists',
   'Testamos 3 canais de cada lista':
       'We test 3 channels of each list',
   'As que funcionam aparecem aqui':
@@ -1486,8 +1478,6 @@ const textosIngles = <String, String>{
       'on every frame',
   'só nas imagens entrelaçadas':
       'only on interlaced frames',
-  'canal {0}/{1} · {2}':
-      'channel {0}/{1} · {2}',
   'lista':
       'list',
   'listas':
@@ -1570,4 +1560,43 @@ const textosIngles = <String, String>{
       'Settings › Language: the app can be in English. It changes right away, without restarting.',
   'Ao ver um canal: ao carregar em OK na barra do volume, ela dá um pulo e mostra as setas ‹ › enquanto se ajusta.':
       'While watching a channel: pressing OK on the volume bar makes it pulse and shows the ‹ › arrows while you adjust it.',
+  'Ficheiros, texto ou de Ver TV':
+      'Files, text or from Watch TV',
+  'Ficheiro ou texto colado':
+      'File or pasted text',
+  '{0} encontradas':
+      '{0} found',
+  'a procurar':
+      'searching',
+  '1 tarefa a decorrer':
+      '1 task running',
+  '{0} tarefas a decorrer':
+      '{0} tasks running',
+  '{0} a decorrer · {1} terminadas':
+      '{0} running · {1} finished',
+  'abriu {0}':
+      'opened {0}',
+  'A importar…':
+      'Importing…',
+  'A importar · {0}':
+      'Importing · {0}',
+  'a API respondeu {0}':
+      'the API replied {0}',
+  'A ligar…':
+      'Connecting…',
+  'Em inglês: o progresso da verificação («Testing channel 2 of 3») e o das páginas ao carregar um portal voltam a aparecer, e as últimas frases que ficavam em português foram traduzidas.':
+      'In English: the check progress ("Testing channel 2 of 3") and the page progress when loading a portal show again, and the last sentences still in Portuguese were translated.',
+  // o stbstalker não existe na edição de partilha (nem as traduções dele)
+  if (!edicaoPartilha) ...{
+    '‹ Importar · Listas do stbstalker':
+        '‹ Import · stbstalker lists',
+    'Pesquisa no stbstalker':
+        'stbstalker search',
+    'Ficheiros, texto, stbstalker ou de Ver TV':
+        'Files, text, stbstalker or from Watch TV',
+    'Listas do stbstalker':
+        'stbstalker lists',
+    'Ficheiro, texto colado ou listas do stbstalker':
+        'File, pasted text or stbstalker lists',
+  },
 };

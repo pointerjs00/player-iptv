@@ -22,6 +22,7 @@ import 'cartao_lista.dart';
 import 'favoritos_inicio.dart';
 import '../design/mensagens.dart';
 import '../../idioma/idioma.dart';
+import '../../edicao.dart';
 
 /// Ver TV, o Início: "Continuar a ver" (o último canal visto), os favoritos de todas as listas e
 /// as listas em cartões (com o estado da última verificação, pesquisa e filtro por estado). Sem
@@ -504,7 +505,8 @@ class _TelaInicioState extends State<TelaInicio> {
                 style: TextStyle(color: Tokens.texto2)),
             const SizedBox(height: Tokens.e24),
             Wrap(spacing: Tokens.e16, runSpacing: Tokens.e16, alignment: WrapAlignment.center, children: [
-              _passo(1, tr('Importar'), tr('Ficheiro, texto colado ou listas do stbstalker'), tv),
+              _passo(1, tr('Importar'),
+                  edicaoPartilha ? tr('Ficheiro ou texto colado') : tr('Ficheiro, texto colado ou listas do stbstalker'), tv),
               _passo(2, tr('Verificar'), tr('Testamos 3 canais de cada lista'), tv),
               _passo(3, tr('Enviar'), tr('As que funcionam aparecem aqui'), tv),
             ]),

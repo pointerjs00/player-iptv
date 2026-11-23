@@ -26,6 +26,7 @@ import 'tela_como_verifica.dart';
 import 'tela_importar.dart';
 import 'tela_verificacao.dart';
 import '../../idioma/idioma.dart';
+import '../../edicao.dart';
 
 /// Os ecrãs do Gestor: o resumo (ao entrar), os três passos e o progresso da verificação (que
 /// se abre do passo 2).
@@ -45,7 +46,7 @@ enum EcraGestor { resumo, importar, verificar, enviar, verificacao }
 /// ao passo 2, com o foco onde estava.
 class TelaGestor extends StatefulWidget {
   const TelaGestor({super.key, required this.biblioteca, required this.area, required this.servico,
-      required this.tarefas, this.pedido, this.baseStb = stbBase, this.guardar = guardarFicheiro});
+      required this.tarefas, this.pedido, this.baseStb = edicaoPartilha ? '' : stbBase, this.guardar = guardarFicheiro});
 
   /// As listas de Ver TV (recebem os envios) e os canais de teste.
   final Biblioteca biblioteca;
@@ -775,7 +776,7 @@ class _TelaGestorState extends State<TelaGestor> {
           final largo = caixa.maxWidth >= 560;
           final cartoes = [
             _cartao(0, largo, [
-              Text(tr('Ficheiros, texto, stbstalker ou de Ver TV'), style: _mut),
+              Text(edicaoPartilha ? tr('Ficheiros, texto ou de Ver TV') : tr('Ficheiros, texto, stbstalker ou de Ver TV'), style: _mut),
               if (ultima != null)
                 _linhaCartao(tr('Última importação'),
                     ultima.estado == EstadoTarefa.aDecorrer ? 'a decorrer' : _ha(ultima.fim ?? ultima.inicio)),
