@@ -432,11 +432,12 @@ class Preferencias extends ChangeNotifier {
     if (motor != null) _motorAndroid = MotorAndroid.deNome(motor);
     _modoTunel = campo<bool>('modoTunel') ?? _modoTunel;
     _pouparDados = campo<bool>('pouparDados') ?? _pouparDados;
-    final canaisTg = campo<List>('canaisTelegram');
+    // o Telegram não existe na edição de partilha (nem as chaves dele)
+    final canaisTg = edicaoPartilha ? null : campo<List>('canaisTelegram');
     if (canaisTg != null) _canaisTelegram = [for (final c in canaisTg) if (c is String && c.isNotEmpty) c];
     final sites = campo<List>('sitesListas');
     if (sites != null) _sitesListas = [for (final x in sites) if (x is String && x.isNotEmpty) x].take(maxSitesListas).toList();
-    final favTg = campo<List>('favoritosTelegram');
+    final favTg = edicaoPartilha ? null : campo<List>('favoritosTelegram');
     if (favTg != null) _favoritosTelegram = {for (final c in favTg) if (c is String) c};
     final tempo = campo<num>('timeoutVerificacao');
     if (tempo != null) {
@@ -475,8 +476,10 @@ class Preferencias extends ChangeNotifier {
         'motorAndroid': _motorAndroid.nome,
         'modoTunel': _modoTunel,
         'pouparDados': _pouparDados,
-        'canaisTelegram': _canaisTelegram,
-        'favoritosTelegram': _favoritosTelegram.toList(),
+        if (!edicaoPartilha) ...{
+          'canaisTelegram': _canaisTelegram,
+          'favoritosTelegram': _favoritosTelegram.toList(),
+        },
         'sitesListas': _sitesListas,
         'timeoutVerificacao': _timeoutVerificacao,
         'listasEmSimultaneo': _listasEmSimultaneo,
@@ -508,13 +511,13 @@ class Preferencias extends ChangeNotifier {
     if (lidas.contains('motorAndroid')) motorAndroid = outro._motorAndroid;
     if (lidas.contains('modoTunel')) modoTunel = outro._modoTunel;
     if (lidas.contains('pouparDados')) pouparDados = outro._pouparDados;
-    if (lidas.contains('canaisTelegram')) {
+    if (!edicaoPartilha && lidas.contains('canaisTelegram')) {
       _mudar('canaisTelegram', true, () => _canaisTelegram = List.of(outro._canaisTelegram));
     }
     if (lidas.contains('sitesListas')) {
       _mudar('sitesListas', true, () => _sitesListas = List.of(outro._sitesListas));
     }
-    if (lidas.contains('favoritosTelegram')) {
+    if (!edicaoPartilha && lidas.contains('favoritosTelegram')) {
       _mudar('favoritosTelegram', true, () => _favoritosTelegram = {...outro._favoritosTelegram});
     }
     if (lidas.contains('timeoutVerificacao')) timeoutVerificacao = outro._timeoutVerificacao;

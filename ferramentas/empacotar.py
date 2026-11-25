@@ -39,7 +39,7 @@ LICENCAS_APK = [
 FICHEIRO_SHA256 = RAIZ / "third_party" / "libmpv_completo" / "SHA256.txt"
 # a edição de partilha (lib/edicao.dart): o que não pode estar no código compilado dela
 DEFINE_PARTILHA = "--dart-define=PARTILHA=true"
-PROIBIDOS_PARTILHA = [b"alaaeldinee", b"stbstalker", b"michelstv4", b"t.me/s/"]
+PROIBIDOS_PARTILHA = [b"alaaeldinee", b"stbstalker", b"michelstv4", b"t.me/s/", b"elegram"]  # "elegram": Telegram e telegram
 # o código Dart compilado: no APK (por ABI) e na pasta do Windows
 LIBAPP_APK = "lib/{abi}/libapp.so"
 APP_WINDOWS = Path("data/app.so")
