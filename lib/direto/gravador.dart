@@ -41,6 +41,7 @@ import 'package:flutter/foundation.dart' show debugPrint;
 
 import '../protocolos/protocolo.dart' show uaListas;
 import '../rede/http.dart';
+import '../rede/raizes.dart';
 import '../ui/player/continuar_direto.dart';
 import '../verificar/video.dart' show syncTs;
 import 'armazem.dart';
@@ -448,7 +449,7 @@ class GravadorDireto {
   }
 
   Future<Stream<List<int>>> _abrirHttp(Uri uri, Map<String, String> cab) async {
-    final cliente = _cliente ??= HttpClient()
+    final cliente = _cliente ??= HttpClient(context: contextoSeguro())
       ..userAgent = null
       ..connectionTimeout = const Duration(seconds: 15);
     final p = await cliente.getUrl(uri).timeout(ContinuarDireto.limiteSemDados);

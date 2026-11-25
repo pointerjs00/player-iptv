@@ -14,6 +14,7 @@ import '../protocolos/protocolo.dart';
 import '../protocolos/stalker.dart';
 import '../protocolos/xtream.dart';
 import '../rede/http.dart';
+import '../rede/raizes.dart';
 import 'programa.dart';
 import 'xmltv.dart';
 
@@ -363,7 +364,7 @@ Future<void> _lerXmltvIsolate(_PedidoXmltv p) async {
 }
 
 Future<Map<String, Object?>> _lerXmltvUrl(_PedidoXmltv p) async {
-  final cliente = HttpClient()
+  final cliente = HttpClient(context: contextoSeguro())
     ..autoUncompress = true
     ..connectionTimeout = const Duration(seconds: 30);
   final prazo = Timer(p.prazo, () => cliente.close(force: true));

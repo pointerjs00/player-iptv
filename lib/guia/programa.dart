@@ -74,8 +74,21 @@ void juntarPrograma(List<Programa> lista, Programa p) {
 bool naJanela(int inicio, int fim, int agora) =>
     fim > agora && inicio < agora + horasJanela * 3600 && fim > inicio;
 
+/// Os programas pela ordem do início, sem os que cabem dentro de outro (há guias com o mesmo
+/// programa repetido um minuto depois: 23:30–00:00 e 23:31–00:00). Um programa só entra se
+/// acabar depois do anterior que ficou.
+List<Programa> semSobrepostos(List<Programa> ps) {
+  final ordenados = [...ps]..sort((a, b) => a.inicio != b.inicio ? a.inicio - b.inicio : b.fim - a.fim);
+  final r = <Programa>[];
+  for (final p in ordenados) {
+    if (r.isEmpty || p.fim > r.last.fim) r.add(p);
+  }
+  return r;
+}
+
 /// O programa a dar e o seguinte, entre os de um canal (`agora` em segundos).
-(Programa?, Programa?) agoraESeguinte(List<Programa> ps, int agora) {
+(Programa?, Programa?) agoraESeguinte(List<Programa> todos, int agora) {
+  final ps = semSobrepostos(todos);
   for (var i = 0; i < ps.length; i++) {
     final p = ps[i];
     if (p.aDar(agora)) return (p, i + 1 < ps.length ? ps[i + 1] : null);

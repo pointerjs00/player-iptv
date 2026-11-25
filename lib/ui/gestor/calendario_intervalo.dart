@@ -356,7 +356,7 @@ class _CalendarioIntervaloState extends State<CalendarioIntervalo> {
       InkWell(
         canRequestFocus: false,
         onTap: () => Navigator.of(context).maybePop(),
-        child: Text(tr('‹ Importar · Listas do stbstalker'),
+        child: Text(tr('‹ Importar'),
             style: TextStyle(color: Tokens.texto2, fontSize: 15, fontWeight: FontWeight.w500)),
       ),
       const SizedBox(height: 4),

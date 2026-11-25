@@ -788,7 +788,7 @@ class _TelaGestorState extends State<TelaGestor> {
           final largo = caixa.maxWidth >= 560;
           final cartoes = [
             _cartao(0, largo, [
-              Text(edicaoPartilha ? tr('Ficheiros, texto ou de Ver TV') : tr('Ficheiros, texto, stbstalker, Telegram ou de Ver TV'), style: _mut),
+              Text(edicaoPartilha ? tr('Ficheiros, texto ou de Ver TV') : tr('Ficheiros, texto, sites, Telegram ou de Ver TV'), style: _mut),
               if (ultima != null)
                 _linhaCartao(tr('Última importação'),
                     ultima.estado == EstadoTarefa.aDecorrer ? 'a decorrer' : _ha(ultima.fim ?? ultima.inicio)),

@@ -1,10 +1,14 @@
+import 'dart:async';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../dados/area_gestor.dart';
 import '../../dados/biblioteca.dart';
+import '../../dados/preferencias.dart';
 import '../../importar/importar.dart';
+import '../../importar/site.dart';
 import '../../importar/stbstalker.dart';
 import '../../importar/telegram.dart';
 import '../../modelo/conta.dart';
@@ -13,9 +17,11 @@ import '../../tarefas/servico_tarefas.dart';
 import '../../verificar/servico.dart';
 import '../adicionar.dart';
 import '../campo_tv.dart';
+import '../conteudo/opcoes_conteudo.dart' show OkMantido;
 import '../design/design.dart';
 import '../design/mensagens.dart';
 import '../navegacao_blocos.dart';
+import '../realce_foco.dart';
 import '../verificar/dialogos_gestor.dart';
 import 'calendario_intervalo.dart';
 import 'indicador_atividade.dart';
@@ -108,8 +114,35 @@ class _TelaImportarState extends State<TelaImportar> {
   final _password = TextEditingController();
   final _focosFormas = [for (final f in FormaLista.values) FocusNode(debugLabel: 'Tipo ${f.nome}')];
 
-  /// O canal do Telegram (michelstv4 por omissão; o campo fica aberto a outros canais públicos).
-  final _canalTg = TextEditingController(text: edicaoPartilha ? '' : telegramCanalOmissao);
+  /// O campo para juntar um canal do Telegram à lista dos canais guardados.
+  final _canalTg = TextEditingController();
+
+  /// «Listas de um site»: o endereço (começa com o último usado).
+  late final _site = TextEditingController(text: Preferencias.atual.sitesListas.firstOrNull ?? '');
+
+  /// O canal do Telegram escolhido ([_todosFavoritosTg] = todos os favoritos; null = o primeiro).
+  String? _escolhaTg;
+  static const _todosFavoritosTg = '\u2605';
+
+  Preferencias get _prefs => Preferencias.atual;
+
+  /// Os canais guardados: os favoritos primeiro, depois os outros (pela ordem em que se juntaram).
+  List<String> get _canaisTg {
+    final fav = _prefs.favoritosTelegram;
+    final todos = _prefs.canaisTelegram;
+    return [for (final c in todos) if (fav.contains(c)) c, for (final c in todos) if (!fav.contains(c)) c];
+  }
+
+  List<String> get _favoritosTg => [for (final c in _prefs.canaisTelegram) if (_prefs.favoritosTelegram.contains(c)) c];
+
+  /// A escolha que vale agora (a guardada pode ter saído da lista).
+  String? get _escolhaValidaTg {
+    final e = _escolhaTg;
+    if (e == _todosFavoritosTg && _favoritosTg.isNotEmpty) return e;
+    final canais = _canaisTg;
+    if (e != null && canais.contains(e)) return e;
+    return canais.firstOrNull;
+  }
 
   /// Os blocos para CIMA/BAIXO: origens, painel da origem, resultado e "Limpar o Gestor".
   final _blocos = [
@@ -134,7 +167,7 @@ class _TelaImportarState extends State<TelaImportar> {
 
   @override
   void dispose() {
-    for (final c in [_texto, _endereco, _mac, _utilizador, _password, _canalTg]) {
+    for (final c in [_texto, _endereco, _mac, _utilizador, _password, _canalTg, _site]) {
       c.dispose();
     }
     for (final f in _focosFormas) {
@@ -196,6 +229,13 @@ class _TelaImportarState extends State<TelaImportar> {
 
   void _procurarStb() {
     if (edicaoPartilha) return;
+    final site = siteDeTexto(_site.text);
+    if (site == null) return _aviso(tr('Escreva o endereço do site (por exemplo https://blog.exemplo.pt).'));
+    Preferencias.atual.usarSiteListas(site);
+    _gravarPrefs();
+    setState(() {});
+    // o stbstalker tem um leitor próprio (os posts com a data no endereço)
+    if (Uri.parse(site).host.toLowerCase() != Uri.parse(stbBase).host) return _procurarSite(site);
     // as datas podem mudar durante a pesquisa: o resumo fala das que foram pesquisadas
     final inicio = _inicio, fim = _fim, base = widget.baseStb;
     final periodo = inicio == fim ? _dd(inicio) : '${_dd(inicio)} a ${_dd(fim)}';
@@ -225,12 +265,116 @@ class _TelaImportarState extends State<TelaImportar> {
     });
   }
 
+  void _gravarPrefs() => unawaited(_prefs.guardar().catchError((Object e) {
+        if (mounted) _aviso(tr('Não foi possível guardar ({0}).', [descreverErro(e)]));
+      }));
+
+  /// Junta o canal escrito no campo aos canais guardados (e escolhe-o). Devolve-o (null = inválido).
+  String? _juntarCanalTg() {
+    final canal = canalDeTexto(_canalTg.text);
+    if (canal == null) {
+      _aviso(tr('Escreva o nome do canal (por exemplo @nome_do_canal).'));
+      return null;
+    }
+    final existente = _prefs.canaisTelegram.where((c) => c.toLowerCase() == canal.toLowerCase()).firstOrNull;
+    if (existente == null) {
+      _prefs.juntarCanalTelegram(canal);
+      _gravarPrefs();
+    }
+    _canalTg.clear();
+    setState(() => _escolhaTg = existente ?? canal);
+    return existente ?? canal;
+  }
+
+  void _alternarFavoritoTg(String canal) {
+    _prefs.alternarFavoritoTelegram(canal);
+    _gravarPrefs();
+    setState(() {});
+  }
+
+  void _removerCanalTg(String canal) {
+    final eraFavorito = _prefs.favoritosTelegram.contains(canal);
+    _prefs.removerCanalTelegram(canal);
+    _gravarPrefs();
+    setState(() {});
+    mostrarMensagem(context, tr('@{0} saiu dos canais', [canal]), acao: tr('Desfazer'), aoAcao: () {
+      if (!mounted) return;
+      _prefs.juntarCanalTelegram(canal);
+      if (eraFavorito && !_prefs.favoritosTelegram.contains(canal)) _prefs.alternarFavoritoTelegram(canal);
+      _gravarPrefs();
+      setState(() {});
+    });
+  }
+
+  /// OK mantido (ou toque longo) num canal: favorito ou remover.
+  Future<void> _menuCanalTg(String canal) async {
+    final fav = _prefs.favoritosTelegram.contains(canal);
+    final r = await showDialog<String>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: Text('@$canal'),
+        children: [
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(ctx, 'favorito'),
+            child: Row(children: [
+              Icon(fav ? Icons.star_outline_rounded : Icons.star_rounded, color: Tokens.aviso),
+              const SizedBox(width: Tokens.e12),
+              Text(fav ? tr('Tirar dos favoritos') : tr('Pôr nos favoritos')),
+            ]),
+          ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(ctx, 'remover'),
+            child: Row(children: [
+              const Icon(Icons.delete_outline_rounded, color: Tokens.mau),
+              const SizedBox(width: Tokens.e12),
+              Text(tr('Remover o canal')),
+            ]),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    if (r == 'favorito') _alternarFavoritoTg(canal);
+    if (r == 'remover') _removerCanalTg(canal);
+  }
+
+  /// Um site que não é o stbstalker: Blogger ou WordPress entre as datas, ou só a página.
+  void _procurarSite(String site) {
+    final inicio = _inicio, fim = _fim;
+    final periodo = inicio == fim ? _dd(inicio) : '${_dd(inicio)} a ${_dd(fim)}';
+    final host = Uri.parse(site).host;
+    widget.registo.iniciar(widget.tarefas, '${tr('Pesquisa em {0}', [host])} · $periodo', (p) async {
+      p(null, tr('a ler o site'));
+      final parada = _Falha(tr('Pesquisa parada. Nenhuma lista foi junta ao Gestor.'));
+      final ResultadoSite r;
+      try {
+        r = await importarSite(site, inicio, fim,
+            aoProgresso: (lidas, encontradas) => p(null, tr('{0} encontradas', [encontradas])),
+            cancelado: () => p.cancelado);
+      } on Cancelado {
+        throw parada;
+      } catch (e) {
+        if (p.cancelado) throw parada;
+        throw _Falha(tr('Não foi possível ler o site: {0}', [descreverErro(e)]));
+      }
+      if (p.cancelado) throw parada;
+      if (r.erro != null) return ResumoImportacao(erros: [r.erro!]);
+      final contas = [for (final c in r.contas) Importada(c)];
+      return juntarAoGestor(_g, () => _g.adicionar(contas), encontradas: contas.length);
+    });
+  }
+
   void _procurarTelegram() {
     if (edicaoPartilha) return;
-    final canal = canalDeTexto(_canalTg.text);
-    if (canal == null) return _aviso(tr('Escreva o nome do canal (por exemplo @michelstv4).'));
+    // com um canal escrito no campo (e ainda não junto), junta-se e procura-se nele
+    if (_canalTg.text.trim().isNotEmpty && _juntarCanalTg() == null) return;
+    final escolha = _escolhaValidaTg;
+    if (escolha == null) return _aviso(tr('Junte um canal do Telegram primeiro.'));
+    final canais = escolha == _todosFavoritosTg ? _favoritosTg : [escolha];
     final inicio = _inicio, fim = _fim, base = widget.baseTelegram;
     final periodo = inicio == fim ? _dd(inicio) : '${_dd(inicio)} a ${_dd(fim)}';
+    if (canais.length > 1) return _procurarVariosTelegram(canais, inicio, fim, base, periodo);
+    final canal = canais.single;
     widget.registo.iniciar(widget.tarefas, '${tr(tituloTarefaTelegram)} · @$canal · $periodo', (p) async {
       p(null, tr('a procurar as mensagens'));
       final parada = _Falha(tr('Pesquisa parada. Nenhuma lista foi junta ao Gestor.'));
@@ -250,6 +394,38 @@ class _TelaImportarState extends State<TelaImportar> {
       if (r.erro != null) return ResumoImportacao(erros: [r.erro!]);
       final contas = [for (final c in r.contas) Importada(c)];
       return juntarAoGestor(_g, () => _g.adicionar(contas), encontradas: contas.length);
+    });
+  }
+
+  /// «Todos os favoritos»: um canal de cada vez, sem duplicar; um canal que falha não pára os outros.
+  void _procurarVariosTelegram(List<String> canais, DateTime inicio, DateTime fim, String base, String periodo) {
+    final titulo = '${tr(tituloTarefaTelegram)} · ${tr('{0} canais favoritos', [canais.length])} · $periodo';
+    widget.registo.iniciar(widget.tarefas, titulo, (p) async {
+      final parada = _Falha(tr('Pesquisa parada. Nenhuma lista foi junta ao Gestor.'));
+      final contas = <Importada>[];
+      final vistos = <String>{};
+      final erros = <String>[];
+      for (final (i, canal) in canais.indexed) {
+        if (p.cancelado) throw parada;
+        p(null, tr('@{0} ({1} de {2}) · {3} encontradas', [canal, i + 1, canais.length, contas.length]));
+        try {
+          final r = await importarTelegram(canal, inicio, fim, base: base, cancelado: () => p.cancelado);
+          if (r.erro != null) {
+            erros.add('@$canal: ${r.erro}');
+            continue;
+          }
+          for (final c in r.contas) {
+            if (vistos.add(chave(c))) contas.add(Importada(c));
+          }
+        } on Cancelado {
+          throw parada;
+        } catch (e) {
+          if (p.cancelado) throw parada;
+          erros.add('@$canal: ${tr('Não foi possível pesquisar: {0}', [descreverErro(e)])}');
+        }
+      }
+      if (contas.isEmpty) return ResumoImportacao(erros: erros);
+      return juntarAoGestor(_g, () => _g.adicionar(contas), encontradas: contas.length, erros: erros);
     });
   }
 
@@ -328,8 +504,8 @@ class _TelaImportarState extends State<TelaImportar> {
           (OrigemImportacao.ficheiros, Icons.file_open_outlined, tr('Ficheiros'), tr('Accounts.json, .ini, .m3u, .txt')),
           (OrigemImportacao.adicionar, Icons.playlist_add_rounded, tr('Adicionar lista'), tr('Portal MAC, Xtream ou M3U')),
           if (!edicaoPartilha) ...[
-            (OrigemImportacao.stbstalker, Icons.event_note_outlined, tr('Listas do stbstalker'),
-                tr('Publicadas entre duas datas')),
+            (OrigemImportacao.stbstalker, Icons.public_rounded, tr('Listas de um site'),
+                tr('stbstalker, Blogger, WordPress…')),
             (OrigemImportacao.telegram, Icons.send_outlined, tr('Listas do Telegram'),
                 tr('De um canal público')),
           ],
@@ -426,8 +602,10 @@ class _TelaImportarState extends State<TelaImportar> {
       case OrigemImportacao.stbstalker:
         if (edicaoPartilha) return const SizedBox.shrink();
         return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          _titulo(tr('Listas do stbstalker')),
-          _explicacao(tr('Junta as listas publicadas no blog entre duas datas, sem duplicar.')),
+          _titulo(tr('Listas de um site')),
+          _explicacao(tr('Junta as listas publicadas num site entre duas datas, sem duplicar. No stbstalker e nos blogs Blogger ou WordPress lêem-se os posts das datas; noutro site, ou no endereço de um post, lê-se só essa página.')),
+          _campo(_site, tr('Endereço do site'), 'https://blog.exemplo.pt'),
+          ..._sitesRecentes(),
           Wrap(spacing: Tokens.e8, runSpacing: Tokens.e8, crossAxisAlignment: WrapCrossAlignment.end, children: [
             OutlinedButton.icon(
               onPressed: _escolherDatas,
@@ -448,7 +626,7 @@ class _TelaImportarState extends State<TelaImportar> {
           _titulo(tr('Listas do Telegram')),
           _explicacao(tr('Junta as listas de um canal público do Telegram, entre duas datas. '
               'Lê o texto das mensagens (Xtream, M3U e portal MAC); não lê ficheiros anexados.')),
-          _campo(_canalTg, tr('Canal do Telegram'), '@michelstv4'),
+          ..._canaisTelegram(),
           const SizedBox(height: Tokens.e8),
           Wrap(spacing: Tokens.e8, runSpacing: Tokens.e8, crossAxisAlignment: WrapCrossAlignment.end, children: [
             OutlinedButton.icon(
@@ -477,6 +655,110 @@ class _TelaImportarState extends State<TelaImportar> {
           ),
         ]);
     }
+  }
+
+  /// Os sites usados há pouco (tocar escolhe; o × tira-o da lista).
+  List<Widget> _sitesRecentes() {
+    final recentes = [for (final s in Preferencias.atual.sitesListas) if (s != siteDeTexto(_site.text)) s];
+    if (recentes.isEmpty) return const [];
+    return [
+      Wrap(spacing: Tokens.e8, runSpacing: Tokens.e8, children: [
+        for (final s in recentes)
+          InputChip(
+            key: Key('site-recente-$s'),
+            label: Text(Uri.parse(s).host + (raizDoSite(s) ? '' : Uri.parse(s).path), overflow: TextOverflow.ellipsis),
+            onPressed: () => setState(() => _site.text = s),
+            onDeleted: () {
+              Preferencias.atual.removerSiteListas(s);
+              _gravarPrefs();
+              setState(() {});
+            },
+            deleteButtonTooltipMessage: tr('Tirar dos recentes'),
+          ),
+      ]),
+      const SizedBox(height: Tokens.e12),
+    ];
+  }
+
+  /// Os canais do Telegram guardados (favoritos primeiro), «Todos os favoritos» e o campo para
+  /// juntar outro. OK escolhe o canal; OK mantido (ou toque longo) abre o menu dele; a estrela e
+  /// o caixote respondem ao toque e ao rato.
+  List<Widget> _canaisTelegram() {
+    final canais = _canaisTg;
+    final favoritos = _favoritosTg;
+    final escolha = _escolhaValidaTg;
+    Widget linha(String? canal) {
+      final valor = canal ?? _todosFavoritosTg;
+      final escolhido = escolha == valor;
+      final fav = canal != null && favoritos.contains(canal);
+      void escolher() => setState(() => _escolhaTg = valor);
+      final tile = RealceFoco(
+        raio: Tokens.raioBotao,
+        construir: (_, aoMudarFoco) => ListTile(
+          key: Key('canal-tg-${canal ?? '*'}'),
+          onFocusChange: aoMudarFoco,
+          dense: true,
+          selected: escolhido,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Tokens.raioBotao)),
+          leading: Icon(
+              canal == null
+                  ? Icons.star_rounded
+                  : escolhido
+                      ? Icons.radio_button_checked_rounded
+                      : Icons.radio_button_unchecked_rounded,
+              color: canal == null ? Tokens.aviso : null),
+          title: Text(canal == null ? tr('Todos os favoritos ({0})', [favoritos.length]) : '@$canal',
+              maxLines: 1, overflow: TextOverflow.ellipsis),
+          trailing: canal == null
+              ? null
+              : ExcludeFocus(
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    IconButton(
+                      key: Key('favorito-tg-$canal'),
+                      tooltip: fav ? tr('Tirar dos favoritos') : tr('Pôr nos favoritos'),
+                      icon: Icon(fav ? Icons.star_rounded : Icons.star_outline_rounded,
+                          color: fav ? Tokens.aviso : Tokens.texto2),
+                      onPressed: () => _alternarFavoritoTg(canal),
+                    ),
+                    IconButton(
+                      key: Key('remover-tg-$canal'),
+                      tooltip: tr('Remover o canal'),
+                      icon: const Icon(Icons.delete_outline_rounded, color: Tokens.texto2),
+                      onPressed: () => _removerCanalTg(canal),
+                    ),
+                  ]),
+                ),
+          onTap: escolher,
+          onLongPress: canal == null ? null : () => _menuCanalTg(canal),
+        ),
+      );
+      return canal == null ? tile : OkMantido(aoCarregar: escolher, aoManter: () => _menuCanalTg(canal), child: tile);
+    }
+
+    return [
+      if (canais.isEmpty)
+        _explicacao(tr('Ainda não há canais guardados: junte um em baixo.'))
+      else ...[
+        Text(tr('Os seus canais'), style: const TextStyle(color: Tokens.texto2, fontWeight: FontWeight.w600)),
+        const SizedBox(height: Tokens.e4),
+        if (favoritos.length > 1) linha(null),
+        for (final c in canais) linha(c),
+        const SizedBox(height: Tokens.e8),
+      ],
+      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Expanded(child: _campo(_canalTg, tr('Juntar um canal'), '@nome_do_canal')),
+        const SizedBox(width: Tokens.e8),
+        Padding(
+          padding: const EdgeInsets.only(top: Tokens.e8),
+          child: OutlinedButton.icon(
+            key: const Key('juntar-canal-tg'),
+            onPressed: _juntarCanalTg,
+            icon: const Icon(Icons.add_rounded),
+            label: Text(tr('Juntar')),
+          ),
+        ),
+      ]),
+    ];
   }
 
   /// Um campo de uma linha com rótulo (o comando da TV só abre o teclado com OK: ver CampoTv).

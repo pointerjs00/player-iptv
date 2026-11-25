@@ -54,8 +54,8 @@ void main() {
                 tarefas: ServicoTarefas(),
                 baseStb: '${srv.url}/'))));
     await abrirImportar(t);
-    expect(find.text('Listas do stbstalker'), findsOneWidget);
-    await t.tap(find.text('Listas do stbstalker'));
+    expect(find.text('Listas de um site'), findsOneWidget);
+    await t.tap(find.text('Listas de um site'));
     await t.pump();
     expect(find.textContaining('Escolher datas · '), findsOneWidget);
     await t.runAsync(() async {
@@ -101,7 +101,7 @@ void main() {
                 tarefas: ServicoTarefas(),
                 baseStb: 'http://127.0.0.1:${corta.port}/'))));
     await abrirImportar(t);
-    await t.tap(find.text('Listas do stbstalker'));
+    await t.tap(find.text('Listas de um site'));
     await t.pump();
     await t.runAsync(() async {
       await t.tap(find.text('Procurar e juntar'));
@@ -110,7 +110,8 @@ void main() {
     await t.pump();
     await t.pump();
     expect(find.text('Com erro (Não foi possível pesquisar: a ligação foi cortada pelo servidor)'), findsOneWidget);
-    expect(find.textContaining('http'), findsNothing);
+    // o link não aparece na mensagem (o campo do site mostra o endereço, como deve)
+    expect(find.textContaining(RegExp(r'(erro|pesquisar).*http')), findsNothing);
   });
 
   testWidgets('o calendário do stbstalker abre no ecrã, em português', (t) async {
@@ -138,7 +139,7 @@ void main() {
             body: TelaGestor(
                 biblioteca: bib, area: area, servico: ServicoVerificacao(bib, colecao: area), tarefas: ServicoTarefas()))));
     await abrirImportar(t);
-    await t.tap(find.text('Listas do stbstalker'));
+    await t.tap(find.text('Listas de um site'));
     await t.pump();
     await t.tap(find.widgetWithIcon(OutlinedButton, Icons.calendar_today));
     await t.pumpAndSettle();

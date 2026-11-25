@@ -446,7 +446,7 @@ void main() {
       await t.pumpWidget(_app(Scaffold(body: telaGestor(baseStb: 'http://127.0.0.1:${calado.port}/'))));
       await t.pump();
       await abrirPasso(t, 'Importar');
-      await t.tap(find.text('Listas do stbstalker'));
+      await t.tap(find.text('Listas de um site'));
       await t.pump();
       await _irPara(t, 'Procurar e juntar');
       await t.runAsync(() async {

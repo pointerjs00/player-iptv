@@ -186,7 +186,7 @@ class ServicoGuia extends ChangeNotifier {
     var ps = _guia.porCanal[c.id];
     final sozinho = _doCanal[c.id];
     if ((ps == null || !ps.any((p) => p.fim > t)) && sozinho != null) ps = sozinho.$2;
-    return [for (final p in ps ?? const <Programa>[]) if (p.fim > t) p];
+    return semSobrepostos([for (final p in ps ?? const <Programa>[]) if (p.fim > t) p]);
   }
 
   /// O programa a dar e o seguinte de um canal.

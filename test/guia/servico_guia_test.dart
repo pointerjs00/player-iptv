@@ -141,6 +141,22 @@ void main() {
     s.dispose();
   });
 
+  test('«A seguir» não mostra um programa repetido dentro do que está a dar (23:30–00:00 e 23:31–00:00)', () async {
+    final s = servico(FonteFalsa(todosDa: () => {
+          '1': [
+            const Programa(agora - 600, agora + 1200, 'Liga Francesa - Magazine'),
+            const Programa(agora - 540, agora + 1200, 'Liga Francesa - Magazine'),
+            const Programa(agora + 1200, agora + 6600, 'Titulares - Informação'),
+          ],
+        }), comArmazem: false);
+    await s.usarCanais([rtp]);
+    final (atual, seguinte) = s.agoraESeguinteDe(rtp);
+    expect(atual!.inicio, agora - 600);
+    expect(seguinte!.titulo, 'Titulares - Informação');
+    expect(s.programas(rtp), hasLength(2));
+    s.dispose();
+  });
+
   test('o que já acabou sai sozinho com o tempo', () async {
     var t = agora;
     final s = servico(FonteFalsa(todosDa: guiaRtp), comArmazem: false, relogio: () => t);

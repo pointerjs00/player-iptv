@@ -236,7 +236,7 @@ void main() {
     await teclaDpad(t, LogicalKeyboardKey.arrowRight);
     expect(textosFocados(), startsWith('Adicionar lista'));
     await teclaDpad(t, LogicalKeyboardKey.arrowRight);
-    expect(textosFocados(), startsWith('Listas do stbstalker'));
+    expect(textosFocados(), startsWith('Listas de um site'));
     await teclaDpad(t, LogicalKeyboardKey.arrowRight);
     expect(textosFocados(), startsWith('Listas do Telegram'));
     await teclaDpad(t, LogicalKeyboardKey.arrowRight);

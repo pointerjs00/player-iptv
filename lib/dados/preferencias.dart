@@ -1,3 +1,6 @@
+import '../edicao.dart';
+import '../importar/stbstalker.dart' show stbBase;
+import '../importar/telegram.dart' show telegramCanalOmissao;
 import 'dart:convert';
 import 'dart:io';
 
@@ -184,6 +187,9 @@ class Preferencias extends ChangeNotifier {
   MotorAndroid _motorAndroid;
   bool _modoTunel = false;
   bool _pouparDados = true;
+  List<String> _canaisTelegram = List.of(canaisTelegramOmissao);
+  Set<String> _favoritosTelegram = {};
+  List<String> _sitesListas = List.of(sitesListasOmissao);
   int _timeoutVerificacao = padraoTimeoutVerificacao;
   int _listasEmSimultaneo = padraoListasEmSimultaneo;
   int _tempoLimiteLista = padraoTempoLimiteLista;
@@ -248,6 +254,47 @@ class Preferencias extends ChangeNotifier {
   /// Windows é sempre o mpv).
   MotorAndroid get motorAndroid => _motorAndroid;
   set motorAndroid(MotorAndroid v) => _mudar('motorAndroid', _motorAndroid != v, () => _motorAndroid = v);
+
+  /// Os canais do Telegram guardados (Gestor › Importar › Listas do Telegram), pela ordem em
+  /// que se juntaram. Os nomes sem "@".
+  List<String> get canaisTelegram => List.unmodifiable(_canaisTelegram);
+
+  /// Os canais do Telegram favoritos (aparecem primeiro; «Todos os favoritos» procura neles).
+  Set<String> get favoritosTelegram => Set.unmodifiable(_favoritosTelegram);
+
+  /// Junta um canal do Telegram (se ainda não estiver).
+  void juntarCanalTelegram(String canal) {
+    final ja = _canaisTelegram.any((c) => c.toLowerCase() == canal.toLowerCase());
+    _mudar('canaisTelegram', !ja, () => _canaisTelegram = [..._canaisTelegram, canal]);
+  }
+
+  /// Tira um canal do Telegram (e dos favoritos).
+  void removerCanalTelegram(String canal) {
+    _mudar('canaisTelegram', _canaisTelegram.contains(canal),
+        () => _canaisTelegram = [for (final c in _canaisTelegram) if (c != canal) c]);
+    _mudar('favoritosTelegram', _favoritosTelegram.contains(canal),
+        () => _favoritosTelegram = {..._favoritosTelegram}..remove(canal));
+  }
+
+  /// Põe/tira um canal do Telegram dos favoritos.
+  void alternarFavoritoTelegram(String canal) => _mudar('favoritosTelegram', true, () {
+        final f = {..._favoritosTelegram};
+        if (!f.remove(canal)) f.add(canal);
+        _favoritosTelegram = f;
+      });
+
+  /// Os sites usados em «Listas de um site», o último primeiro (no máximo [maxSitesListas]).
+  List<String> get sitesListas => List.unmodifiable(_sitesListas);
+
+  /// Usou-se `site`: passa para o topo dos recentes.
+  void usarSiteListas(String site) {
+    final novos = [site, for (final s in _sitesListas) if (s != site) s].take(maxSitesListas).toList();
+    _mudar('sitesListas', !listEquals(novos, _sitesListas), () => _sitesListas = novos);
+  }
+
+  /// Tira um site dos recentes.
+  void removerSiteListas(String site) => _mudar('sitesListas', _sitesListas.contains(site),
+      () => _sitesListas = [for (final s in _sitesListas) if (s != site) s]);
 
   /// No telemóvel Android, com dados móveis (ou numa rede limitada): pedir confirmação antes do
   /// que pode gastar muitos dados (o guia de todos os canais, carregar canais, verificar listas).
@@ -385,6 +432,12 @@ class Preferencias extends ChangeNotifier {
     if (motor != null) _motorAndroid = MotorAndroid.deNome(motor);
     _modoTunel = campo<bool>('modoTunel') ?? _modoTunel;
     _pouparDados = campo<bool>('pouparDados') ?? _pouparDados;
+    final canaisTg = campo<List>('canaisTelegram');
+    if (canaisTg != null) _canaisTelegram = [for (final c in canaisTg) if (c is String && c.isNotEmpty) c];
+    final sites = campo<List>('sitesListas');
+    if (sites != null) _sitesListas = [for (final x in sites) if (x is String && x.isNotEmpty) x].take(maxSitesListas).toList();
+    final favTg = campo<List>('favoritosTelegram');
+    if (favTg != null) _favoritosTelegram = {for (final c in favTg) if (c is String) c};
     final tempo = campo<num>('timeoutVerificacao');
     if (tempo != null) {
       _timeoutVerificacao = tempo.toInt().clamp(minTimeoutVerificacao, maxTimeoutVerificacao);
@@ -422,6 +475,9 @@ class Preferencias extends ChangeNotifier {
         'motorAndroid': _motorAndroid.nome,
         'modoTunel': _modoTunel,
         'pouparDados': _pouparDados,
+        'canaisTelegram': _canaisTelegram,
+        'favoritosTelegram': _favoritosTelegram.toList(),
+        'sitesListas': _sitesListas,
         'timeoutVerificacao': _timeoutVerificacao,
         'listasEmSimultaneo': _listasEmSimultaneo,
         'tempoLimiteLista': _tempoLimiteLista,
@@ -452,6 +508,15 @@ class Preferencias extends ChangeNotifier {
     if (lidas.contains('motorAndroid')) motorAndroid = outro._motorAndroid;
     if (lidas.contains('modoTunel')) modoTunel = outro._modoTunel;
     if (lidas.contains('pouparDados')) pouparDados = outro._pouparDados;
+    if (lidas.contains('canaisTelegram')) {
+      _mudar('canaisTelegram', true, () => _canaisTelegram = List.of(outro._canaisTelegram));
+    }
+    if (lidas.contains('sitesListas')) {
+      _mudar('sitesListas', true, () => _sitesListas = List.of(outro._sitesListas));
+    }
+    if (lidas.contains('favoritosTelegram')) {
+      _mudar('favoritosTelegram', true, () => _favoritosTelegram = {...outro._favoritosTelegram});
+    }
     if (lidas.contains('timeoutVerificacao')) timeoutVerificacao = outro._timeoutVerificacao;
     if (lidas.contains('listasEmSimultaneo')) listasEmSimultaneo = outro._listasEmSimultaneo;
     if (lidas.contains('tempoLimiteLista')) tempoLimiteLista = outro._tempoLimiteLista;
@@ -584,3 +649,12 @@ class Preferencias extends ChangeNotifier {
 
   static File _ficheiro(Directory pasta, String nome) => File('${pasta.path}${Platform.pathSeparator}$nome');
 }
+
+/// Os canais do Telegram de uma instalação nova (nenhum na edição de partilha).
+const canaisTelegramOmissao = edicaoPartilha ? <String>[] : <String>[telegramCanalOmissao];
+
+/// Os sites de «Listas de um site» de uma instalação nova (nenhum na edição de partilha).
+const sitesListasOmissao = edicaoPartilha ? <String>[] : <String>[stbBase];
+
+/// Quantos sites recentes se guardam.
+const maxSitesListas = 6;

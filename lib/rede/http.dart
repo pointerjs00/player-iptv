@@ -7,6 +7,7 @@ import 'dart:io';
 import 'dart:isolate';
 import 'dart:typed_data';
 import '../idioma/idioma.dart';
+import 'raizes.dart';
 
 class ErroHttp implements Exception {
   ErroHttp(this.status, [this.url = '', this.retryAfter]);
@@ -203,7 +204,7 @@ Future<Uint8List> obterBytes(String url, {Map<String, String> headers = const {}
 /// Um cliente partilhado: as ligações ficam abertas uns segundos e são reutilizadas
 /// (keep-alive), em vez de uma ligação TCP/TLS nova por pedido. O tempo de espera fica abaixo
 /// dos 5 s de keep-alive comuns nos servidores, para não se reutilizar uma ligação já fechada.
-final _cliente = HttpClient()
+final _cliente = HttpClient(context: contextoSeguro())
   ..autoUncompress = true
   ..userAgent = null
   ..connectionTimeout = const Duration(seconds: 30)

@@ -342,10 +342,10 @@ void main() {
       expect(_focado(), 'Ir para o Gestor');
       await _tecla(t, LogicalKeyboardKey.select);
       await t.pumpAndSettle();
-      expect(_focado(), '1 | Importar | Ficheiros, texto, stbstalker, Telegram ou de Ver TV');
+      expect(_focado(), '1 | Importar | Ficheiros, texto, sites, Telegram ou de Ver TV');
       await _tecla(t, LogicalKeyboardKey.select);
       await t.pumpAndSettle();
-      expect(find.text('Listas do stbstalker').hitTestable(), findsOneWidget);
+      expect(find.text('Listas de um site').hitTestable(), findsOneWidget);
       expect(_focado(), startsWith('Ficheiros'));
       // o passo não repete a faixa: «1 · Importar» só uma vez (na faixa)
       expect(find.text('1 · Importar'), findsOneWidget);

@@ -1663,7 +1663,63 @@ const textosIngles = <String, String>{
   'carregamento adiado para poupar dados móveis':
       'loading postponed to save mobile data',
   // o stbstalker não existe na edição de partilha (nem as traduções dele)
+  'Ver TV: «A seguir» já não repete um programa que está dentro do que está a dar.':
+      'Watch TV: "Next" no longer repeats a programme that sits inside the one on now.',
+  'Os sites com certificados da nova raiz da GoDaddy (de 2025) já não dão «falha na ligação segura» no Windows nem em aparelhos Android antigos.':
+      'Sites with certificates from the new GoDaddy root (2025) no longer give "secure connection failed" on Windows or older Android devices.',
+  '‹ Importar':
+      '‹ Import',
   if (!edicaoPartilha) ...{
+    // listas de um site
+    'Gestor › Importar › Listas do Telegram: os canais ficam guardados, com favoritos (primeiro na lista) e «Todos os favoritos», que procura em todos de uma vez.':
+        'Manager › Import › Telegram lists: channels are saved, with favourites (first in the list) and "All favourites", which searches them all at once.',
+    'Gestor › Importar › Listas de um site: além do stbstalker, qualquer site. Nos blogs Blogger e WordPress lêem-se os posts entre as datas; noutros, a página do endereço.':
+        'Manager › Import › Lists from a site: besides stbstalker, any site. On Blogger and WordPress blogs the posts between the dates are read; on others, the page at the address.',
+    'A página não tem listas (Xtream, M3U ou portal MAC) no texto.':
+        'The page has no lists (Xtream, M3U or MAC portal) in its text.',
+    'Os posts do período não têm listas (Xtream, M3U ou portal MAC) no texto.':
+        'The posts in that period have no lists (Xtream, M3U or MAC portal) in their text.',
+    'Ficheiros, texto, sites, Telegram ou de Ver TV':
+        'Files, text, sites, Telegram or from Watch TV',
+    'Escreva o endereço do site (por exemplo https://blog.exemplo.pt).':
+        'Type the site address (for example https://blog.example.com).',
+    'Pesquisa em {0}':
+        'Search on {0}',
+    'a ler o site':
+        'reading the site',
+    'Não foi possível ler o site: {0}':
+        'Could not read the site: {0}',
+    'Listas de um site':
+        'Lists from a site',
+    'stbstalker, Blogger, WordPress…':
+        'stbstalker, Blogger, WordPress…',
+    'Junta as listas publicadas num site entre duas datas, sem duplicar. No stbstalker e nos blogs Blogger ou WordPress lêem-se os posts das datas; noutro site, ou no endereço de um post, lê-se só essa página.':
+        'Adds the lists published on a site between two dates, without duplicates. On stbstalker and on Blogger or WordPress blogs the posts from those dates are read; on another site, or the address of a post, only that page is read.',
+    'Endereço do site':
+        'Site address',
+    'Tirar dos recentes':
+        'Remove from recent',
+    // a gestão dos canais do Telegram
+    'Escreva o nome do canal (por exemplo @nome_do_canal).':
+        'Type the channel name (for example @channel_name).',
+    '@{0} saiu dos canais':
+        '@{0} removed from the channels',
+    'Remover o canal':
+        'Remove the channel',
+    'Junte um canal do Telegram primeiro.':
+        'Add a Telegram channel first.',
+    '{0} canais favoritos':
+        '{0} favourite channels',
+    '@{0} ({1} de {2}) · {3} encontradas':
+        '@{0} ({1} of {2}) · {3} found',
+    'Todos os favoritos ({0})':
+        'All favourites ({0})',
+    'Ainda não há canais guardados: junte um em baixo.':
+        'No saved channels yet: add one below.',
+    'Os seus canais':
+        'Your channels',
+    'Juntar um canal':
+        'Add a channel',
     'Gestor › Importar: novo «Listas do Telegram», que junta as listas publicadas num canal público (por omissão o @michelstv4) entre as datas escolhidas.':
         'Manager › Import: new "Telegram lists", which adds the lists posted on a public channel (@michelstv4 by default) between the chosen dates.',
     '‹ Importar · Listas do stbstalker':

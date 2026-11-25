@@ -7,6 +7,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import '../rede/http.dart';
+import '../rede/raizes.dart';
 import 'estado.dart';
 import '../idioma/idioma.dart';
 
@@ -51,7 +52,7 @@ class _Leitura {
 Future<_Leitura> _ler(Uri url, Map<String, String> headers, Duration timeout, Cancelamento? can,
     {Duration segundos = const Duration(seconds: 3), int maxBytes = 1024 * 1024}) async {
   can?.verificar();
-  final cliente = HttpClient()..connectionTimeout = timeout;
+  final cliente = HttpClient(context: contextoSeguro())..connectionTimeout = timeout;
   try {
     final p = await cliente.getUrl(url).timeout(timeout);
     headers.forEach((k, v) {

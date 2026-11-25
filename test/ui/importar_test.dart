@@ -128,7 +128,7 @@ void main() {
   }
 
   Future<void> escolherStb(WidgetTester t) async {
-    await t.tap(find.text('Listas do stbstalker'));
+    await t.tap(find.text('Listas de um site'));
     await t.pump();
   }
 
@@ -145,8 +145,8 @@ void main() {
         'Accounts.json, .ini, .m3u, .txt',
         'Adicionar lista',
         'Portal MAC, Xtream ou M3U',
-        'Listas do stbstalker',
-        'Publicadas entre duas datas',
+        'Listas de um site',
+        'stbstalker, Blogger, WordPress…',
         'Listas do Telegram',
         'De um canal público',
         'De Ver TV',
@@ -157,7 +157,8 @@ void main() {
       }
       expect(find.text('Resultado'), findsNothing, reason: 'sem importações ainda');
       await escolherStb(t);
-      expect(find.text('Junta as listas publicadas no blog entre duas datas, sem duplicar.'), findsOneWidget);
+      expect(find.textContaining('Junta as listas publicadas num site entre duas datas'), findsOneWidget);
+      expect(find.widgetWithText(TextField, 'Endereço do site'), findsOneWidget);
     });
 
     testWidgets('a origem escolhida não usa a cor do anel do foco quando não tem o foco', (t) async {
@@ -380,7 +381,8 @@ void main() {
       expect(tarefa.estado, EstadoTarefa.falhou);
       expect(find.text('Com erro (Não foi possível pesquisar: a ligação foi cortada pelo servidor)'),
           findsOneWidget);
-      expect(find.textContaining('http'), findsNothing);
+      // o link não aparece na mensagem (o campo do site mostra o endereço, como deve)
+      expect(find.textContaining(RegExp(r'(erro|pesquisar).*http')), findsNothing);
     });
 
     testWidgets('sem posts nessas datas: terminada, com o motivo no painel', (t) async {

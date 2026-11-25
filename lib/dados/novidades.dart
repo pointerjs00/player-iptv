@@ -19,6 +19,17 @@ class Novidades {
 /// Todas as versões, a mais recente primeiro. A primeira é a versão da app: ao mudar a versão no
 /// pubspec.yaml, junta-se aqui a entrada dela (um teste confirma que batem certo).
 const historicoNovidades = <Novidades>[
+  Novidades('1.0.17', '2026-11-25', [
+    'Ver TV: «A seguir» já não repete um programa que está dentro do que está a dar.',
+    'Os sites com certificados da nova raiz da GoDaddy (de 2025) já não dão «falha na ligação segura» '
+        'no Windows nem em aparelhos Android antigos.',
+    if (!edicaoPartilha) ...[
+      'Gestor › Importar › Listas do Telegram: os canais ficam guardados, com favoritos (primeiro na lista) '
+          'e «Todos os favoritos», que procura em todos de uma vez.',
+      'Gestor › Importar › Listas de um site: além do stbstalker, qualquer site. Nos blogs Blogger e '
+          'WordPress lêem-se os posts entre as datas; noutros, a página do endereço.',
+    ],
+  ]),
   Novidades('1.0.16', '2026-11-23', [
     'Ver TV: programação (EPG) nas listas Xtream e nos portais MAC. Na TV e no computador, uma coluna '
         'à direita mostra o canal com o foco, o programa a dar (com o progresso e a descrição) e os '
