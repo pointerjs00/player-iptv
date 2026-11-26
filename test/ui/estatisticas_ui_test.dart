@@ -106,7 +106,7 @@ void main() {
       'S': [Programa(s - 1800, s + 1800, 'Liga Europa · Benfica x Ajax')],
     }, criado: _agora);
     await abrirInicio(t, Estatisticas.emMemoria(), guia: (_) async => guia);
-    expect(find.text('Agora: Liga Europa · Benfica x Ajax'), findsOneWidget);
+    expect(find.text('Liga Europa · Benfica x Ajax'), findsOneWidget);
     expect(t.widget<LinearProgressIndicator>(find.byKey(const Key('continuar-progresso'))).value, closeTo(.5, 1e-9));
   });
 

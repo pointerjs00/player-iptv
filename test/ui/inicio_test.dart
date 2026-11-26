@@ -112,7 +112,7 @@ void main() {
       expect(find.descendant(of: cartao, matching: find.text('B Sport TV')), findsOneWidget);
       expect(find.descendant(of: cartao, matching: find.textContaining('CONTINUAR A VER')), findsOneWidget);
       expect(find.descendant(of: cartao, matching: find.textContaining(b.nomeMostrado)), findsOneWidget);
-      expect(find.descendant(of: cartao, matching: find.text('Canal 3 · Desporto')), findsOneWidget);
+      expect(find.descendant(of: cartao, matching: find.text('Canal 3')), findsOneWidget);
       expect(find.descendant(of: cartao, matching: find.text('Ver')), findsOneWidget);
     });
 
@@ -140,7 +140,7 @@ void main() {
       await preparar(t);
       await abrir(t);
       expect(find.byType(PilulaEstado), findsNWidgets(3));
-      expect(find.text('3 canais · 2 grupos'), findsNWidgets(2));
+      expect(find.text('3 canais'), findsNWidgets(2));
       expect(find.text(' · verificada há 2 h'), findsOneWidget);
       expect(find.text('Funciona'), findsOneWidget);
       // a lista C não tem cache: nenhuma contagem no cartão dela
@@ -189,8 +189,8 @@ void main() {
       // um "visto" na lista B não relê a A
       bib.leiturasCache.clear();
       await t.runAsync(() => bib.registarVisto(b.id, _conteudo('B').canais[1]));
-      await assentar(t, () => find.text('Canal 2 · Portugal').evaluate().isNotEmpty);
-      expect(find.text('Canal 2 · Portugal'), findsOneWidget);
+      await assentar(t, () => find.text('Canal 2').evaluate().isNotEmpty);
+      expect(find.text('Canal 2'), findsOneWidget);
       expect(bib.leiturasCache[a.id] ?? 0, 0);
       expect(bib.leiturasCache[b.id] ?? 0, lessThanOrEqualTo(1));
     });
@@ -217,10 +217,10 @@ void main() {
       nav.pop();
       await t.pumpAndSettle();
       await assentar(t, () =>
-          find.text('Favoritos · 4').evaluate().isNotEmpty && find.text('Canal 3 · Desporto').evaluate().isNotEmpty);
+          find.text('Favoritos · 4').evaluate().isNotEmpty && find.text('Canal 3').evaluate().isNotEmpty);
       await t.pumpAndSettle();
       expect(find.text('Favoritos · 4'), findsOneWidget, reason: 'ao voltar fica em dia');
-      expect(find.text('Canal 3 · Desporto'), findsOneWidget);
+      expect(find.text('Canal 3'), findsOneWidget);
       expect(bib.leiturasCache[a.id] ?? 0, lessThanOrEqualTo(1));
       expect(bib.leiturasCache[b.id] ?? 0, lessThanOrEqualTo(1));
     });
@@ -283,7 +283,7 @@ void main() {
 
   /// Espera pelos resumos (contagens, número do canal visto), lidos das caches fora do build.
   Future<void> esperarResumos(WidgetTester t) async {
-    for (var i = 0; i < 50 && find.text('3 canais · 2 grupos').evaluate().isEmpty; i++) {
+    for (var i = 0; i < 50 && find.text('3 canais').evaluate().isEmpty; i++) {
       await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 40)));
       await t.pump();
     }
@@ -308,7 +308,7 @@ void main() {
       // «Continuar a ver»: uma faixa baixa (≤ 72 lógicos), com o canal, a lista e o botão Ver
       final continuar = find.byKey(const Key('continuar-a-ver'));
       expect(t.getRect(continuar).height, lessThanOrEqualTo(72 * escalaCompacto));
-      for (final s in ['A Sport TV', 'Canal 3 · Desporto', 'Ver', 'CONTINUAR A VER']) {
+      for (final s in ['A Sport TV', 'Canal 3', 'Ver', 'CONTINUAR A VER']) {
         expect(find.descendant(of: continuar, matching: find.textContaining(s)), findsOneWidget, reason: s);
       }
 
@@ -330,8 +330,8 @@ void main() {
       // cada cartão: «tipo · host» e as contagens numa linha; a validade ao lado da pílula ou,
       // quando não cabe (com a letra larga dos testes nunca cabe), logo por baixo
       final c = find.byWidget(t.widget<CartaoLista>(cartoes.first));
-      final tipo = t.getCenter(find.descendant(of: c, matching: find.textContaining('Stalker · ')));
-      expect(t.getCenter(find.descendant(of: c, matching: find.text('3 canais · 2 grupos'))).dy,
+      final tipo = t.getCenter(find.descendant(of: c, matching: find.text('STALKER')));
+      expect(t.getCenter(find.descendant(of: c, matching: find.text('3 canais'))).dy,
           moreOrLessEquals(tipo.dy, epsilon: 1));
       final pilula = t.getRect(find.descendant(of: c, matching: find.byType(PilulaEstado)));
       final validade = t.getRect(find.descendant(of: c, matching: find.text('até 16/10/2027')));
@@ -354,7 +354,7 @@ void main() {
         await t.pumpWidget(cascaCompacta());
         await esperarResumos(t);
         expect(t.takeException(), isNull, reason: 'sem overflow');
-        expect(find.textContaining('Canal 3 · Desporto'), findsOneWidget);
+        expect(find.textContaining('Canal 3'), findsOneWidget);
         // desce até aos cartões (com a letra grande ficam por baixo da dobra) e ao que tem motivo
         final rolo = find.descendant(
             of: find.byType(TelaInicio),

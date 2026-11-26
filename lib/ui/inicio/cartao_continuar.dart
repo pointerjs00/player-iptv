@@ -40,7 +40,6 @@ class CartaoContinuar extends StatelessWidget {
     final logo = tv ? 40.0 : 34.0;
     final vazio = Text(_iniciais(visto.nome),
         style: TextStyle(color: Colors.white, fontSize: logo * .36, fontWeight: FontWeight.w800));
-    final detalhe = [if (numero != null) tr('Canal {0}', [numero]), if (visto.grupo.isNotEmpty) visto.grupo].join(' · ');
     final p = programa;
     return letraPresa(Semantics(
       button: true,
@@ -69,57 +68,66 @@ class CartaoContinuar extends StatelessWidget {
                 : vazio,
           ),
           SizedBox(width: tv ? Tokens.e16 : Tokens.e12),
+          // o canal: «CONTINUAR A VER» e a lista por cima; o nome e as etiquetas por baixo
           Expanded(
+            flex: 5,
             child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-              Text(tr('CONTINUAR A VER · lista {0}', [lista.nomeMostrado]),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                      color: Tokens.acento, fontSize: tv ? 12.5 : 11, fontWeight: FontWeight.w800, letterSpacing: 1.6)),
-              Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
+              Row(children: [
+                Text(tr('Continuar a ver').toUpperCase(),
+                    maxLines: 1,
+                    style: TextStyle(
+                        color: Tokens.acento, fontSize: tv ? 11.5 : 10.5, fontWeight: FontWeight.w800, letterSpacing: 1.6)),
+                const SizedBox(width: Tokens.e8),
                 Flexible(
-                  child: Text(visto.nome, maxLines: 1, overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: tv ? 18 : 15.5, fontWeight: FontWeight.w700)),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(Icons.playlist_play_rounded, size: tv ? 15 : 13, color: Tokens.texto2),
+                    const SizedBox(width: 3),
+                    Flexible(
+                      child: Text(lista.nomeMostrado,
+                          key: const Key('continuar-lista'),
+                          maxLines: 1,
+                          softWrap: false,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(color: Tokens.texto2, fontSize: tv ? 12.5 : 11.5, fontWeight: FontWeight.w600)),
+                    ),
+                  ]),
                 ),
-                if (detalhe.isNotEmpty) ...[
-                  const SizedBox(width: Tokens.e12),
-                  Flexible(
-                    child: Text(detalhe,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(color: Tokens.texto2, fontSize: tv ? 14 : 12.5)),
-                  ),
+              ]),
+              const SizedBox(height: 3),
+              Row(children: [
+                Flexible(
+                  flex: 3,
+                  child: Text(visto.nome,
+                      maxLines: 1,
+                      softWrap: false,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontFamily: Tokens.letraTitulos, fontSize: tv ? 18 : 15.5, fontWeight: FontWeight.w700)),
+                ),
+                if (numero != null) ...[
+                  const SizedBox(width: Tokens.e8),
+                  Etiqueta(key: const Key('continuar-numero'), texto: tr('Canal {0}', [numero]), tom: TomEtiqueta.acento),
                 ],
-                // o programa a dar (do guia guardado)
-                if (p != null) ...[
-                  const SizedBox(width: Tokens.e12),
+                if (visto.grupo.isNotEmpty) ...[
+                  const SizedBox(width: Tokens.e8),
                   Flexible(
-                    flex: 2,
-                    child: Text(tr('Agora: {0}', [p.titulo]),
-                        key: const Key('continuar-programa'),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(color: Tokens.texto, fontSize: tv ? 14 : 12.5, fontWeight: FontWeight.w600)),
-                  ),
+                      flex: 2,
+                      child: Etiqueta(key: const Key('continuar-grupo'), icone: Icons.folder_outlined, texto: visto.grupo)),
                 ],
               ]),
-              if (p != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 2),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(Tokens.raioPilula),
-                    child: LinearProgressIndicator(
-                      key: const Key('continuar-progresso'),
-                      value: _progresso(),
-                      minHeight: 3,
-                      color: Tokens.acento,
-                      backgroundColor: Tokens.vidroForte,
-                    ),
-                  ),
-                ),
             ]),
           ),
+          // o programa a dar (do guia guardado), num bloco à parte com o progresso
+          if (p != null) ...[
+            Container(
+              width: 1,
+              height: tv ? 40 : 34,
+              margin: EdgeInsets.symmetric(horizontal: tv ? Tokens.e16 : Tokens.e12),
+              color: Tokens.bordaCartao,
+            ),
+            Expanded(flex: 3, child: _programa(p, tv)),
+          ],
           const SizedBox(width: Tokens.e12),
           // o botão "Ver" é só visual: o foco é do cartão (uma só paragem)
           Container(
@@ -139,6 +147,57 @@ class CartaoContinuar extends StatelessWidget {
         ]),
       ),
     ));
+  }
+
+  /// «● AGORA · faltam 25 min», o título e a barra do progresso.
+  Widget _programa(Programa p, bool tv) {
+    final agora = (this.agora ?? DateTime.now()).millisecondsSinceEpoch ~/ 1000;
+    final faltam = ((p.fim - agora) / 60).ceil();
+    return Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        Container(
+          width: 6,
+          height: 6,
+          decoration: BoxDecoration(
+            color: Tokens.mau,
+            shape: BoxShape.circle,
+            boxShadow: [BoxShadow(color: Tokens.mau.withValues(alpha: .7), blurRadius: 6)],
+          ),
+        ),
+        const SizedBox(width: 5),
+        Text(tr('AGORA'),
+            style: TextStyle(color: Tokens.mau, fontSize: tv ? 11 : 10, fontWeight: FontWeight.w800, letterSpacing: 1.4)),
+        if (faltam > 0) ...[
+          const SizedBox(width: Tokens.e8),
+          Flexible(
+            child: Text(tr('faltam {0} min', [faltam]),
+                key: const Key('continuar-faltam'),
+                maxLines: 1,
+                softWrap: false,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: Tokens.texto2, fontSize: tv ? 11.5 : 10.5)),
+          ),
+        ],
+      ]),
+      const SizedBox(height: 2),
+      Text(p.titulo,
+          key: const Key('continuar-programa'),
+          maxLines: 1,
+          softWrap: false,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(color: Tokens.texto, fontSize: tv ? 14 : 12.5, fontWeight: FontWeight.w600)),
+      const SizedBox(height: 4),
+      ClipRRect(
+        borderRadius: BorderRadius.circular(Tokens.raioPilula),
+        child: LinearProgressIndicator(
+          key: const Key('continuar-progresso'),
+          value: _progresso(),
+          minHeight: 3,
+          color: Tokens.acento,
+          backgroundColor: Tokens.vidroForte,
+        ),
+      ),
+    ]);
   }
 
   /// No telemóvel (ao alto) o cartão cresce com o que mostra: «Continuar a ver» em cima, o canal

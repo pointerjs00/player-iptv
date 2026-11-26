@@ -131,7 +131,7 @@ void main() {
       await tecla(t, LogicalKeyboardKey.arrowDown); // Sport TV 1 (tem guia)
       await t.pump(const Duration(milliseconds: 100));
       await tecla(t, LogicalKeyboardKey.arrowUp); // de volta à SIC, e fica
-      await t.pump(const Duration(milliseconds: 400));
+      await t.pump(PainelCanal.atraso + const Duration(milliseconds: 100));
       await t.pumpAndSettle();
       expect(fonte.pedidosCanal, ['2']);
     });

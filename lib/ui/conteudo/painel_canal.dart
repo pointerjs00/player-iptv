@@ -46,6 +46,10 @@ class PainelCanal extends StatefulWidget {
   /// Na folha do telemóvel: menos espaço e sem rolar (a folha rola).
   final bool compacto;
 
+  /// Espera que o canal fique à vista este tempo antes de pedir a programação dele (a descer a
+  /// lista com o comando, os canais por onde se passa não pedem nada).
+  static const atraso = Duration(milliseconds: 700);
+
   @override
   State<PainelCanal> createState() => _PainelCanalState();
 }
@@ -53,10 +57,6 @@ class PainelCanal extends StatefulWidget {
 class _PainelCanalState extends State<PainelCanal> {
   Timer? _relogio;
   Timer? _atrasoPedido;
-
-  /// Espera que o canal fique à vista este tempo antes de pedir a programação dele (a descer a
-  /// lista com o comando, os canais por onde se passa não pedem nada).
-  static const atraso = Duration(milliseconds: 300);
 
   @override
   void initState() {
@@ -82,7 +82,7 @@ class _PainelCanalState extends State<PainelCanal> {
     _atrasoPedido?.cancel();
     final g = widget.guia;
     if (g == null) return;
-    _atrasoPedido = Timer(atraso, () {
+    _atrasoPedido = Timer(PainelCanal.atraso, () {
       if (mounted) unawaited(g.pedirCanal(widget.canal));
     });
   }

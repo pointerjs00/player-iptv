@@ -41,7 +41,7 @@ class CartaoLista extends StatelessWidget {
   /// Baixo: o nome e "tipo · servidor · contagens" ao lado do ícone, a pílula e a validade (na
   /// mesma linha quando cabem; senão a validade passa para baixo) e, quando a lista não
   /// funciona, o motivo. Cresce com a letra do sistema ([fator], de [fatorTexto]).
-  static double altura(bool tv, [double fator = 1]) => (tv ? 154 : 140) * fator;
+  static double altura(bool tv, [double fator = 1]) => (tv ? 180 : 164) * fator;
 
   @override
   Widget build(BuildContext context) {
@@ -80,27 +80,13 @@ class CartaoLista extends StatelessWidget {
                           color: Tokens.aviso, size: tv ? 22 : 18, semanticLabel: tr('Favorita')),
                     ),
                 ]),
-                // numa linha: o servidor encolhe primeiro (com reticências); as contagens só
-                // encolhem se não couberem em 2/3 da largura
-                LayoutBuilder(
-                  builder: (_, c) => Row(children: [
-                    Flexible(
-                      child: Text('${_tipos[lista.conta.tipo]} · ${hostDe(lista.conta.endereco)}',
-                          maxLines: 1, overflow: TextOverflow.ellipsis, style: secundario),
-                    ),
-                    if (resumo != null)
-                      ConstrainedBox(
-                        constraints: BoxConstraints(maxWidth: c.maxWidth * 2 / 3),
-                        child: Row(mainAxisSize: MainAxisSize.min, children: [
-                          Text(' · ', style: secundario),
-                          Flexible(
-                            child: Text(tr('{0} canais · {1} grupos', [resumo!.canais, resumo!.grupos]),
-                                maxLines: 1, overflow: TextOverflow.ellipsis, style: secundario),
-                          ),
-                        ]),
-                      ),
-                  ]),
-                ),
+                // o servidor, numa linha (o tipo e as contagens vão nas etiquetas por baixo)
+                Text(hostDe(lista.conta.endereco),
+                    key: const Key('lista-servidor'),
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.ellipsis,
+                    style: secundario),
               ]),
             ),
             // no telemóvel o menu também se abre com um ⋮ à vista (a pressão longa não se adivinha)
@@ -113,27 +99,36 @@ class CartaoLista extends StatelessWidget {
                 style: IconButton.styleFrom(minimumSize: const Size(48, 48)),
               ),
           ]),
+          SizedBox(height: tv ? 10 : Tokens.e8),
+          // as etiquetas: o tipo e as contagens da cache (quando há)
+          Row(children: [
+            Etiqueta(key: const Key('lista-tipo'), texto: _tipos[lista.conta.tipo], tom: TomEtiqueta.acento, maiusculas: true),
+            if (resumo != null) ...[
+              const SizedBox(width: 6),
+              Flexible(
+                child: Etiqueta(
+                    key: const Key('lista-canais'),
+                    icone: Icons.live_tv_rounded,
+                    valor: '${resumo!.canais}',
+                    texto: tr('canais')),
+              ),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Etiqueta(
+                    key: const Key('lista-grupos'),
+                    icone: Icons.folder_outlined,
+                    valor: '${resumo!.grupos}',
+                    texto: tr('grupos')),
+              ),
+            ],
+          ]),
           if (emGrelha) const Spacer() else const SizedBox(height: Tokens.e8),
           // a pílula e a validade na mesma linha quando cabem; senão a validade vai para baixo
           Wrap(spacing: Tokens.e8, runSpacing: Tokens.e4, crossAxisAlignment: WrapCrossAlignment.center, children: [
             PilulaEstado(estadoDe(lista),
                 detalhe: u == null ? null : verificadaHa(u.data), linhasDetalhe: emGrelha ? 1 : null, discreta: true),
             if (validade.isNotEmpty)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: Tokens.vidroForte,
-                  borderRadius: BorderRadius.circular(Tokens.raioPilula),
-                ),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(Icons.event_outlined, size: tv ? 15 : 13, color: Tokens.texto2),
-                  const SizedBox(width: 4),
-                  Flexible(
-                    child: Text(validade,
-                        maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: tv ? 13 : 12)),
-                  ),
-                ]),
-              ),
+              Etiqueta(key: const Key('lista-validade'), icone: Icons.event_outlined, texto: validade),
           ]),
           if (u != null && u.motivo.isNotEmpty && u.estado != 'funciona')
             Padding(

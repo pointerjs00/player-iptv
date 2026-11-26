@@ -1753,6 +1753,14 @@ const textosIngles = <String, String>{
       '"Continue watching" shows the programme on now and its progress.',
   'Início mais limpo: o estado das listas mais discreto, os filtros com a contagem e os favoritos com o logótipo do canal.':
       'Cleaner Home: subtler list status, filters with counts and favourites with the channel logo.',
+  'canais':
+      'channels',
+  '«Continuar a ver» mais arrumado: a lista, o número e o grupo do canal em etiquetas, e o programa a dar num bloco à parte com «faltam n min» e o progresso.':
+      '«Continue watching» is tidier: the list, channel number and group as tags, and the programme on now in its own block with the time left and progress.',
+  'Os cartões das listas mostram o tipo, os canais e os grupos em etiquetas, e o servidor numa linha própria.':
+      'List cards show the type, channels and groups as tags, with the server on its own line.',
+  'Ver TV: a programação de um canal só se pede com o foco parado nele 0,7 s (a descer depressa não se pede nada).':
+      'Watch TV: a channel’s programme is only requested after the focus rests on it for 0.7 s (scrolling fast requests nothing).',
   '‹ Importar':
       '‹ Import',
   if (!edicaoPartilha) ...{
