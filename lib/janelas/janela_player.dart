@@ -62,9 +62,10 @@ class JanelaPlayer {
     _canais = canais;
     _aoVer = aoVer;
     final msg = {
-      'tipo': 'abrir', 'lista': lista.nomeMostrado, 'i': i,
+      'tipo': 'abrir', 'lista': lista.nomeMostrado, 'listaId': lista.id, 'i': i,
       'canais': [
-        for (final c in canais) {'id': c.id, 'nome': c.nome, 'grupo': c.grupo, if (c.numero != null) 'num': c.numero},
+        for (final c in canais)
+          {'id': c.id, 'nome': c.nome, 'grupo': c.grupo, if (c.numero != null) 'num': c.numero, if (c.logo.isNotEmpty) 'logo': c.logo},
       ],
     };
     if (_ligacao != null) {
@@ -237,7 +238,8 @@ class LigacaoPrincipal {
   /// janela do player ter lido as preferências e montado a app; um broadcast deitava-a fora
   /// (ninguém a escutar ainda) e a janela ficava para sempre na rodinha. Assim fica guardada
   /// até a app a escutar (só a app a escuta, uma vez).
-  final aberturas = StreamController<(String, List<Canal>, int)>();
+  /// (nome da lista, canais, índice, id da lista).
+  final aberturas = StreamController<(String, List<Canal>, int, String)>();
 
   /// `aoFechar`: a principal fechou (por omissão a janela do player fecha-se também).
   static Future<LigacaoPrincipal> ligar(int porta, {String token = '', void Function()? aoFechar}) async {
@@ -260,9 +262,10 @@ class LigacaoPrincipal {
     if (m['tipo'] == 'abrir') {
       final canais = [
         for (final c in (m['canais'] as List))
-          Canal(id: '${c['id']}', nome: '${c['nome']}', grupo: '${c['grupo']}', numero: numeroCanal(c['num'])),
+          Canal(id: '${c['id']}', nome: '${c['nome']}', grupo: '${c['grupo']}', numero: numeroCanal(c['num']),
+              logo: '${c['logo'] ?? ''}'),
       ];
-      aberturas.add(('${m['lista']}', canais, m['i'] as int));
+      aberturas.add(('${m['lista']}', canais, m['i'] as int, '${m['listaId'] ?? ''}'));
     } else if (m['tipo'] == 'fonte') {
       final p = _pedidos.remove(m['pedido']);
       if (p == null) return;

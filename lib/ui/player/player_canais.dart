@@ -91,7 +91,7 @@ class PlayerCanais extends StatefulWidget {
   const PlayerCanais({super.key, required this.canais, required this.indice, required this.resolver,
       required this.nomeLista, required this.aoSair, this.alternarEcraInteiro, this.aoMudarCanal,
       this.criarMotor = criarMotorMpv, this.criarMotorExo = novoMotorExo, this.criarSessao,
-      @visibleForTesting this.plataforma, @visibleForTesting this.agora});
+      @visibleForTesting this.plataforma, @visibleForTesting this.agora, this.aoTempoVisto});
 
   final List<Canal> canais;
   final int indice;
@@ -122,6 +122,10 @@ class PlayerCanais extends StatefulWidget {
   /// Só para os testes: o relógio (por omissão o de parede). O do direto, o do proveito de uma
   /// ligação e o das paragens a meio do canal.
   final DateTime Function()? agora;
+
+  /// O tempo visto de um canal (as estatísticas): chamado a cada [PlayerCanaisState.passoTempo]
+  /// de reprodução a sério (o vídeo a tocar, sem estar a carregar, à vista e sem erro).
+  final void Function(Canal canal, Duration tempo)? aoTempoVisto;
 
   @override
   State<PlayerCanais> createState() => PlayerCanaisState();
@@ -291,6 +295,19 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   /// [_cortePendente] e trata-se ao voltar.
   bool get _aVista => (WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed) == AppLifecycleState.resumed;
 
+  /// De quanto em quanto tempo se conta o tempo visto (as estatísticas).
+  static const passoTempo = Duration(seconds: 15);
+  Timer? _relogioTempo;
+
+  /// A reprodução a sério: o vídeo a tocar, sem estar a abrir nem a carregar, sem erro e com a
+  /// app à vista. Só isto conta como tempo visto.
+  bool get aReproduzir => _aTocar && !_aAbrir && !_buffering && _erro == null && _aVista;
+
+  void _contarTempo() {
+    if (!mounted || !aReproduzir) return;
+    widget.aoTempoVisto?.call(_canais[_i], passoTempo);
+  }
+
   /// Um corte que chegou com a app em segundo plano (null: nenhum); o valor é o `retomavel` dele.
   bool? _cortePendente;
 
@@ -371,6 +388,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    if (widget.aoTempoVisto != null) _relogioTempo = Timer.periodic(passoTempo, (_) => _contarTempo());
     // telemóvel: as barras do volume mostram o do sistema e acompanham-no
     _ajuste?.addListener(_aoMudarAjuste);
     if (_android && FiltroDesentrelacamento.suportado) {
@@ -1980,6 +1998,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
 
   @override
   void dispose() {
+    _relogioTempo?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _continuar.reiniciar(); // nenhuma reabertura marcada depois de sair
     _vigiaLink?.cancel();

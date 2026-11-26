@@ -5,6 +5,10 @@ import 'package:material_ui/material_ui.dart';
 
 import '../../dados/area_gestor.dart';
 import '../../dados/biblioteca.dart';
+import '../../dados/estatisticas.dart';
+import '../../guia/armazem.dart';
+import '../../guia/programa.dart';
+import '../../guia/servico_guia.dart' show chaveGuia;
 import '../../importar/importar.dart';
 import '../../verificar/servico.dart';
 import '../../protocolos/protocolo.dart';
@@ -12,6 +16,7 @@ import '../../rede/http.dart';
 import '../../modelo/conta.dart';
 import '../../modelo/canal.dart';
 import '../campo_tv.dart';
+import '../conteudo/painel_canal.dart' show LogoCanal;
 import '../conteudo/tela_conteudo.dart';
 import '../design/barra_teclas.dart';
 import '../design/design.dart';
@@ -19,6 +24,8 @@ import '../principal/tela_principal.dart';
 import 'acoes_lista.dart';
 import 'cartao_continuar.dart';
 import 'cartao_lista.dart';
+import 'cartao_semana.dart';
+import 'tela_estatisticas.dart';
 import 'favoritos_inicio.dart';
 import '../design/mensagens.dart';
 import '../../idioma/idioma.dart';
@@ -31,7 +38,8 @@ import '../../edicao.dart';
 /// enviar listas para o Player faz-se no Gestor. As secções, o Voltar e a confirmação da saída
 /// são da casca ([TelaPrincipal]).
 class TelaInicio extends StatefulWidget {
-  const TelaInicio({super.key, required this.biblioteca, this.area, this.servico, this.abrirLista, this.abrirCanal});
+  const TelaInicio({super.key, required this.biblioteca, this.area, this.servico, this.abrirLista, this.abrirCanal,
+      this.estatisticas, this.guiaGuardado, this.agora});
 
   /// As listas do Player.
   final Biblioteca biblioteca;
@@ -48,6 +56,15 @@ class TelaInicio extends StatefulWidget {
   /// Para testes: em vez de abrir o player (ver [TelaConteudo.abrir]).
   final FutureOr<int?> Function(List<Canal> canais, int i)? abrirCanal;
 
+  /// O tempo de visualização («A tua semana»); por omissão o da app ([Estatisticas.atual]).
+  final Estatisticas? estatisticas;
+
+  /// Para testes: o guia guardado de uma lista (por omissão o do aparelho, [ArmazemGuia]).
+  final Future<GuiaLista?> Function(Lista lista)? guiaGuardado;
+
+  /// Para testes: o relógio.
+  final DateTime Function()? agora;
+
   @override
   State<TelaInicio> createState() => _TelaInicioState();
 }
@@ -60,6 +77,12 @@ class _TelaInicioState extends State<TelaInicio> {
 
   /// O resumo da cache de cada lista (pelo id): contagens, favoritos e o número do canal visto.
   Map<String, ResumoLista> _resumos = const {};
+
+  Estatisticas get _estatisticas => widget.estatisticas ?? Estatisticas.atual;
+  DateTime _agora() => (widget.agora ?? DateTime.now)();
+
+  /// O programa a dar no canal do «Continuar a ver» (do guia guardado; null = sem guia).
+  Programa? _programaVisto;
   late ResumosInicio _resumidor = ResumosInicio(widget.biblioteca);
   int _geracao = 0;
 
@@ -78,6 +101,11 @@ class _TelaInicioState extends State<TelaInicio> {
   void initState() {
     super.initState();
     widget.biblioteca.addListener(_mudou);
+    _estatisticas.addListener(_mudouEstatisticas);
+  }
+
+  void _mudouEstatisticas() {
+    if (mounted && _visivel) setState(() {});
   }
 
   @override
@@ -101,6 +129,7 @@ class _TelaInicioState extends State<TelaInicio> {
   @override
   void dispose() {
     widget.biblioteca.removeListener(_mudou);
+    _estatisticas.removeListener(_mudouEstatisticas);
     _pesquisa.dispose();
     _focoChipFavoritas.dispose();
     for (final f in _focos.values) {
@@ -118,6 +147,51 @@ class _TelaInicioState extends State<TelaInicio> {
     final resumos = await _resumidor.atualizar(visto: b.ultimoVisto);
     if (!mounted || minha != _geracao) return;
     setState(() => _resumos = resumos);
+    // no Windows o player (outra janela) escreveu o tempo visto: relê-se
+    unawaited(_estatisticas.recarregar());
+    final programa = await _programaDoVisto();
+    if (!mounted || minha != _geracao) return;
+    if (programa != _programaVisto) setState(() => _programaVisto = programa);
+  }
+
+  /// O programa a dar agora no canal do «Continuar a ver», do guia guardado dessa lista (sem
+  /// rede: se não houver guia guardado, não há programa).
+  Future<Programa?> _programaDoVisto() async {
+    final b = widget.biblioteca;
+    final visto = b.ultimoVisto;
+    final lista = visto == null ? null : b.porId(visto.lista);
+    if (visto == null || lista == null) return null;
+    try {
+      final guia = await (widget.guiaGuardado ?? _guiaDoAparelho)(lista);
+      final ps = guia?.porCanal[visto.canal];
+      if (ps == null) return null;
+      return agoraESeguinte(ps, _agora().millisecondsSinceEpoch ~/ 1000).$1;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<GuiaLista?> _guiaDoAparelho(Lista l) async => (await ArmazemGuia.doAparelho())?.ler(chaveGuia(l));
+
+  void _abrirEstatisticas() => Navigator.of(context)
+      .push(rotaSuave<void>(TelaEstatisticas(estatisticas: _estatisticas, agora: widget.agora)));
+
+  /// «A tua semana» (só com tempo visto nas últimas duas semanas).
+  Widget _semana(bool tv) {
+    final agora = _agora();
+    final resumo = _estatisticas.semana(agora);
+    if (resumo.vazia) return const SizedBox.shrink();
+    final cartao = CartaoSemana(resumo: resumo, hoje: agora, aoAbrir: _abrirEstatisticas);
+    if (ecraTelemovel(context)) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(Tokens.e16, Tokens.e8, Tokens.e16, Tokens.e4),
+        child: entradaEmCascata(1, cartao),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(Tokens.e24, Tokens.e12, Tokens.e24, Tokens.e4),
+      child: SizedBox(height: CartaoSemana.altura(tv, fatorTexto(context)), child: entradaEmCascata(1, cartao)),
+    );
   }
 
   void _mudou() {
@@ -277,8 +351,17 @@ class _TelaInicioState extends State<TelaInicio> {
   Widget _titulo(String texto, bool tv) => Padding(
         padding: const EdgeInsets.fromLTRB(Tokens.e24, Tokens.e16, Tokens.e24, Tokens.e8),
         child: Text(texto,
-            style: TextStyle(color: Tokens.texto2, fontSize: tv ? 17 : 14, fontWeight: FontWeight.w700)),
+            style: TextStyle(
+                fontFamily: Tokens.letraTitulos, color: Tokens.texto, fontSize: tv ? 20 : 17, fontWeight: FontWeight.w700)),
       );
+
+  /// Quantas listas tem cada filtro (sem a pesquisa).
+  int _contagem(String? filtro) {
+    final todas = widget.biblioteca.listas;
+    if (filtro == null) return todas.length;
+    if (filtro == _filtroFavoritas) return todas.where((l) => l.favorita).length;
+    return todas.where((l) => (l.ultima?.estado ?? 'por_verificar') == filtro).length;
+  }
 
   Widget _continuar(bool tv) {
     final visto = widget.biblioteca.ultimoVisto;
@@ -288,6 +371,8 @@ class _TelaInicioState extends State<TelaInicio> {
       visto: visto,
       lista: lista,
       numero: _resumos[lista.id]?.numeroVisto,
+      programa: _programaVisto,
+      agora: _agora(),
       autofocus: true,
       aoAbrir: () => _abrir(lista, continuar: visto.canal),
     );
@@ -328,11 +413,16 @@ class _TelaInicioState extends State<TelaInicio> {
           itemCount: f.length,
           separatorBuilder: (_, _) => const SizedBox(width: Tokens.e12),
           itemBuilder: (_, i) => SizedBox(
-            width: tv ? 250 : 210,
+            width: tv ? 290 : 250,
             child: letraPresa(CartaoModerno(
               onTap: () => _abrir(f[i].lista, continuar: f[i].canal.id),
-              padding: EdgeInsets.symmetric(horizontal: Tokens.e16, vertical: tv ? 14 : 10),
-              child: Column(
+              padding: EdgeInsets.symmetric(horizontal: Tokens.e12, vertical: tv ? 14 : 10),
+              // o logótipo do canal e, ao lado, o nome e a lista
+              child: Row(children: [
+                LogoCanal(f[i].canal.logo, f[i].canal.nome, tamanho: tv ? 48 : 40, chave: const Key('logo-favorito')),
+                const SizedBox(width: Tokens.e12),
+                Expanded(
+                  child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -345,6 +435,8 @@ class _TelaInicioState extends State<TelaInicio> {
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(color: Tokens.texto2, fontSize: tv ? 14 : 12.5)),
                   ]),
+                ),
+              ]),
             )),
           ),
         ),
@@ -367,7 +459,22 @@ class _TelaInicioState extends State<TelaInicio> {
       for (final (v, t) in _filtros)
         ChoiceChip(
           focusNode: v == _filtroFavoritas ? _focoChipFavoritas : null,
-          label: Text(tr(t)),
+          // o nome e, ao lado, quantas listas tem (um texto à parte)
+          // (o nome encolhe num telemóvel com a letra grande; a contagem é RichText: não faz parte
+          // do nome do filtro, só se vê)
+          label: Row(mainAxisSize: MainAxisSize.min, children: [
+            Flexible(child: Text(tr(t), maxLines: 1, overflow: TextOverflow.ellipsis)),
+            const SizedBox(width: 6),
+            RichText(
+              key: ValueKey('contagem-$v'),
+              textScaler: MediaQuery.textScalerOf(context),
+              text: TextSpan(
+                text: '${_contagem(v)}',
+                style: DefaultTextStyle.of(context).style.copyWith(
+                    color: _filtro == v ? Tokens.texto : Tokens.texto2, fontWeight: FontWeight.w700, fontSize: 13),
+              ),
+            ),
+          ]),
           selected: _filtro == v,
           onSelected: (_) => setState(() => _filtro = v),
         ),
@@ -425,6 +532,7 @@ class _TelaInicioState extends State<TelaInicio> {
               ));
           return CustomScrollView(slivers: [
             SliverToBoxAdapter(child: _continuar(tv)),
+            SliverToBoxAdapter(child: _semana(tv)),
             SliverToBoxAdapter(child: _filaFavoritos(tv)),
             SliverToBoxAdapter(child: _titulo(tr('Listas · {0}', [todas.length]), tv)),
             SliverToBoxAdapter(

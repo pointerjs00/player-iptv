@@ -51,12 +51,17 @@ extension ApresentacaoEstadoLista on EstadoLista {
 /// reticências, numa linha, ou em [linhasDetalhe] linhas; null = as que precisar). [compacta]
 /// é para as linhas baixas das tabelas: mais justa e sem crescer com a letra do sistema.
 class PilulaEstado extends StatelessWidget {
-  const PilulaEstado(this.estado, {super.key, this.detalhe, this.linhasDetalhe = 1, this.compacta = false});
+  const PilulaEstado(this.estado, {super.key, this.detalhe, this.linhasDetalhe = 1, this.compacta = false,
+      this.discreta = false});
 
   final EstadoLista estado;
   final String? detalhe;
   final int? linhasDetalhe;
   final bool compacta;
+
+  /// Sem caixa nem borda: um ponto da cor do estado, com brilho, e o texto (os cartões das listas
+  /// no Início, onde a pílula repetida em todos pesava demais).
+  final bool discreta;
 
   @override
   Widget build(BuildContext context) {
@@ -65,20 +70,41 @@ class PilulaEstado extends StatelessWidget {
     final cor = estado.cor;
     final d = detalhe;
     final estilo = TextStyle(color: cor, fontWeight: FontWeight.w600, fontSize: tam, height: compacta ? 1.2 : null);
-    final margem = compacta
-        ? const EdgeInsets.symmetric(horizontal: 8, vertical: 1)
-        : EdgeInsets.symmetric(horizontal: tv ? 12 : 10, vertical: tv ? 5 : 3);
+    final margem = discreta
+        ? const EdgeInsets.symmetric(vertical: 2)
+        : compacta
+            ? const EdgeInsets.symmetric(horizontal: 8, vertical: 1)
+            : EdgeInsets.symmetric(horizontal: tv ? 12 : 10, vertical: tv ? 5 : 3);
     final espaco = compacta ? 4.0 : 6.0;
     Widget caixa(Widget conteudo) => Container(
           padding: margem,
-          decoration: BoxDecoration(
-            color: estado.fundo,
-            borderRadius: BorderRadius.circular(Tokens.raioPilula),
-            border: Border.all(color: cor.withValues(alpha: .4)),
-          ),
+          decoration: discreta
+              ? null
+              : BoxDecoration(
+                  color: estado.fundo,
+                  borderRadius: BorderRadius.circular(Tokens.raioPilula),
+                  border: Border.all(color: cor.withValues(alpha: .4)),
+                ),
           child: conteudo,
         );
-    final icone = Icon(estado.icone, size: tam + 2, color: cor);
+    // discreta: um ponto com brilho (do tamanho do ícone, para as contas da largura baterem)
+    final Widget icone = discreta
+        ? SizedBox.square(
+            dimension: tam + 2,
+            child: Center(
+              child: Container(
+                key: const Key('ponto-estado'),
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: cor,
+                  shape: BoxShape.circle,
+                  boxShadow: [BoxShadow(color: cor.withValues(alpha: .7), blurRadius: 8)],
+                ),
+              ),
+            ),
+          )
+        : Icon(estado.icone, size: tam + 2, color: cor);
     final completo = d == null || d.isEmpty ? estado.rotulo : '${estado.rotulo} · $d';
     Widget linha(List<Widget> textos) =>
         caixa(Row(mainAxisSize: MainAxisSize.min, children: [icone, SizedBox(width: espaco), ...textos]));
@@ -92,7 +118,7 @@ class PilulaEstado extends StatelessWidget {
         )..layout();
         final w = p.width;
         p.dispose();
-        return margem.horizontal + 2 + icone.size! + espaco + w;
+        return margem.horizontal + 2 + (tam + 2) + espaco + w;
       }
 
       // cabe tudo (o caso normal): um só texto

@@ -1,6 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 
 import '../../dados/biblioteca.dart';
+import '../../guia/programa.dart';
 import '../design/design.dart';
 import '../../idioma/idioma.dart';
 
@@ -8,7 +9,7 @@ import '../../idioma/idioma.dart';
 /// toque) abre o player logo nesse canal.
 class CartaoContinuar extends StatelessWidget {
   const CartaoContinuar({super.key, required this.visto, required this.lista, required this.aoAbrir,
-      this.numero, this.autofocus = false});
+      this.numero, this.autofocus = false, this.programa, this.agora});
 
   final UltimoVisto visto;
   final Lista lista;
@@ -17,6 +18,15 @@ class CartaoContinuar extends StatelessWidget {
 
   /// O número do canal na lista (null = não se sabe: só se mostra o grupo).
   final int? numero;
+
+  /// O programa a dar (do guia guardado): «Agora: …» e a barra do progresso.
+  final Programa? programa;
+
+  /// O instante para o progresso do programa (por omissão, agora).
+  final DateTime? agora;
+
+  double _progresso() =>
+      programa!.progresso((agora ?? DateTime.now()).millisecondsSinceEpoch ~/ 1000);
 
   /// Uma faixa baixa: o logótipo pequeno, "CONTINUAR A VER · lista" por cima do canal (com o
   /// número e o grupo ao lado) e o botão "Ver". Cresce com a letra do sistema ([fator], de
@@ -31,6 +41,7 @@ class CartaoContinuar extends StatelessWidget {
     final vazio = Text(_iniciais(visto.nome),
         style: TextStyle(color: Colors.white, fontSize: logo * .36, fontWeight: FontWeight.w800));
     final detalhe = [if (numero != null) tr('Canal {0}', [numero]), if (visto.grupo.isNotEmpty) visto.grupo].join(' · ');
+    final p = programa;
     return letraPresa(Semantics(
       button: true,
       label: tr('Continuar a ver {0}, {1}', [visto.nome, lista.nomeMostrado]),
@@ -80,7 +91,33 @@ class CartaoContinuar extends StatelessWidget {
                         style: TextStyle(color: Tokens.texto2, fontSize: tv ? 14 : 12.5)),
                   ),
                 ],
+                // o programa a dar (do guia guardado)
+                if (p != null) ...[
+                  const SizedBox(width: Tokens.e12),
+                  Flexible(
+                    flex: 2,
+                    child: Text(tr('Agora: {0}', [p.titulo]),
+                        key: const Key('continuar-programa'),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: Tokens.texto, fontSize: tv ? 14 : 12.5, fontWeight: FontWeight.w600)),
+                  ),
+                ],
               ]),
+              if (p != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(Tokens.raioPilula),
+                    child: LinearProgressIndicator(
+                      key: const Key('continuar-progresso'),
+                      value: _progresso(),
+                      minHeight: 3,
+                      color: Tokens.acento,
+                      backgroundColor: Tokens.vidroForte,
+                    ),
+                  ),
+                ),
             ]),
           ),
           const SizedBox(width: Tokens.e12),

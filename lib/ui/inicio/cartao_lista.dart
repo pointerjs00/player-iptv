@@ -117,7 +117,7 @@ class CartaoLista extends StatelessWidget {
           // a pílula e a validade na mesma linha quando cabem; senão a validade vai para baixo
           Wrap(spacing: Tokens.e8, runSpacing: Tokens.e4, crossAxisAlignment: WrapCrossAlignment.center, children: [
             PilulaEstado(estadoDe(lista),
-                detalhe: u == null ? null : verificadaHa(u.data), linhasDetalhe: emGrelha ? 1 : null),
+                detalhe: u == null ? null : verificadaHa(u.data), linhasDetalhe: emGrelha ? 1 : null, discreta: true),
             if (validade.isNotEmpty)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),

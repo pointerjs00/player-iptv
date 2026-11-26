@@ -6,6 +6,7 @@ import 'package:window_manager/window_manager.dart';
 
 import 'dados/area_gestor.dart';
 import 'dados/biblioteca.dart';
+import 'dados/estatisticas.dart';
 import 'dados/licencas.dart';
 import 'dados/novidades.dart';
 import 'dados/pasta_dados.dart';
@@ -25,6 +26,7 @@ import 'ui/design/revelar_topo.dart';
 import 'ui/gestor/tela_gestor.dart';
 import 'ui/inicio/tela_inicio.dart';
 import 'ui/player/player_canais.dart';
+import 'ui/player/tempo_visto.dart';
 import 'ui/principal/tela_principal.dart';
 import 'ui/realce_foco.dart';
 import 'ui/tema.dart';
@@ -42,6 +44,7 @@ Future<void> main(List<String> args) async {
     // a principal fechou: o gravado apaga-se antes de a janela sair do processo
     final ligacao = await LigacaoPrincipal.ligar(porta,
         token: Platform.environment[JanelaPlayer.variavelToken] ?? '', aoFechar: () async {
+      await guardarTempoVisto().timeout(const Duration(seconds: 1), onTimeout: () {});
       await fecharSessoesDireto().timeout(const Duration(seconds: 2), onTimeout: () {});
       exit(0);
     });
@@ -51,7 +54,10 @@ Future<void> main(List<String> args) async {
     // as mesmas preferências do player que no Android (o ficheiro da janela principal)
     // a abertura que a principal manda já pode chegar durante estas esperas: a ligação
     // guarda-a até a app a escutar (ver LigacaoPrincipal.aberturas)
-    Preferencias.atual = await Preferencias.abrir(await pastaDados());
+    final pastaPlayer = await pastaDados();
+    Preferencias.atual = await Preferencias.abrir(pastaPlayer);
+    // o tempo visto: é esta janela que o escreve (a principal relê-o)
+    Estatisticas.atual = await Estatisticas.abrir(pastaPlayer);
     idiomaApp.value = Preferencias.atual.idioma;
     runApp(AppJanelaPlayer(ligacao: ligacao));
     return;
@@ -79,6 +85,8 @@ Future<void> main(List<String> args) async {
   instalarRevelarTopo(); // o topo de uma página com scroll nunca fica cortado
   // o player: desentrelaçamento, formato, descodificação, volume, taxa do ecrã
   Preferencias.atual = await Preferencias.abrir(pasta, tv: EcraTv.nativo);
+  // o tempo visto (as estatísticas do Início)
+  Estatisticas.atual = await Estatisticas.abrir(pasta);
   idiomaApp.value = Preferencias.atual.idioma;
   // as novidades: uma vez depois de cada atualização (numa instalação nova, não)
   final novidades = await novidadesPorVer(pasta,
@@ -204,6 +212,9 @@ class _AppJanelaPlayerState extends State<AppJanelaPlayer> {
   List<Canal> _canais = const [];
   int _i = 0;
 
+  /// O tempo visto (as estatísticas), pela lista aberta.
+  void Function(Canal, Duration)? _tempoVisto;
+
   Window? get _janela => WindowManager.instance.getCurrent();
 
   @override
@@ -231,6 +242,7 @@ class _AppJanelaPlayerState extends State<AppJanelaPlayer> {
         _lista = a.$1;
         _canais = a.$2;
         _i = a.$3;
+        _tempoVisto = contadorDeTempo(a.$4, a.$1);
       });
       _janela
         ?..title = '${a.$2[a.$3].nome} — ${a.$1}'
@@ -261,8 +273,12 @@ class _AppJanelaPlayerState extends State<AppJanelaPlayer> {
                   indice: _i,
                   nomeLista: _lista,
                   resolver: (c, {continuar = false}) => widget.ligacao.fonte(_canais.indexOf(c)),
-                  aoSair: () => exit(0),
+                  aoSair: () async {
+                    await guardarTempoVisto();
+                    exit(0);
+                  },
                   criarSessao: criarSessaoDireto,
+                  aoTempoVisto: _tempoVisto,
                   alternarEcraInteiro: _ecraInteiro,
                 ),
         ),

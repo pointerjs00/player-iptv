@@ -61,8 +61,8 @@ void main() {
     }
     await t.tap(find.text('Imagem e som'));
     await t.pumpAndSettle();
-    // 7 opções (com «Recuar no direto» e «Espaço reservado») = 6 separadores
-    expect(find.byType(Divider), findsNWidgets(6));
+    // 9 opções (com «Recuar no direto», «Espaço reservado» e as duas das estatísticas) = 8 separadores
+    expect(find.byType(Divider), findsNWidgets(8));
   });
 
   testWidgets('título e descrição à esquerda, o controlo à direita; os chips largos vão para baixo', (t) async {

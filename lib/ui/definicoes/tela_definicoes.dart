@@ -8,6 +8,7 @@ import 'package:material_ui/material_ui.dart';
 import '../../dados/area_gestor.dart';
 import '../../dados/biblioteca.dart';
 import '../../dados/copia_seguranca.dart';
+import '../../dados/estatisticas.dart';
 import '../../dados/guardar_ficheiro.dart';
 import '../../dados/novidades.dart';
 import '../../dados/preferencias.dart';
@@ -23,6 +24,7 @@ import '../player/configuracao_mpv.dart';
 import '../novidades.dart';
 import '../principal/tela_principal.dart';
 import 'linha_opcao.dart';
+import '../verificar/dialogos_gestor.dart' show confirmar;
 import 'seletor_numero.dart';
 import '../realce_foco.dart';
 import '../../idioma/idioma.dart';
@@ -288,6 +290,17 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
           construir: (context, aoMudarFoco) => Focus(onFocusChange: aoMudarFoco, child: linha),
         );
 
+  Future<void> _apagarEstatisticas() async {
+    final ok = await confirmar(context,
+        icone: Icons.delete_outline_rounded,
+        titulo: tr('Apagar as estatísticas?'),
+        texto: tr('O tempo de visualização guardado neste aparelho é apagado. Não se pode desfazer.'),
+        acao: tr('Apagar'));
+    if (!ok || !mounted) return;
+    await Estatisticas.atual.apagar();
+    if (mounted) mostrarMensagem(context, tr('Estatísticas apagadas'));
+  }
+
   /// Uma opção ligada/desligada: a linha toda é o interruptor. Com `nota` fica desativada (a nota
   /// diz porquê), mas continua a receber o foco (ver [_desativada]).
   Widget _interruptor(String titulo, String explicacao, bool valor, ValueChanged<bool> aoMudar, {String? nota}) =>
@@ -410,6 +423,19 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
                     (g) => '$g GB',
                     _p.reservaDiretoGb,
                     (g) => _mudou(() => _p.reservaDiretoGb = g, player: true))),
+          // as estatísticas do Início («A tua semana»): só neste aparelho
+          _interruptor(
+              tr('Contar o tempo de visualização'),
+              tr('Para as estatísticas do Início (horas vistas, canais mais vistos). Ficam só neste aparelho.'),
+              _p.contarTempo,
+              (v) => _p.contarTempo = v),
+          _opcao(tr('Apagar as estatísticas'), tr('Esquece todo o tempo de visualização guardado.'),
+              controlo: OutlinedButton.icon(
+                key: const Key('apagar-estatisticas'),
+                onPressed: _apagarEstatisticas,
+                icon: const Icon(Icons.delete_outline_rounded),
+                label: Text(tr('Apagar')),
+              )),
         ];
       case _Categoria.verificacao:
         return [

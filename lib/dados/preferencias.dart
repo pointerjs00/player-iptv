@@ -187,6 +187,7 @@ class Preferencias extends ChangeNotifier {
   MotorAndroid _motorAndroid;
   bool _modoTunel = false;
   bool _pouparDados = true;
+  bool _contarTempo = true;
   List<String> _canaisTelegram = List.of(canaisTelegramOmissao);
   Set<String> _favoritosTelegram = {};
   List<String> _sitesListas = List.of(sitesListasOmissao);
@@ -295,6 +296,10 @@ class Preferencias extends ChangeNotifier {
   /// Tira um site dos recentes.
   void removerSiteListas(String site) => _mudar('sitesListas', _sitesListas.contains(site),
       () => _sitesListas = [for (final s in _sitesListas) if (s != site) s]);
+
+  /// Contar o tempo de visualização (as estatísticas do Início; ficam só no aparelho).
+  bool get contarTempo => _contarTempo;
+  set contarTempo(bool v) => _mudar('contarTempo', _contarTempo != v, () => _contarTempo = v);
 
   /// No telemóvel Android, com dados móveis (ou numa rede limitada): pedir confirmação antes do
   /// que pode gastar muitos dados (o guia de todos os canais, carregar canais, verificar listas).
@@ -432,6 +437,7 @@ class Preferencias extends ChangeNotifier {
     if (motor != null) _motorAndroid = MotorAndroid.deNome(motor);
     _modoTunel = campo<bool>('modoTunel') ?? _modoTunel;
     _pouparDados = campo<bool>('pouparDados') ?? _pouparDados;
+    _contarTempo = campo<bool>('contarTempo') ?? _contarTempo;
     // o Telegram não existe na edição de partilha (nem as chaves dele)
     final canaisTg = edicaoPartilha ? null : campo<List>('canaisTelegram');
     if (canaisTg != null) _canaisTelegram = [for (final c in canaisTg) if (c is String && c.isNotEmpty) c];
@@ -476,6 +482,7 @@ class Preferencias extends ChangeNotifier {
         'motorAndroid': _motorAndroid.nome,
         'modoTunel': _modoTunel,
         'pouparDados': _pouparDados,
+        'contarTempo': _contarTempo,
         if (!edicaoPartilha) ...{
           'canaisTelegram': _canaisTelegram,
           'favoritosTelegram': _favoritosTelegram.toList(),
@@ -511,6 +518,7 @@ class Preferencias extends ChangeNotifier {
     if (lidas.contains('motorAndroid')) motorAndroid = outro._motorAndroid;
     if (lidas.contains('modoTunel')) modoTunel = outro._modoTunel;
     if (lidas.contains('pouparDados')) pouparDados = outro._pouparDados;
+    if (lidas.contains('contarTempo')) contarTempo = outro._contarTempo;
     if (!edicaoPartilha && lidas.contains('canaisTelegram')) {
       _mudar('canaisTelegram', true, () => _canaisTelegram = List.of(outro._canaisTelegram));
     }

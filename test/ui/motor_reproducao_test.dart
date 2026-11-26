@@ -11,7 +11,7 @@ import 'motor_falso.dart';
 
 const _canal = Canal(id: '1', nome: 'RTP 1', grupo: 'Generalistas');
 
-Future<MotorFalso> _montar(WidgetTester t) async {
+Future<MotorFalso> _montar(WidgetTester t, {void Function(Canal, Duration)? aoTempoVisto}) async {
   t.view.physicalSize = const Size(1920, 1080);
   t.view.devicePixelRatio = 1;
   addTearDown(t.view.reset);
@@ -31,6 +31,7 @@ Future<MotorFalso> _montar(WidgetTester t) async {
           criados.add(motor);
           return motor;
         },
+        aoTempoVisto: aoTempoVisto,
       ),
     ),
   ));
@@ -56,6 +57,27 @@ Future<void> _sair(WidgetTester t) async {
 }
 
 void main() {
+  testWidgets('o tempo visto só conta com o vídeo a tocar (não a abrir, nem a carregar)', (t) async {
+    final vistos = <(String, Duration)>[];
+    final m = await _montar(t, aoTempoVisto: (c, d) => vistos.add((c.nome, d)));
+    // ainda a abrir (sem imagem): não conta
+    await t.pump(PlayerCanaisState.passoTempo);
+    expect(vistos, isEmpty);
+    await _abrirComImagem(t, m);
+    await t.pump(PlayerCanaisState.passoTempo);
+    expect(vistos, [('RTP 1', PlayerCanaisState.passoTempo)]);
+    // a carregar (buffering) quando o relógio conta: não conta (uma paragem curta: uma longa
+    // reabre o canal, que volta a "a abrir")
+    await t.pump(PlayerCanaisState.passoTempo - const Duration(seconds: 1));
+    m.carregar(true);
+    await t.pump(const Duration(seconds: 2));
+    expect(vistos, hasLength(1), reason: 'a carregar não conta');
+    m.carregar(false);
+    await t.pump(PlayerCanaisState.passoTempo);
+    expect(vistos, hasLength(2), reason: 'volta a contar quando toca');
+    await _sair(t);
+  });
+
   testWidgets('abre o canal pelo motor injetado, com o link e os cabeçalhos', (t) async {
     final m = await _montar(t);
     expect(m.aberturas, hasLength(1));

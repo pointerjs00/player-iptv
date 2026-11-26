@@ -1683,6 +1683,76 @@ const textosIngles = <String, String>{
       'New typeface across the app: Inter for text and Space Grotesk for titles and big numbers.',
   'Gestor: ao mudar de passo, o conteúdo já não salta (a barra de cima tem sempre a mesma altura).':
       'Manager: content no longer jumps when changing step (the top bar always has the same height).',
+  'Apagar as estatísticas?':
+      'Delete the statistics?',
+  'O tempo de visualização guardado neste aparelho é apagado. Não se pode desfazer.':
+      'The watch time saved on this device is deleted. This cannot be undone.',
+  'Estatísticas apagadas':
+      'Statistics deleted',
+  'Contar o tempo de visualização':
+      'Count watch time',
+  'Para as estatísticas do Início (horas vistas, canais mais vistos). Ficam só neste aparelho.':
+      'For the Home statistics (hours watched, most watched channels). They stay on this device only.',
+  'Apagar as estatísticas':
+      'Delete the statistics',
+  'Esquece todo o tempo de visualização guardado.':
+      'Forgets all saved watch time.',
+  'Seg':
+      'Mon',
+  'Ter':
+      'Tue',
+  'Qua':
+      'Wed',
+  'Qui':
+      'Thu',
+  'Sex':
+      'Fri',
+  'Sáb':
+      'Sat',
+  'Dom':
+      'Sun',
+  'Primeira semana com dados':
+      'First week with data',
+  'Igual à semana anterior':
+      'Same as the previous week',
+  '{0} que na semana anterior':
+      '{0} vs. the previous week',
+  'A TUA SEMANA':
+      'YOUR WEEK',
+  'A tua semana: {0}. Abrir as estatísticas':
+      'Your week: {0}. Open the statistics',
+  'Ainda não há tempo de visualização. As estatísticas aparecem aqui depois de veres canais.':
+      'No watch time yet. Statistics appear here after you watch channels.',
+  'Esta semana':
+      'This week',
+  'Últimos 30 dias':
+      'Last 30 days',
+  '{0} canais diferentes':
+      '{0} different channels',
+  'Dias seguidos':
+      'Days in a row',
+  'com pelo menos {0} vistos':
+      'with at least {0} watched',
+  'Canais mais vistos · 30 dias':
+      'Most watched channels · 30 days',
+  'Listas mais usadas · 30 dias':
+      'Most used lists · 30 days',
+  'Por dia da semana · 30 dias':
+      'By day of the week · 30 days',
+  'Por hora do dia · 30 dias':
+      'By hour of the day · 30 days',
+  'Os dados ficam só neste aparelho. Desligam-se ou apagam-se em Definições › Imagem e som.':
+      'The data stays on this device only. Turn it off or delete it in Settings › Picture and sound.',
+  'Apagar':
+      'Delete',
+  'Ver TV: «A tua semana» mostra as horas vistas, um gráfico dos últimos 7 dias e os canais mais vistos; abre as Estatísticas completas (30 dias, por dia da semana e por hora).':
+      'Watch TV: "Your week" shows hours watched, a chart of the last 7 days and the most watched channels; it opens the full Statistics (30 days, by day of the week and by hour).',
+  'O tempo de visualização fica só neste aparelho e conta só a reprodução a sério. Desliga-se ou apaga-se em Definições › Imagem e som.':
+      'Watch time stays on this device only and counts only real playback. Turn it off or delete it in Settings › Picture and sound.',
+  '«Continuar a ver» mostra o programa a dar e o progresso dele.':
+      '"Continue watching" shows the programme on now and its progress.',
+  'Início mais limpo: o estado das listas mais discreto, os filtros com a contagem e os favoritos com o logótipo do canal.':
+      'Cleaner Home: subtler list status, filters with counts and favourites with the channel logo.',
   '‹ Importar':
       '‹ Import',
   if (!edicaoPartilha) ...{

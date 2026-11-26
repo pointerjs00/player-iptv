@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/services.dart';
@@ -9,6 +10,7 @@ import '../../janelas/janela_player.dart';
 import '../../modelo/canal.dart';
 import '../../protocolos/protocolo.dart';
 import 'player_canais.dart';
+import 'tempo_visto.dart';
 import '../design/mensagens.dart';
 
 /// Abre o canal: no Windows numa janela separada; no Android em ecrã inteiro. No Android
@@ -57,8 +59,12 @@ class _PaginaPlayerState extends State<_PaginaPlayer> {
         [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
   }
 
+  /// O tempo visto (as estatísticas), por esta lista.
+  late final _tempoVisto = contadorDeTempo(widget.lista.id, widget.lista.nomeMostrado);
+
   @override
   void dispose() {
+    unawaited(guardarTempoVisto());
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     SystemChrome.setPreferredOrientations(const []);
     super.dispose();
@@ -83,6 +89,7 @@ class _PaginaPlayerState extends State<_PaginaPlayer> {
         aoMudarCanal: (i) => widget.atual.value = i,
         // o direto gravado (2 GB na cache da app); a preferência vem depois
         criarSessao: criarSessaoDireto,
+        aoTempoVisto: _tempoVisto,
       ),
     );
   }
