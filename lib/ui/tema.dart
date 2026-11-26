@@ -37,6 +37,7 @@ ThemeData temaApp({bool realceFoco = true}) {
     ),
     // o fundo (azul-noite com gradiente) é o FundoCinema por trás de todos os ecrãs
     scaffoldBackgroundColor: Colors.transparent,
+    fontFamily: Tokens.letra,
     useMaterial3: true,
   );
   const raioBotao = BorderRadius.all(Radius.circular(Tokens.raioBotao));
@@ -46,6 +47,13 @@ ThemeData temaApp({bool realceFoco = true}) {
   final texto = base.textTheme.apply(bodyColor: Tokens.texto, displayColor: Tokens.texto);
   return base.copyWith(
     textTheme: texto.copyWith(
+      // os títulos grandes em Space Grotesk; o resto em Inter
+      displayLarge: texto.displayLarge?.copyWith(fontFamily: Tokens.letraTitulos),
+      displayMedium: texto.displayMedium?.copyWith(fontFamily: Tokens.letraTitulos),
+      displaySmall: texto.displaySmall?.copyWith(fontFamily: Tokens.letraTitulos),
+      headlineLarge: texto.headlineLarge?.copyWith(fontFamily: Tokens.letraTitulos, fontWeight: FontWeight.w700),
+      headlineMedium: texto.headlineMedium?.copyWith(fontFamily: Tokens.letraTitulos, fontWeight: FontWeight.w700),
+      headlineSmall: texto.headlineSmall?.copyWith(fontFamily: Tokens.letraTitulos, fontWeight: FontWeight.w700),
       titleLarge: texto.titleLarge?.copyWith(fontWeight: FontWeight.w700),
       titleMedium: texto.titleMedium?.copyWith(fontWeight: FontWeight.w600),
       titleSmall: texto.titleSmall?.copyWith(fontWeight: FontWeight.w600),
@@ -60,7 +68,8 @@ ThemeData temaApp({bool realceFoco = true}) {
       scrolledUnderElevation: 0,
       elevation: 0,
       foregroundColor: Tokens.texto,
-      titleTextStyle: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Tokens.texto, letterSpacing: .2),
+      titleTextStyle: TextStyle(
+          fontFamily: Tokens.letraTitulos, fontSize: 21, fontWeight: FontWeight.w700, color: Tokens.texto),
     ),
     cardTheme: const CardThemeData(
       color: Tokens.vidro,

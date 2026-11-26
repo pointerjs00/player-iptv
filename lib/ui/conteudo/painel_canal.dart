@@ -118,7 +118,12 @@ class _PainelCanalState extends State<PainelCanal> {
             textScaler: MediaQuery.textScalerOf(context),
             text: TextSpan(
               text: c.nome,
-              style: TextStyle(fontSize: 19 * escala, fontWeight: FontWeight.w700, color: Tokens.texto, height: 1.25),
+              style: TextStyle(
+                  fontFamily: Tokens.letraTitulos,
+                  fontSize: 20 * escala,
+                  fontWeight: FontWeight.w700,
+                  color: Tokens.texto,
+                  height: 1.2),
             ),
           ),
           const SizedBox(height: Tokens.e4),
@@ -157,6 +162,7 @@ class _PainelCanalState extends State<PainelCanal> {
             text: TextSpan(
               text: widget.numero,
               style: TextStyle(
+                fontFamily: Tokens.letraTitulos,
                 fontSize: (widget.compacto ? 96 : 130) * escala,
                 fontWeight: FontWeight.w800,
                 letterSpacing: -6,

@@ -12,11 +12,21 @@ const assetsLicencasLibmpv = [
   'third_party/libmpv_completo/licencas/LGPL-2.1.txt',
 ];
 
-/// Junta o libmpv e o ffmpeg (GPLv3) às licenças que a página de licenças do Flutter mostra.
+/// As letras da app (Google Fonts, SIL Open Font License 1.1): o nome e o ficheiro da licença.
+const licencasLetras = {
+  'Inter (letra)': 'assets/fonts/Inter-OFL.txt',
+  'Space Grotesk (letra)': 'assets/fonts/SpaceGrotesk-OFL.txt',
+};
+
+/// Junta o libmpv e o ffmpeg (GPLv3) e as letras (OFL) às licenças que a página de licenças do
+/// Flutter mostra.
 void registarLicencasLibmpv() {
   LicenseRegistry.addLicense(() async* {
     for (final a in assetsLicencasLibmpv) {
       yield LicenseEntryWithLineBreaks(const [pacoteLicencasLibmpv], await rootBundle.loadString(a));
+    }
+    for (final e in licencasLetras.entries) {
+      yield LicenseEntryWithLineBreaks([e.key], await rootBundle.loadString(e.value));
     }
   });
 }

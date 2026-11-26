@@ -19,6 +19,10 @@ class Novidades {
 /// Todas as versões, a mais recente primeiro. A primeira é a versão da app: ao mudar a versão no
 /// pubspec.yaml, junta-se aqui a entrada dela (um teste confirma que batem certo).
 const historicoNovidades = <Novidades>[
+  Novidades('1.0.19', '2026-11-26', [
+    'Letra nova em toda a app: Inter no texto e Space Grotesk nos títulos e nos números grandes.',
+    'Gestor: ao mudar de passo, o conteúdo já não salta (a barra de cima tem sempre a mesma altura).',
+  ]),
   Novidades('1.0.18', '2026-11-26', [
     'Novo visual: azul profundo, cartões e painéis escuros e azul elétrico, com um fundo de faixas de luz.',
     'O foco do comando tem agora uma mira: quatro cantos que se fecham sobre o que está escolhido.',

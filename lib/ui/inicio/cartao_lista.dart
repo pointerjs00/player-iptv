@@ -161,6 +161,7 @@ Widget _comMarcaDagua(bool emGrelha, int ordem, bool tv, Widget conteudo) {
           text: TextSpan(
             text: ordem.toString().padLeft(3, '0'),
             style: TextStyle(
+              fontFamily: Tokens.letraTitulos,
               fontSize: tv ? 84 : 72,
               fontWeight: FontWeight.w800,
               letterSpacing: -4,

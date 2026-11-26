@@ -590,7 +590,12 @@ class _TelaGestorState extends State<TelaGestor> {
     };
     return Padding(
       padding: const EdgeInsets.fromLTRB(Tokens.e16, Tokens.e12, Tokens.e16, 0),
-      child: Row(children: [
+      // a altura é fixa: o que aparece só nalguns ecrãs (o "i", o "Parar") nunca estica a barra
+      // nem empurra o conteúdo (no computador, com a densidade compacta, o "i" era mais alto
+      // do que o "Voltar")
+      child: SizedBox(
+        height: ecraTv(context) ? 48 : 40,
+        child: Row(children: [
         if (_ecra != EcraGestor.resumo) ...[
           TextButton.icon(
             focusNode: _focoVoltar,
@@ -604,7 +609,8 @@ class _TelaGestorState extends State<TelaGestor> {
           child: Text(titulo,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Tokens.texto)),
+              style: const TextStyle(
+                  fontFamily: Tokens.letraTitulos, fontSize: 21, fontWeight: FontWeight.w700, color: Tokens.texto)),
         ),
         const SizedBox(width: Tokens.e12),
         // à direita: "Parar" (a decorrer) junto do indicador, que só encolhe se não couber; o "i" no canto
@@ -617,8 +623,9 @@ class _TelaGestorState extends State<TelaGestor> {
             ]),
           ),
         ),
-        if (_temInfo) ...[const SizedBox(width: Tokens.e4), _botaoInfo()],
+        if (_ecra != EcraGestor.resumo) ...[const SizedBox(width: Tokens.e4), _lugarInfo(telemovel: false)],
       ]),
+      ),
     );
   }
 
@@ -649,13 +656,14 @@ class _TelaGestorState extends State<TelaGestor> {
                   child: Text(titulo,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Tokens.texto)),
+                      style: const TextStyle(
+                  fontFamily: Tokens.letraTitulos, fontSize: 21, fontWeight: FontWeight.w700, color: Tokens.texto)),
                 ),
         ),
         const SizedBox(width: Tokens.e8),
         _botaoParar(compacto: true),
         indicador,
-        if (_temInfo) _botaoInfo(),
+        if (_ecra != EcraGestor.resumo) _lugarInfo(telemovel: true),
       ]),
     );
   }
@@ -663,12 +671,27 @@ class _TelaGestorState extends State<TelaGestor> {
   /// O "i" da verificação (no passo 2 e no progresso): explica como é feita.
   bool get _temInfo => _ecra == EcraGestor.verificar || _ecra == EcraGestor.verificacao;
 
-  Widget _botaoInfo() => IconButton(
-        key: const ValueKey('infoVerificacao'),
-        onPressed: () => abrirComoVerifica(context),
-        tooltip: tr('Como é feita a verificação'),
-        icon: const Icon(Icons.info_outline),
-      );
+  /// O lugar do "i" no canto da barra: reservado nos passos e na verificação (vazio nos que não o
+  /// têm), para o indicador da atividade não andar para o lado ao mudar de passo; no resumo não
+  /// há (o indicador fica encostado ao canto). No telemóvel tem o alvo de
+  /// toque de 48; no resto, 40 (cabe na barra).
+  Widget _lugarInfo({required bool telemovel}) {
+    final lado = telemovel ? Tokens.alvoToque : 40.0;
+    return SizedBox(
+      width: lado,
+      height: lado,
+      child: _temInfo
+          ? IconButton(
+              key: const ValueKey('infoVerificacao'),
+              onPressed: () => abrirComoVerifica(context),
+              tooltip: tr('Como é feita a verificação'),
+              padding: EdgeInsets.zero,
+              constraints: BoxConstraints.tightFor(width: lado, height: lado),
+              icon: const Icon(Icons.info_outline),
+            )
+          : null,
+    );
+  }
 
   // ---------------------------------------------------------------- faixa dos passos
 

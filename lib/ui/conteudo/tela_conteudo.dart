@@ -1792,7 +1792,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
                       leading: LogoCanal(c.logo, c.nome, tamanho: tv ? 52 : 40),
                       minLeadingWidth: tv ? 52 : 40,
                       horizontalTitleGap: telemovel ? Tokens.e12 : null,
-                      title: _comRealce(c.nome, q, TextStyle(fontSize: tv ? 19 : 15, fontWeight: FontWeight.w500),
+                      title: _comRealce(c.nome, q, TextStyle(fontSize: tv ? 19 : 15, fontWeight: FontWeight.w500, letterSpacing: telemovel ? -.25 : null),
                           linhas: telemovel ? 2 : 1),
                       subtitle: _subtitulo(c, pesquisa, q, tv: tv, telemovel: telemovel),
                       trailing: ExcludeFocus(

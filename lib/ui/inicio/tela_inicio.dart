@@ -499,7 +499,7 @@ class _TelaInicioState extends State<TelaInicio> {
           constraints: const BoxConstraints(maxWidth: 860),
           child: entradaEmCascata(0, Column(mainAxisSize: MainAxisSize.min, children: [
             Text(tr('Ainda não há listas para ver'),
-                textAlign: TextAlign.center, style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700)),
+                textAlign: TextAlign.center, style: TextStyle(fontFamily: Tokens.letraTitulos, fontSize: 26, fontWeight: FontWeight.w700)),
             const SizedBox(height: Tokens.e8),
             Text(
                 tr('As listas entram pelo Gestor. Lá podes importá-las, ver quais funcionam e enviar as boas para aqui.'),

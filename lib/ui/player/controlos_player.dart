@@ -717,9 +717,10 @@ class _Titulo extends StatelessWidget {
       // o número do canal em azul elétrico, com brilho (o redesenho)
       Text('$numero',
           style: TextStyle(
+              fontFamily: Tokens.letraTitulos,
               fontSize: tv ? 44 : 34,
               height: 1,
-              fontWeight: FontWeight.w800,
+              fontWeight: FontWeight.w700,
               letterSpacing: -1.5,
               color: Tokens.acento,
               shadows: [Shadow(color: Tokens.acento.withValues(alpha: .6), blurRadius: 24)],

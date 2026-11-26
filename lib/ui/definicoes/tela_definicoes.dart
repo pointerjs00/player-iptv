@@ -633,7 +633,7 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
                 return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                   Padding(
                     padding: EdgeInsets.fromLTRB(Tokens.e16, Tokens.e16, Tokens.e16, 0),
-                    child: Text(tr('Definições'), style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700)),
+                    child: Text(tr('Definições'), style: TextStyle(fontFamily: Tokens.letraTitulos, fontSize: 24, fontWeight: FontWeight.w700)),
                   ),
                   Expanded(child: _listaCategorias(largo: false)),
                 ]);
@@ -647,7 +647,7 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
                       child: Text(_cat.titulo,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+                          style: const TextStyle(fontFamily: Tokens.letraTitulos, fontSize: 21, fontWeight: FontWeight.w700)),
                     ),
                   ]),
                 ),

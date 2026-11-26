@@ -8,23 +8,30 @@ import 'package:player_iptv/ui/design/componentes.dart';
 import 'package:player_iptv/ui/realce_foco.dart';
 import 'package:player_iptv/ui/tema.dart';
 
-/// Ajudas partilhadas pelos testes do telemóvel (360×800 e 412×915, letra a 1 e a 1,3, com a
-/// Roboto): carregar a letra, montar a app, correr em cada configuração (nada transborda) e
-/// medir texto e alvos.
+/// Ajudas partilhadas pelos testes do telemóvel (360×800 e 412×915, letra a 1 e a 1,3, com as
+/// letras da app): carregar as letras, montar a app, correr em cada configuração (nada
+/// transborda) e medir texto e alvos.
 
-/// A Roboto do Flutter (a letra do telemóvel), também no lugar da letra quadrada dos testes: com
-/// ela as larguras seriam outras.
+/// As letras da app (Inter no texto, Space Grotesk nos títulos; e a Roboto do Flutter, que algum
+/// texto do sistema ainda usa), também a Inter no lugar da letra quadrada dos testes: com ela as
+/// larguras seriam outras.
 Future<void> carregarRoboto() async {
   // <flutter>/bin/cache/artifacts/engine/<plataforma>/flutter_tester
   final artefactos = File(Platform.resolvedExecutable).parent.parent.parent;
   final pasta = Directory('${artefactos.path}/material_fonts');
   if (!pasta.existsSync()) fail('A Roboto do Flutter não está em ${pasta.path}');
-  for (final familia in ['Roboto', 'FlutterTest']) {
-    final f = FontLoader(familia);
-    for (final n in ['roboto-light', 'roboto-regular', 'roboto-medium', 'roboto-bold', 'roboto-black']) {
-      f.addFont(Future.value(ByteData.sublistView(File('${pasta.path}/$n.ttf').readAsBytesSync())));
-    }
-    await f.load();
+  final roboto = FontLoader('Roboto');
+  for (final n in ['roboto-light', 'roboto-regular', 'roboto-medium', 'roboto-bold', 'roboto-black']) {
+    roboto.addFont(Future.value(ByteData.sublistView(File('${pasta.path}/$n.ttf').readAsBytesSync())));
+  }
+  await roboto.load();
+  ByteData ficheiro(String caminho) => ByteData.sublistView(File(caminho).readAsBytesSync());
+  for (final (familia, caminho) in [
+    ('Inter', 'assets/fonts/Inter-Variable.ttf'),
+    ('FlutterTest', 'assets/fonts/Inter-Variable.ttf'),
+    ('SpaceGrotesk', 'assets/fonts/SpaceGrotesk-Variable.ttf'),
+  ]) {
+    await (FontLoader(familia)..addFont(Future.value(ficheiro(caminho)))).load();
   }
 }
 
@@ -40,7 +47,7 @@ Widget appTelemovel(Widget home) => MaterialApp(
         return Theme(
           data: tema.copyWith(
             chipTheme: chips.copyWith(
-              labelStyle: (chips.labelStyle ?? const TextStyle()).copyWith(fontFamily: 'Roboto'),
+              labelStyle: (chips.labelStyle ?? const TextStyle()).copyWith(fontFamily: 'Inter'),
             ),
           ),
           child: FundoCinema(child: w!),

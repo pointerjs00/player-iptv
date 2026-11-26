@@ -61,6 +61,13 @@ abstract final class Tokens {
   static const fundoMau = Color(0xFF4A1E24);
   static const fundoNeutro = Color(0xFF22324A);
 
+  // --- letras ---
+  /// O texto de toda a app.
+  static const letra = 'Inter';
+
+  /// Os títulos e os números grandes (o número do canal, as marcas de água).
+  static const letraTitulos = 'SpaceGrotesk';
+
   // --- raios ---
   static const raioCartao = 20.0;
   static const raioBotao = 14.0;

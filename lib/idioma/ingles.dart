@@ -1679,6 +1679,10 @@ const textosIngles = <String, String>{
       'Watch TV: the programme on now in its own panel, with a pulsing live dot.',
   'Ver TV na TV: numa lista enorme, o cabeçalho dos canais já não sai do ecrã enquanto se ordena.':
       'Watch TV on TV: in a huge list, the channels header no longer overflows while sorting.',
+  'Letra nova em toda a app: Inter no texto e Space Grotesk nos títulos e nos números grandes.':
+      'New typeface across the app: Inter for text and Space Grotesk for titles and big numbers.',
+  'Gestor: ao mudar de passo, o conteúdo já não salta (a barra de cima tem sempre a mesma altura).':
+      'Manager: content no longer jumps when changing step (the top bar always has the same height).',
   '‹ Importar':
       '‹ Import',
   if (!edicaoPartilha) ...{
