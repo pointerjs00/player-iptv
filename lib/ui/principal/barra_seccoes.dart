@@ -13,13 +13,14 @@ const rotulosSeccoes = {
   Seccao.definicoes: ('Definições', Icons.settings_outlined),
 };
 
-/// A barra lateral das secções (ecrãs largos e TV): o nome da app em cima e uma linha por
-/// secção. As setas dentro da barra e a passagem para o conteúdo tratam-se em [TelaPrincipal].
+/// A barra lateral das secções (ecrãs largos e TV): estreita, com o logótipo em cima e, por
+/// secção, o ícone com um rótulo curto por baixo; a secção à vista fica num cartão branco. As
+/// setas dentro da barra e a passagem para o conteúdo tratam-se em [TelaPrincipal].
 class BarraSeccoes extends StatelessWidget {
   const BarraSeccoes({super.key, required this.atual, required this.aoEscolher, this.focos});
 
   /// A largura da barra.
-  static const largura = 220.0;
+  static const largura = 112.0;
 
   /// A secção à vista.
   final Seccao atual;
@@ -33,54 +34,93 @@ class BarraSeccoes extends StatelessWidget {
   @override
   Widget build(BuildContext context) => SizedBox(
         width: largura,
-        // um Material (e não uma caixa com cor): os ListTile pintam o fundo e o ink nele
         child: Material(
-          color: Tokens.superficie,
+          color: Tokens.fundo.withValues(alpha: .6),
           shape: const Border(right: BorderSide(color: Tokens.bordaVidro)),
           child: ListView(
-          padding: const EdgeInsets.fromLTRB(Tokens.e12, Tokens.e24, Tokens.e12, Tokens.e16),
-          children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(Tokens.e8, 0, Tokens.e8, Tokens.e24),
-              child: MarcaApp(),
-            ),
-            for (final s in Seccao.values)
-              Padding(
-                padding: const EdgeInsets.only(bottom: Tokens.e8),
-                child: RealceFoco(
-                  raio: Tokens.raioBotao,
-                  construir: (context, aoMudarFoco) => ListTile(
+            padding: const EdgeInsets.fromLTRB(Tokens.e16, 28, Tokens.e16, Tokens.e16),
+            children: [
+              const Center(child: MarcaApp()),
+              const SizedBox(height: 28),
+              for (final s in Seccao.values)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: _ItemSeccao(
+                    rotulo: tr(rotulosSeccoes[s]!.$1),
+                    icone: rotulosSeccoes[s]!.$2,
+                    ativa: s == atual,
                     focusNode: focos?[s.index],
-                    selected: s == atual,
-                    selectedColor: Tokens.texto,
-                    selectedTileColor: Tokens.superficie3,
-                    iconColor: Tokens.texto2,
-                    textColor: Tokens.texto2,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Tokens.raioBotao)),
-                    leading: Icon(rotulosSeccoes[s]!.$2),
-                    title: Text(tr(rotulosSeccoes[s]!.$1), style: const TextStyle(fontWeight: FontWeight.w600)),
-                    onFocusChange: aoMudarFoco,
-                    onTap: () => aoEscolher(s),
+                    aoEscolher: () => aoEscolher(s),
                   ),
                 ),
-              ),
-          ],
+            ],
           ),
         ),
       );
 }
 
-/// O nome da app com o ícone dela (ferramentas/gerar_icones.py).
+/// Uma secção da barra: o ícone e o rótulo por baixo. A ativa é um cartão branco com o texto
+/// escuro (a mudança de secção anima a cor); o foco do comando tem a mira, como o resto da app.
+class _ItemSeccao extends StatelessWidget {
+  const _ItemSeccao({required this.rotulo, required this.icone, required this.ativa, required this.aoEscolher,
+      this.focusNode});
+
+  final String rotulo;
+  final IconData icone;
+  final bool ativa;
+  final VoidCallback aoEscolher;
+  final FocusNode? focusNode;
+
+  static const raio = 22.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final cor = ativa ? Tokens.fundo : Tokens.texto2;
+    return RealceFoco(
+      raio: raio,
+      construir: (context, aoMudarFoco) => AnimatedContainer(
+        duration: duracaoAnimada(context, Tokens.duracaoMedia),
+        curve: Tokens.curva,
+        decoration: BoxDecoration(
+          color: ativa ? Colors.white : Colors.transparent,
+          borderRadius: BorderRadius.circular(raio),
+          boxShadow: ativa
+              ? [BoxShadow(color: Tokens.acento.withValues(alpha: .35), blurRadius: 30, offset: const Offset(0, 10))]
+              : const [],
+        ),
+        child: Material(
+          type: MaterialType.transparency,
+          child: InkWell(
+            focusNode: focusNode,
+            onFocusChange: aoMudarFoco,
+            onTap: aoEscolher,
+            borderRadius: BorderRadius.circular(raio),
+            child: SizedBox(
+              height: 78,
+              width: double.infinity,
+              child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                Icon(icone, color: cor, size: 24),
+                const SizedBox(height: 6),
+                Text(rotulo,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 12, fontWeight: ativa ? FontWeight.w700 : FontWeight.w600, color: cor)),
+              ]),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// O ícone da app (ferramentas/gerar_icones.py), com o nome para os leitores de ecrã.
 class MarcaApp extends StatelessWidget {
   const MarcaApp({super.key});
 
   @override
-  Widget build(BuildContext context) => Row(mainAxisSize: MainAxisSize.min, children: [
-        Image.asset('assets/marca/logo.png', width: 34, height: 34, filterQuality: FilterQuality.medium),
-        const SizedBox(width: 10),
-        const Flexible(
-          child: Text(nomeApp,
-              overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-        ),
-      ]);
+  Widget build(BuildContext context) => Semantics(
+        label: nomeApp,
+        child: Image.asset('assets/marca/logo.png', width: 46, height: 46, filterQuality: FilterQuality.medium),
+      );
 }

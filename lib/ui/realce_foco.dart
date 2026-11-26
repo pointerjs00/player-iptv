@@ -103,7 +103,8 @@ class RealceConformeEntrada {
   }
 }
 
-/// Mostra o realce à volta de `child` quando `focado` (e o modo de realce é o do teclado/comando).
+/// Mostra o realce à volta de `child` quando `focado` (e o modo de realce é o do teclado/comando):
+/// a borda, o brilho, o aumento e a mira (os quatro cantos de visor que se fecham sobre ele).
 class MolduraFoco extends StatelessWidget {
   const MolduraFoco({super.key, required this.focado, required this.child, this.raio = 12, this.escala = 1});
 
@@ -123,6 +124,9 @@ class MolduraFoco extends StatelessWidget {
       scale: ver ? escala : 1,
       duration: duracaoAnimada(context, Realce.duracao),
       curve: Tokens.curva,
+      child: Mira(
+        visivel: ver,
+        raio: raio,
       // o brilho só por fora (por baixo pintaria de violeta um cartão de vidro)
       child: SombraExterior(
         duration: duracaoAnimada(context, Realce.duracao),
@@ -138,8 +142,83 @@ class MolduraFoco extends StatelessWidget {
           child: child,
         ),
       ),
+      ),
     );
   }
+}
+
+/// A mira do foco: quatro cantos de visor à volta de `child`, por fora dele, que se fecham sobre
+/// ele ao aparecer (de [Mira.longe] a [Mira.perto] px) com um brilho suave. Não ocupa espaço nem
+/// recebe toques; escondida, não pinta nada.
+class Mira extends StatelessWidget {
+  const Mira({super.key, required this.visivel, required this.child, this.raio = 12});
+
+  final bool visivel;
+  final Widget child;
+  final double raio;
+
+  /// A distância dos cantos ao elemento: ao começar a aparecer e no fim.
+  static const longe = 14.0;
+  static const perto = 6.0;
+
+  @override
+  Widget build(BuildContext context) => TweenAnimationBuilder<double>(
+        tween: Tween(end: visivel ? 1 : 0),
+        duration: duracaoAnimada(context, Tokens.duracaoMedia),
+        curve: visivel ? Tokens.curva : Tokens.curvaSaida,
+        child: child,
+        builder: (_, t, filho) => CustomPaint(foregroundPainter: _PintorMira(t, raio), child: filho),
+      );
+}
+
+class _PintorMira extends CustomPainter {
+  _PintorMira(this.t, this.raio);
+
+  /// 0 = escondida, 1 = fechada sobre o elemento.
+  final double t;
+  final double raio;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (t <= 0) return;
+    final folga = Mira.longe + (Mira.perto - Mira.longe) * t;
+    final r = (Offset.zero & size).inflate(folga);
+    final braco = (r.shortestSide / 3).clamp(8.0, 24.0);
+    final curva = (raio + folga / 2).clamp(0.0, braco);
+    final caminho = Path();
+    void canto(Offset o, double dx, double dy) {
+      // um "L" com o canto arredondado: braço vertical, curva, braço horizontal
+      caminho
+        ..moveTo(o.dx, o.dy + dy * braco)
+        ..lineTo(o.dx, o.dy + dy * curva)
+        ..quadraticBezierTo(o.dx, o.dy, o.dx + dx * curva, o.dy)
+        ..lineTo(o.dx + dx * braco, o.dy);
+    }
+
+    canto(r.topLeft, 1, 1);
+    canto(r.topRight, -1, 1);
+    canto(r.bottomLeft, 1, -1);
+    canto(r.bottomRight, -1, -1);
+    final alfa = t.clamp(0.0, 1.0);
+    canvas.drawPath(
+        caminho,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 5
+          ..strokeCap = StrokeCap.round
+          ..color = Tokens.acento.withValues(alpha: .55 * alfa)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5));
+    canvas.drawPath(
+        caminho,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 3
+          ..strokeCap = StrokeCap.round
+          ..color = Tokens.anelFoco.withValues(alpha: alfa));
+  }
+
+  @override
+  bool shouldRepaint(_PintorMira antes) => antes.t != t || antes.raio != raio;
 }
 
 /// Para widgets que dizem quando ganham/perdem o foco (`onFocusChange` do ListTile, InkWell...):

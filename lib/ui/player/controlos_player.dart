@@ -6,6 +6,7 @@ import 'package:material_ui/material_ui.dart';
 import '../design/componentes.dart';
 import '../design/ecra.dart';
 import '../design/movimento.dart';
+import '../design/ponto_direto.dart';
 import '../design/tokens.dart';
 import 'ajuste_toque.dart';
 import 'aplicar_preferencias.dart';
@@ -713,12 +714,15 @@ class _Titulo extends StatelessWidget {
     ]);
     if (numero == null) return nomeESubtitulo;
     return Row(mainAxisSize: MainAxisSize.min, children: [
+      // o número do canal em azul elétrico, com brilho (o redesenho)
       Text('$numero',
           style: TextStyle(
               fontSize: tv ? 44 : 34,
               height: 1,
               fontWeight: FontWeight.w800,
-              color: Tokens.texto,
+              letterSpacing: -1.5,
+              color: Tokens.acento,
+              shadows: [Shadow(color: Tokens.acento.withValues(alpha: .6), blurRadius: 24)],
               fontFeatures: const [FontFeature.tabularFigures()])),
       const SizedBox(width: Tokens.e16),
       Flexible(child: nomeESubtitulo),
@@ -744,7 +748,7 @@ class _IndicadorDireto extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(emDireto ? Icons.circle : Icons.history_rounded, size: emDireto ? 10 : 16, color: cor),
+          if (emDireto) const PontoDireto(tamanho: 9) else Icon(Icons.history_rounded, size: 16, color: cor),
           const SizedBox(width: 6),
           Text(emDireto ? tr('Em direto') : textoAtraso(atraso),
               style: const TextStyle(

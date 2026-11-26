@@ -265,12 +265,12 @@ void main() {
   });
 
   test('tokens azuis', () {
-    expect(Tokens.fundo, const Color(0xFF0A1628));
-    expect(Tokens.superficie, const Color(0xFF0D1F3A));
-    expect(Tokens.superficie2, const Color(0xFF132B4D));
-    expect(Tokens.superficie3, const Color(0xFF1A3A66));
-    expect(Tokens.acento, const Color(0xFF2F7BF6));
-    expect(Tokens.acento2, const Color(0xFF1E5BB8));
+    expect(Tokens.fundo, const Color(0xFF040A19));
+    expect(Tokens.superficie, const Color(0xFF0A1430));
+    expect(Tokens.superficie2, const Color(0xFF10204A));
+    expect(Tokens.superficie3, const Color(0xFF16295A));
+    expect(Tokens.acento, const Color(0xFF2F7BFF));
+    expect(Tokens.acento2, const Color(0xFF1E5BD8));
     expect(Tokens.anelFoco, const Color(0xFF8EC5FF));
     expect(Tokens.texto, const Color(0xFFEEF4FF));
     expect(Tokens.texto2, const Color(0xFFA3B8D6));
@@ -282,8 +282,8 @@ void main() {
     expect(Tokens.fundoAviso, const Color(0xFF4A3A12));
     expect(Tokens.fundoMau, const Color(0xFF4A1E24));
     expect(Tokens.fundoNeutro, const Color(0xFF22324A));
-    expect(Tokens.gradienteAcento.colors, const [Color(0xFF2F7BF6), Color(0xFF1E5BB8)]);
-    expect(Tokens.sombraFoco.last.color, const Color(0x738EC5FF));
+    expect(Tokens.gradienteAcento.colors, const [Color(0xFF2F7BFF), Color(0xFF1E5BD8)]);
+    expect(Tokens.sombraFoco.last.color, const Color(0x732F7BFF));
   });
 
   test('contraste do texto', () {
@@ -305,7 +305,8 @@ void main() {
   test('Tokens: raios, durações e cores do design', () {
     expect(Tokens.raioCartao, 20);
     expect(Tokens.raioBotao, 14);
-    expect(Tokens.curva, Curves.easeOutCubic);
+    expect(Tokens.curva, const Cubic(0.05, 0.7, 0.1, 1.0), reason: 'Material 3: emphasized decelerate');
+    expect(Tokens.curvaSaida, const Cubic(0.3, 0.0, 0.8, 0.15), reason: 'Material 3: emphasized accelerate');
     for (final d in [Tokens.duracaoRapida, Tokens.duracaoMedia, Tokens.duracaoLenta]) {
       expect(d.inMilliseconds, inInclusiveRange(180, 320));
     }

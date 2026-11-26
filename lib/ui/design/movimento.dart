@@ -104,7 +104,8 @@ class _EntradaCascataState extends State<_EntradaCascata> with SingleTickerProvi
   }
 }
 
-/// Fade-through: quem sai desvanece primeiro; quem entra aparece a seguir, a crescer de 94 %.
+/// Fade-through (Material 3): quem sai desvanece primeiro, a acelerar; quem entra aparece a
+/// seguir, a subir um pouco e a crescer de 97 %, a desacelerar.
 /// Com "reduzir movimento": quem entra aparece inteiro e quem sai fica logo escondido (os ecrãs
 /// são transparentes sobre o fundo: nunca se pintam os dois ao mesmo tempo).
 Widget transicaoSuave(BuildContext context, Animation<double> entrada, Animation<double> saida, Widget filho) {
@@ -116,12 +117,15 @@ Widget transicaoSuave(BuildContext context, Animation<double> entrada, Animation
     );
   }
   final aparecer = entrada.drive(CurveTween(curve: const Interval(.3, 1, curve: Tokens.curva)));
-  final desaparecer = saida.drive(CurveTween(curve: const Interval(0, .3, curve: Curves.easeIn)));
+  final desaparecer = saida.drive(CurveTween(curve: const Interval(0, .3, curve: Tokens.curvaSaida)));
   return FadeTransition(
     opacity: desaparecer.drive(Tween(begin: 1.0, end: 0.0)),
     child: FadeTransition(
       opacity: aparecer,
-      child: ScaleTransition(scale: aparecer.drive(Tween(begin: .94, end: 1.0)), child: filho),
+      child: SlideTransition(
+        position: aparecer.drive(Tween(begin: const Offset(0, .02), end: Offset.zero)),
+        child: ScaleTransition(scale: aparecer.drive(Tween(begin: .97, end: 1.0)), child: filho),
+      ),
     ),
   );
 }

@@ -48,7 +48,8 @@ class CartaoContinuar extends StatelessWidget {
             padding: const EdgeInsets.all(4),
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              gradient: Tokens.gradienteAcento,
+              color: Tokens.superficie3,
+              border: Border.all(color: Tokens.bordaCartao),
               borderRadius: BorderRadius.circular(logo * .26),
             ),
             child: visto.logo.startsWith('http')
@@ -64,7 +65,7 @@ class CartaoContinuar extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                      color: Tokens.acento, fontSize: tv ? 12.5 : 11, fontWeight: FontWeight.w700, letterSpacing: .4)),
+                      color: Tokens.acento, fontSize: tv ? 12.5 : 11, fontWeight: FontWeight.w800, letterSpacing: 1.6)),
               Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
                 Flexible(
                   child: Text(visto.nome, maxLines: 1, overflow: TextOverflow.ellipsis,
@@ -88,7 +89,9 @@ class CartaoContinuar extends StatelessWidget {
             padding: EdgeInsets.symmetric(horizontal: tv ? 16 : 14, vertical: tv ? 6 : 5),
             decoration: BoxDecoration(
               gradient: Tokens.gradienteAcento,
-              borderRadius: BorderRadius.circular(Tokens.raioBotao),
+              borderRadius: BorderRadius.circular(Tokens.raioPilula),
+              // o brilho azul elétrico do botão principal
+              boxShadow: [BoxShadow(color: Tokens.acento.withValues(alpha: .55), blurRadius: 18)],
             ),
             child: Row(mainAxisSize: MainAxisSize.min, children: [
               Icon(Icons.play_arrow_rounded, color: Colors.white, size: tv ? 20 : 18),
@@ -171,7 +174,11 @@ class CartaoContinuar extends StatelessWidget {
             child: Container(
               width: 36,
               height: 36,
-              decoration: const BoxDecoration(shape: BoxShape.circle, gradient: Tokens.gradienteAcento),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: Tokens.gradienteAcento,
+                boxShadow: [BoxShadow(color: Tokens.acento.withValues(alpha: .55), blurRadius: 16)],
+              ),
               child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 24),
             ),
           ),

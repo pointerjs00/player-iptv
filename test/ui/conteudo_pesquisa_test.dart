@@ -527,7 +527,13 @@ void main() {
     await t.pump();
     // o primeiro frame com canais já tem a lista (ordenada ou ainda pela ordem original)
     expect(find.descendant(of: _canais, matching: find.byType(ListTile)), findsWidgets);
-    await t.runAsync(() => Future<void>.delayed(const Duration(seconds: 3)));
+    // a ordem é feita num isolate: espera-se por ela (com todos os testes em paralelo pode
+    // demorar mais do que sozinho), até 20 s
+    for (var i = 0; i < 40; i++) {
+      await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 500)));
+      await t.pump();
+      if (find.text('A ordenar…').evaluate().isEmpty && _nomes(t, _canais).first == 'Canal 00000') break;
+    }
     await t.pumpAndSettle();
     expect(_nomes(t, _canais).take(3), ['Canal 00000', 'Canal 00001', 'Canal 00002']);
     expect(find.text('A ordenar…'), findsNothing);
@@ -535,6 +541,31 @@ void main() {
     await t.tap(find.descendant(of: _grupos, matching: find.text('G')));
     await t.pumpAndSettle();
     expect(_nomes(t, _canais).first, 'Canal 00000');
+  });
+
+  testWidgets('na TV, com a coluna dos detalhes, «A ordenar…» e «1 de 100000» cabem no cabeçalho', (t) async {
+    final grande = ConteudoLista(['G'], [
+      for (var i = 0; i < 100000; i++) Canal(id: '$i', nome: 'Canal $i', grupo: 'G'),
+    ]);
+    final l = await t.runAsync(() async {
+      await bib.adicionar([Importada(contaDeLinha('http://x.com/l.m3u')!)]);
+      await bib.guardarCanais(bib.listas.single.id, grande);
+      await bib.definirOrdem(bib.listas.single.id, OrdemCanais.az);
+      return bib.listas.single;
+    });
+    ecraTvTeste(t, largura: 960, altura: 540);
+    // a ordem A–Z nunca fica pronta: o cabeçalho fica com «A ordenar…»
+    final nunca = Completer<IndiceNomes>();
+    await t.runAsync(() async {
+      await t.pumpWidget(appTeste(TelaConteudo(biblioteca: bib, lista: l!, abrir: (c, i) => null,
+          indexar: (_) => nunca.future)));
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+    });
+    await t.pump();
+    expect(find.byKey(const Key('coluna-detalhes')), findsOneWidget);
+    expect(find.text('A ordenar…'), findsOneWidget);
+    expect(find.text('1 de 100000'), findsOneWidget);
+    expect(t.takeException(), isNull, reason: 'nada transborda');
   });
 
   /// A dica (hintText) da pesquisa dos canais.

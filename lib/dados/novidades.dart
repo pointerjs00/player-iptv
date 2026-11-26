@@ -19,6 +19,14 @@ class Novidades {
 /// Todas as versões, a mais recente primeiro. A primeira é a versão da app: ao mudar a versão no
 /// pubspec.yaml, junta-se aqui a entrada dela (um teste confirma que batem certo).
 const historicoNovidades = <Novidades>[
+  Novidades('1.0.18', '2026-11-26', [
+    'Novo visual: azul profundo, cartões e painéis escuros e azul elétrico, com um fundo de faixas de luz.',
+    'O foco do comando tem agora uma mira: quatro cantos que se fecham sobre o que está escolhido.',
+    'Animações mais suaves ao mudar de ecrã e de foco (desligadas com «reduzir movimento»).',
+    'Barra lateral mais estreita, só com os ícones: sobra mais espaço para as listas e os canais.',
+    'Ver TV: o programa a dar num painel próprio, com o ponto do direto a pulsar.',
+    'Ver TV na TV: numa lista enorme, o cabeçalho dos canais já não sai do ecrã enquanto se ordena.',
+  ]),
   Novidades('1.0.17', '2026-11-25', [
     'Ver TV: «A seguir» já não repete um programa que está dentro do que está a dar.',
     'Os sites com certificados da nova raiz da GoDaddy (de 2025) já não dão «falha na ligação segura» '

@@ -1628,7 +1628,12 @@ class _TelaConteudoState extends State<TelaConteudo> {
         ),
         if (_aOrdenar) ...[
           const SizedBox(width: Tokens.e12),
-          Text('A ordenar…', style: estilo.copyWith(fontWeight: FontWeight.w400)),
+          // na TV, com a coluna dos detalhes, a coluna dos canais é estreita: encolhe esta nota,
+          // nunca o contador
+          Flexible(
+            child: Text('A ordenar…', maxLines: 1, overflow: TextOverflow.ellipsis,
+                style: estilo.copyWith(fontWeight: FontWeight.w400)),
+          ),
         ],
         // o «i de n» é para o comando: no telemóvel é só ruído
         if (n > 0 && !ecraTelemovel(context)) ...[
@@ -1695,7 +1700,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
                           semanticLabel: 'escondido'),
                       const SizedBox(width: 6),
                     ],
-                    Text('$n', style: TextStyle(color: Tokens.texto2, fontSize: tv ? 15 : 12.5)),
+                    Text('$n', style: TextStyle(color: g == _grupo ? Colors.white : Tokens.texto2, fontSize: tv ? 15 : 12.5)),
                   ]),
                   onTap: escolher,
                   // o menu do grupo: toque longo (o OK mantido vem do OkMantido)
@@ -1722,7 +1727,8 @@ class _TelaConteudoState extends State<TelaConteudo> {
           title: Text(tr('Todos os canais'), maxLines: 1, overflow: TextOverflow.ellipsis,
               style: TextStyle(fontSize: tv ? 17 : 14, fontWeight: FontWeight.w500)),
           trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-            Text('${_totalTodos(_conteudo!)}', style: TextStyle(color: Tokens.texto2, fontSize: tv ? 15 : 12.5)),
+            Text('${_totalTodos(_conteudo!)}',
+                style: TextStyle(color: _grupo == null ? Colors.white : Tokens.texto2, fontSize: tv ? 15 : 12.5)),
           ]),
           onTap: () => _escolherGrupo(null),
         ),

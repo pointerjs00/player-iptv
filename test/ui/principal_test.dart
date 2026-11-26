@@ -49,7 +49,7 @@ void main() {
     await t.pump();
     final barra = find.byType(BarraSeccoes);
     expect(barra, findsOneWidget);
-    expect(t.getSize(barra).width, 220);
+    expect(t.getSize(barra).width, 112, reason: "a barra estreita do redesenho");
     for (final r in ['Ver TV', 'Gestor', 'Definições']) {
       expect(find.descendant(of: barra, matching: find.text(r)), findsOneWidget, reason: r);
     }

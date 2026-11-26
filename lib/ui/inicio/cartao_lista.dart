@@ -58,7 +58,7 @@ class CartaoLista extends StatelessWidget {
       // as favoritas em destaque (e à frente das outras: ver ordenarListas)
       destaque: lista.favorita,
       padding: EdgeInsets.symmetric(horizontal: tv ? 14 : Tokens.e12, vertical: Tokens.e12),
-      child: Column(
+      child: _comMarcaDagua(emGrelha, lista.ordem, tv, Column(
         mainAxisSize: emGrelha ? MainAxisSize.max : MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -141,9 +141,38 @@ class CartaoLista extends StatelessWidget {
               child: Text(u.motivo, maxLines: 1, overflow: TextOverflow.ellipsis, style: secundario),
             ),
         ],
-      ),
+      )),
     ));
   }
+}
+
+/// Na grelha: o número de ordem da lista ("007") em grande e quase transparente no canto de
+/// baixo, por trás do conteúdo. É só decoração: RichText (não Text) e sem semântica, para não
+/// entrar no que se lê nem no texto do cartão com o foco.
+Widget _comMarcaDagua(bool emGrelha, int ordem, bool tv, Widget conteudo) {
+  if (!emGrelha) return conteudo;
+  return Stack(fit: StackFit.expand, clipBehavior: Clip.none, children: [
+    Positioned(
+      right: -4,
+      bottom: tv ? -26 : -22,
+      child: ExcludeSemantics(
+        child: RichText(
+          key: const Key('marca-dagua-lista'),
+          text: TextSpan(
+            text: ordem.toString().padLeft(3, '0'),
+            style: TextStyle(
+              fontSize: tv ? 84 : 72,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -4,
+              height: 1,
+              color: Tokens.anelFoco.withValues(alpha: .07),
+            ),
+          ),
+        ),
+      ),
+    ),
+    conteudo,
+  ]);
 }
 
 /// "verificada há 2 h", "verificada há 3 dias"... (para o detalhe da [PilulaEstado]).

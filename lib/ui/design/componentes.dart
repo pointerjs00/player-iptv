@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:flutter/rendering.dart' show PipelineOwner, RenderProxyBox;
 import 'package:flutter/services.dart';
@@ -9,7 +10,8 @@ import 'movimento.dart';
 import 'sombra.dart';
 import 'tokens.dart';
 
-/// O fundo de todos os ecrãs: azul-noite com um gradiente radial subtil. É sempre opaco (no
+/// O fundo de todos os ecrãs: azul quase preto em gradiente, com faixas curvas de luz azul à
+/// direita (em cima e em baixo) e uma linha clara ao longo da borda de cada uma. É sempre opaco (no
 /// Android a `FlutterView` é transparente: o que não se pinta deixa ver o que está por baixo),
 /// exceto enquanto houver um vídeo nativo montado ([videoPorBaixo]).
 class FundoCinema extends SingleChildRenderObjectWidget {
@@ -22,12 +24,75 @@ class FundoCinema extends SingleChildRenderObjectWidget {
 
   static const decoracao = BoxDecoration(
     color: Tokens.fundo,
-    gradient: RadialGradient(
-      center: Alignment(-.7, -1),
-      radius: 1.5,
-      colors: [Tokens.fundoBrilho, Tokens.fundo],
+    gradient: LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [Tokens.fundoBrilho, Color(0xFF050C1F), Tokens.fundo],
+      stops: [0, .5, 1],
     ),
   );
+
+  /// As faixas curvas, desenhadas num ecrã de 1600 × 900 e esticadas ao tamanho real (os
+  /// caminhos e as tintas fazem-se uma vez).
+  static final List<(Path, Paint)> _faixas = () {
+    Path faixa(List<double> p, {required bool fechar, required Offset canto}) {
+      final c = Path()
+        ..moveTo(p[0], p[1])
+        ..cubicTo(p[2], p[3], p[4], p[5], p[6], p[7]);
+      if (fechar) {
+        c
+          ..lineTo(canto.dx, canto.dy)
+          ..close();
+      }
+      return c;
+    }
+
+    Paint enchimento(Color cor, double alfa, Offset de, Offset ate) =>
+        Paint()..shader = ui.Gradient.linear(de, ate, [cor.withValues(alpha: alfa), cor.withValues(alpha: 0)]);
+    Paint borda(double largura) => Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = largura
+      ..shader = ui.Gradient.linear(const Offset(0, 0), const Offset(1600, 0), [
+        Tokens.bordaFaixa.withValues(alpha: 0),
+        Tokens.bordaFaixa.withValues(alpha: .35),
+        const Color(0xFF6FA2FF).withValues(alpha: .25),
+      ], [0, .55, 1]);
+
+    const cimaA = [860.0, 0.0, 1080.0, 150.0, 1320.0, 120.0, 1600.0, 270.0];
+    const cimaB = [1150.0, 0.0, 1290.0, 95.0, 1450.0, 120.0, 1600.0, 105.0];
+    const baixoA = [960.0, 900.0, 1130.0, 720.0, 1350.0, 640.0, 1600.0, 560.0];
+    const baixoB = [1230.0, 900.0, 1340.0, 790.0, 1470.0, 745.0, 1600.0, 725.0];
+    const esquerda = [0.0, 690.0, 190.0, 670.0, 330.0, 750.0, 460.0, 900.0];
+    return [
+      (faixa(cimaA, fechar: true, canto: const Offset(1600, 0)),
+          enchimento(Tokens.faixaFundo, .6, const Offset(1600, 0), const Offset(860, 162))),
+      (faixa(cimaB, fechar: true, canto: const Offset(1600, 0)),
+          enchimento(const Color(0xFF2556A6), .38, const Offset(1600, 0), const Offset(1240, 105))),
+      (faixa(baixoA, fechar: true, canto: const Offset(1600, 900)),
+          enchimento(const Color(0xFF16397A), .56, const Offset(1600, 900), const Offset(960, 662))),
+      (faixa(baixoB, fechar: true, canto: const Offset(1600, 900)),
+          enchimento(const Color(0xFF2459B0), .35, const Offset(1600, 900), const Offset(1341, 725))),
+      (faixa(esquerda, fechar: true, canto: const Offset(0, 900)),
+          enchimento(const Color(0xFF143270), .42, const Offset(0, 900), const Offset(460, 690))),
+      (faixa(cimaA, fechar: false, canto: Offset.zero), borda(1.6)),
+      (faixa(cimaB, fechar: false, canto: Offset.zero), borda(1.2)),
+      (faixa(baixoA, fechar: false, canto: Offset.zero), borda(1.6)),
+      (faixa(baixoB, fechar: false, canto: Offset.zero), borda(1.2)),
+    ];
+  }();
+
+  /// Pinta as faixas curvas no retângulo `r` (por cima do gradiente).
+  static void pintarFaixas(Canvas canvas, Rect r) {
+    canvas
+      ..save()
+      ..clipRect(r)
+      ..translate(r.left, r.top)
+      ..scale(r.width / 1600, r.height / 900);
+    for (final (caminho, tinta) in _faixas) {
+      canvas.drawPath(caminho, tinta);
+    }
+    canvas.restore();
+  }
 
   @override
   RenderObject createRenderObject(BuildContext context) =>
@@ -63,16 +128,18 @@ class _RenderFundoCinema extends RenderProxyBox {
     if (FundoCinema.videoPorBaixo.value <= 0) {
       _pintor ??= FundoCinema.decoracao.createBoxPainter(markNeedsPaint);
       _pintor!.paint(context.canvas, offset, configuracao.copyWith(size: size));
+      FundoCinema.pintarFaixas(context.canvas, offset & size);
     }
     super.paint(context, offset);
   }
 }
 
-/// Um painel de vidro fosco: fundo translúcido, borda de 1 px translúcida e sombra.
+/// Um painel (as colunas de Ver TV, os painéis do Gestor e das Definições): escuro e quase
+/// opaco, com uma borda azulada fina e sombra.
 /// O conteúdo é recortado pelos cantos e pinta o "ink" (ListTile, InkWell) por cima do vidro.
 class SuperficieVidro extends StatelessWidget {
   const SuperficieVidro({super.key, required this.child, this.padding = EdgeInsets.zero,
-      this.raio = Tokens.raioCartao, this.elevacao = 1, this.cor = Tokens.vidro});
+      this.raio = Tokens.raioCartao, this.elevacao = 1, this.cor = Tokens.cartao});
 
   final Widget child;
   final EdgeInsetsGeometry padding;
@@ -87,7 +154,7 @@ class SuperficieVidro extends StatelessWidget {
       sombras: Tokens.sombra(elevacao),
       raio: raio,
       child: DecoratedBox(
-        decoration: BoxDecoration(color: cor, borderRadius: r, border: Border.all(color: Tokens.bordaVidro)),
+        decoration: BoxDecoration(color: cor, borderRadius: r, border: Border.all(color: Tokens.bordaCartao)),
         child: Material(
           type: MaterialType.transparency,
           shape: RoundedRectangleBorder(borderRadius: r),
@@ -257,21 +324,21 @@ class _CartaoModernoState extends State<CartaoModerno> {
           duration: d,
           curve: Tokens.curva,
           decoration: BoxDecoration(
-            color: widget.destaque ? null : (verFoco || _rato ? Tokens.vidroForte : Tokens.vidro),
+            color: widget.destaque ? null : (verFoco || _rato ? Tokens.cartaoFoco : Tokens.cartao),
             gradient: widget.destaque
                 ? LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                     colors: [
                       Tokens.aviso.withValues(alpha: verFoco || _rato ? .16 : .11),
-                      verFoco || _rato ? Tokens.vidroForte : Tokens.vidro,
+                      verFoco || _rato ? Tokens.cartaoFoco : Tokens.cartao,
                     ],
                   )
                 : null,
             borderRadius: r,
             border: widget.destaque
                 ? Border.all(color: Tokens.aviso.withValues(alpha: .55), width: 1.5)
-                : Border.all(color: Tokens.bordaVidro),
+                : Border.all(color: Tokens.bordaCartao),
           ),
           child: Material(
             type: MaterialType.transparency,

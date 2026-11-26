@@ -912,9 +912,13 @@ void main() {
       await t.sendKeyEvent(LogicalKeyboardKey.arrowUp);
       await t.pump();
       expect(_focado(), 'Progresso');
-      final animado = t.widget<TweenAnimationBuilder<double>>(
+      // todas as animações da barra (o realce e a mira do foco) sem duração
+      final animados = t.widgetList<TweenAnimationBuilder<double>>(
           find.descendant(of: find.byType(BarraProgresso), matching: find.byType(TweenAnimationBuilder<double>)));
-      expect(animado.duration, Duration.zero);
+      expect(animados, isNotEmpty);
+      for (final a in animados) {
+        expect(a.duration, Duration.zero);
+      }
     });
   });
 

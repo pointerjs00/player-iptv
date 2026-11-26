@@ -102,8 +102,10 @@ ThemeData temaApp({bool realceFoco = true}) {
     dividerTheme: const DividerThemeData(color: Tokens.bordaVidro, space: 1),
     listTileTheme: ListTileThemeData(
       shape: RoundedRectangleBorder(borderRadius: raioCampo),
-      selectedColor: Tokens.texto,
-      selectedTileColor: Tokens.acento.withValues(alpha: .18),
+      // a linha escolhida (grupo, categoria...): azul sólido com o texto branco (o azul mais
+      // escuro do par: o branco sobre o azul elétrico não chegava aos 4,5:1)
+      selectedColor: Colors.white,
+      selectedTileColor: Tokens.acento2,
       iconColor: Tokens.texto2,
     ),
     checkboxTheme: CheckboxThemeData(

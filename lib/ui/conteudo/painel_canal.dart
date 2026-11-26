@@ -138,12 +138,36 @@ class _PainelCanalState extends State<PainelCanal> {
         ]),
       ),
     ]);
-    final conteudo = Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+    final coluna = Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
       cabecalho,
       const SizedBox(height: Tokens.e16),
       const Divider(height: 1),
       const SizedBox(height: Tokens.e16),
       ..._programacao(g, escala),
+    ]);
+    // o número do canal em grande e quase transparente, por trás (só decoração: RichText, sem
+    // semântica)
+    final conteudo = Stack(clipBehavior: Clip.none, children: [
+      Positioned(
+        right: -6,
+        top: -34,
+        child: ExcludeSemantics(
+          child: RichText(
+            key: const Key('marca-dagua-canal'),
+            text: TextSpan(
+              text: widget.numero,
+              style: TextStyle(
+                fontSize: (widget.compacto ? 96 : 130) * escala,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -6,
+                height: 1,
+                color: Tokens.anelFoco.withValues(alpha: .07),
+              ),
+            ),
+          ),
+        ),
+      ),
+      coluna,
     ]);
     if (widget.compacto) return conteudo;
     return SingleChildScrollView(padding: const EdgeInsets.all(Tokens.e16), child: conteudo);
@@ -172,8 +196,22 @@ class _PainelCanalState extends State<PainelCanal> {
     ].take(3);
     return [
       if (atual != null) ...[
-        Text(tr('AGORA'), style: rotulo.copyWith(color: Tokens.anelFoco)),
-        const SizedBox(height: Tokens.e4),
+        // o programa a dar num painel azul, com o ponto do direto a pulsar
+        Container(
+          key: const Key('bloco-agora'),
+          padding: const EdgeInsets.all(Tokens.e16),
+          decoration: BoxDecoration(
+            color: Tokens.acento.withValues(alpha: .12),
+            borderRadius: BorderRadius.circular(Tokens.raioCartao),
+            border: Border.all(color: Tokens.anelFoco.withValues(alpha: .28)),
+          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          const PontoDireto(),
+          const SizedBox(width: Tokens.e8),
+          Text(tr('AGORA'), style: rotulo.copyWith(color: Colors.white)),
+        ]),
+        const SizedBox(height: Tokens.e8),
         Text(atual.titulo, key: const Key('detalhe-agora'), maxLines: 3, overflow: TextOverflow.ellipsis, style: titulo),
         const SizedBox(height: Tokens.e4),
         Text('${intervaloPrograma(atual)} · ${faltaPara(atual, agora)}', style: horas),
@@ -194,6 +232,8 @@ class _PainelCanalState extends State<PainelCanal> {
               overflow: TextOverflow.ellipsis,
               style: TextStyle(fontSize: 14 * escala, color: Tokens.texto2, height: 1.45)),
         ],
+          ]),
+        ),
         const SizedBox(height: Tokens.e16),
       ],
       if (seguinte != null) ...[

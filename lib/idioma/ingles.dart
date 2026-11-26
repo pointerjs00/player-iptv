@@ -1667,6 +1667,18 @@ const textosIngles = <String, String>{
       'Watch TV: "Next" no longer repeats a programme that sits inside the one on now.',
   'Os sites com certificados da nova raiz da GoDaddy (de 2025) já não dão «falha na ligação segura» no Windows nem em aparelhos Android antigos.':
       'Sites with certificates from the new GoDaddy root (2025) no longer give "secure connection failed" on Windows or older Android devices.',
+  'Novo visual: azul profundo, cartões e painéis escuros e azul elétrico, com um fundo de faixas de luz.':
+      'New look: deep blue, dark cards and panels and electric blue, with a background of light bands.',
+  'O foco do comando tem agora uma mira: quatro cantos que se fecham sobre o que está escolhido.':
+      'Remote focus now has a viewfinder: four corners that close in on what is selected.',
+  'Animações mais suaves ao mudar de ecrã e de foco (desligadas com «reduzir movimento»).':
+      'Smoother animations when changing screen and focus (off with "reduce motion").',
+  'Barra lateral mais estreita, só com os ícones: sobra mais espaço para as listas e os canais.':
+      'Narrower sidebar with icons only: more room for lists and channels.',
+  'Ver TV: o programa a dar num painel próprio, com o ponto do direto a pulsar.':
+      'Watch TV: the programme on now in its own panel, with a pulsing live dot.',
+  'Ver TV na TV: numa lista enorme, o cabeçalho dos canais já não sai do ecrã enquanto se ordena.':
+      'Watch TV on TV: in a huge list, the channels header no longer overflows while sorting.',
   '‹ Importar':
       '‹ Import',
   if (!edicaoPartilha) ...{

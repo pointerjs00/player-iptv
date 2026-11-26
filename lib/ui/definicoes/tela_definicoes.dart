@@ -575,8 +575,8 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
           construir: (context, aoMudarFoco) => ListTile(
             focusNode: _focosCat[c.index],
             selected: ativa,
-            selectedColor: Tokens.texto,
-            selectedTileColor: Tokens.superficie3,
+            selectedColor: Colors.white,
+            selectedTileColor: Tokens.acento2,
             iconColor: Tokens.texto2,
             textColor: Tokens.texto2,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Tokens.raioBotao)),

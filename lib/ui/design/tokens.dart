@@ -2,20 +2,25 @@ import 'dart:math' as math;
 
 import 'package:material_ui/material_ui.dart';
 
-/// Os valores do design "cinema": cores, raios, espaçamentos, sombras, durações e curvas.
+/// Os valores do design "cinema" (redesenho de 2026: azul profundo, cartões escuros, azul
+/// elétrico e a mira de foco): cores, raios, espaçamentos, sombras, durações e curvas.
 /// Todos os ecrãs usam estes valores (nada de cores soltas nos widgets).
 abstract final class Tokens {
   // --- cores ---
-  /// Fundo azul-noite.
-  static const fundo = Color(0xFF0A1628);
+  /// Fundo azul quase preto.
+  static const fundo = Color(0xFF040A19);
 
-  /// O centro do gradiente radial subtil do fundo.
-  static const fundoBrilho = Color(0xFF18203A);
+  /// O topo (canto superior esquerdo) do gradiente do fundo.
+  static const fundoBrilho = Color(0xFF071228);
 
-  /// Superfícies opacas (diálogos, menus, barras) — o "vidro" sobre o fundo.
-  static const superficie = Color(0xFF0D1F3A);
-  static const superficie2 = Color(0xFF132B4D);
-  static const superficie3 = Color(0xFF1A3A66);
+  /// As faixas curvas de luz do fundo e a linha clara ao longo da borda delas.
+  static const faixaFundo = Color(0xFF173D78);
+  static const bordaFaixa = Color(0xFF4C86E8);
+
+  /// Superfícies opacas (diálogos, menus, barras) — os cartões escuros sobre o fundo.
+  static const superficie = Color(0xFF0A1430);
+  static const superficie2 = Color(0xFF10204A);
+  static const superficie3 = Color(0xFF16295A);
 
   /// Vidro fosco: branco a 4 / 6 / 8 %.
   static const vidroFraco = Color(0x0AFFFFFF);
@@ -25,14 +30,20 @@ abstract final class Tokens {
   /// A borda do vidro: branco a 8 %.
   static const bordaVidro = Color(0x14FFFFFF);
 
+  /// Os cartões (listas, canais, origens): escuros e quase opacos, com uma borda azulada fina;
+  /// com o foco (ou o rato) um tom acima.
+  static const cartao = Color(0xD90A1430);
+  static const cartaoFoco = Color(0xF210204A);
+  static const bordaCartao = Color(0x1F78A0FF);
+
   static const texto = Color(0xFFEEF4FF);
 
   /// Texto secundário: opaco, para o contraste ser verificável (ver [contraste]).
   static const texto2 = Color(0xFFA3B8D6);
 
-  /// Acento: azul → azul-escuro.
-  static const acento = Color(0xFF2F7BF6);
-  static const acento2 = Color(0xFF1E5BB8);
+  /// Acento: azul elétrico → azul-escuro.
+  static const acento = Color(0xFF2F7BFF);
+  static const acento2 = Color(0xFF1E5BD8);
   static const gradienteAcento = LinearGradient(colors: [acento, acento2]);
 
   /// O anel de foco (comando da TV): azul claro, bem visível sobre o fundo escuro.
@@ -91,7 +102,7 @@ abstract final class Tokens {
   /// Com o foco do comando: a sombra mais alta e um brilho azul.
   static const sombraFoco = [
     ...sombra3,
-    BoxShadow(color: Color(0x738EC5FF), blurRadius: 28, spreadRadius: 1),
+    BoxShadow(color: Color(0x732F7BFF), blurRadius: 32, spreadRadius: 1),
   ];
 
   /// As sombras de uma elevação (0 = nenhuma, 1–3).
@@ -102,11 +113,17 @@ abstract final class Tokens {
         _ => sombra3,
       };
 
-  // --- movimento ---
+  // --- movimento (as curvas "emphasized" do Material 3: quem entra desacelera, quem sai acelera;
+  // na TV, curtas e previsíveis, como pedem os guias do tvOS e do Google TV) ---
   static const duracaoRapida = Duration(milliseconds: 180);
   static const duracaoMedia = Duration(milliseconds: 240);
   static const duracaoLenta = Duration(milliseconds: 320);
-  static const curva = Curves.easeOutCubic;
+
+  /// Entrar, crescer, aparecer (Material 3 "emphasized decelerate").
+  static const curva = Cubic(0.05, 0.7, 0.1, 1.0);
+
+  /// Sair, desaparecer (Material 3 "emphasized accelerate").
+  static const curvaSaida = Cubic(0.3, 0.0, 0.8, 0.15);
 }
 
 /// A razão de contraste WCAG entre duas cores (1 a 21); o texto normal pede ≥ 4,5.
