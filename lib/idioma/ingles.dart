@@ -1761,6 +1761,8 @@ const textosIngles = <String, String>{
       'List cards show the type, channels and groups as tags, with the server on its own line.',
   'Ver TV: a programação de um canal só se pede com o foco parado nele 0,7 s (a descer depressa não se pede nada).':
       'Watch TV: a channel’s programme is only requested after the focus rests on it for 0.7 s (scrolling fast requests nothing).',
+  'Ver TV: menos texto cortado. Nos cartões das listas o tipo vai ao lado do servidor e as contagens aparecem inteiras; o «Continuar a ver» é mais largo e os favoritos mostram o nome do canal em até 2 linhas.':
+      'Watch TV: less cut-off text. On list cards the type sits next to the server and the counts show in full; «Continue watching» is wider and favourites show the channel name on up to 2 lines.',
   '‹ Importar':
       '‹ Import',
   if (!edicaoPartilha) ...{

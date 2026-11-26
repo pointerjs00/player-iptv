@@ -19,6 +19,9 @@ class Novidades {
 /// Todas as versões, a mais recente primeiro. A primeira é a versão da app: ao mudar a versão no
 /// pubspec.yaml, junta-se aqui a entrada dela (um teste confirma que batem certo).
 const historicoNovidades = <Novidades>[
+  Novidades('1.0.22', '2026-11-26', [
+    'Ver TV: menos texto cortado. Nos cartões das listas o tipo vai ao lado do servidor e as contagens aparecem inteiras; o «Continuar a ver» é mais largo e os favoritos mostram o nome do canal em até 2 linhas.',
+  ]),
   Novidades('1.0.21', '2026-11-26', [
     '«Continuar a ver» mais arrumado: a lista, o número e o grupo do canal em etiquetas, e o programa a dar num bloco à parte com «faltam n min» e o progresso.',
     'Os cartões das listas mostram o tipo, os canais e os grupos em etiquetas, e o servidor numa linha própria.',

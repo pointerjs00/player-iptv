@@ -391,7 +391,7 @@ class _TelaInicioState extends State<TelaInicio> {
         child: SizedBox(
           height: CartaoContinuar.altura(tv, fatorTexto(context)),
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 760),
+            constraints: const BoxConstraints(maxWidth: 1240),
             child: entradaEmCascata(0, cartao),
           ),
         ),
@@ -413,7 +413,7 @@ class _TelaInicioState extends State<TelaInicio> {
           itemCount: f.length,
           separatorBuilder: (_, _) => const SizedBox(width: Tokens.e12),
           itemBuilder: (_, i) => SizedBox(
-            width: tv ? 290 : 250,
+            width: tv ? 340 : 300,
             child: letraPresa(CartaoModerno(
               onTap: () => _abrir(f[i].lista, continuar: f[i].canal.id),
               padding: EdgeInsets.symmetric(horizontal: Tokens.e12, vertical: tv ? 14 : 10),
@@ -427,9 +427,9 @@ class _TelaInicioState extends State<TelaInicio> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(f[i].canal.nome,
-                        maxLines: 1,
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: tv ? 18 : 15, fontWeight: FontWeight.w700)),
+                        style: TextStyle(fontSize: tv ? 16.5 : 14.5, fontWeight: FontWeight.w700, height: 1.2)),
                     Text(f[i].lista.nomeMostrado,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,

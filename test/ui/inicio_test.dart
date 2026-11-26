@@ -327,12 +327,15 @@ void main() {
       }
       expect(naLinha, greaterThanOrEqualTo(3));
 
-      // cada cartão: «tipo · host» e as contagens numa linha; a validade ao lado da pílula ou,
-      // quando não cabe (com a letra larga dos testes nunca cabe), logo por baixo
+      // cada cartão: o tipo ao lado do servidor, as contagens inteiras por baixo; a validade ao lado
+      // da pílula ou, quando não cabe (com a letra larga dos testes nunca cabe), logo por baixo
       final c = find.byWidget(t.widget<CartaoLista>(cartoes.first));
       final tipo = t.getCenter(find.descendant(of: c, matching: find.text('STALKER')));
-      expect(t.getCenter(find.descendant(of: c, matching: find.text('3 canais'))).dy,
+      expect(t.getCenter(find.descendant(of: c, matching: find.byKey(const Key('lista-servidor')))).dy,
           moreOrLessEquals(tipo.dy, epsilon: 1));
+      final canais = find.descendant(of: c, matching: find.text('3 canais'));
+      expect(t.getCenter(canais).dy, greaterThan(tipo.dy));
+      expect(t.renderObject<RenderParagraph>(canais).didExceedMaxLines, isFalse, reason: 'as contagens inteiras');
       final pilula = t.getRect(find.descendant(of: c, matching: find.byType(PilulaEstado)));
       final validade = t.getRect(find.descendant(of: c, matching: find.text('até 16/10/2027')));
       expect(validade.top >= pilula.bottom || (validade.center.dy - pilula.center.dy).abs() < 1, isTrue,

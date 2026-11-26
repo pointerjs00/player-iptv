@@ -80,13 +80,21 @@ class CartaoLista extends StatelessWidget {
                           color: Tokens.aviso, size: tv ? 22 : 18, semanticLabel: tr('Favorita')),
                     ),
                 ]),
-                // o servidor, numa linha (o tipo e as contagens vão nas etiquetas por baixo)
-                Text(hostDe(lista.conta.endereco),
-                    key: const Key('lista-servidor'),
-                    maxLines: 1,
-                    softWrap: false,
-                    overflow: TextOverflow.ellipsis,
-                    style: secundario),
+                // o tipo e o servidor (as contagens vão nas etiquetas por baixo)
+                const SizedBox(height: 2),
+                Row(children: [
+                  Etiqueta(
+                      key: const Key('lista-tipo'), texto: _tipos[lista.conta.tipo], tom: TomEtiqueta.acento, maiusculas: true),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(hostDe(lista.conta.endereco),
+                        key: const Key('lista-servidor'),
+                        maxLines: 1,
+                        softWrap: false,
+                        overflow: TextOverflow.ellipsis,
+                        style: secundario),
+                  ),
+                ]),
               ]),
             ),
             // no telemóvel o menu também se abre com um ⋮ à vista (a pressão longa não se adivinha)
@@ -99,12 +107,10 @@ class CartaoLista extends StatelessWidget {
                 style: IconButton.styleFrom(minimumSize: const Size(48, 48)),
               ),
           ]),
-          SizedBox(height: tv ? 10 : Tokens.e8),
-          // as etiquetas: o tipo e as contagens da cache (quando há)
-          Row(children: [
-            Etiqueta(key: const Key('lista-tipo'), texto: _tipos[lista.conta.tipo], tom: TomEtiqueta.acento, maiusculas: true),
-            if (resumo != null) ...[
-              const SizedBox(width: 6),
+          SizedBox(height: tv ? 6 : 5),
+          // as contagens da cache (quando há)
+          if (resumo != null)
+            Row(children: [
               Flexible(
                 child: Etiqueta(
                     key: const Key('lista-canais'),
@@ -120,8 +126,9 @@ class CartaoLista extends StatelessWidget {
                     valor: '${resumo!.grupos}',
                     texto: tr('grupos')),
               ),
-            ],
-          ]),
+            ])
+          else
+            SizedBox(height: tv ? 24 : 22),
           if (emGrelha) const Spacer() else const SizedBox(height: Tokens.e8),
           // a pílula e a validade na mesma linha quando cabem; senão a validade vai para baixo
           Wrap(spacing: Tokens.e8, runSpacing: Tokens.e4, crossAxisAlignment: WrapCrossAlignment.center, children: [
