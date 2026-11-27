@@ -23,6 +23,7 @@ import '../design/design.dart';
 import '../design/escala_interface.dart';
 import '../design/mensagens.dart';
 import '../player/configuracao_mpv.dart';
+import '../atualizar/fluxo_atualizar.dart';
 import '../novidades.dart';
 import '../principal/tela_principal.dart';
 import 'linha_opcao.dart';
@@ -86,7 +87,11 @@ class TelaDefinicoes extends StatefulWidget {
     this.guardarCopia,
     this.android,
     this.jogos,
+    this.atualizador,
   });
+
+  /// Para testes: o que «Procurar atualizações» usa (null: o da app).
+  final Atualizador? atualizador;
 
   /// As preferências dos «Jogos» (null: sem a secção, como na edição de partilha).
   final PreferenciasJogos? jogos;
@@ -570,6 +575,15 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
                   onPressed: () => abrirNovidades(context),
                   icon: const Icon(Icons.new_releases_outlined),
                   label: Text(tr('Ver novidades')),
+                ),
+              )),
+          _opcao(tr('Atualizações'), tr('Ver se há uma versão nova da app e instalá-la.'),
+              controlo: Align(
+                alignment: Alignment.centerLeft,
+                child: OutlinedButton.icon(
+                  onPressed: () => procurarAtualizacoes(context, a: widget.atualizador),
+                  icon: const Icon(Icons.system_update_rounded),
+                  label: Text(tr('Procurar atualizações')),
                 ),
               )),
           _opcao(tr('Licenças'), tr('O player usa o mpv e o ffmpeg (GPLv3).'),

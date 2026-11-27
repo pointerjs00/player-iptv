@@ -8,6 +8,7 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 
 import '../dados/nova_versao.dart';
+import '../idioma/idioma.dart';
 import '../rede/http.dart';
 import '../rede/raizes.dart';
 
@@ -54,17 +55,19 @@ Future<File> descarregarPacote(Pacote p, Directory pasta,
       escrita.add(pedaco);
       hash.add(pedaco);
       recebidos += pedaco.length;
-      if (recebidos > p.tamanho) throw ErroPacote('o pacote recebido é maior do que o publicado');
+      if (recebidos > p.tamanho) throw ErroPacote(tr('o pacote recebido é maior do que o publicado'));
       progresso?.call(recebidos, p.tamanho);
     }
     cancelamento?.verificar();
     hash.close();
     await escrita.close();
     escrita = null;
-    if (recebidos != p.tamanho) throw ErroPacote('o pacote ficou incompleto ($recebidos de ${p.tamanho} bytes)');
+    if (recebidos != p.tamanho) {
+      throw ErroPacote(tr('o pacote ficou incompleto ({0} de {1} bytes)', [recebidos, p.tamanho]));
+    }
     final esperado = p.sha256;
     if (esperado != null && resumo.valor.toString() != esperado.toLowerCase()) {
-      throw ErroPacote('o pacote recebido não é o publicado (SHA-256 diferente)');
+      throw ErroPacote(tr('o pacote recebido não é o publicado (SHA-256 diferente)'));
     }
     if (await destino.exists()) await destino.delete();
     return await parcial.rename(destino.path);

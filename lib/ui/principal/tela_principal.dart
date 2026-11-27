@@ -7,6 +7,7 @@ import 'package:material_ui/material_ui.dart';
 import '../../dados/nova_versao.dart';
 import '../../tarefas/servico_tarefas.dart';
 import '../../verificar/servico.dart';
+import '../atualizar/fluxo_atualizar.dart';
 import '../design/mensagens.dart';
 import '../gestor/painel_atividade.dart';
 import '../novidades.dart';
@@ -72,13 +73,16 @@ class SeccaoAtual extends InheritedWidget {
 class TelaPrincipal extends StatefulWidget {
   const TelaPrincipal({super.key, required this.verTv, required this.gestor, required this.definicoes,
       this.jogos, this.inicial = Seccao.verTv, this.sair = SystemNavigator.pop, this.tarefas, this.verificacao, this.pedidoGestor,
-      this.novidades = false, this.novaVersao});
+      this.novidades = false, this.novaVersao, this.atualizador});
 
   /// Mostra as novidades desta versão ao abrir (a primeira vez depois de atualizar).
   final bool novidades;
 
   /// Procura uma versão nova da app ao abrir (null: não procura; ver [novaVersaoPorAvisar]).
   final Future<NovaVersao?> Function()? novaVersao;
+
+  /// Para testes: o que o «Atualizar» do aviso usa (null: o da app).
+  final Atualizador? atualizador;
 
   final Widget verTv;
 
@@ -179,6 +183,8 @@ class _TelaPrincipalState extends State<TelaPrincipal> {
     if (v == null || !mounted) return;
     final pagina = v.pagina.replaceFirst(RegExp(r'^https?://'), '').replaceFirst(RegExp(r'/tag/.*$'), '');
     _mensagens.mostrar(tr('Há uma versão nova da app: {0}. Descarrega em {1}', [v.versao, pagina]),
+        acao: tr('Atualizar'),
+        aoAcao: _naCasca(() => unawaited(atualizarApp(context, v, a: widget.atualizador))),
         duracao: const Duration(seconds: 15));
   }
 

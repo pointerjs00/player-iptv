@@ -1897,6 +1897,40 @@ const textosIngles = <String, String>{
         "Matches on TV: the right arrow reaches the match details on the right (the channels and «▶ Watch»); the left arrow goes back to the match.",
     'Há uma versão nova da app: {0}. Descarrega em {1}':
         'A new version of the app is out: {0}. Download it from {1}',
+    'Atualizações': 'Updates',
+    'Estás na versão mais recente ({0}).': "You're on the latest version ({0}).",
+    'Não foi possível ver se há versão nova. Tenta mais tarde.':
+        "Couldn't check for a new version. Try again later.",
+    'Há uma versão nova: {0}.': 'A new version is out: {0}.',
+    'Não há pacote desta versão para este aparelho.': "This version has no package for this device.",
+    'Não é possível atualizar nesta pasta (a app não pode escrever lá). Descarrega a versão nova na página da release.':
+        "The app can't update itself in this folder (it can't write there). Download the new version from the release page.",
+    'O download falhou: {0}': 'The download failed: {0}',
+    'Não foi possível abrir o instalador: {0}': "Couldn't open the installer: {0}",
+    'A versão {0} está pronta. A app fecha, troca os ficheiros e volta a abrir.':
+        'Version {0} is ready. The app will close, replace its files and open again.',
+    'Mais tarde': 'Later',
+    'Fechar e atualizar agora': 'Close and update now',
+    'Falta uma autorização': 'Permission needed',
+    'Para se atualizar, a TVIntel precisa de autorização para instalar apps desconhecidas. Dá-a no ecrã que vai abrir e depois volta a carregar em «Atualizar».':
+        'To update itself, TVIntel needs permission to install unknown apps. Allow it on the screen that opens, then press «Update» again.',
+    'Dar autorização': 'Allow',
+    'Abre as definições do Android › Apps › TVIntel › Instalar apps desconhecidas e autoriza. Depois volta a carregar em «Atualizar».':
+        'Open Android settings › Apps › TVIntel › Install unknown apps and allow it. Then press «Update» again.',
+    'Abrir a página': 'Open the page',
+    'OK': 'OK',
+    'sem ligação à internet': 'no internet connection',
+    'o servidor demorou demasiado a responder': 'the server took too long to reply',
+    'o servidor respondeu {0}': 'the server replied {0}',
+    'A procurar uma versão nova…': 'Checking for a new version…',
+    'A descarregar a versão {0}': 'Downloading version {0}',
+    '{0} de {1} MB': '{0} of {1} MB',
+    'Ver se há uma versão nova da app e instalá-la.': 'Check for a new version of the app and install it.',
+    'Procurar atualizações': 'Check for updates',
+    'o pacote recebido é maior do que o publicado': 'the downloaded package is larger than the published one',
+    'o pacote ficou incompleto ({0} de {1} bytes)': 'the package is incomplete ({0} of {1} bytes)',
+    'o pacote recebido não é o publicado (SHA-256 diferente)':
+        "the downloaded package isn't the published one (different SHA-256)",
     'Jogos: em «Filtros», «Ordenar» deixa ver os jogos numa só lista pela hora, em vez de por competição.':
         "Matches: in «Filters», «Sort» shows the matches in a single list by time instead of by competition.",
     'Jogos: em «Competições», escolher uma competição mostra todos os jogos dela, de ontem a daqui a 6 dias, por dia e pela hora.':
