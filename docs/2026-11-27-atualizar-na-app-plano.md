@@ -157,3 +157,8 @@ Comportamento:
 ## Estado
 
 - 2026-11-27: design e plano escritos. Nenhuma tarefa começada.
+- 2026-11-27: Tarefas 1–6 feitas e com commit (33b37d1..0055a52), suite inteira verde (1861+). Ledger:
+  .superpowers/sdd/2026-11-27-atualizar-na-app-plano/progress.md (com as decisões «Ruling:»).
+  A troca do Windows foi ensaiada a sério (pasta com acentos e apóstrofo). Em curso: revisão
+  independente do ramo; depois corrigir o que for Critical/Important e fazer a Tarefa 7 (1.0.28,
+  pacotes, push e releases). Falta o ensaio real no Android/Windows com uma 1.0.29 de teste.
