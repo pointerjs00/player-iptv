@@ -5,10 +5,12 @@
 library;
 
 import 'dart:convert';
+import 'dart:ffi';
 import 'dart:io';
 import 'dart:isolate';
 
 import 'package:archive/archive_io.dart';
+import 'package:ffi/ffi.dart';
 
 import '../idioma/idioma.dart';
 import 'descarregar.dart' show ErroPacote;
@@ -153,6 +155,98 @@ Future<void> instalarWindows(
 
 int _pidAtual() => pid;
 
+/// Lança o script independente da app e sem janela. Não serve `Process.start(mode: detached)`: o
+/// Dart cria o processo com DETACHED_PROCESS (sem consola) e o PowerShell 5.1 morre antes de correr
+/// a primeira linha — foi o que fez a 1.0.28 fechar sem voltar a abrir. Com CREATE_NO_WINDOW tem
+/// uma consola, só que invisível; sai do «job» da app quando o Windows deixa.
 Future<void> _iniciar(String executavel, List<String> argumentos) async {
-  await Process.start(executavel, argumentos, mode: ProcessStartMode.detached);
+  final linha = [executavel, ...argumentos].map(citarArgumento).join(' ');
+  const semJanela = 0x08000000, novoGrupo = 0x00000200, foraDoJob = 0x01000000;
+  if (!_criarProcesso(linha, semJanela | novoGrupo | foraDoJob) && !_criarProcesso(linha, semJanela | novoGrupo)) {
+    throw ProcessException(executavel, argumentos, 'CreateProcessW falhou');
+  }
+}
+
+/// Um argumento na linha de comandos do Windows (as regras do CommandLineToArgvW).
+String citarArgumento(String a) {
+  if (a.isNotEmpty && !a.contains(RegExp(r'[\s"]'))) return a;
+  final s = StringBuffer('"');
+  var barras = 0;
+  for (final c in a.split('')) {
+    if (c == r'\') {
+      barras++;
+    } else if (c == '"') {
+      s.write(r'\' * (barras * 2 + 1));
+      s.write('"');
+      barras = 0;
+    } else {
+      s.write(r'\' * barras);
+      s.write(c);
+      barras = 0;
+    }
+  }
+  s.write(r'\' * (barras * 2));
+  s.write('"');
+  return s.toString();
+}
+
+final class _InfoArranque extends Struct {
+  @Uint32()
+  external int cb;
+  external Pointer<Utf16> lpReserved;
+  external Pointer<Utf16> lpDesktop;
+  external Pointer<Utf16> lpTitle;
+  @Uint32()
+  external int dwX;
+  @Uint32()
+  external int dwY;
+  @Uint32()
+  external int dwXSize;
+  @Uint32()
+  external int dwYSize;
+  @Uint32()
+  external int dwXCountChars;
+  @Uint32()
+  external int dwYCountChars;
+  @Uint32()
+  external int dwFillAttribute;
+  @Uint32()
+  external int dwFlags;
+  @Uint16()
+  external int wShowWindow;
+  @Uint16()
+  external int cbReserved2;
+  external Pointer<Uint8> lpReserved2;
+  external Pointer<Void> hStdInput;
+  external Pointer<Void> hStdOutput;
+  external Pointer<Void> hStdError;
+}
+
+final class _InfoProcesso extends Struct {
+  external Pointer<Void> hProcess;
+  external Pointer<Void> hThread;
+  @Uint32()
+  external int dwProcessId;
+  @Uint32()
+  external int dwThreadId;
+}
+
+typedef _CreateProcessWC = Int32 Function(Pointer<Utf16>, Pointer<Utf16>, Pointer<Void>, Pointer<Void>, Int32,
+    Uint32, Pointer<Void>, Pointer<Utf16>, Pointer<_InfoArranque>, Pointer<_InfoProcesso>);
+typedef _CreateProcessWDart = int Function(Pointer<Utf16>, Pointer<Utf16>, Pointer<Void>, Pointer<Void>, int, int,
+    Pointer<Void>, Pointer<Utf16>, Pointer<_InfoArranque>, Pointer<_InfoProcesso>);
+
+bool _criarProcesso(String linha, int flags) {
+  final k = DynamicLibrary.open('kernel32.dll');
+  final criar = k.lookupFunction<_CreateProcessWC, _CreateProcessWDart>('CreateProcessW');
+  final fechar = k.lookupFunction<Int32 Function(Pointer<Void>), int Function(Pointer<Void>)>('CloseHandle');
+  return using((arena) {
+    final cmd = linha.toNativeUtf16(allocator: arena); // o CreateProcessW pode escrever nela
+    final si = arena<_InfoArranque>()..ref.cb = sizeOf<_InfoArranque>();
+    final pi = arena<_InfoProcesso>();
+    if (criar(nullptr, cmd, nullptr, nullptr, 0, flags, nullptr, nullptr, si, pi) == 0) return false;
+    fechar(pi.ref.hThread);
+    fechar(pi.ref.hProcess);
+    return true;
+  });
 }

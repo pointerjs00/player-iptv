@@ -139,4 +139,41 @@ void main() {
     expect(script.readAsStringSync(), contains('Wait-Process -Id 99'));
     expect(fechou, isTrue);
   });
+
+  test('citarArgumento segue as regras do Windows (espaços, aspas, barras no fim)', () {
+    expect(citarArgumento('-File'), '-File');
+    expect(citarArgumento(r'C:\Área de O'"'"r'Neil\a.ps1'), r'"C:\Área de O'"'"r'Neil\a.ps1"');
+    expect(citarArgumento(r'E:\ x\'), r'"E:\ x\\"');
+    expect(citarArgumento('a"b'), r'"a\"b"');
+    expect(citarArgumento(''), '""');
+  });
+
+  // De ponta a ponta, com o PowerShell verdadeiro: na 1.0.28 a app lançava-o em modo «detached»
+  // (DETACHED_PROCESS, sem consola) e ele morria antes da primeira linha — a app fechava e não
+  // voltava a abrir.
+  test('instalarWindows com o lançador real: o script corre e troca os ficheiros', () async {
+    final sep = Platform.pathSeparator;
+    final app = Directory("${pasta.path}$sepÁrea de O'Neil${sep}TVIntel")..createSync(recursive: true);
+    File('${app.path}${sep}TVIntel.exe').writeAsStringSync('exe velho');
+    final zip = zipCom({'TVIntel/TVIntel.exe': 'exe novo', 'TVIntel/data/novo.txt': 'novo'});
+    final saiu = await Process.start('cmd', ['/c', 'exit']); // um pid que já fechou: não há que esperar
+    await saiu.exitCode;
+    final temp = Directory('${pasta.path}${sep}tmp');
+    var fechou = false;
+    await instalarWindows(zip,
+        temp: temp,
+        exe: '${app.path}${sep}TVIntel.exe',
+        pid: saiu.pid,
+        esperaMarca: const Duration(seconds: 20),
+        fechar: () async => fechou = true);
+    expect(fechou, isTrue, reason: 'o script marcou que arrancou');
+    final extraido = Directory('${temp.path}${sep}extraido');
+    final fim = DateTime.now().add(const Duration(seconds: 30));
+    while (extraido.existsSync() && DateTime.now().isBefore(fim)) {
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+    }
+    expect(File('${app.path}${sep}TVIntel.exe').readAsStringSync(), 'exe novo');
+    expect(File('${app.path}${sep}data${sep}novo.txt').existsSync(), isTrue);
+    expect(extraido.existsSync(), isFalse, reason: 'correu bem: a pasta temporária foi apagada');
+  }, skip: !Platform.isWindows, timeout: const Timeout(Duration(minutes: 2)));
 }
