@@ -38,6 +38,18 @@ void main() {
     expect(q.ordemCompeticoes, ['champions', 'liga-portugal', 'premier-league']);
   });
 
+  test('ids repetidos na ordem guardada contam uma vez', () async {
+    final p = await PreferenciasJogos.abrir(pasta);
+    p.competicoes = {'liga-portugal', 'champions'};
+    await p.guardar();
+    final j = jsonDecode(ficheiro().readAsStringSync()) as Map;
+    ficheiro().writeAsStringSync(jsonEncode({...j, 'ordem': ['champions', 'liga-portugal', 'champions']}));
+    final q = await PreferenciasJogos.abrir(pasta);
+    expect(q.ordemCompeticoes, ['champions', 'liga-portugal']);
+    q.ordemCompeticoes = ['liga-portugal', 'liga-portugal', 'champions'];
+    expect(q.ordemCompeticoes, ['liga-portugal', 'champions']);
+  });
+
   test('uma competição que se comece a seguir entra no fim', () async {
     final p = await PreferenciasJogos.abrir(pasta);
     p.competicoes = {'liga-portugal', 'champions'};

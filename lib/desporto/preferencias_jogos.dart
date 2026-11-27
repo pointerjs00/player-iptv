@@ -59,7 +59,8 @@ class PreferenciasJogos extends ChangeNotifier {
     final comp = j['competicoes'];
     if (comp is List) _competicoes = {for (final c in comp) if (c is String && competicaoPorId(c) != null) c};
     final ordem = j['ordem'];
-    if (ordem is List) _ordem = [for (final c in ordem) if (c is String && competicaoPorId(c) != null) c];
+    // sem repetidos (um ficheiro mexido à mão daria duas linhas iguais no ecrã)
+    if (ordem is List) _ordem = {for (final c in ordem) if (c is String && competicaoPorId(c) != null) c}.toList();
     final eq = j['equipas'];
     if (eq is List) _equipas = [for (final e in eq) if (e is String && e.trim().isNotEmpty) e];
     final q = j['qualidade'];
@@ -142,7 +143,7 @@ class PreferenciasJogos extends ChangeNotifier {
 
   /// Guarda a ordem das seguidas `ids`; as não seguidas que já tinham lugar ficam depois delas.
   set ordemCompeticoes(List<String> ids) {
-    final novas = [for (final id in ids) if (competicaoPorId(id) != null) id];
+    final novas = {for (final id in ids) if (competicaoPorId(id) != null) id}.toList();
     _ordem = [...novas, for (final id in _ordem) if (!novas.contains(id)) id];
     _mudou();
   }

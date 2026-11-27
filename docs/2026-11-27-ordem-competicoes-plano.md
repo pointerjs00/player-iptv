@@ -102,4 +102,4 @@ Comportamento:
 - [ ] Commit `feat(jogos): botão «Competições» nos Jogos`.
 
 ## Estado
-- (por começar)
+- Concluído (Tasks 1–3 e revisão final), 27/11/2026. Testes: 1790 a passar; `flutter analyze` sem problemas.

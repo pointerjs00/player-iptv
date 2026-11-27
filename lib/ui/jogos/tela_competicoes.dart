@@ -123,6 +123,8 @@ class _TelaCompeticoesState extends State<TelaCompeticoes> {
           onKeyEvent: (_, e) => _tecla(c.id, i, e),
           child: CartaoModerno(
             focusNode: _foco(c.id),
+            // na TV o comando começa na primeira competição
+            autofocus: i == 0,
             escalaFoco: 1.01,
             destaque: pegada,
             padding: const EdgeInsets.symmetric(horizontal: Tokens.e16, vertical: Tokens.e12),

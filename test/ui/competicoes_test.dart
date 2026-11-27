@@ -106,6 +106,11 @@ void main() {
     expect(find.byType(TelaCompeticoes), findsNothing);
   });
 
+  testWidgets('ao abrir, o foco já está na primeira competição', (t) async {
+    await montarTv(t);
+    expect(textosFocados(), contains('Liga Portugal Betclic'));
+  });
+
   testWidgets('sem competições seguidas, diz onde as escolher', (t) async {
     await montarTv(t);
     prefs.competicoes = {};
