@@ -1885,6 +1885,18 @@ const textosIngles = <String, String>{
         'Where it is on',
     '1 fonte':
         '1 source',
+    'A mover: {0}':
+        'Moving: {0}',
+    'Não segues nenhuma competição. Escolhe-as em Definições › Jogos.':
+        "You don't follow any competition. Pick them in Settings › Matches.",
+    'OK pega e larga, ↑/↓ movem; ou arrasta pela pega':
+        'OK picks up and drops, ↑/↓ move; or drag by the handle',
+    'A ordem dos blocos nos Jogos':
+        'The order of the blocks in Matches',
+    'Concluído':
+        'Done',
+    'Reordenar':
+        'Reorder',
     '{0} fontes':
         '{0} sources',
     'Nenhuma das tuas listas tem os canais deste jogo':
