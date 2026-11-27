@@ -26,6 +26,12 @@ class ServicoFalso extends ServicoJogos {
 
   @override
   Future<void> carregar(DateTime dia, {bool forcar = false}) async => cargas.add(dia);
+
+  /// Os pedidos do ao vivo (o dia de cada um).
+  final aoVivo = <DateTime>[];
+
+  @override
+  Future<void> atualizarAoVivo(DateTime dia) async => aoVivo.add(dia);
 }
 
 class FontesFalsas extends ChangeNotifier implements FontesDosCanais {

@@ -189,6 +189,44 @@ class ServicoJogos extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// De quanto em quanto tempo o ecrã aberto pede os resultados ao vivo (spec, fase 3).
+  static const intervaloAoVivo = Duration(seconds: 60);
+
+  /// Os resultados dos jogos de `dia` que estão a decorrer: pede de novo só as fontes desses
+  /// jogos (FotMob para o futebol, ESPN para o resto) e troca o resultado, o minuto e o estado;
+  /// os canais ficam. Sem jogos a decorrer, ou em dados móveis, não pede nada.
+  Future<void> atualizarAoVivo(DateTime dia) async {
+    final atuais = _porDia[_chaveDia(dia)];
+    if (atuais == null) return;
+    final vivos = [for (final j in atuais) if (j.jogo.aDecorrer) j.jogo.id];
+    if (vivos.isEmpty || await _emDadosMoveis()) return;
+    // um pouco menos do que o intervalo: o pedido seguinte já não vem da cache
+    final validade = intervaloAoVivo - const Duration(seconds: 10);
+    final seguidas = preferencias.competicoes;
+    final novos = <String, Jogo>{};
+    Future<void> pedir(Future<Lido<List<Jogo>>> Function() f) async {
+      try {
+        for (final j in (await f()).dados) {
+          novos[j.id] = j;
+        }
+      } catch (e) {
+        debugPrint('jogos: ao vivo falhou (${e.runtimeType})');
+      }
+    }
+
+    await Future.wait([
+      if (vivos.any((id) => id.startsWith('fotmob:')))
+        pedir(() => jogosFotmob(cliente, dia, seguidas, validade: validade)),
+      if (vivos.any((id) => id.startsWith('espn:'))) pedir(() => jogosEspn(cliente, dia, seguidas, validade: validade)),
+    ]);
+    final agora = _porDia[_chaveDia(dia)];
+    if (novos.isEmpty || agora == null) return;
+    _porDia[_chaveDia(dia)] = [
+      for (final j in agora) novos[j.jogo.id] == null ? j : JogoComCanais(novos[j.jogo.id]!, j.canais),
+    ];
+    notifyListeners();
+  }
+
   /// Os jogos do dia do filtro (os da última carga desse dia), pela hora.
   List<JogoComCanais> jogos(FiltroJogos f) {
     final q = _simples(f.equipa);

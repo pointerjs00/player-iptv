@@ -56,6 +56,26 @@ void main() {
     expect(blocos, ['Eredivisie', 'Liga Portugal Betclic', 'Premier League']);
   });
 
+  testWidgets('ao vivo: com o ecrã à vista pede a cada 60 s, só no dia de hoje; sai e pára', (t) async {
+    await montar(t);
+    await t.pump(const Duration(seconds: 61));
+    expect(m.servico.aoVivo, [hojeJogos]);
+    await t.pump(const Duration(seconds: 60));
+    expect(m.servico.aoVivo, hasLength(2));
+    // outro dia: não há ao vivo
+    await t.tap(find.byTooltip('Dia seguinte'));
+    await t.pump(const Duration(seconds: 61));
+    expect(m.servico.aoVivo, hasLength(2));
+    await t.tap(find.byTooltip('Dia anterior'));
+    await t.pump(const Duration(seconds: 61));
+    expect(m.servico.aoVivo, hasLength(3));
+    // sai do ecrã (outra secção da casca à vista)
+    await t.pumpWidget(appTeste(Scaffold(
+        body: SeccaoAtual(seccao: Seccao.verTv, irPara: (_) {}, child: m.tela()))));
+    await t.pump(const Duration(seconds: 61));
+    expect(m.servico.aoVivo, hasLength(3), reason: 'com o ecrã escondido não pede');
+  });
+
   Future<void> abrirFiltros(WidgetTester t) async {
     await t.tap(find.widgetWithIcon(FilterChip, Icons.tune_rounded));
     await t.pumpAndSettle();

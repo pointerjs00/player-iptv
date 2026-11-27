@@ -140,8 +140,9 @@ List<(String, Emissao)> lerGuiaFotmob(String texto) {
 }
 
 /// Os jogos do dia `dia` (dia de calendário em Lisboa).
+/// `validade` muda a da cache (o ao vivo pede de novo ao fim de um minuto).
 Future<Lido<List<Jogo>>> jogosFotmob(ClienteDesporto c, DateTime dia, Set<String> seguidas,
-    {bool soCache = false}) async {
+    {bool soCache = false, Duration? validade}) async {
   final hoje = c.agora().toLocal();
   final eHoje = hoje.year == dia.year && hoje.month == dia.month && hoje.day == dia.day;
   final uri = Uri.parse('$_base/matches').replace(queryParameters: {
@@ -149,7 +150,8 @@ Future<Lido<List<Jogo>>> jogosFotmob(ClienteDesporto c, DateTime dia, Set<String
     'timezone': 'Europe/Lisbon',
     'ccode3': 'PRT',
   });
-  final r = await c.texto('fotmob-jogos-${diaTexto(dia)}', uri, eHoje ? Validade.jogosHoje : Validade.jogosOutrosDias,
+  final r = await c.texto(
+      'fotmob-jogos-${diaTexto(dia)}', uri, validade ?? (eHoje ? Validade.jogosHoje : Validade.jogosOutrosDias),
       soCache: soCache);
   return Lido.de(r, (t) => lerJogosFotmob(t, seguidas), const <Jogo>[]);
 }

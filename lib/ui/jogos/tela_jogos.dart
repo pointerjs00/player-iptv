@@ -14,6 +14,7 @@ import '../design/design.dart';
 import '../design/mensagens.dart';
 import '../player/abrir_canal.dart';
 import '../poupanca_dados.dart';
+import '../principal/tela_principal.dart' show Seccao, SeccaoAtual;
 import 'folha_onde_ver.dart';
 import 'linha_jogo.dart';
 import 'painel_jogo.dart';
@@ -62,7 +63,7 @@ class TelaJogos extends StatefulWidget {
   State<TelaJogos> createState() => _TelaJogosState();
 }
 
-class _TelaJogosState extends State<TelaJogos> {
+class _TelaJogosState extends State<TelaJogos> with WidgetsBindingObserver {
   late final DateTime _hoje = () {
     final a = (widget.agora ?? DateTime.now)().toLocal();
     return DateTime(a.year, a.month, a.day);
@@ -103,10 +104,42 @@ class _TelaJogosState extends State<TelaJogos> {
     // escolher e «Atualizar»)
     if (!widget.servico.temDia(_diaEscolhido)) unawaited(widget.servico.carregar(_diaEscolhido));
     unawaited(widget.fontes.atualizar());
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  /// O relógio dos resultados ao vivo: só corre com o ecrã à vista, no dia de hoje e com a app
+  /// em primeiro plano (o ecrã vive na casca mesmo escondido).
+  Timer? _aoVivo;
+  bool _aVista = true;
+  bool _emPrimeiroPlano = true;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final s = SeccaoAtual.maybeOf(context);
+    _aVista = s == null || s.seccao == Seccao.jogos;
+    _acertarAoVivo();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState estado) {
+    _emPrimeiroPlano = estado == AppLifecycleState.resumed;
+    _acertarAoVivo();
+  }
+
+  void _acertarAoVivo() {
+    final correr = _aVista && _emPrimeiroPlano && _dia == 0;
+    if (correr == (_aoVivo != null)) return;
+    _aoVivo?.cancel();
+    _aoVivo = correr
+        ? Timer.periodic(ServicoJogos.intervaloAoVivo, (_) => unawaited(widget.servico.atualizarAoVivo(_diaEscolhido)))
+        : null;
   }
 
   @override
   void dispose() {
+    _aoVivo?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     widget.servico.removeListener(_mudou);
     widget.fontes.removeListener(_mudou);
     widget.preferencias.removeListener(_mudou);
@@ -158,6 +191,7 @@ class _TelaJogosState extends State<TelaJogos> {
       _dia = d;
       _escolhido = null;
     });
+    _acertarAoVivo();
     unawaited(widget.servico.carregar(_diaEscolhido));
   }
 

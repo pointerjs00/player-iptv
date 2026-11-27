@@ -42,12 +42,15 @@ void main() {
   late Set<String> semRede; // anfitriões que falham
   late ServicoJogos servico;
 
+  /// A resposta dos jogos de 27/11 que o FotMob dá agora (os testes do ao vivo mudam-na).
+  late String jogosAgora;
+
   Future<String> obter(Uri u, Map<String, String> _) async {
     pedidos.add(u);
     if (semRede.contains(u.host) || semRede.contains('*')) throw const SocketException('sem rede');
     if (u.host.contains('fotmob')) {
       if (u.path.endsWith('/tvguide')) return guia;
-      return u.queryParameters['date'] == '20261127' ? jogos27 : '{"leagues":[]}';
+      return u.queryParameters['date'] == '20261127' ? jogosAgora : '{"leagues":[]}';
     }
     if (u.host.contains('sporttv')) return sporttv;
     if (u.host.contains('espn')) {
@@ -62,6 +65,7 @@ void main() {
     agora = DateTime.utc(2026, 11, 27, 19);
     pedidos = [];
     semRede = {};
+    jogosAgora = jogos27;
     final armazem = await ArmazemDesporto.abrir(pasta);
     final prefs = await PreferenciasJogos.abrir(pasta);
     servico = ServicoJogos(ClienteDesporto(armazem, obter: obter, agora: () => agora), prefs);
@@ -69,6 +73,31 @@ void main() {
   tearDown(() => pasta.deleteSync(recursive: true));
 
   JogoComCanais jogo(List<JogoComCanais> js, String casa) => js.singleWhere((j) => j.jogo.casa == casa);
+
+  test('ao vivo: só os jogos a decorrer mudam (resultado e minuto), os canais ficam', () async {
+    await servico.carregar(dia27);
+    final antes = jogo(servico.jogos(FiltroJogos(dia27, soComCanal: false)), 'Marítimo');
+    expect(antes.jogo.resultado, '2–1');
+    expect(antes.canais, isNotEmpty);
+    jogosAgora = jogos27.replaceFirst('"score":2', '"score":3').replaceFirst('67', '80');
+    agora = agora.add(ServicoJogos.intervaloAoVivo + const Duration(seconds: 1));
+    pedidos.clear();
+    await servico.atualizarAoVivo(dia27);
+    final depois = jogo(servico.jogos(FiltroJogos(dia27, soComCanal: false)), 'Marítimo');
+    expect(depois.jogo.resultado, '3–1');
+    expect(depois.jogo.minuto, contains('80'));
+    expect(depois.canais.map((t) => t.canal), antes.canais.map((t) => t.canal));
+    expect(pedidos.map((u) => u.host).toSet(), {'www.fotmob.com'}, reason: 'só a fonte dos jogos a decorrer');
+  });
+
+  test('ao vivo: sem jogos a decorrer não pede nada', () async {
+    servico.definir(dia27, [
+      JogoComCanais(Jogo(id: 'fotmob:5887690', desporto: Desporto.futebol, competicaoId: 'liga-portugal',
+          casa: 'Moreirense', fora: 'Santa Clara', inicio: DateTime.utc(2026, 11, 27, 20)), const []),
+    ]);
+    await servico.atualizarAoVivo(dia27);
+    expect(pedidos, isEmpty);
+  });
 
   test('fase 2: a NBA (ESPN) e a Liga Betclic (FPB) entram nos jogos do dia', () async {
     await servico.carregar(dia28);

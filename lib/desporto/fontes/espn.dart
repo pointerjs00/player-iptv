@@ -136,8 +136,9 @@ bool _noDia(DateTime utc, DateTime dia) {
 }
 
 /// Os jogos da ESPN do dia `dia` (de Lisboa) das competições `seguidas`.
+/// `validade` muda a da cache (o ao vivo pede de novo ao fim de um minuto).
 Future<Lido<List<Jogo>>> jogosEspn(ClienteDesporto c, DateTime dia, Set<String> seguidas,
-    {bool soCache = false}) async {
+    {bool soCache = false, Duration? validade}) async {
   final davis = seguidas.contains('taca-davis');
   final pedidos = <(String, String, List<Jogo> Function(String))>[
     if (seguidas.contains('atp') || davis) ('tennis/atp', 'atp', (t) => lerTenisEspn(t, 'atp', seguidas)),
@@ -153,7 +154,7 @@ Future<Lido<List<Jogo>>> jogosEspn(ClienteDesporto c, DateTime dia, Set<String> 
       for (final d in dias)
         c
             .texto('espn-$nome-${diaTexto(d)}', Uri.parse('$_base/$caminho/scoreboard?dates=${diaTexto(d)}'),
-                eHoje ? Validade.espnHoje : Validade.jogosOutrosDias,
+                validade ?? (eHoje ? Validade.espnHoje : Validade.jogosOutrosDias),
                 soCache: soCache)
             .then((r) => Lido.de(r, ler, const <Jogo>[])),
   ]);
