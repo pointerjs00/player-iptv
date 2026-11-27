@@ -1,0 +1,163 @@
+{
+ "events": [
+  {
+   "id": "867-2026",
+   "name": "IEB+ Argentina Open",
+   "date": "2026-11-22T05:00Z",
+   "endDate": "2026-11-30T04:59Z",
+   "groupings": [
+    {
+     "grouping": {
+      "displayName": "Women's Singles"
+     },
+     "competitions": [
+      {
+       "id": "186832",
+       "date": "2026-11-27T18:00Z",
+       "type": {
+        "id": "2",
+        "text": "Women's Singles",
+        "slug": "womens-singles"
+       },
+       "round": {
+        "id": "5",
+        "displayName": "Quarterfinal"
+       },
+       "status": {
+        "type": {
+         "name": "STATUS_SCHEDULED",
+         "state": "pre",
+         "completed": false,
+         "shortDetail": "11/27 - 1:00 PM EST"
+        }
+       },
+       "competitors": [
+        {
+         "homeAway": "away",
+         "winner": null,
+         "athlete": {
+          "displayName": "Veronika Erjavec"
+         },
+         "roster": null,
+         "linescores": []
+        },
+        {
+         "homeAway": "home",
+         "winner": null,
+         "athlete": {
+          "displayName": "Carole Monnet"
+         },
+         "roster": null,
+         "linescores": []
+        }
+       ]
+      },
+      {
+       "id": "186829",
+       "date": "2026-11-27T18:00Z",
+       "type": {
+        "id": "2",
+        "text": "Women's Singles",
+        "slug": "womens-singles"
+       },
+       "round": {
+        "id": "5",
+        "displayName": "Quarterfinal"
+       },
+       "status": {
+        "type": {
+         "name": "STATUS_SCHEDULED",
+         "state": "pre",
+         "completed": false,
+         "shortDetail": "11/27 - 1:00 PM EST"
+        }
+       },
+       "competitors": [
+        {
+         "homeAway": "away",
+         "winner": null,
+         "athlete": {
+          "displayName": "Laura Samson"
+         },
+         "roster": null,
+         "linescores": []
+        },
+        {
+         "homeAway": "home",
+         "winner": null,
+         "athlete": {
+          "displayName": "Varvara Lepchenko"
+         },
+         "roster": null,
+         "linescores": []
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "grouping": {
+      "displayName": "Women's Doubles"
+     },
+     "competitions": [
+      {
+       "id": "186847",
+       "date": "2026-11-27T21:00Z",
+       "type": {
+        "id": "4",
+        "text": "Women's Doubles",
+        "slug": "womens-doubles"
+       },
+       "round": {
+        "id": "6",
+        "displayName": "Semifinal"
+       },
+       "status": {
+        "type": {
+         "name": "STATUS_SCHEDULED",
+         "state": "pre",
+         "completed": false,
+         "shortDetail": "11/27 - 4:00 PM EST"
+        }
+       },
+       "competitors": [
+        {
+         "homeAway": "away",
+         "winner": null,
+         "athlete": null,
+         "roster": {
+          "athletes": [
+           {
+            "displayName": "Tenika McGiffin"
+           },
+           {
+            "displayName": "Alexandra Osborne"
+           }
+          ]
+         },
+         "linescores": []
+        },
+        {
+         "homeAway": "home",
+         "winner": null,
+         "athlete": null,
+         "roster": {
+          "athletes": [
+           {
+            "displayName": "Nuria Brancaccio"
+           },
+           {
+            "displayName": "Ipek Oz"
+           }
+          ]
+         },
+         "linescores": []
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

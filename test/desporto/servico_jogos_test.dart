@@ -32,6 +32,8 @@ void main() {
   final jogos27 = resposta('fotmob-matches-20261127.json');
   final guia = resposta('fotmob-tvguide-pt.json');
   final sporttv = resposta('sporttv-guia.html');
+  final nba = resposta('espn-nba-20261127.json');
+  final fpb = resposta('fpb-calendario.html');
   final dia27 = DateTime(2026, 11, 27), dia28 = DateTime(2026, 11, 28);
 
   late Directory pasta;
@@ -48,6 +50,10 @@ void main() {
       return u.queryParameters['date'] == '20261127' ? jogos27 : '{"leagues":[]}';
     }
     if (u.host.contains('sporttv')) return sporttv;
+    if (u.host.contains('espn')) {
+      return u.path.contains('/nba/') && u.queryParameters['dates'] == '20261127' ? nba : '{"events":[]}';
+    }
+    if (u.host.contains('fpb')) return fpb;
     throw StateError('pedido inesperado: ${u.host}');
   }
 
@@ -63,6 +69,25 @@ void main() {
   tearDown(() => pasta.deleteSync(recursive: true));
 
   JogoComCanais jogo(List<JogoComCanais> js, String casa) => js.singleWhere((j) => j.jogo.casa == casa);
+
+  test('fase 2: a NBA (ESPN) e a Liga Betclic (FPB) entram nos jogos do dia', () async {
+    await servico.carregar(dia28);
+    final js28 = servico.jogos(FiltroJogos(dia28, soComCanal: false));
+    expect(js28.where((j) => j.jogo.competicaoId == 'nba').map((j) => j.jogo.casa), contains('Indiana Pacers'));
+    final dia5 = DateTime(2026, 12, 5);
+    await servico.carregar(dia5);
+    final js5 = servico.jogos(FiltroJogos(dia5, soComCanal: false));
+    expect(js5.map((j) => j.jogo.casa), contains('SC Braga'));
+    expect(servico.estado.falhas, isEmpty);
+  });
+
+  test('com a ESPN em baixo, o resto aparece e o estado diz que a ESPN falhou', () async {
+    semRede = {'site.api.espn.com'};
+    await servico.carregar(dia27);
+    expect(servico.estado.falhas, {FonteJogos.espn});
+    expect(nomeFonte(FonteJogos.espn), 'ESPN');
+    expect(servico.jogos(FiltroJogos(dia27, soComCanal: false)), isNotEmpty);
+  });
 
   test('com a Sport TV a dar erro, os jogos e os canais do FotMob aparecem e o estado diz que a Sport TV falhou', () async {
     semRede = {'www.sporttv.pt'};

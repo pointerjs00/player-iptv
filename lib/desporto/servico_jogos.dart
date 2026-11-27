@@ -1,4 +1,4 @@
-/// O serviço dos «Jogos»: pede os jogos (FotMob) e as grelhas (guia de TV do FotMob, Sport TV e o
+/// O serviço dos «Jogos»: pede os jogos (FotMob; ESPN e FPB para o ténis e o basquetebol) e as grelhas (guia de TV do FotMob, Sport TV e o
 /// guia das próprias listas), casa-os e diz o estado de cada fonte. Uma fonte que falha não impede as outras.
 /// Em dados móveis, sem `forcar`, só se usa a cache e o guia do FotMob.
 library;
@@ -12,7 +12,9 @@ import '../idioma/idioma.dart';
 import 'casador.dart';
 import 'catalogo.dart';
 import 'cliente_desporto.dart';
+import 'fontes/espn.dart';
 import 'fontes/fotmob.dart';
+import 'fontes/fpb.dart';
 import 'fontes/epg_listas.dart';
 import 'fontes/sporttv.dart';
 import 'modelo.dart';
@@ -20,7 +22,7 @@ import 'onde_ver.dart';
 import 'preferencias_jogos.dart';
 
 /// As fontes do serviço (para o estado dizer qual falhou).
-enum FonteJogos { fotmob, guiaFotmob, listas, sportTv }
+enum FonteJogos { fotmob, guiaFotmob, listas, sportTv, espn, fpb }
 
 /// Um jogo com os canais onde dá (a confiança mais alta primeiro).
 class JogoComCanais {
@@ -95,6 +97,8 @@ String nomeFonte(FonteJogos f) => switch (f) {
       FonteJogos.guiaFotmob => 'FotMob',
       FonteJogos.listas => tr('Guia das listas'),
       FonteJogos.sportTv => 'Sport TV',
+      FonteJogos.espn => 'ESPN',
+      FonteJogos.fpb => 'FPB',
     };
 
 String _chaveDia(DateTime d) => diaTexto(d);
@@ -145,6 +149,9 @@ class ServicoJogos extends ChangeNotifier {
     }
 
     final jogosF = tentar(FonteJogos.fotmob, () => jogosFotmob(cliente, dia, preferencias.competicoes, soCache: soCache));
+    // fase 2: o ténis e a NBA (ESPN) e a Liga Betclic (FPB)
+    final espnF = tentar(FonteJogos.espn, () => jogosEspn(cliente, dia, preferencias.competicoes, soCache: soCache));
+    final fpbF = tentar(FonteJogos.fpb, () => jogosFpb(cliente, dia, preferencias.competicoes, soCache: soCache));
     // o guia do FotMob é um pedido pequeno para 7 dias: pede-se mesmo em dados móveis
     final guiaF = tentar(FonteJogos.guiaFotmob, () => guiaTvFotmob(cliente));
     final sportTvF = tentar(FonteJogos.sportTv, () => guiaSportTv(cliente, soCache: soCache));
@@ -155,7 +162,7 @@ class ServicoJogos extends ChangeNotifier {
             await fs.atualizar(); // o índice dos canais primeiro (só relê as listas que mudaram)
             return grelhaDasListas(cliente, fs, dia, obter: obterEpg, soCache: soCache);
           });
-    final jogos = await jogosF ?? const <Jogo>[];
+    final jogos = [...?await jogosF, ...?await espnF, ...?await fpbF];
     final guia = await guiaF ?? const <(String, Emissao)>[];
     final emissoes = <Emissao>[
       ...?await sportTvF,

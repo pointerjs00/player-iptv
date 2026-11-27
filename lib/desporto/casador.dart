@@ -77,10 +77,11 @@ List<Transmissao> casar(List<Jogo> jogos, List<Emissao> emissoes, {List<(String,
   for (final j in jogos) {
     for (final (k, e) in emissoes.indexed) {
       final t = titulos[k];
-      if (t == null || e.direto == false || t.feminino != j.feminino || !_mesmaModalidade(j, e, t)) continue;
-      if (_aHora(j, e) && _equipas(j, t)) {
+      if (t == null || e.direto == false || !_mesmaModalidade(j, e, t)) continue;
+      if (t.feminino == j.feminino && _aHora(j, e) && _equipas(j, t)) {
         juntar(Transmissao(jogoId: j.id, canal: e.canal, confianca: _confianca(e), origem: e.origem));
-      } else if (j.desporto == Desporto.tenis && _torneio(j, e, t)) {
+      } else if (j.desporto == Desporto.tenis && (j.feminino || !t.feminino) && _torneio(j, e, t)) {
+        // um torneio só diz «feminino» quando é só das mulheres: sem isso serve aos dois
         juntar(Transmissao(jogoId: j.id, canal: e.canal, confianca: Confianca.possivel, origem: e.origem));
       }
     }
