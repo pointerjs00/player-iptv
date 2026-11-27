@@ -171,3 +171,5 @@ Comportamento:
 - 2026-11-27: os 7 Minor da revisão corrigidos (c4a1ade) e 1.0.29 publicada (v1.0.29 + partilha-v1.0.29,
   com digest); main e feature/redesenho em 523ea8f. **Próximo passo:** o utilizador experimenta
   «Procurar atualizações» a partir da 1.0.28 instalada (Android e Windows).
+
+- 27/11 (noite): a atualização no Windows a partir da 1.0.28 fechou a app e não reabriu. Causa: `Process.start(mode: detached)` cria o PowerShell com DETACHED_PROCESS e ele morre antes da 1.ª linha (reproduzido também fora da sandbox; o modo normal funciona). Na 1.0.29 o efeito seria o erro «o Windows não deixou correr a atualização». Corrigido em ad9832d: `_iniciar` usa `CreateProcessW` por FFI com CREATE_NO_WINDOW (+ CREATE_BREAKAWAY_FROM_JOB, com nova tentativa sem ele), com teste de ponta a ponta com o PowerShell real. Ainda por publicar: falta a 1.0.30. Quem tem a 1.0.28 ou a 1.0.29 no Windows tem de instalar a 1.0.30 à mão, uma vez.
