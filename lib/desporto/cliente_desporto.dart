@@ -18,6 +18,21 @@ class Resposta {
   final bool velho;
 }
 
+/// O que um adaptador leu, com a data e se é velho (para o ecrã dizer «dados de há 2 h»).
+class Lido<T> {
+  const Lido(this.dados, {this.data, this.velho = false});
+  final T dados;
+  final DateTime? data;
+  final bool velho;
+
+  static Lido<T> de<T>(Resposta? r, T Function(String) ler, T vazio) =>
+      r == null ? Lido(vazio) : Lido(ler(r.valor), data: r.data, velho: r.velho);
+}
+
+/// "AAAAMMDD" (ou com `sep` entre as partes) do dia de calendário.
+String diaTexto(DateTime dia, [String sep = '']) =>
+    '${dia.year.toString().padLeft(4, '0')}$sep${dia.month.toString().padLeft(2, '0')}$sep${dia.day.toString().padLeft(2, '0')}';
+
 /// Quanto tempo vale cada fonte (spec §6).
 abstract final class Validade {
   static const jogosHoje = Duration(minutes: 30);
