@@ -10,6 +10,7 @@ import 'dados/biblioteca.dart';
 import 'dados/estatisticas.dart';
 import 'dados/licencas.dart';
 import 'dados/novidades.dart';
+import 'dados/nova_versao.dart';
 import 'dados/pasta_dados.dart';
 import 'dados/preferencias.dart';
 import 'desporto/armazem_desporto.dart';
@@ -103,7 +104,11 @@ Future<void> main(List<String> args) async {
       instalacaoNova: biblioteca.listas.isEmpty && area.listas.isEmpty);
   // os «Jogos» (não existem na edição de partilha)
   final jogos = edicaoPartilha ? null : await _abrirJogos(pasta, biblioteca);
-  runApp(AppPlayerIptv(biblioteca: biblioteca, area: area, novidades: novidades, jogos: jogos));
+  // o aviso de nova versão (GitHub Releases): só na edição completa e fora dos dados móveis
+  final Future<NovaVersao?> Function()? novaVersao = edicaoPartilha
+      ? null
+      : () => novaVersaoPorAvisar(pasta, atual: versaoApp, emDadosMoveis: PoupancaDados.atual.emDadosMoveis);
+  runApp(AppPlayerIptv(biblioteca: biblioteca, area: area, novidades: novidades, jogos: jogos, novaVersao: novaVersao));
 }
 
 /// O que o ecrã «Jogos» usa: as preferências e o índice em `<dados>/desporto`, a cache das fontes
@@ -170,7 +175,11 @@ class _Aviso extends StatelessWidget {
 final _locales = [for (final i in Idioma.values) i.locale];
 
 class AppPlayerIptv extends StatefulWidget {
-  const AppPlayerIptv({super.key, required this.biblioteca, required this.area, this.novidades = false, this.jogos});
+  const AppPlayerIptv(
+      {super.key, required this.biblioteca, required this.area, this.novidades = false, this.jogos, this.novaVersao});
+
+  /// Procura uma versão nova ao abrir (null: não procura, como na edição de partilha).
+  final Future<NovaVersao?> Function()? novaVersao;
   final Biblioteca biblioteca;
   final AreaGestor area;
 
@@ -235,6 +244,7 @@ class _AppPlayerIptvState extends State<AppPlayerIptv> {
         // três secções fixas que guardam o estado; o "Alterar nas Definições" do Gestor muda de secção
         home: TelaPrincipal(
           novidades: widget.novidades,
+          novaVersao: widget.novaVersao,
           tarefas: _tarefas,
           verificacao: _servico,
           pedidoGestor: _pedidoGestor,

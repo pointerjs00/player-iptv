@@ -1885,6 +1885,8 @@ const textosIngles = <String, String>{
         'Where it is on',
     '1 fonte':
         '1 source',
+    'Há uma versão nova da app: {0}. Descarrega em {1}':
+        'A new version of the app is out: {0}. Download it from {1}',
     'Jogos: em «Filtros», «Ordenar» deixa ver os jogos numa só lista pela hora, em vez de por competição.':
         "Matches: in «Filters», «Sort» shows the matches in a single list by time instead of by competition.",
     'Jogos: em «Competições», escolher uma competição mostra todos os jogos dela, de ontem a daqui a 6 dias, por dia e pela hora.':

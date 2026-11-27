@@ -38,4 +38,8 @@ Decisões do utilizador (27/11):
 - Tarefa 4 feita: `ferramentas/verificar.py` (análise, testes das ferramentas, testes da partilha,
   testes) e o `empacotar.py` corre-o antes de compilar (uma vez no `--tudo`; `--sem-verificar` salta).
   O teste dos 100 mil canais espera pela indexação em vez de 2 s fixos (falhava com a máquina carregada).
-- Próximo: tarefa 5 (aviso de nova versão pelas GitHub Releases de pointerjs00/player-iptv).
+- Tarefa 5 feita: `lib/dados/nova_versao.dart` lê `releases/latest` do GitHub; avisa uma vez por versão
+  (`nova_versao_avisada.txt`), com a versão e o endereço das releases. Só na edição completa e fora dos
+  dados móveis. O repositório é público mas ainda não tem releases (404 = sem aviso). Para funcionar, as
+  releases têm de ter a etiqueta `v1.0.26` (ou `1.0.26`) e não ser rascunho nem pré-versão.
+- Próximo: tarefa 6 (avançar o `main` para o `feature/redesenho` no worktree `player-iptv-dist`).

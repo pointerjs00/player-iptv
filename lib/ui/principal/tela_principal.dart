@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../../dados/nova_versao.dart';
 import '../../tarefas/servico_tarefas.dart';
 import '../../verificar/servico.dart';
 import '../design/mensagens.dart';
@@ -47,10 +48,13 @@ class SeccaoAtual extends InheritedWidget {
 class TelaPrincipal extends StatefulWidget {
   const TelaPrincipal({super.key, required this.verTv, required this.gestor, required this.definicoes,
       this.jogos, this.inicial = Seccao.verTv, this.sair = SystemNavigator.pop, this.tarefas, this.verificacao, this.pedidoGestor,
-      this.novidades = false});
+      this.novidades = false, this.novaVersao});
 
   /// Mostra as novidades desta versão ao abrir (a primeira vez depois de atualizar).
   final bool novidades;
+
+  /// Procura uma versão nova da app ao abrir (null: não procura; ver [novaVersaoPorAvisar]).
+  final Future<NovaVersao?> Function()? novaVersao;
 
   final Widget verTv;
 
@@ -141,6 +145,17 @@ class _TelaPrincipalState extends State<TelaPrincipal> {
         if (mounted) unawaited(mostrarNovidadesDaVersao(context));
       });
     }
+    final procurar = widget.novaVersao;
+    if (procurar != null) unawaited(_avisarNovaVersao(procurar));
+  }
+
+  /// Há uma versão nova publicada: diz qual e onde se descarrega (a TV não tem browser para abrir).
+  Future<void> _avisarNovaVersao(Future<NovaVersao?> Function() procurar) async {
+    final v = await procurar();
+    if (v == null || !mounted) return;
+    final pagina = v.pagina.replaceFirst(RegExp(r'^https?://'), '').replaceFirst(RegExp(r'/tag/.*$'), '');
+    _mensagens.mostrar(tr('Há uma versão nova da app: {0}. Descarrega em {1}', [v.versao, pagina]),
+        duracao: const Duration(seconds: 15));
   }
 
   @override
