@@ -29,10 +29,11 @@ void main() {
 
   noTelemovel('os filtros ficam numa só fila que desliza', (t, ecra) async {
     await montar(t);
-    final hoje = t.getRect(find.widgetWithText(FilterChip, 'Hoje'));
-    final amanha = t.getRect(find.widgetWithText(FilterChip, 'Amanhã'));
-    expect(amanha.top, hoje.top, reason: 'na mesma fila');
-    final fila = find.ancestor(of: find.widgetWithText(FilterChip, 'Hoje'), matching: find.byType(Scrollable)).first;
+    final filtros = t.getRect(find.widgetWithText(FilterChip, 'Filtros'));
+    final aoVivo = t.getRect(find.widgetWithText(FilterChip, 'Ao vivo (1)'));
+    expect(aoVivo.top, filtros.top, reason: 'na mesma fila');
+    expect(find.byType(TextField), findsOneWidget, reason: 'a pesquisa por equipa por cima');
+    final fila = find.ancestor(of: find.widgetWithText(FilterChip, 'Filtros'), matching: find.byType(Scrollable)).first;
     expect(t.widget<Scrollable>(fila).axisDirection, AxisDirection.right);
   });
 

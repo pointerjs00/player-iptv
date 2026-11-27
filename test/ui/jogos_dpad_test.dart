@@ -26,9 +26,9 @@ void main() {
     await t.pump();
   }
 
-  /// O foco no chip «Hoje» (o topo do ecrã), e BAIXO até à primeira linha.
+  /// O foco no chip «Filtros» (a fila de cima), e BAIXO até à primeira linha.
   Future<void> irParaPrimeiro(WidgetTester t) async {
-    Focus.of(t.element(find.text('Hoje'))).requestFocus();
+    Focus.of(t.element(find.text('Filtros'))).requestFocus();
     await t.pump();
     await teclaDpad(t, LogicalKeyboardKey.arrowDown);
   }
@@ -47,16 +47,23 @@ void main() {
     expect(t.takeException(), isNull, reason: 'nada transborda');
   });
 
-  testWidgets('BAIXO percorre os jogos, uma paragem por linha', (t) async {
+  testWidgets('BAIXO percorre os jogos, uma paragem por linha, e passa os títulos das competições', (t) async {
     await montar(t);
     await irParaPrimeiro(t);
     expect(textosFocados(), contains('Marítimo'));
     await teclaDpad(t, LogicalKeyboardKey.arrowDown);
     expect(textosFocados(), contains('Benfica'));
     await teclaDpad(t, LogicalKeyboardKey.arrowDown);
-    expect(textosFocados(), contains('Feyenoord'));
+    expect(textosFocados(), contains('Moreirense'));
     await teclaDpad(t, LogicalKeyboardKey.arrowUp);
     expect(textosFocados(), contains('Benfica'));
+    // até ao fim da Liga Portugal e para o bloco seguinte (o título não recebe o foco)
+    for (var i = 0; i < 4; i++) {
+      await teclaDpad(t, LogicalKeyboardKey.arrowDown);
+    }
+    expect(textosFocados(), contains('Famalicão'));
+    await teclaDpad(t, LogicalKeyboardKey.arrowDown);
+    expect(textosFocados(), contains('Arsenal'));
   });
 
   testWidgets('←/→ escolhem a etiqueta; OK abre o «Onde ver» dela; BACK fecha e o foco volta à linha', (t) async {

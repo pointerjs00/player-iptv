@@ -7,6 +7,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../modelo/canal.dart' show semAcentos;
 import 'casador.dart';
 import 'catalogo.dart';
 import 'cliente_desporto.dart';
@@ -30,12 +31,42 @@ class JogoComCanais {
 
 /// O que o ecrã mostra. `dia` é o dia de calendário (só ano, mês e dia contam).
 class FiltroJogos {
-  const FiltroJogos(this.dia, {this.desporto, this.competicao, this.soDireto = false, this.soComCanal = true});
+  const FiltroJogos(this.dia,
+      {this.desporto, this.competicoes = const {}, this.soDireto = false, this.soComCanal = true, this.equipa = ''});
   final DateTime dia;
   final Desporto? desporto;
-  final String? competicao;
+
+  /// Só estas competições (vazio: todas).
+  final Set<String> competicoes;
   final bool soDireto;
   final bool soComCanal;
+
+  /// Parte do nome de uma das equipas (sem acentos nem maiúsculas; vazio: todas).
+  final String equipa;
+}
+
+String _simples(String s) => semAcentos(s.toLowerCase()).trim();
+
+/// Os jogos de uma competição (um bloco no ecrã).
+typedef GrupoJogos = ({Competicao competicao, List<JogoComCanais> jogos});
+
+/// Os jogos por competição, pela ordem do catálogo (a Liga Portugal primeiro); dentro de cada
+/// uma, pela hora.
+List<GrupoJogos> agruparPorCompeticao(List<JogoComCanais> jogos) {
+  final ordem = {for (final (i, c) in catalogoCompeticoes.indexed) c.id: i};
+  final porComp = <String, List<JogoComCanais>>{};
+  for (final j in jogos) {
+    porComp.putIfAbsent(j.jogo.competicaoId, () => []).add(j);
+  }
+  final ids = porComp.keys.where((id) => competicaoPorId(id) != null).toList()
+    ..sort((a, b) => ordem[a]!.compareTo(ordem[b]!));
+  return [
+    for (final id in ids)
+      (
+        competicao: competicaoPorId(id)!,
+        jogos: porComp[id]!..sort((a, b) => a.jogo.inicio.compareTo(b.jogo.inicio)),
+      ),
+  ];
 }
 
 enum Carga { nada, aCarregar, pronto }
@@ -155,14 +186,18 @@ class ServicoJogos extends ChangeNotifier {
   }
 
   /// Os jogos do dia do filtro (os da última carga desse dia), pela hora.
-  List<JogoComCanais> jogos(FiltroJogos f) => [
+  List<JogoComCanais> jogos(FiltroJogos f) {
+    final q = _simples(f.equipa);
+    return [
         for (final j in _porDia[_chaveDia(f.dia)] ?? const <JogoComCanais>[])
           if ((f.desporto == null || j.jogo.desporto == f.desporto) &&
-              (f.competicao == null || j.jogo.competicaoId == f.competicao) &&
+              (f.competicoes.isEmpty || f.competicoes.contains(j.jogo.competicaoId)) &&
+              (q.isEmpty || _simples(j.jogo.casa).contains(q) || _simples(j.jogo.fora).contains(q)) &&
               (!f.soDireto || j.jogo.aDecorrer) &&
               (!f.soComCanal || j.canais.isNotEmpty))
             j,
       ];
+  }
 
   /// Para os testes do ecrã: os jogos de um dia sem passar pelas fontes.
   @visibleForTesting

@@ -89,7 +89,7 @@ void main() {
     expect(direto, isNotEmpty);
     expect(direto.every((j) => j.jogo.aDecorrer), isTrue);
     expect(direto.map((j) => j.jogo.casa), contains('Marítimo'));
-    final liga = servico.jogos(FiltroJogos(dia27, competicao: 'liga-portugal', soComCanal: false));
+    final liga = servico.jogos(FiltroJogos(dia27, competicoes: {'liga-portugal'}, soComCanal: false));
     expect(liga, isNotEmpty);
     expect(liga.every((j) => j.jogo.competicaoId == 'liga-portugal'), isTrue);
     expect(servico.jogos(FiltroJogos(dia27, desporto: Desporto.tenis, soComCanal: false)), isEmpty);
@@ -97,6 +97,29 @@ void main() {
     // pela hora
     final horas = todos.map((j) => j.jogo.inicio).toList();
     expect(horas, [...horas]..sort());
+  });
+
+  test('a pesquisa por equipa: parte do nome, sem acentos nem maiúsculas, nas duas equipas', () async {
+    await servico.carregar(dia27);
+    List<String> casas(String q) =>
+        [for (final j in servico.jogos(FiltroJogos(dia27, soComCanal: false, equipa: q))) j.jogo.casa];
+    expect(casas('maritimo'), ['Marítimo']);
+    expect(casas('NACION'), ['Marítimo'], reason: 'também a equipa de fora');
+    expect(casas('  '), hasLength(servico.jogos(FiltroJogos(dia27, soComCanal: false)).length));
+    expect(casas('zzz'), isEmpty);
+  });
+
+  test('por competição: pela ordem do catálogo, e os jogos de cada uma pela hora', () async {
+    await servico.carregar(dia27);
+    final grupos = agruparPorCompeticao(servico.jogos(FiltroJogos(dia27, soComCanal: false)));
+    final ids = [for (final g in grupos) g.competicao.id];
+    expect(ids.first, 'liga-portugal');
+    expect(ids.toSet(), hasLength(ids.length), reason: 'uma vez cada');
+    for (final g in grupos) {
+      expect(g.jogos.every((j) => j.jogo.competicaoId == g.competicao.id), isTrue);
+      final horas = [for (final j in g.jogos) j.jogo.inicio];
+      expect(horas, [...horas]..sort());
+    }
   });
 
   test('mudar de dia e voltar não pede de novo o que está na cache', () async {

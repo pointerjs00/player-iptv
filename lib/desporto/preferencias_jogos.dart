@@ -35,7 +35,8 @@ class PreferenciasJogos extends ChangeNotifier {
   Set<String> _competicoes = {for (final c in catalogoCompeticoes) if (c.seguidaPorOmissao) c.id};
   List<String> _equipas = [];
   Qualidade _qualidade = Qualidade.fhd;
-  bool _mostrarSemCanal = false;
+  /// Por omissão vêem-se todos os jogos (os que ainda não têm canal também).
+  bool _mostrarSemCanal = true;
   final _ultimas = <String, UltimaFonte>{};
 
   /// listaId → canalId → associação.

@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:material_ui/material_ui.dart';
 
-import '../../desporto/catalogo.dart';
+import '../../desporto/fontes/fotmob.dart' show logoCompeticaoFotmob;
 import '../../desporto/modelo.dart';
 import '../../desporto/nomes.dart';
 import '../../desporto/onde_ver.dart';
@@ -27,8 +27,17 @@ Future<void> _abrirNoPlayer(BuildContext context, List<FonteCanal> fontes, {Valu
 /// A partir desta largura, o detalhe do jogo com o foco fica numa coluna à direita.
 const larguraColunaJogo = 900.0;
 
-/// «Jogos»: os jogos das competições seguidas, os canais onde dão e, em cada canal, as fontes de
-/// todas as listas (ver docs/2026-11-27-jogos-design.md §10).
+/// Os dias que se podem escolher, a partir de hoje (o guia de TV do FotMob dá 7 dias).
+const primeiroDia = -1, ultimoDia = 6;
+
+String nomeDesporto(Desporto d) => switch (d) {
+      Desporto.futebol => tr('Futebol'),
+      Desporto.tenis => tr('Ténis'),
+      Desporto.basquetebol => tr('Basquetebol'),
+    };
+
+/// «Jogos»: os jogos das competições seguidas, por competição, os canais onde dão e, em cada canal,
+/// as fontes de todas as listas (ver docs/2026-11-27-jogos-design.md §10).
 class TelaJogos extends StatefulWidget {
   const TelaJogos({
     super.key,
@@ -57,16 +66,21 @@ class _TelaJogosState extends State<TelaJogos> {
     return DateTime(a.year, a.month, a.day);
   }();
 
-  /// O dia escolhido, em dias a partir de hoje (-1 a +5).
+  /// O dia escolhido, em dias a partir de hoje ([primeiroDia] a [ultimoDia]).
   int _dia = 0;
   Desporto? _desporto;
-  String? _competicao;
+  Set<String> _competicoes = {};
   bool _soDireto = false;
+  final _pesquisa = TextEditingController();
 
   /// O jogo da coluna à direita (o da linha com o foco).
   String? _escolhido;
 
   DateTime get _diaEscolhido => DateTime(_hoje.year, _hoje.month, _hoje.day + _dia);
+  bool get _soComCanal => !widget.preferencias.mostrarSemCanal;
+
+  /// Os filtros do botão «Filtros» que estão a mudar a lista.
+  int get _filtrosAtivos => (_soComCanal ? 1 : 0) + (_desporto != null ? 1 : 0) + (_competicoes.isNotEmpty ? 1 : 0);
 
   @override
   void initState() {
@@ -74,6 +88,7 @@ class _TelaJogosState extends State<TelaJogos> {
     widget.servico.addListener(_mudou);
     widget.fontes.addListener(_mudou);
     widget.preferencias.addListener(_mudou);
+    _pesquisa.addListener(_mudou);
     // o ecrã vive na casca desde que a app abre: carrega-se uma vez (depois, o dia que se
     // escolher e «Atualizar»)
     if (!widget.servico.temDia(_diaEscolhido)) unawaited(widget.servico.carregar(_diaEscolhido));
@@ -85,6 +100,7 @@ class _TelaJogosState extends State<TelaJogos> {
     widget.servico.removeListener(_mudou);
     widget.fontes.removeListener(_mudou);
     widget.preferencias.removeListener(_mudou);
+    _pesquisa.dispose();
     super.dispose();
   }
 
@@ -93,14 +109,22 @@ class _TelaJogosState extends State<TelaJogos> {
   }
 
   void _escolherDia(int d) {
+    d = d.clamp(primeiroDia, ultimoDia);
     if (d == _dia) return;
     setState(() {
       _dia = d;
-      _competicao = null;
       _escolhido = null;
     });
     unawaited(widget.servico.carregar(_diaEscolhido));
   }
+
+  void _limparFiltros() => setState(() {
+        _desporto = null;
+        _competicoes = {};
+        _soDireto = false;
+        _pesquisa.clear();
+        widget.preferencias.mostrarSemCanal = true;
+      });
 
   Future<void> _atualizar() async {
     if (!await PoupancaDados.atual.autorizar(context, AcaoDados.jogos) || !mounted) return;
@@ -145,13 +169,20 @@ class _TelaJogosState extends State<TelaJogos> {
     ));
   }
 
+  /// «Hoje, 27 nov», «Seg, 30 nov».
   String _nomeDia(int d) {
-    if (d == -1) return tr('Ontem');
-    if (d == 0) return tr('Hoje');
-    if (d == 1) return tr('Amanhã');
     final dia = DateTime(_hoje.year, _hoje.month, _hoje.day + d);
-    final semana = [tr('Seg'), tr('Ter'), tr('Qua'), tr('Qui'), tr('Sex'), tr('Sáb'), tr('Dom')][dia.weekday - 1];
-    return '$semana ${dia.day}';
+    final nome = switch (d) {
+      -1 => tr('Ontem'),
+      0 => tr('Hoje'),
+      1 => tr('Amanhã'),
+      _ => [tr('Seg'), tr('Ter'), tr('Qua'), tr('Qui'), tr('Sex'), tr('Sáb'), tr('Dom')][dia.weekday - 1],
+    };
+    final mes = [
+      tr('jan'), tr('fev'), tr('mar'), tr('abr'), tr('mai'), tr('jun'),
+      tr('jul'), tr('ago'), tr('set'), tr('out'), tr('nov'), tr('dez'),
+    ][dia.month - 1];
+    return '$nome, ${dia.day} $mes';
   }
 
   String? _estado() {
@@ -168,42 +199,134 @@ class _TelaJogosState extends State<TelaJogos> {
     return partes.isEmpty ? null : partes.join(' · ');
   }
 
-  Widget _chip(String rotulo, bool escolhido, VoidCallback aoEscolher, {IconData? icone}) => Padding(
-        padding: const EdgeInsets.only(right: Tokens.e8),
-        child: FilterChip(
-          avatar: icone == null ? null : Icon(icone, size: 16),
-          showCheckmark: false,
-          label: Text(rotulo),
-          selected: escolhido,
-          onSelected: (_) => aoEscolher(),
-        ),
+  /// Os filtros que não cabem na fila: só com canal, o desporto e as competições do dia.
+  Future<void> _abrirFiltros(List<JogoComCanais> doDia) => showDialog<void>(
+        context: context,
+        builder: (ctx) => StatefulBuilder(builder: (ctx, mudar) {
+          void aplicar(VoidCallback f) {
+            setState(f);
+            mudar(() {});
+          }
+
+          final desportos = {for (final j in doDia) j.jogo.desporto};
+          final grupos = agruparPorCompeticao(doDia);
+          Widget titulo(String t) => Padding(
+                padding: const EdgeInsets.only(top: Tokens.e16, bottom: Tokens.e8),
+                child: Text(t, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+              );
+          return Dialog(
+            insetPadding: const EdgeInsets.all(Tokens.e16),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: 560, maxHeight: MediaQuery.sizeOf(ctx).height * .85),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(Tokens.e16),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+                  CabecalhoSeccao(icone: Icons.tune_rounded, titulo: tr('Filtros')),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    autofocus: true,
+                    title: Text(tr('Só jogos com canal')),
+                    subtitle: Text(tr('Esconde os jogos que ainda não têm canal anunciado.'),
+                        style: const TextStyle(fontSize: 13, color: Tokens.texto2)),
+                    value: _soComCanal,
+                    onChanged: (v) => aplicar(() => widget.preferencias.mostrarSemCanal = !v),
+                  ),
+                  if (desportos.length > 1) ...[
+                    titulo(tr('Desporto')),
+                    Wrap(spacing: Tokens.e8, runSpacing: Tokens.e8, children: [
+                      ChoiceChip(
+                          label: Text(tr('Todos')), selected: _desporto == null, onSelected: (_) => aplicar(() => _desporto = null)),
+                      for (final d in Desporto.values)
+                        if (desportos.contains(d))
+                          ChoiceChip(
+                              label: Text(nomeDesporto(d)), selected: _desporto == d, onSelected: (_) => aplicar(() => _desporto = d)),
+                    ]),
+                  ],
+                  if (grupos.isNotEmpty) ...[
+                    titulo(tr('Competições')),
+                    Wrap(spacing: Tokens.e8, runSpacing: Tokens.e8, children: [
+                      for (final g in grupos)
+                        FilterChip(
+                          label: Text('${g.competicao.nome} (${g.jogos.length})'),
+                          selected: _competicoes.contains(g.competicao.id),
+                          onSelected: (sim) => aplicar(() => _competicoes = sim
+                              ? {..._competicoes, g.competicao.id}
+                              : ({..._competicoes}..remove(g.competicao.id))),
+                        ),
+                    ]),
+                  ],
+                  const SizedBox(height: Tokens.e16),
+                  Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+                    TextButton(
+                      onPressed: () => aplicar(() {
+                        _desporto = null;
+                        _competicoes = {};
+                        widget.preferencias.mostrarSemCanal = true;
+                      }),
+                      child: Text(tr('Limpar filtros')),
+                    ),
+                    const SizedBox(width: Tokens.e8),
+                    FilledButton(onPressed: () => Navigator.of(ctx).pop(), child: Text(tr('Fechar'))),
+                  ]),
+                ]),
+              ),
+            ),
+          );
+        }),
       );
 
-  Widget _filtros(List<JogoComCanais> doDia) {
-    final desportos = {for (final j in doDia) j.jogo.desporto};
-    final competicoes = <String>{for (final j in doDia) j.jogo.competicaoId};
-    final mostrarSem = widget.preferencias.mostrarSemCanal;
-    return SizedBox(
-      height: 48,
-      child: ListView(scrollDirection: Axis.horizontal, children: [
-        for (var d = -1; d <= 5; d++) _chip(_nomeDia(d), d == _dia, () => _escolherDia(d)),
+  /// A fila de cima: «Filtros», «Ao vivo» e o dia com as setas (como no Sofascore).
+  Widget _fila(List<JogoComCanais> doDia) {
+    final n = _filtrosAtivos;
+    final aoVivo = doDia.where((j) => j.jogo.aDecorrer).length;
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(children: [
+        FilterChip(
+          avatar: const Icon(Icons.tune_rounded, size: 18),
+          showCheckmark: false,
+          label: Text(n == 0 ? tr('Filtros') : tr('Filtros ({0})', [n])),
+          selected: n > 0,
+          onSelected: (_) => unawaited(_abrirFiltros(doDia)),
+        ),
         const SizedBox(width: Tokens.e8),
-        _chip(tr('Em direto'), _soDireto, () => setState(() => _soDireto = !_soDireto), icone: Icons.circle),
-        _chip(tr('Mostrar jogos sem canal'), mostrarSem, () => widget.preferencias.mostrarSemCanal = !mostrarSem),
-        if (desportos.length > 1)
-          for (final d in Desporto.values)
-            if (desportos.contains(d))
-              _chip(switch (d) { Desporto.futebol => tr('Futebol'), Desporto.tenis => tr('Ténis'), Desporto.basquetebol => tr('Basquetebol') },
-                  _desporto == d, () => setState(() => _desporto = _desporto == d ? null : d)),
-        for (final id in competicoes)
-          _chip(competicaoPorId(id)?.nome ?? id, _competicao == id,
-              () => setState(() => _competicao = _competicao == id ? null : id)),
+        FilterChip(
+          avatar: Icon(Icons.circle, size: 10, color: _soDireto ? null : Tokens.mau),
+          showCheckmark: false,
+          label: Text(aoVivo == 0 ? tr('Ao vivo') : tr('Ao vivo ({0})', [aoVivo])),
+          selected: _soDireto,
+          onSelected: (_) => setState(() => _soDireto = !_soDireto),
+        ),
+        const SizedBox(width: Tokens.e12),
+        IconButton(
+          tooltip: tr('Dia anterior'),
+          onPressed: _dia > primeiroDia ? () => _escolherDia(_dia - 1) : null,
+          icon: const Icon(Icons.chevron_left_rounded),
+        ),
+        ConstrainedBox(
+          constraints: const BoxConstraints(minWidth: 120),
+          child: Text(_nomeDia(_dia),
+              textAlign: TextAlign.center, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+        ),
+        IconButton(
+          tooltip: tr('Dia seguinte'),
+          onPressed: _dia < ultimoDia ? () => _escolherDia(_dia + 1) : null,
+          icon: const Icon(Icons.chevron_right_rounded),
+        ),
+        if (_dia != 0) ...[
+          const SizedBox(width: Tokens.e4),
+          ActionChip(
+            avatar: const Icon(Icons.today_rounded, size: 18),
+            label: Text(tr('Hoje')),
+            onPressed: () => _escolherDia(0),
+          ),
+        ],
       ]),
     );
   }
 
   Widget _vazio(String texto, {String? acao, VoidCallback? aoAcao}) => Center(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(Tokens.e24),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             const Icon(Icons.sports_soccer_rounded, size: 40, color: Tokens.texto2),
@@ -222,11 +345,13 @@ class _TelaJogosState extends State<TelaJogos> {
     final s = widget.servico;
     final dia = _diaEscolhido;
     final doDia = s.jogos(FiltroJogos(dia, soComCanal: false));
+    final pesquisa = _pesquisa.text.trim();
     final jogos = s.jogos(FiltroJogos(dia,
         desporto: _desporto,
-        competicao: _competicao,
+        competicoes: _competicoes,
         soDireto: _soDireto,
-        soComCanal: !widget.preferencias.mostrarSemCanal));
+        soComCanal: _soComCanal,
+        equipa: pesquisa));
     final largo = MediaQuery.sizeOf(context).width >= larguraColunaJogo;
     final favoritas = widget.preferencias.equipasFavoritas;
     final estado = _estado();
@@ -238,28 +363,38 @@ class _TelaJogosState extends State<TelaJogos> {
     } else if (doDia.isEmpty) {
       corpo = _vazio(tr('Nenhum jogo das tuas competições neste dia'));
     } else if (jogos.isEmpty) {
-      final soFaltaCanal = !widget.preferencias.mostrarSemCanal && _competicao == null && !_soDireto;
-      corpo = soFaltaCanal
-          ? _vazio(tr('Ainda sem canal anunciado'),
-              acao: tr('Mostrar jogos sem canal'), aoAcao: () => widget.preferencias.mostrarSemCanal = true)
-          : _vazio(tr('Nenhum jogo com estes filtros'));
+      if (pesquisa.isNotEmpty) {
+        corpo = _vazio(tr('Nenhum jogo de «{0}» neste dia', [pesquisa]), acao: tr('Limpar a pesquisa'), aoAcao: _pesquisa.clear);
+      } else if (_soComCanal && _desporto == null && _competicoes.isEmpty && !_soDireto) {
+        corpo = _vazio(tr('Ainda sem canal anunciado'),
+            acao: tr('Mostrar jogos sem canal'), aoAcao: () => widget.preferencias.mostrarSemCanal = true);
+      } else {
+        corpo = _vazio(tr('Nenhum jogo com estes filtros'), acao: tr('Limpar filtros'), aoAcao: _limparFiltros);
+      }
     } else {
-      final escolhido = jogos.firstWhere((j) => j.jogo.id == _escolhido, orElse: () => jogos.first);
-      final lista = ListView.separated(
-        padding: const EdgeInsets.fromLTRB(Tokens.e16, Tokens.e4, Tokens.e16, Tokens.e16),
-        itemCount: jogos.length,
-        separatorBuilder: (_, _) => const SizedBox(height: Tokens.e8),
-        itemBuilder: (_, i) {
-          final j = jogos[i];
-          return LinhaJogo(
-            key: ValueKey(j.jogo.id),
-            item: j,
-            aoOndeVer: _ondeVer,
-            aoVer: () => _ver(j),
-            aoDetalhe: () => _detalhe(j),
-            aoFocar: largo && _escolhido != j.jogo.id ? () => setState(() => _escolhido = j.jogo.id) : null,
-            destaque: favoritas.any((e) => mesmaEquipa(e, j.jogo.casa) || mesmaEquipa(e, j.jogo.fora)),
-          );
+      final grupos = agruparPorCompeticao(jogos);
+      final itens = <Object>[for (final g in grupos) ...[g, ...g.jogos]];
+      final emOrdem = [for (final g in grupos) ...g.jogos];
+      final escolhido = emOrdem.firstWhere((j) => j.jogo.id == _escolhido, orElse: () => emOrdem.first);
+      final lista = ListView.builder(
+        padding: const EdgeInsets.fromLTRB(Tokens.e16, 0, Tokens.e16, Tokens.e16),
+        itemCount: itens.length,
+        itemBuilder: (_, i) => switch (itens[i]) {
+          final GrupoJogos g => CabecalhoCompeticao(g, primeiro: i == 0),
+          final JogoComCanais j => Padding(
+              padding: const EdgeInsets.only(bottom: Tokens.e8),
+              child: LinhaJogo(
+                key: ValueKey(j.jogo.id),
+                item: j,
+                mostrarCompeticao: false,
+                aoOndeVer: _ondeVer,
+                aoVer: () => _ver(j),
+                aoDetalhe: () => _detalhe(j),
+                aoFocar: largo && _escolhido != j.jogo.id ? () => setState(() => _escolhido = j.jogo.id) : null,
+                destaque: favoritas.any((e) => mesmaEquipa(e, j.jogo.casa) || mesmaEquipa(e, j.jogo.fora)),
+              ),
+            ),
+          _ => const SizedBox.shrink(),
         },
       );
       corpo = !largo
@@ -284,6 +419,19 @@ class _TelaJogosState extends State<TelaJogos> {
             ]);
     }
 
+    final campoPesquisa = TextField(
+      controller: _pesquisa,
+      textInputAction: TextInputAction.search,
+      decoration: InputDecoration(
+        isDense: true,
+        prefixIcon: const Icon(Icons.search_rounded),
+        hintText: tr('Pesquisar equipa'),
+        suffixIcon: pesquisa.isEmpty
+            ? null
+            : IconButton(tooltip: tr('Limpar a pesquisa'), onPressed: _pesquisa.clear, icon: const Icon(Icons.close_rounded)),
+      ),
+    );
+
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Padding(
         padding: const EdgeInsets.fromLTRB(Tokens.e16, Tokens.e16, Tokens.e16, 0),
@@ -292,6 +440,7 @@ class _TelaJogosState extends State<TelaJogos> {
           titulo: tr('Jogos'),
           subtitulo: estado ?? (aCarregar ? tr('A atualizar…') : tr('Onde dá o jogo e ver com um toque')),
           acoes: [
+            if (largo) SizedBox(width: 320, child: campoPesquisa),
             IconButton(
               tooltip: tr('Atualizar'),
               onPressed: aCarregar ? null : () => unawaited(_atualizar()),
@@ -300,11 +449,46 @@ class _TelaJogosState extends State<TelaJogos> {
           ],
         ),
       ),
+      if (!largo)
+        Padding(padding: const EdgeInsets.fromLTRB(Tokens.e16, 0, Tokens.e16, Tokens.e8), child: campoPesquisa),
       Padding(
-        padding: const EdgeInsets.fromLTRB(Tokens.e16, 0, 0, Tokens.e8),
-        child: _filtros(doDia),
+        padding: const EdgeInsets.fromLTRB(Tokens.e16, 0, Tokens.e16, Tokens.e8),
+        child: _fila(doDia),
       ),
       Expanded(child: corpo),
     ]);
+  }
+}
+
+/// O título de um bloco de jogos: o logótipo, o nome da competição e quantos jogos tem.
+class CabecalhoCompeticao extends StatelessWidget {
+  const CabecalhoCompeticao(this.grupo, {super.key, this.primeiro = false});
+  final GrupoJogos grupo;
+  final bool primeiro;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = grupo.competicao;
+    final logo = c.fotmob == null ? null : logoCompeticaoFotmob(c.fotmob!);
+    const semLogo = Icon(Icons.emoji_events_outlined, size: 20, color: Tokens.texto2);
+    return Padding(
+      padding: EdgeInsets.fromLTRB(Tokens.e4, primeiro ? Tokens.e4 : Tokens.e16, Tokens.e4, Tokens.e8),
+      child: Row(children: [
+        SizedBox(
+          width: 24,
+          height: 24,
+          child: logo == null ? semLogo : Image.network(logo, width: 24, height: 24, errorBuilder: (_, _, _) => semLogo),
+        ),
+        const SizedBox(width: Tokens.e8),
+        Expanded(
+          child: Text(c.nome,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Tokens.texto)),
+        ),
+        Text(grupo.jogos.length == 1 ? tr('1 jogo') : tr('{0} jogos', [grupo.jogos.length]),
+            style: const TextStyle(fontSize: 12.5, color: Tokens.texto2)),
+      ]),
+    );
   }
 }

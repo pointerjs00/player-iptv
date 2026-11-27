@@ -1965,5 +1965,61 @@ const textosIngles = <String, String>{
         '“Where to watch”: for each channel, the sources in all your lists, by how likely they are to work. “▶ Watch” opens the best one and, if it shows no picture, moves to the next on its own.',
     'Definições › Jogos: as competições a seguir, as equipas favoritas (ficam em destaque) e a qualidade preferida.':
         'Settings › Matches: the competitions to follow, favourite teams (highlighted) and the preferred quality.',
+    'jan':
+        'Jan',
+    'fev':
+        'Feb',
+    'mar':
+        'Mar',
+    'abr':
+        'Apr',
+    'mai':
+        'May',
+    'jun':
+        'Jun',
+    'jul':
+        'Jul',
+    'ago':
+        'Aug',
+    'set':
+        'Sep',
+    'out':
+        'Oct',
+    'nov':
+        'Nov',
+    'dez':
+        'Dec',
+    'Filtros':
+        'Filters',
+    'Só jogos com canal':
+        'Only matches with a channel',
+    'Esconde os jogos que ainda não têm canal anunciado.':
+        'Hides the matches that have no channel announced yet.',
+    'Desporto':
+        'Sport',
+    'Competições':
+        'Competitions',
+    'Limpar filtros':
+        'Clear filters',
+    'Filtros ({0})':
+        'Filters ({0})',
+    'Ao vivo':
+        'Live',
+    'Ao vivo ({0})':
+        'Live ({0})',
+    'Dia anterior':
+        'Previous day',
+    'Dia seguinte':
+        'Next day',
+    'Nenhum jogo de «{0}» neste dia':
+        'No “{0}” matches on this day',
+    'Limpar a pesquisa':
+        'Clear the search',
+    'Pesquisar equipa':
+        'Search team',
+    '1 jogo':
+        '1 match',
+    '{0} jogos':
+        '{0} matches',
   },
 };

@@ -30,9 +30,10 @@ IconData iconeConfianca(Confianca c) => switch (c) {
       Confianca.possivel => Icons.help_outline_rounded,
     };
 
-/// A competição e a ronda («Liga Portugal Betclic · Jornada 12»).
-String legendaJogo(JogoComCanais j) {
-  final c = j.competicao?.nome ?? '';
+/// A competição e a ronda («Liga Portugal Betclic · Jornada 12»); sem a competição dentro do
+/// bloco dela.
+String legendaJogo(JogoComCanais j, {bool comCompeticao = true}) {
+  final c = comCompeticao ? j.competicao?.nome ?? '' : '';
   final r = j.jogo.ronda;
   if (r == null || r.isEmpty) return c;
   final ronda = int.tryParse(r) != null ? tr('Jornada {0}', [r]) : r;
@@ -156,7 +157,11 @@ class LinhaJogo extends StatefulWidget {
     this.focusNode,
     this.aoFocar,
     this.destaque = false,
+    this.mostrarCompeticao = true,
   });
+
+  /// O nome da competição na legenda (não, quando os jogos estão agrupados por ela).
+  final bool mostrarCompeticao;
 
   /// Joga uma equipa favorita (o cartão fica em destaque).
   final bool destaque;
@@ -220,7 +225,7 @@ class LinhaJogoState extends State<LinhaJogo> {
       const SizedBox(height: 2),
       EquipaJogo(nome: j.fora, emblema: j.emblemaFora, golos: gf, tamanho: tam),
     ]);
-    final legenda = Text(legendaJogo(widget.item),
+    final legenda = Text(legendaJogo(widget.item, comCompeticao: widget.mostrarCompeticao),
         maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12.5, color: Tokens.texto2));
     final etiquetas = Wrap(spacing: 6, runSpacing: 4, children: [
       for (final (i, t) in _canais.indexed)

@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:player_iptv/desporto/servico_jogos.dart';
 import 'package:player_iptv/ui/jogos/linha_jogo.dart';
+import 'package:player_iptv/ui/jogos/tela_jogos.dart';
 import 'package:player_iptv/dados/area_gestor.dart';
 import 'package:player_iptv/dados/biblioteca.dart';
 import 'package:player_iptv/dados/preferencias.dart';
@@ -27,42 +28,92 @@ void main() {
     await t.pump();
   }
 
-  testWidgets('os jogos com canal, pela hora, com a coluna do jogo à direita', (t) async {
+  testWidgets('os jogos por competição (a Liga Portugal primeiro), com a coluna do jogo à direita', (t) async {
     await montar(t);
-    expect(find.byType(LinhaJogo), findsNWidgets(7), reason: 'o jogo sem canal fica de fora');
-    expect(find.text('Moreirense'), findsNothing);
+    expect(find.byType(LinhaJogo), findsNWidgets(8), reason: 'por omissão também os jogos sem canal');
+    final blocos = [for (final e in find.byType(CabecalhoCompeticao).evaluate()) (e.widget as CabecalhoCompeticao).grupo.competicao.nome];
+    expect(blocos, ['Liga Portugal Betclic', 'Premier League', 'Eredivisie']);
+    expect(find.text('6 jogos'), findsOneWidget);
     // a coluna à direita mostra o primeiro jogo
     expect(find.text('Onde dá'), findsOneWidget);
     expect(find.text('Marítimo'), findsNWidgets(2), reason: 'na linha e na coluna');
     expect(m.servico.cargas, isEmpty, reason: 'o dia já estava carregado');
   });
 
-  testWidgets('um jogo sem canal só aparece com «Mostrar jogos sem canal»', (t) async {
+  Future<void> abrirFiltros(WidgetTester t) async {
+    await t.tap(find.widgetWithIcon(FilterChip, Icons.tune_rounded));
+    await t.pumpAndSettle();
+  }
+
+  Future<void> fecharFiltros(WidgetTester t) async {
+    await t.tap(find.widgetWithText(FilledButton, 'Fechar'));
+    await t.pumpAndSettle();
+  }
+
+  testWidgets('Filtros › «Só jogos com canal» esconde os que ainda não têm canal', (t) async {
     await montar(t);
-    expect(find.text('Moreirense'), findsNothing);
-    await t.tap(find.widgetWithText(FilterChip, 'Mostrar jogos sem canal'));
-    await t.pump();
     expect(find.text('Moreirense'), findsOneWidget);
-    expect(find.text('Ainda sem canal anunciado'), findsOneWidget);
-    expect(m.prefs.mostrarSemCanal, isTrue);
+    await abrirFiltros(t);
+    await t.tap(find.text('Só jogos com canal'));
+    await t.pump();
+    await fecharFiltros(t);
+    expect(find.text('Moreirense'), findsNothing);
+    expect(find.widgetWithText(FilterChip, 'Filtros (1)'), findsOneWidget, reason: 'diz quantos filtros estão ligados');
+    expect(m.prefs.mostrarSemCanal, isFalse);
   });
 
-  testWidgets('filtros: «Em direto» e uma competição', (t) async {
+  testWidgets('«Ao vivo» e as competições nos Filtros', (t) async {
     await montar(t);
-    await t.tap(find.widgetWithText(FilterChip, 'Em direto'));
+    expect(find.widgetWithText(FilterChip, 'Ao vivo (1)'), findsOneWidget);
+    await t.tap(find.widgetWithText(FilterChip, 'Ao vivo (1)'));
     await t.pump();
     expect(find.byType(LinhaJogo), findsOneWidget);
-    await t.tap(find.widgetWithText(FilterChip, 'Em direto'));
+    await t.tap(find.widgetWithText(FilterChip, 'Ao vivo (1)'));
     await t.pump();
-    final premier = find.widgetWithText(FilterChip, 'Premier League');
-    await t.scrollUntilVisible(premier, 150,
-        scrollable: find.descendant(of: find.byType(ListView).first, matching: find.byType(Scrollable)).first);
-    await t.ensureVisible(premier);
-    await t.pumpAndSettle();
-    await t.tap(premier);
+    await abrirFiltros(t);
+    await t.tap(find.widgetWithText(FilterChip, 'Premier League (1)'));
     await t.pump();
+    await fecharFiltros(t);
     expect(find.byType(LinhaJogo), findsOneWidget);
     expect(find.text('Arsenal'), findsWidgets);
+    // «Limpar filtros» volta a mostrar tudo
+    await abrirFiltros(t);
+    await t.tap(find.text('Limpar filtros'));
+    await t.pump();
+    await fecharFiltros(t);
+    expect(find.byType(LinhaJogo), findsNWidgets(8));
+  });
+
+  testWidgets('pesquisa por equipa: parte do nome, sem acentos; sem resultados diz qual', (t) async {
+    await montar(t);
+    await t.enterText(find.byType(TextField), 'famalicao');
+    await t.pump();
+    expect(find.byType(LinhaJogo), findsOneWidget);
+    expect(find.text('Famalicão'), findsWidgets);
+    await t.enterText(find.byType(TextField), 'zzz');
+    await t.pump();
+    expect(find.text('Nenhum jogo de «zzz» neste dia'), findsOneWidget);
+    await t.tap(find.widgetWithText(OutlinedButton, 'Limpar a pesquisa'));
+    await t.pump();
+    expect(find.byType(LinhaJogo), findsNWidgets(8));
+  });
+
+  testWidgets('o dia muda com as setas, e «Hoje» volta ao dia de hoje', (t) async {
+    await montar(t);
+    expect(find.text('Hoje, 27 nov'), findsOneWidget);
+    expect(find.widgetWithText(ActionChip, 'Hoje'), findsNothing);
+    await t.tap(find.byTooltip('Dia seguinte'));
+    await t.pump();
+    expect(find.text('Amanhã, 28 nov'), findsOneWidget);
+    await t.tap(find.byTooltip('Dia seguinte'));
+    await t.tap(find.byTooltip('Dia seguinte'));
+    await t.pump();
+    expect(find.text('Seg, 30 nov'), findsOneWidget);
+    expect(m.servico.cargas, [DateTime(2026, 11, 28), DateTime(2026, 11, 29), DateTime(2026, 11, 30)]);
+    await t.tap(find.widgetWithText(ActionChip, 'Hoje'));
+    await t.pump();
+    expect(find.text('Hoje, 27 nov'), findsOneWidget);
+    expect(find.byType(LinhaJogo), findsNWidgets(8));
   });
 
   testWidgets('estado vazio: nenhum jogo das competições seguidas', (t) async {
@@ -72,6 +123,8 @@ void main() {
 
   testWidgets('estado vazio: só jogos sem canal, com o botão para os mostrar', (t) async {
     await montar(t, jogos: [jogoTeste(3, 'Moreirense', 'Santa Clara', [])]);
+    m.prefs.mostrarSemCanal = false;
+    await t.pump();
     expect(find.text('Ainda sem canal anunciado'), findsOneWidget);
     await t.tap(find.widgetWithText(OutlinedButton, 'Mostrar jogos sem canal'));
     await t.pump();

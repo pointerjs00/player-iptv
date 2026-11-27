@@ -14,6 +14,10 @@ import '../modelo.dart';
 const _base = 'https://www.fotmob.com/api/data';
 
 /// O emblema de uma equipa (a confirmar no aparelho).
+/// O logótipo de uma competição (pelo `primaryId`; o mesmo esquema dos emblemas, a confirmar).
+String logoCompeticaoFotmob(int primaryId) =>
+    'https://images.fotmob.com/image_resources/logo/leaguelogo/$primaryId.png';
+
 String emblemaFotmob(Object id) => 'https://images.fotmob.com/image_resources/logo/teamlogo/${id}_small.png';
 
 Competicao? _competicao(Map<String, dynamic> liga, Set<String> seguidas) {
