@@ -302,5 +302,46 @@ class EdicaoPartilha(unittest.TestCase):
             self.assertEqual(vistos["dist"], Path(t) / "dist")
 
 
+
+class JuntarPacotes(unittest.TestCase):
+    def test_versao_do_pubspec_sem_a_compilacao(self):
+        with tempfile.TemporaryDirectory() as t:
+            f = Path(t) / "pubspec.yaml"
+            f.write_text("name: x\nversion: 1.0.23+24\n", encoding="utf-8")
+            self.assertEqual(empacotar.ler_versao(f), "1.0.23")
+
+    def test_as_duas_edicoes_numa_pasta_com_a_versao_no_nome(self):
+        with tempfile.TemporaryDirectory() as t:
+            completa, partilha, destino = Path(t) / "c", Path(t) / "p", Path(t) / "TVIntel-1.0.23"
+            for d in (completa, partilha):
+                d.mkdir()
+                for n in ["TVIntel-android-arm64.apk", "TVIntel-android-armv7.apk", "TVIntel-windows.zip"]:
+                    (d / n).write_text(d.name + n)
+            destino.mkdir()
+            (destino / "velho.apk").write_text("de uma versão antiga")
+            gerados = empacotar.juntar_pacotes(completa, partilha, destino, "1.0.23")
+            nomes = sorted(g.name for g in gerados)
+            self.assertEqual(nomes, sorted([
+                "TVIntel-1.0.23-android-arm64.apk", "TVIntel-1.0.23-android-armv7.apk", "TVIntel-1.0.23-windows.zip",
+                "TVIntel-1.0.23-partilha-android-arm64.apk", "TVIntel-1.0.23-partilha-android-armv7.apk",
+                "TVIntel-1.0.23-partilha-windows.zip", "LEIA-ME.txt",
+            ]))
+            self.assertFalse((destino / "velho.apk").exists(), "a pasta só tem esta versão")
+            self.assertEqual((destino / "TVIntel-1.0.23-partilha-windows.zip").read_text(), "pTVIntel-windows.zip")
+            leia = (destino / "LEIA-ME.txt").read_text(encoding="utf-8")
+            self.assertIn("TVIntel-1.0.23-partilha-android-arm64.apk", leia)
+            self.assertIn("TVIntel-1.0.23-windows.zip", leia)
+            self.assertIn("edição de partilha", leia.lower())
+
+    def test_um_pacote_que_falta_nao_impede_os_outros(self):
+        with tempfile.TemporaryDirectory() as t:
+            completa, partilha, destino = Path(t) / "c", Path(t) / "p", Path(t) / "d"
+            completa.mkdir()
+            partilha.mkdir()
+            (completa / "TVIntel-android-arm64.apk").write_text("x")
+            gerados = empacotar.juntar_pacotes(completa, partilha, destino, "1.0.23")
+            self.assertEqual(sorted(g.name for g in gerados), ["LEIA-ME.txt", "TVIntel-1.0.23-android-arm64.apk"])
+
+
 if __name__ == "__main__":
     unittest.main()

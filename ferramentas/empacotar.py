@@ -1,14 +1,16 @@
 """Gera em dist/ os pacotes a partilhar: APK Android (arm64, armv7) e zip Windows.
 
-Uso: python ferramentas/empacotar.py [--so-android | --so-windows] [--partilha]
-Com --partilha gera a edição de partilha (sem a importação automática: stbstalker e Telegram)
-em dist/partilha/: corre antes os testes dessa edição e recusa pacotes que ainda a tragam.
+Uso: python ferramentas/empacotar.py [--so-android | --so-windows] [--partilha | --tudo]
+Com --partilha gera a edição de partilha (sem a importação automática: stbstalker e Telegram, nem
+os Jogos) em dist/partilha/: corre antes os testes dessa edição e recusa pacotes que ainda a tragam.
+Com --tudo gera as duas edições e junta-as em dist/TVIntel-<versão>/, uma pasta pronta a partilhar.
 Nunca altera definições do sistema.
 """
 import argparse
 import fnmatch
 import hashlib
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -247,6 +249,56 @@ def construir_windows(dist: Path) -> Path | None:
     return criar_zip_windows(RAIZ / PASTA_WINDOWS, dist / "TVIntel-windows.zip")
 
 
+def ler_versao(pubspec: Path = RAIZ / "pubspec.yaml") -> str:
+    """A versão da app (a `version` do pubspec.yaml, sem o número da compilação)."""
+    m = re.search(r"^version:\s*([0-9][0-9.]*)", Path(pubspec).read_text(encoding="utf-8"), re.MULTILINE)
+    if m is None:
+        raise SystemExit("Não encontrei a versão no pubspec.yaml.")
+    return m.group(1)
+
+
+LEIA_ME_EDICOES = """TVINTEL {versao} - TODAS AS VERSÕES
+==================================
+
+Há duas edições, cada uma para Windows e para Android:
+
+Edição de partilha (é esta que se partilha): a mesma app, sem a importação
+automática de listas (stbstalker e Telegram) nem os Jogos.
+  * TVIntel-{versao}-partilha-windows.zip
+  * TVIntel-{versao}-partilha-android-arm64.apk
+  * TVIntel-{versao}-partilha-android-armv7.apk
+
+Edição completa (para uso próprio): com os Jogos e a importação automática.
+  * TVIntel-{versao}-windows.zip
+  * TVIntel-{versao}-android-arm64.apk
+  * TVIntel-{versao}-android-armv7.apk
+
+As instruções abaixo valem para as duas (na de partilha, o nome tem
+"-partilha" depois da versão).
+
+"""
+
+
+def juntar_pacotes(completa: Path, partilha: Path, destino: Path, versao: str) -> list[Path]:
+    """As duas edições numa pasta só, com a versão (e "partilha") no nome de cada ficheiro, e um
+    LEIA-ME para as duas. A pasta fica só com esta versão (o que lá estava sai)."""
+    if destino.exists():
+        shutil.rmtree(destino)
+    destino.mkdir(parents=True)
+    nomes = [*APKS.values(), "TVIntel-windows.zip"]
+    gerados = []
+    for origem, prefixo in ((completa, f"TVIntel-{versao}-"), (partilha, f"TVIntel-{versao}-partilha-")):
+        for n in nomes:
+            f = Path(origem) / n
+            if f.is_file():
+                gerados.append(Path(shutil.copy2(f, destino / (prefixo + n.removeprefix("TVIntel-")))))
+    leia = LEIA_ME_EDICOES.format(versao=versao) + LEIA_ME.replace("TVIntel-", f"TVIntel-{versao}-").replace(
+        f"TVIntel-{versao}-windows.zip (botão", f"TVIntel-{versao}-windows.zip (ou o -partilha-; botão")
+    (destino / "LEIA-ME.txt").write_text(leia, encoding="utf-8")
+    gerados.append(destino / "LEIA-ME.txt")
+    return gerados
+
+
 def testar_partilha() -> None:
     """Os testes da edição de partilha (test/edicao), compilados como ela."""
     r = subprocess.run([_flutter(), "test", DEFINE_PARTILHA, "test/edicao"], cwd=RAIZ)
@@ -259,9 +311,22 @@ def main(argv=None) -> int:
     g = p.add_mutually_exclusive_group()
     g.add_argument("--so-android", action="store_true")
     g.add_argument("--so-windows", action="store_true")
-    p.add_argument("--partilha", action="store_true", help="a edição de partilha, em dist/partilha/")
+    e = p.add_mutually_exclusive_group()
+    e.add_argument("--partilha", action="store_true", help="a edição de partilha, em dist/partilha/")
+    e.add_argument("--tudo", action="store_true", help="as duas edições, juntas em dist/TVIntel-<versão>/")
     a = p.parse_args(argv)
     configurar_saida(sys.stdout, sys.stderr)
+    if a.tudo:
+        alvo = ["--so-android"] if a.so_android else ["--so-windows"] if a.so_windows else []
+        main(alvo)
+        main([*alvo, "--partilha"])
+        versao = ler_versao()
+        destino = RAIZ / "dist" / f"TVIntel-{versao}"
+        gerados = juntar_pacotes(RAIZ / "dist", RAIZ / "dist" / "partilha", destino, versao)
+        print(f"\nTodas as versões em {destino.relative_to(RAIZ).as_posix()}/:")
+        for g_ in gerados:
+            print(f"  {g_.name}  ({g_.stat().st_size / 1e6:.1f} MB)")
+        return 0
     DEFINES[:] = [DEFINE_PARTILHA] if a.partilha else []
     dist = RAIZ / "dist" / "partilha" if a.partilha else RAIZ / "dist"
     dist.mkdir(parents=True, exist_ok=True)
