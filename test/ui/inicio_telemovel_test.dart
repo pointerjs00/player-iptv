@@ -78,11 +78,14 @@ void main() {
     await t.pumpAndSettle();
   }
 
-  noAndroid('filtros: os 6 à vista num Wrap, com «Inconclusivas»', (
+  noAndroid('filtros: os 6 numa só fila que desliza, inteiros; «Ordenar» é um botão ao lado da pesquisa', (
     t,
     ecra,
   ) async {
     await abrir(t);
+    final fila = find.byKey(const Key('fila-filtros'));
+    expect(fila, findsOneWidget);
+    double? linha;
     for (final c in [
       'Todas',
       'Funcionam',
@@ -91,19 +94,25 @@ void main() {
       'Por verificar',
       'Favoritas',
     ]) {
-      final chip = find.widgetWithText(ChoiceChip, c).hitTestable();
-      expect(chip, findsOneWidget, reason: c);
-      noEcra(t, chip, ecra, motivo: c);
+      final chip = find.widgetWithText(ChoiceChip, c);
+      expect(find.descendant(of: fila, matching: chip), findsOneWidget, reason: '$c na fila');
+      await t.ensureVisible(chip);
+      await t.pumpAndSettle();
+      noEcra(t, chip.hitTestable(), ecra, motivo: c);
       inteiro(t, find.descendant(of: chip, matching: find.text(c)));
-      expect(
-        find.ancestor(of: chip, matching: find.byType(Wrap)),
-        findsOneWidget,
-        reason: '$c num Wrap',
-      );
+      final y = t.getCenter(chip).dy;
+      linha ??= y;
+      expect(y, moreOrLessEquals(linha, epsilon: 1), reason: '$c na mesma linha');
       alvo48(t, find.descendant(of: chip, matching: find.byType(RawChip)), motivo: c);
     }
+    final ordenar = find.byKey(const Key('ordenar-listas'));
+    expect(t.getCenter(ordenar).dy, moreOrLessEquals(t.getCenter(find.byType(TextField)).dy, epsilon: 2),
+        reason: 'ao lado da pesquisa');
+    alvo48(t, ordenar);
     expect(find.text('INC'), findsNothing);
     // filtrar continua a funcionar
+    await t.ensureVisible(find.widgetWithText(ChoiceChip, 'Inconclusivas'));
+    await t.pumpAndSettle();
     await t.tap(find.widgetWithText(ChoiceChip, 'Inconclusivas'));
     await t.pumpAndSettle();
     expect(find.text('Nenhuma lista com este filtro.'), findsOneWidget);

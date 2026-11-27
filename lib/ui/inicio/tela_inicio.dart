@@ -444,8 +444,8 @@ class _TelaInicioState extends State<TelaInicio> {
     ]);
   }
 
-  /// A pesquisa e os filtros por estado. Na TV e no computador os filtros vão numa só fila (com
-  /// scroll para o lado quando não cabem; no telemóvel, ao toque, vão num `Wrap`).
+  /// A pesquisa e os filtros por estado, numa só fila (com scroll para o lado quando não cabem).
+  /// No telemóvel a fila não tem «Ordenar» (é um botão ao lado da pesquisa) e é mais baixa.
   /// Na TV, partidos em duas linhas, do último filtro da primeira linha → não tinha nada à direita e ↓ saltava para os cartões (por baixo dele não há outro
   /// filtro), e o comando nunca chegava aos da segunda linha («Por verificar»). Ao lado da
   /// pesquisa quando há largura; por baixo dela no ecrã estreito.
@@ -455,6 +455,7 @@ class _TelaInicioState extends State<TelaInicio> {
       decoration: InputDecoration(prefixIcon: Icon(Icons.search), hintText: tr('Pesquisar listas')),
       onChanged: (v) => setState(() => _q = v),
     );
+    final telemovel = ecraTelemovel(context);
     final chips = [
       for (final (v, t) in _filtros)
         ChoiceChip(
@@ -478,8 +479,10 @@ class _TelaInicioState extends State<TelaInicio> {
           selected: _filtro == v,
           onSelected: (_) => setState(() => _filtro = v),
         ),
-      // a ordem: no fim da fila dos filtros (o comando chega lá com DIREITA)
-      ActionChip(
+      // a ordem: no fim da fila dos filtros (o comando chega lá com DIREITA); no telemóvel, ao lado
+      // da pesquisa
+      if (!telemovel)
+        ActionChip(
         key: const Key('ordenar-listas'),
         avatar: const Icon(Icons.sort_rounded, size: 18),
         label: Text(tr('Ordenar: {0}', [widget.biblioteca.ordemListas.rotulo])),
@@ -487,20 +490,32 @@ class _TelaInicioState extends State<TelaInicio> {
         onPressed: _escolherOrdem,
       ),
     ];
-    // no telemóvel (toque) todos à vista, em mais de uma linha; a fila única é para o D-pad
-    final filtros = ecraTelemovel(context)
-        ? Padding(
-            padding: const EdgeInsets.symmetric(vertical: Tokens.e4),
-            child: Wrap(spacing: Tokens.e8, children: chips),
-          )
-        : SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            // margem para o anel do foco não ser cortado
-            padding: const EdgeInsets.all(Tokens.e4),
-            child: Row(children: [
-              for (final (i, c) in chips.indexed) ...[if (i > 0) const SizedBox(width: Tokens.e8), c],
-            ]),
-          );
+    final filtros = SingleChildScrollView(
+      key: const Key('fila-filtros'),
+      scrollDirection: Axis.horizontal,
+      // margem para o anel do foco não ser cortado
+      padding: telemovel ? const EdgeInsets.only(top: Tokens.e8) : const EdgeInsets.all(Tokens.e4),
+      child: Row(children: [
+        for (final (i, c) in chips.indexed) ...[if (i > 0) SizedBox(width: telemovel ? 6 : Tokens.e8), c],
+      ]),
+    );
+    if (telemovel) {
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          Expanded(child: pesquisa),
+          const SizedBox(width: Tokens.e4),
+          IconButton(
+            key: const Key('ordenar-listas'),
+            tooltip: tr('Ordenar: {0}', [widget.biblioteca.ordemListas.rotulo]),
+            icon: const Icon(Icons.sort_rounded),
+            color: Tokens.texto2,
+            style: IconButton.styleFrom(minimumSize: const Size(Tokens.alvoToque, Tokens.alvoToque)),
+            onPressed: _escolherOrdem,
+          ),
+        ]),
+        filtros,
+      ]);
+    }
     return LayoutBuilder(
       builder: (_, c) => c.maxWidth < 560
           ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [pesquisa, filtros])
@@ -550,8 +565,11 @@ class _TelaInicioState extends State<TelaInicio> {
               )
             else
               SliverPadding(
-                // margem para o cartão focado crescer (1.04) e brilhar sem ser cortado
-                padding: const EdgeInsets.all(Tokens.e24),
+                // margem para o cartão focado crescer (1.04) e brilhar sem ser cortado; no telemóvel
+                // (toque, sem foco a crescer) alinhada com a pesquisa
+                padding: ecraTelemovel(context)
+                    ? const EdgeInsets.fromLTRB(Tokens.e16, Tokens.e12, Tokens.e16, Tokens.e24)
+                    : const EdgeInsets.all(Tokens.e24),
                 // no telemóvel, um cartão por linha (com o nome inteiro), cada um com a altura do
                 // que mostra; na grelha, todos com a mesma altura (que cresce com a letra)
                 sliver: MediaQuery.sizeOf(context).width < 600

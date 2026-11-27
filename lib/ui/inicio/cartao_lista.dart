@@ -127,7 +127,7 @@ class CartaoLista extends StatelessWidget {
                     texto: tr('grupos')),
               ),
             ])
-          else
+          else if (emGrelha)
             SizedBox(height: tv ? 24 : 22),
           if (emGrelha) const Spacer() else const SizedBox(height: Tokens.e8),
           // a pílula e a validade na mesma linha quando cabem; senão a validade vai para baixo

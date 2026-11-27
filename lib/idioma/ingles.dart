@@ -2023,5 +2023,11 @@ const textosIngles = <String, String>{
         '{0} matches',
     'Guia das listas':
         'Lists guide',
+    'No telemóvel: os filtros das listas numa só fila que desliza, e «Ordenar» num botão ao lado da pesquisa.':
+        'On the phone: the list filters in a single scrolling row, and “Sort” as a button next to the search.',
+    'No telemóvel: o número do canal já não se corta, e o logótipo e o nome ficam ao meio da linha.':
+        'On the phone: the channel number is no longer cut off, and the logo and name are centred in the row.',
+    'No telemóvel: as Estatísticas arrumadas para o ecrã estreito (os totais e os canais mais vistos).':
+        'On the phone: Statistics laid out for the narrow screen (the totals and the most watched channels).',
   },
 };

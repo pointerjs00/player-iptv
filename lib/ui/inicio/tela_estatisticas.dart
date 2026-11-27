@@ -76,9 +76,11 @@ class _TelaEstatisticasState extends State<TelaEstatisticas> {
                   constraints: const BoxConstraints(maxWidth: 1100),
                   child: ListView(
                     controller: _scroll,
-                    padding: const EdgeInsets.fromLTRB(Tokens.e24, Tokens.e8, Tokens.e24, Tokens.e32),
+                    padding: ecraTelemovel(context)
+                        ? const EdgeInsets.fromLTRB(Tokens.e16, Tokens.e8, Tokens.e16, Tokens.e32)
+                        : const EdgeInsets.fromLTRB(Tokens.e24, Tokens.e8, Tokens.e24, Tokens.e32),
                     children: [
-                      Wrap(spacing: Tokens.e16, runSpacing: Tokens.e16, children: [
+                      Wrap(spacing: Tokens.e16, runSpacing: ecraTelemovel(context) ? Tokens.e8 : Tokens.e16, children: [
                         _Numero(tr('Esta semana'), textoDuracao(semana.total), comparacaoSemana(semana), tv: tv),
                         _Numero(tr('Últimos 30 dias'), textoDuracao(total30), tr('{0} canais diferentes', [mais.length]),
                             tv: tv),
@@ -123,7 +125,33 @@ class _Numero extends StatelessWidget {
   final bool tv;
 
   @override
-  Widget build(BuildContext context) => SizedBox(
+  Widget build(BuildContext context) {
+    if (ecraTelemovel(context)) {
+      return SuperficieVidro(
+        padding: const EdgeInsets.symmetric(horizontal: Tokens.e16, vertical: Tokens.e12),
+        child: Row(children: [
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(rotulo.toUpperCase(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Tokens.texto2, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.2)),
+              const SizedBox(height: 2),
+              Text(nota, maxLines: 2, overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Tokens.texto2, fontSize: 12.5)),
+            ]),
+          ),
+          const SizedBox(width: Tokens.e12),
+          Text(valor,
+              maxLines: 1,
+              style: const TextStyle(fontFamily: Tokens.letraTitulos, fontSize: 26, fontWeight: FontWeight.w700)),
+        ]),
+      );
+    }
+    return _largo();
+  }
+
+  Widget _largo() => SizedBox(
         width: tv ? 300 : 280,
         child: SuperficieVidro(
           padding: const EdgeInsets.all(Tokens.e16),
@@ -167,8 +195,50 @@ class _Linha extends StatelessWidget {
   final String? detalhe;
   final Duration tempo, maximo;
 
+  Widget _barra({double altura = 8}) => ClipRRect(
+        borderRadius: BorderRadius.circular(Tokens.raioPilula),
+        child: LinearProgressIndicator(
+          value: maximo.inSeconds == 0 ? 0 : tempo.inSeconds / maximo.inSeconds,
+          minHeight: altura,
+          color: posicao == 1 ? Tokens.acento : Tokens.acento2,
+          backgroundColor: Tokens.vidroForte,
+        ),
+      );
+
   @override
-  Widget build(BuildContext context) => Padding(
+  Widget build(BuildContext context) {
+    if (!ecraTelemovel(context)) return _largo();
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        SizedBox(
+          width: 26,
+          child: Text('$posicao',
+              style: const TextStyle(
+                  fontFamily: Tokens.letraTitulos, color: Tokens.anelFoco, fontSize: 17, fontWeight: FontWeight.w700)),
+        ),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Expanded(
+                child: Text(nome, maxLines: 2, overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w600, height: 1.25)),
+              ),
+              const SizedBox(width: Tokens.e8),
+              Text(textoDuracao(tempo), style: const TextStyle(color: Tokens.texto2)),
+            ]),
+            if (detalhe != null && detalhe!.isNotEmpty)
+              Text(detalhe!, maxLines: 1, overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Tokens.texto2, fontSize: 12)),
+            const SizedBox(height: 6),
+            _barra(altura: 6),
+          ]),
+        ),
+      ]),
+    );
+  }
+
+  Widget _largo() => Padding(
         padding: const EdgeInsets.symmetric(vertical: 6),
         child: Row(children: [
           SizedBox(
@@ -186,18 +256,7 @@ class _Linha extends StatelessWidget {
             ]),
           ),
           const SizedBox(width: Tokens.e12),
-          Expanded(
-            flex: 4,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(Tokens.raioPilula),
-              child: LinearProgressIndicator(
-                value: maximo.inSeconds == 0 ? 0 : tempo.inSeconds / maximo.inSeconds,
-                minHeight: 8,
-                color: posicao == 1 ? Tokens.acento : Tokens.acento2,
-                backgroundColor: Tokens.vidroForte,
-              ),
-            ),
-          ),
+          Expanded(flex: 4, child: _barra()),
           const SizedBox(width: Tokens.e12),
           SizedBox(
             width: 76,

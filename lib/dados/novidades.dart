@@ -28,6 +28,9 @@ const historicoNovidades = <Novidades>[
       'Definições › Jogos: as competições a seguir, as equipas favoritas (ficam em destaque) e a qualidade '
           'preferida.',
     ],
+    'No telemóvel: os filtros das listas numa só fila que desliza, e «Ordenar» num botão ao lado da pesquisa.',
+    'No telemóvel: o número do canal já não se corta, e o logótipo e o nome ficam ao meio da linha.',
+    'No telemóvel: as Estatísticas arrumadas para o ecrã estreito (os totais e os canais mais vistos).',
   ]),
   Novidades('1.0.22', '2026-11-26', [
     'Ver TV: menos texto cortado. Nos cartões das listas o tipo vai ao lado do servidor e as contagens aparecem inteiras; o «Continuar a ver» é mais largo e os favoritos mostram o nome do canal em até 2 linhas.',

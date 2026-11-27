@@ -1742,12 +1742,14 @@ class _TelaConteudoState extends State<TelaConteudo> {
     final telemovel = ecraTelemovel(context);
     final pesquisa = _pesquisaCanais;
     final q = pesquisa ? semAcentos(_q.trim()) : '';
-    // no telemóvel o número só tem a largura dos algarismos do maior (o nome fica com o resto)
+    // o número tem a largura dos algarismos do maior, medida com a letra e o tamanho do sistema
+    // (nunca se corta); fora do telemóvel há uma largura mínima, para os nomes ficarem alinhados
+    final medido = _larguraAlgarismos(context, _algarismos(canais), tv ? 17 : 14) + Tokens.e8;
     final larguraNumero = tv
-        ? 64.0
+        ? math.max(64.0, medido)
         : telemovel
-            ? (_algarismos(canais) * 14 * .62 * fatorTexto(context)).ceilToDouble() + Tokens.e8
-            : 52.0;
+            ? medido
+            : math.max(52.0, medido);
     // no ecrã estreito (sem coluna de grupos) o foco começa no 1.º canal
     final focarPrimeiro = MediaQuery.sizeOf(context).width < 720;
     return Focus(
@@ -1790,8 +1792,13 @@ class _TelaConteudoState extends State<TelaConteudo> {
                       contentPadding: EdgeInsets.only(
                           left: (telemovel ? Tokens.e8 : Tokens.e16) + larguraNumero, right: telemovel ? 0 : Tokens.e8),
                       leading: LogoCanal(c.logo, c.nome, tamanho: tv ? 52 : 40),
+                      // o logótipo ao meio da linha, à altura do número (também com o nome em 2 linhas)
+                      titleAlignment: ListTileTitleAlignment.center,
+                      // no telemóvel a linha ocupa a altura toda (o logótipo e o nome ao meio, à
+                      // altura do número)
+                      minTileHeight: telemovel ? _alturaCanal() : null,
                       minLeadingWidth: tv ? 52 : 40,
-                      horizontalTitleGap: telemovel ? Tokens.e12 : null,
+                      horizontalTitleGap: telemovel ? 10 : null,
                       title: _comRealce(c.nome, q, TextStyle(fontSize: tv ? 19 : 15, fontWeight: FontWeight.w500, letterSpacing: telemovel ? -.25 : null),
                           linhas: telemovel ? 2 : 1),
                       subtitle: _subtitulo(c, pesquisa, q, tv: tv, telemovel: telemovel),
@@ -1822,7 +1829,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
                     child: IgnorePointer(
                       child: Align(
                         alignment: Alignment.centerLeft,
-                        child: Text(numero, maxLines: 1, overflow: TextOverflow.ellipsis,
+                        child: Text(numero, maxLines: 1, softWrap: false, overflow: TextOverflow.visible,
                             style: TextStyle(color: Tokens.texto2, fontSize: tv ? 17 : 14,
                                 fontFeatures: const [FontFeature.tabularFigures()])),
                       ),
@@ -1875,6 +1882,25 @@ class _TelaConteudoState extends State<TelaConteudo> {
 
   List<Canal>? _algarismosDe;
   int _nAlgarismos = 2;
+
+  /// A largura de `n` algarismos (em números tabulares) na letra do número do canal, com o
+  /// tamanho do sistema.
+  double _larguraAlgarismos(BuildContext context, int n, double tamanho) {
+    final tp = TextPainter(
+      text: TextSpan(
+        text: '0' * n,
+        // o estilo do texto dentro do Scaffold (o do tema; este context está por fora dele)
+        style: (Theme.of(context).textTheme.bodyMedium ?? const TextStyle())
+            .merge(TextStyle(fontSize: tamanho, fontFeatures: const [FontFeature.tabularFigures()])),
+      ),
+      textDirection: TextDirection.ltr,
+      textScaler: MediaQuery.textScalerOf(context),
+      maxLines: 1,
+    )..layout();
+    final w = tp.width.ceilToDouble();
+    tp.dispose();
+    return w;
+  }
 
   static const _teclasDigitos = [
     LogicalKeyboardKey.digit0, LogicalKeyboardKey.digit1, LogicalKeyboardKey.digit2, LogicalKeyboardKey.digit3,
