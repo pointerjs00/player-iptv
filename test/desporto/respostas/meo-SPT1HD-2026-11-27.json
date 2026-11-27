@@ -1,0 +1,7 @@
+{"Status":"OK","StatusCode":200,"Result":[
+{"CallLetter":"SPT1HD","EndDate":"2026-11-27T02:00:00","Id":1,"IsAdultContent":false,"ProgramId":11,"StartDate":"2026-11-27T00:00:00","Synopsis":"","Title":"Feyenoord x FC Porto - Liga dos Campeões"},
+{"CallLetter":"SPT1HD","EndDate":"2026-11-27T19:40:00","Id":2,"IsAdultContent":false,"ProgramId":12,"StartDate":"2026-11-27T19:26:00","Synopsis":"","Title":"Magazine: Liga-te à Fundação"},
+{"CallLetter":"SPT1HD","EndDate":"2026-11-27T20:01:00","Id":3,"IsAdultContent":false,"ProgramId":13,"StartDate":"2026-11-27T19:40:00","Synopsis":"","Title":"Antevisão Marítimo x CD Nacional - Liga Portugal Betclic"},
+{"CallLetter":"SPT1HD","EndDate":"2026-11-27T22:33:00","Id":4,"IsAdultContent":false,"ProgramId":14,"StartDate":"2026-11-27T20:01:00","Synopsis":"","Title":"Marítimo x CD Nacional - Liga Portugal Betclic (Direto)"},
+{"CallLetter":"SPT1HD","EndDate":"2026-11-28T01:00:00","Id":5,"IsAdultContent":false,"ProgramId":15,"StartDate":"2026-11-27T22:33:00","Synopsis":"","Title":"Fora de Horas: Sem Transmissão"}
+]}
