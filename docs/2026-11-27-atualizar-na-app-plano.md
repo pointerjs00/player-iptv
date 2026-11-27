@@ -162,3 +162,9 @@ Comportamento:
   A troca do Windows foi ensaiada a sério (pasta com acentos e apóstrofo). Em curso: revisão
   independente do ramo; depois corrigir o que for Critical/Important e fazer a Tarefa 7 (1.0.28,
   pacotes, push e releases). Falta o ensaio real no Android/Windows com uma 1.0.29 de teste.
+- 2026-11-27: revisão independente (3 Important corrigidos em 0f4dcdd: troca do Windows espera por
+  todos os processos e repõe a versão anterior — ensaiado a sério; Cancelar interrompe um download
+  parado; pacotes antigos apagados). 7 Minor adiados (lista no ledger). Tarefa 7 feita: 1.0.28
+  publicada — releases v1.0.28 (6, latest) e partilha-v1.0.28 (3), com digest SHA-256; main e
+  feature/redesenho em 938d318. **Próximo passo:** ensaio real com uma 1.0.29 (Android TV/telemóvel
+  e Windows) a partir da 1.0.28 instalada.
