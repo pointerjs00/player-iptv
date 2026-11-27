@@ -30,4 +30,9 @@ Decisões do utilizador (27/11):
   `empacotar.py` recusa um APK com outra assinatura. Falta: o utilizador guardar uma 2.ª cópia da pasta.
 - Tarefa 2 feita: a cópia leva a secção `jogos` (equipas, competições, ordem, ordenação, últimas fontes,
   associações) e repõe-na ao importar, com desfazer; sem ela (partilha) não toca em nada.
-- Próximo: tarefa 3 (confirmar com dados reais do FotMob: emblemas, logótipos, minuto, ids em falta).
+- Tarefa 3 feita (dados reais de 27/11, pedidos com o User-Agent da app, que o FotMob aceita): emblemas e
+  logótipos respondem 200; o minuto ao vivo sai limpo («91'»); o guia deu 95 emissões em 16 canais.
+  Os padrões por nome apanhavam as competições femininas (Liga das Nações e qualificação do Europeu):
+  passaram aos ids reais (Taça do Rei 9942; Liga das Nações 9807/9808/9809; Europeu 10607; Mundial
+  10195/10199). O recorte de teste tinha uma Taça do Rei inventada (999001) → 9942.
+- Próximo: tarefa 4 (`ferramentas/verificar.py` e o `empacotar.py` a corrê-lo).

@@ -15,6 +15,7 @@ class Competicao {
     required this.nome,
     required this.tipo,
     this.fotmob,
+    this.fotmobOutros = const [],
     this.fotmobNome,
     this.fotmobPais,
     this.espn,
@@ -30,6 +31,9 @@ class Competicao {
 
   /// O `primaryId` da competição no FotMob (o `id` da resposta muda por época ou fase).
   final int? fotmob;
+
+  /// Outros `primaryId` da mesma competição no FotMob (a Liga das Nações B, C e D são três ligas lá).
+  final List<int> fotmobOutros;
 
   /// Quando o id não está confirmado: o nome (expressão regular, sem acentos e em minúsculas)
   /// com que a competição aparece no FotMob, e o país (`ccode`, ex. 'KSA', 'INT').

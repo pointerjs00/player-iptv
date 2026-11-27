@@ -40,7 +40,7 @@ const catalogoCompeticoes = <Competicao>[
   Competicao(id: 'copa-do-brasil', desporto: _f, nome: 'Copa do Brasil', tipo: TipoCompeticao.taca, fotmob: 9067),
   Competicao(
       id: 'taca-rei', desporto: _f, nome: 'Taça do Rei (Arábia Saudita)', tipo: TipoCompeticao.taca,
-      fotmobNome: r"king'?s cup|kings cup", fotmobPais: 'KSA'),
+      fotmob: 9942),
   // europeias
   Competicao(id: 'champions', desporto: _f, nome: 'Liga dos Campeões', tipo: TipoCompeticao.europeia, fotmob: 42),
   Competicao(id: 'liga-europa', desporto: _f, nome: 'Liga Europa', tipo: TipoCompeticao.europeia, fotmob: 73),
@@ -49,15 +49,15 @@ const catalogoCompeticoes = <Competicao>[
   Competicao(id: 'liga-nacoes', desporto: _f, nome: 'Liga das Nações', tipo: TipoCompeticao.selecoes, fotmob: 9806),
   Competicao(
       id: 'liga-nacoes-bcd', desporto: _f, nome: 'Liga das Nações (B, C e D)', tipo: TipoCompeticao.selecoes,
-      fotmobNome: r'nations league [bcd]\b'),
+      fotmob: 9807, fotmobOutros: [9808, 9809]),
   Competicao(id: 'europeu', desporto: _f, nome: 'Europeu', tipo: TipoCompeticao.selecoes, fotmob: 50),
   Competicao(
       id: 'europeu-qualificacao', desporto: _f, nome: 'Qualificação do Europeu', tipo: TipoCompeticao.selecoes,
-      fotmobNome: r'euro qualification|euro qualif'),
+      fotmob: 10607),
   Competicao(id: 'mundial', desporto: _f, nome: 'Mundial', tipo: TipoCompeticao.selecoes, fotmob: 77),
   Competicao(
       id: 'mundial-qualificacao', desporto: _f, nome: 'Qualificação do Mundial (UEFA e CONMEBOL)',
-      tipo: TipoCompeticao.selecoes, fotmobNome: r'world cup qualification (uefa|conmebol|south america)'),
+      tipo: TipoCompeticao.selecoes, fotmob: 10195, fotmobOutros: [10199]),
   Competicao(id: 'copa-america', desporto: _f, nome: 'Copa América', tipo: TipoCompeticao.selecoes, fotmob: 44),
   Competicao(id: 'amigaveis', desporto: _f, nome: 'Amigáveis de seleções', tipo: TipoCompeticao.selecoes, fotmob: 114),
   // ténis (ESPN; fase 2)

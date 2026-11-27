@@ -20,16 +20,19 @@ void main() {
   });
 
   test('as competições de futebol pedidas, com os ids confirmados a 27/11', () {
-    Competicao por(int id) => catalogoCompeticoes.singleWhere((c) => c.fotmob == id);
+    Competicao por(int id) => catalogoCompeticoes.singleWhere((c) => c.fotmob == id || c.fotmobOutros.contains(id));
     expect(por(61).nome, 'Liga Portugal Betclic');
     expect(por(40).nome, 'Pro League (Bélgica)');
     expect(por(186).nome, 'Taça de Portugal');
     expect(por(187).nome, 'Taça da Liga');
     expect(por(42).nome, 'Liga dos Campeões');
     expect(por(9806).desporto, Desporto.futebol);
-    // 36 confirmadas + as que se reconhecem pelo nome (Taça do Rei, Liga das Nações B–D, qualificações)
-    expect(catalogoCompeticoes.where((c) => c.desporto == Desporto.futebol && c.fotmob != null).length, 36);
-    expect(catalogoCompeticoes.where((c) => c.fotmob == null && c.fotmobNome != null), isNotEmpty);
+    // todas pelo id (confirmados na lista de ligas do FotMob a 27/11/2026); nenhuma pelo nome
+    expect(catalogoCompeticoes.where((c) => c.desporto == Desporto.futebol && c.fotmob == null), isEmpty);
+    expect(por(9942).id, 'taca-rei');
+    expect(por(9808).id, 'liga-nacoes-bcd', reason: 'a Liga C também (outro id da mesma competição)');
+    expect(por(10607).id, 'europeu-qualificacao');
+    expect(por(10199).id, 'mundial-qualificacao');
   });
 
   test('todas as de futebol são seguidas por omissão', () {

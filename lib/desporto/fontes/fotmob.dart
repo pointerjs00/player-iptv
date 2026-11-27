@@ -26,7 +26,7 @@ Competicao? _competicao(Map<String, dynamic> liga, Set<String> seguidas) {
   final pais = '${liga['ccode'] ?? liga['leagueCcode'] ?? ''}';
   for (final c in catalogoCompeticoes) {
     if (!seguidas.contains(c.id) || c.desporto != Desporto.futebol) continue;
-    if (c.fotmob != null && c.fotmob == primario) return c;
+    if (c.fotmob != null && (c.fotmob == primario || c.fotmobOutros.contains(primario))) return c;
     final padrao = c.fotmobNome;
     if (padrao != null && RegExp(padrao).hasMatch(nome) && (c.fotmobPais == null || c.fotmobPais == pais)) return c;
   }

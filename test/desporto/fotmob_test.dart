@@ -13,6 +13,29 @@ void main() {
   final guia = File('test/desporto/respostas/fotmob-tvguide-pt.json').readAsStringSync();
   final seguidas = {for (final c in catalogoCompeticoes) c.id};
 
+  test("as competições pelo id: a Liga das Nações B–D e as qualificações entram; as femininas e outra King's Cup não", () {
+    String liga(int id, String nome, String pais) =>
+        '{"ccode":"$pais","id":$id,"primaryId":$id,"name":"$nome","matches":[{"id":$id,"home":{"id":1,"name":"A"},'
+        '"away":{"id":2,"name":"B"},"status":{"utcTime":"2026-11-27T20:00:00.000Z","started":false,"finished":false}}]}';
+    final texto = '{"leagues":[${[
+      liga(9808, 'UEFA Nations League C', 'INT'),
+      liga(10458, "UEFA Women's Nations League B", 'INT'),
+      liga(10641, "Women's EURO Qualification League B", 'INT'),
+      liga(10607, 'EURO Qualification', 'INT'),
+      liga(10199, 'World Cup Qualification CONMEBOL', 'INT'),
+      liga(10198, 'World Cup Qualification CONCACAF', 'INT'),
+      liga(9942, "King's Cup", 'KSA'),
+      liga(11038, "King's Cup", 'INT'),
+    ].join(',')}]}';
+    final ids = {for (final j in lerJogosFotmob(texto, seguidas)) j.id: j.competicaoId};
+    expect(ids, {
+      'fotmob:9808': 'liga-nacoes-bcd',
+      'fotmob:10607': 'europeu-qualificacao',
+      'fotmob:10199': 'mundial-qualificacao',
+      'fotmob:9942': 'taca-rei',
+    });
+  });
+
   group('jogos do dia', () {
     final js = lerJogosFotmob(jogos, seguidas);
     Jogo jogo(String casa) => js.singleWhere((j) => j.casa == casa);
@@ -23,7 +46,7 @@ void main() {
       expect(js.where((j) => j.casa == 'Arsenal (W)'), isEmpty, reason: 'competição não seguida');
     });
 
-    test('reconhece pelo nome e país as competições sem id confirmado', () {
+    test('a Taça do Rei saudita pelo id do FotMob (9942)', () {
       expect(jogo('Al Hilal').competicaoId, 'taca-rei');
       expect(jogo('Al Hilal').estado, EstadoJogo.terminado);
       expect(jogo('Al Hilal').resultado, '3–0');
