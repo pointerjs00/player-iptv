@@ -19,6 +19,9 @@ class Novidades {
 /// Todas as versões, a mais recente primeiro. A primeira é a versão da app: ao mudar a versão no
 /// pubspec.yaml, junta-se aqui a entrada dela (um teste confirma que batem certo).
 const historicoNovidades = <Novidades>[
+  Novidades('1.0.30', '2026-11-27', [
+    'Atualizar no Windows: a troca dos ficheiros volta a correr — na 1.0.28 e na 1.0.29 a app fechava (ou avisava) sem atualizar. Quem tem uma dessas versões no Windows instala esta à mão, uma vez; daí em diante atualiza dentro da app.',
+  ]),
   Novidades('1.0.29', '2026-11-27', [
     'Atualizar no Windows: a janela não congela enquanto prepara; se o antivírus não deixar a troca correr, a app avisa e fica aberta; o registo e os ficheiros temporários são apagados no fim.',
     'Atualizar: Voltar fecha o «A procurar…»; quando não há pacote para o aparelho, «Abrir a página» abre o browser no telemóvel (na TV mostra o endereço); mensagens de erro mais claras (sem espaço no disco, ligação ao servidor).',

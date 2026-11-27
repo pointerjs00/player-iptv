@@ -1935,6 +1935,8 @@ const textosIngles = <String, String>{
     'o Windows não deixou correr a atualização (antivírus?). A app continua como estava.':
         "Windows didn't let the update run (antivirus?). The app stays as it was.",
     'A preparar a atualização…': 'Preparing the update…',
+    'Atualizar no Windows: a troca dos ficheiros volta a correr — na 1.0.28 e na 1.0.29 a app fechava (ou avisava) sem atualizar. Quem tem uma dessas versões no Windows instala esta à mão, uma vez; daí em diante atualiza dentro da app.':
+        "Updating on Windows: the file swap runs again — in 1.0.28 and 1.0.29 the app closed (or warned) without updating. If you have one of those versions on Windows, install this one by hand, once; from then on it updates inside the app.",
     'Atualizar no Windows: a janela não congela enquanto prepara; se o antivírus não deixar a troca correr, a app avisa e fica aberta; o registo e os ficheiros temporários são apagados no fim.':
         "Updating on Windows: the window no longer freezes while preparing; if the antivirus blocks the swap, the app says so and stays open; the log and temporary files are removed at the end.",
     'Atualizar: Voltar fecha o «A procurar…»; quando não há pacote para o aparelho, «Abrir a página» abre o browser no telemóvel (na TV mostra o endereço); mensagens de erro mais claras (sem espaço no disco, ligação ao servidor).':
