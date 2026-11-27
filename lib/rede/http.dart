@@ -61,6 +61,9 @@ class Cancelamento {
     return f;
   }
 
+  /// Chama `f` ao cancelar; devolve a função que deixa de ouvir.
+  void Function() ouvir(void Function() f) => _ouvir(f);
+
   void Function() _ouvir(void Function() f) {
     _ouvintes.add(f);
     return () => _ouvintes.remove(f);
