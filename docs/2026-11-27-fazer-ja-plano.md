@@ -28,4 +28,6 @@ Decisões do utilizador (27/11):
 - Tarefa 1 feita: chave copiada para `Documentos/TVIntel-chave-assinatura` (SHA-256 `11f1a4d8…ca9e`, a
   mesma dos APKs até à 1.0.25); `android/key.properties` (fora do git) aponta para ela; o
   `empacotar.py` recusa um APK com outra assinatura. Falta: o utilizador guardar uma 2.ª cópia da pasta.
-- Próximo: tarefa 2 (preferências dos Jogos na cópia de segurança: `lib/dados/copia_seguranca.dart`).
+- Tarefa 2 feita: a cópia leva a secção `jogos` (equipas, competições, ordem, ordenação, últimas fontes,
+  associações) e repõe-na ao importar, com desfazer; sem ela (partilha) não toca em nada.
+- Próximo: tarefa 3 (confirmar com dados reais do FotMob: emblemas, logótipos, minuto, ids em falta).

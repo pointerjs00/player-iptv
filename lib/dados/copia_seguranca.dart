@@ -16,6 +16,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import '../desporto/preferencias_jogos.dart';
 import '../marca.dart';
 import '../rede/http.dart' show descreverErro;
 import 'area_gestor.dart';
@@ -45,7 +46,7 @@ enum ModoRestauro { juntar, substituir }
 /// O conteúdo já validado de um ficheiro de cópia de segurança.
 class CopiaLida {
   CopiaLida({required this.versao, this.criada, this.player = const [], this.gestor = const [],
-      this.canaisTeste, this.preferencias, this.ultimoVisto, required this.temPlayer, required this.temGestor});
+      this.canaisTeste, this.preferencias, this.jogos, this.ultimoVisto, required this.temPlayer, required this.temGestor});
 
   final int versao;
   final DateTime? criada;
@@ -56,6 +57,9 @@ class CopiaLida {
   /// O "Continuar a ver" do Player (aponta para uma lista de [player]).
   final UltimoVisto? ultimoVisto;
   final Map<String, dynamic>? preferencias;
+
+  /// As preferências dos Jogos (equipas, competições e a ordem delas…); null numa cópia sem elas.
+  final Map<String, dynamic>? jogos;
   final bool temPlayer, temGestor;
 }
 
@@ -74,7 +78,9 @@ class ResumoRestauro {
 }
 
 /// O ficheiro da cópia (UTF-8, com indentação).
-Uint8List codificarCopia(Biblioteca biblioteca, AreaGestor area, Preferencias preferencias, {DateTime? agora}) {
+/// `jogos`: as preferências dos Jogos (null na edição de partilha: a cópia fica sem essa secção).
+Uint8List codificarCopia(Biblioteca biblioteca, AreaGestor area, Preferencias preferencias,
+    {DateTime? agora, PreferenciasJogos? jogos}) {
   final mapa = {
     'formato': _formato,
     'versao': versaoCopia,
@@ -86,6 +92,7 @@ Uint8List codificarCopia(Biblioteca biblioteca, AreaGestor area, Preferencias pr
     },
     'gestor': {'listas': [for (final l in area.listas) l.paraJson()]},
     'preferencias': preferencias.paraJson(),
+    'jogos': ?jogos?.paraJson(),
   };
   return Uint8List.fromList(utf8.encode(const JsonEncoder.withIndent(' ').convert(mapa)));
 }
@@ -148,6 +155,7 @@ CopiaLida lerCopia(String texto) {
     temGestor: gestor != null,
     canaisTeste: ct is List && ct.isNotEmpty ? [for (final c in ct) '$c'] : null,
     preferencias: prefs is Map ? Map<String, dynamic>.from(prefs) : null,
+    jogos: raiz['jogos'] is Map ? Map<String, dynamic>.from(raiz['jogos'] as Map) : null,
     ultimoVisto: raiz['biblioteca'] is Map ? UltimoVisto.deJson((raiz['biblioteca'] as Map)['ultimo_visto']) : null,
   );
 }
@@ -160,10 +168,14 @@ CopiaLida lerCopia(String texto) {
 /// Nota: são ficheiros separados (biblioteca.json, gestor.json, preferencias.json) sem
 /// transação: um encerramento do sistema a meio pode deixar só alguns trocados.
 Future<ResumoRestauro> restaurarCopia(CopiaLida copia, ModoRestauro modo,
-    {required Biblioteca biblioteca, required AreaGestor area, required Preferencias preferencias}) async {
+    {required Biblioteca biblioteca,
+    required AreaGestor area,
+    required Preferencias preferencias,
+    PreferenciasJogos? jogos}) async {
   final substituir = modo == ModoRestauro.substituir;
   final desfazer = <Future<void> Function()>[];
   final prefsAntes = preferencias.paraJson();
+  final jogosAntes = jogos?.paraJson();
   PlanoRestauro? p, g;
   try {
     if (copia.temPlayer) {
@@ -182,6 +194,15 @@ Future<ResumoRestauro> restaurarCopia(CopiaLida copia, ModoRestauro modo,
       desfazer.add(() async => preferencias.aplicar(prefsAntes));
       preferencias.aplicar(copia.preferencias!);
       await preferencias.guardar();
+    }
+    final j = copia.jogos;
+    if (j != null && jogos != null) {
+      desfazer.add(() async {
+        jogos.aplicar(Map<String, dynamic>.from(jogosAntes!));
+        await jogos.guardar();
+      });
+      jogos.aplicar(j);
+      await jogos.guardar();
     }
   } catch (e) {
     var falhou = false;

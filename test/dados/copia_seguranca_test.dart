@@ -6,6 +6,7 @@ import 'package:player_iptv/dados/area_gestor.dart';
 import 'package:player_iptv/dados/biblioteca.dart';
 import 'package:player_iptv/dados/copia_seguranca.dart';
 import 'package:player_iptv/dados/preferencias.dart';
+import 'package:player_iptv/desporto/preferencias_jogos.dart';
 import 'package:player_iptv/importar/importar.dart';
 import 'package:player_iptv/modelo/canal.dart';
 import 'package:player_iptv/modelo/conta.dart';
@@ -76,6 +77,44 @@ void main() {
     // e ficou no disco
     final bib3 = await Biblioteca.abrir(pasta2);
     expect(forma(bib3.listas), forma(bib.listas));
+  });
+
+  test('as preferências dos Jogos vão na cópia e voltam ao importar (equipas, ordem, ordenação)', () async {
+    await encher();
+    final jogos = await PreferenciasJogos.abrir(Directory('${pasta.path}/desporto'));
+    jogos
+      ..equipasFavoritas = ['Benfica', 'Arsenal']
+      ..competicoes = {'liga-portugal', 'champions'}
+      ..ordemCompeticoes = ['champions', 'liga-portugal']
+      ..ordenarPorHora = true;
+    final copia = lerCopia(utf8.decode(codificarCopia(bib, area, prefs, jogos: jogos)));
+
+    final jogos2 = await PreferenciasJogos.abrir(Directory('${pasta2.path}/desporto'));
+    await restaurarCopia(copia, ModoRestauro.substituir,
+        biblioteca: await Biblioteca.abrir(pasta2),
+        area: await AreaGestor.abrir(pasta2),
+        preferencias: Preferencias.omissao(),
+        jogos: jogos2);
+    expect(jogos2.equipasFavoritas, ['Benfica', 'Arsenal']);
+    expect(jogos2.ordemCompeticoes, ['champions', 'liga-portugal']);
+    expect(jogos2.ordenarPorHora, isTrue);
+    await jogos2.guardar();
+    final jogos3 = await PreferenciasJogos.abrir(Directory('${pasta2.path}/desporto'));
+    expect(jogos3.equipasFavoritas, ['Benfica', 'Arsenal'], reason: 'ficou no disco');
+  });
+
+  test('sem as preferências dos Jogos (edição de partilha) a cópia não tem a secção e importar não lhes toca', () async {
+    await encher();
+    final texto = utf8.decode(codificarCopia(bib, area, prefs));
+    expect((jsonDecode(texto) as Map).containsKey('jogos'), isFalse);
+    final jogos2 = await PreferenciasJogos.abrir(Directory('${pasta2.path}/desporto'));
+    jogos2.equipasFavoritas = ['Porto'];
+    await restaurarCopia(lerCopia(texto), ModoRestauro.substituir,
+        biblioteca: await Biblioteca.abrir(pasta2),
+        area: await AreaGestor.abrir(pasta2),
+        preferencias: Preferencias.omissao(),
+        jogos: jogos2);
+    expect(jogos2.equipasFavoritas, ['Porto']);
   });
 
   test('o ficheiro tem formato, versão e data', () async {

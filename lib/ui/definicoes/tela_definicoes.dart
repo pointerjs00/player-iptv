@@ -191,7 +191,8 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
   Future<void> _exportar() async {
     setState(() => _ocupado = true);
     try {
-      final bytes = codificarCopia(widget.biblioteca, widget.area, _p);
+      // as preferências dos Jogos também (não existem na edição de partilha)
+      final bytes = codificarCopia(widget.biblioteca, widget.area, _p, jogos: edicaoPartilha ? null : widget.jogos);
       final nome = nomeFicheiroCopia();
       final r = widget.guardarCopia != null
           ? await widget.guardarCopia!(nome, bytes)
@@ -214,7 +215,10 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
       final modo = await _perguntarModo(copia);
       if (modo == null) return;
       final r = await restaurarCopia(copia, modo,
-          biblioteca: widget.biblioteca, area: widget.area, preferencias: _p);
+          biblioteca: widget.biblioteca,
+          area: widget.area,
+          preferencias: _p,
+          jogos: edicaoPartilha ? null : widget.jogos);
       _aviso(tr('Cópia importada: {0} em Ver TV, {1} no Gestor{2}{3}.', [r.listasPlayer, r.listasGestor, r.atualizadas > 0 ? ', ${r.atualizadas} atualizadas' : '', r.removidas > 0 ? ', ${r.removidas} removidas' : '']));
       _ua.text = _p.userAgent;
     } on ErroCopia catch (e) {

@@ -92,6 +92,24 @@ class PreferenciasJogos extends ChangeNotifier {
     }
   }
 
+  /// Troca tudo pelo que está em `j` (o que falta fica com o valor por omissão) e grava: a
+  /// cópia de segurança.
+  void aplicar(Map<String, dynamic> j) {
+    _competicoes = {for (final c in catalogoCompeticoes) if (c.seguidaPorOmissao) c.id};
+    _equipas = [];
+    _ordem = [];
+    _qualidade = Qualidade.fhd;
+    _mostrarSemCanal = true;
+    _ordenarPorHora = false;
+    _ultimas.clear();
+    _associacoes.clear();
+    _ler(j);
+    _mudou();
+  }
+
+  /// Tudo o que se grava (também para a cópia de segurança).
+  Map<String, Object?> paraJson() => _mapa();
+
   Map<String, Object?> _mapa() => {
         'competicoes': _competicoes.toList(),
         'ordem': _ordem,
