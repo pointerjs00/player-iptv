@@ -1,6 +1,7 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:player_iptv/desporto/servico_jogos.dart';
 import 'package:player_iptv/ui/design/escala_interface.dart';
 import 'package:player_iptv/ui/jogos/folha_onde_ver.dart';
 import 'package:player_iptv/ui/jogos/linha_jogo.dart';
@@ -109,6 +110,105 @@ void main() {
     await t.pumpAndSettle();
     expect(find.byType(FolhaOndeVer), findsNothing, reason: 'o OK longo não abre o «Onde ver»');
     expect(m.abertas.single.map((f) => f.canalTv), ['sporttv1', 'sporttv1', 'sporttv2']);
+  });
+
+  // ---- a pesquisa por equipa e os controlos de cima ----
+
+  EditableText campo(WidgetTester t) => t.widget<EditableText>(find.byType(EditableText));
+
+  Future<void> focarPesquisa(WidgetTester t) async {
+    campo(t).focusNode.requestFocus();
+    await t.pump();
+  }
+
+  /// O foco não se perdeu (está num controlo, não só no âmbito da página).
+  void comFoco() {
+    final f = FocusManager.instance.primaryFocus;
+    expect(f == null || f is FocusScopeNode, isFalse, reason: 'o foco perdeu-se');
+  }
+
+  testWidgets('a pesquisa com o foco não abre o teclado; BAIXO, DIREITA saem; OK escreve e Voltar acaba', (t) async {
+    await montar(t);
+    await focarPesquisa(t);
+    expect(campo(t).readOnly, isTrue, reason: 'só com o foco fica só de leitura');
+    await teclaDpad(t, LogicalKeyboardKey.arrowDown);
+    expect(campo(t).focusNode.hasFocus, isFalse, reason: 'BAIXO sai do campo');
+    comFoco();
+
+    await focarPesquisa(t);
+    await teclaDpad(t, LogicalKeyboardKey.arrowRight);
+    expect(textosFocados(), 'Atualizar', reason: 'DIREITA vai ao botão ao lado');
+
+    await focarPesquisa(t);
+    await teclaDpad(t, LogicalKeyboardKey.select);
+    expect(campo(t).readOnly, isFalse, reason: 'OK começa a escrever');
+    await t.enterText(find.byType(EditableText), 'benf');
+    await t.pump();
+    expect(find.text('Benfica'), findsWidgets);
+    expect(find.text('Marítimo'), findsNothing);
+    await teclaDpad(t, LogicalKeyboardKey.escape);
+    expect(campo(t).readOnly, isTrue, reason: 'Voltar acaba a edição');
+    expect(campo(t).focusNode.hasFocus, isTrue);
+    await teclaDpad(t, LogicalKeyboardKey.arrowDown);
+    expect(campo(t).focusNode.hasFocus, isFalse);
+    comFoco();
+  });
+
+  testWidgets('«Dia anterior» no primeiro dia fica com o foco', (t) async {
+    await montar(t);
+    Focus.of(t.element(find.descendant(of: find.byTooltip('Dia anterior'), matching: find.byType(Icon)))).requestFocus();
+    await t.pump();
+    await teclaDpad(t, LogicalKeyboardKey.select); // hoje → ontem (o primeiro)
+    await teclaDpad(t, LogicalKeyboardKey.select); // já no primeiro: não faz nada
+    expect(textosFocados(), 'Dia anterior');
+    expect(m.servico.cargas.length, 1);
+  });
+
+  testWidgets('«Hoje» desaparece ao carregar nele: o foco fica ao lado', (t) async {
+    await montar(t);
+    Focus.of(t.element(find.descendant(of: find.byTooltip('Dia seguinte'), matching: find.byType(Icon)))).requestFocus();
+    await t.pump();
+    await teclaDpad(t, LogicalKeyboardKey.select); // amanhã: aparece «Hoje»
+    await teclaDpad(t, LogicalKeyboardKey.arrowRight);
+    expect(textosFocados(), 'Hoje');
+    await teclaDpad(t, LogicalKeyboardKey.select);
+    expect(find.text('Hoje'), findsNothing);
+    comFoco();
+    expect(textosFocados(), 'Dia seguinte');
+  });
+
+  testWidgets('«Atualizar» a carregar continua com o foco', (t) async {
+    await montar(t);
+    Focus.of(t.element(find.byIcon(Icons.refresh_rounded))).requestFocus();
+    await t.pump();
+    m.servico.definir(hojeJogos, jogosTeste(), estado: const EstadoJogos(carga: Carga.aCarregar));
+    await t.pump();
+    expect(textosFocados(), 'Atualizar');
+  });
+
+  testWidgets('«Limpar a pesquisa» do ecrã vazio: o foco não se perde', (t) async {
+    await montar(t);
+    await focarPesquisa(t);
+    await teclaDpad(t, LogicalKeyboardKey.select);
+    await t.enterText(find.byType(EditableText), 'zzz');
+    await teclaDpad(t, LogicalKeyboardKey.escape);
+    Focus.of(t.element(find.text('Limpar a pesquisa'))).requestFocus();
+    await t.pump();
+    await teclaDpad(t, LogicalKeyboardKey.select);
+    expect(find.text('Marítimo'), findsWidgets);
+    comFoco();
+  });
+
+  testWidgets('o jogo com o foco sai da lista (dados novos): o foco passa a outro jogo', (t) async {
+    await montar(t);
+    await irParaPrimeiro(t);
+    await teclaDpad(t, LogicalKeyboardKey.arrowDown);
+    expect(textosFocados(), contains('Benfica'));
+    m.servico.definir(hojeJogos, [for (final j in jogosTeste()) if (j.jogo.casa != 'Benfica') j]);
+    await t.pump();
+    await t.pump();
+    comFoco();
+    expect(textosFocados(), anyOf(contains('Marítimo'), contains('Moreirense')), reason: 'o foco está no jogo ao lado');
   });
 }
 

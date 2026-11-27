@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 
 import 'package:material_ui/material_ui.dart';
 
@@ -9,6 +9,7 @@ import '../../desporto/onde_ver.dart';
 import '../../desporto/preferencias_jogos.dart';
 import '../../desporto/servico_jogos.dart';
 import '../../idioma/idioma.dart';
+import '../campo_tv.dart';
 import '../design/design.dart';
 import '../design/mensagens.dart';
 import '../player/abrir_canal.dart';
@@ -72,6 +73,13 @@ class _TelaJogosState extends State<TelaJogos> {
   Set<String> _competicoes = {};
   bool _soDireto = false;
   final _pesquisa = TextEditingController();
+  final _focoPesquisa = FocusNode(debugLabel: 'Pesquisar equipa');
+
+  /// O ecrã todo (não recebe o foco: serve para saber se o foco está cá dentro).
+  final _focoEcra = FocusNode(debugLabel: 'Jogos', canRequestFocus: false, skipTraversal: true);
+
+  /// Onde estava o último controlo com o foco no ecrã (null: o foco foi para fora).
+  Rect? _ondeEstava;
 
   /// O jogo da coluna à direita (o da linha com o foco).
   String? _escolhido;
@@ -89,6 +97,7 @@ class _TelaJogosState extends State<TelaJogos> {
     widget.fontes.addListener(_mudou);
     widget.preferencias.addListener(_mudou);
     _pesquisa.addListener(_mudou);
+    FocusManager.instance.addListener(_focoMudou);
     // o ecrã vive na casca desde que a app abre: carrega-se uma vez (depois, o dia que se
     // escolher e «Atualizar»)
     if (!widget.servico.temDia(_diaEscolhido)) unawaited(widget.servico.carregar(_diaEscolhido));
@@ -100,12 +109,45 @@ class _TelaJogosState extends State<TelaJogos> {
     widget.servico.removeListener(_mudou);
     widget.fontes.removeListener(_mudou);
     widget.preferencias.removeListener(_mudou);
+    FocusManager.instance.removeListener(_focoMudou);
     _pesquisa.dispose();
+    _focoPesquisa.dispose();
+    _focoEcra.dispose();
     super.dispose();
   }
 
   void _mudou() {
     if (mounted) setState(() {});
+  }
+
+  /// O controlo com o foco desapareceu (um jogo que saiu da lista, «Hoje», o botão de um ecrã
+  /// vazio, o ✕ da pesquisa): o foco caía no âmbito da página e deixava de se ver. Passa ao
+  /// controlo do ecrã mais perto de onde estava.
+  void _focoMudou() {
+    final f = FocusManager.instance.primaryFocus;
+    if (f != null && f is! FocusScopeNode && f.ancestors.contains(_focoEcra)) {
+      _ondeEstava = f.rect;
+      return;
+    }
+    final onde = _ondeEstava;
+    if (onde == null) return;
+    // foi para outro sítio (a barra das secções, um diálogo, o player): não é connosco
+    if (f != null && f != _focoEcra.enclosingScope) {
+      _ondeEstava = null;
+      return;
+    }
+    if (!mounted) return;
+    FocusNode? perto;
+    var melhor = double.infinity;
+    for (final n in _focoEcra.traversalDescendants) {
+      if (!n.canRequestFocus || n.skipTraversal || n is FocusScopeNode || n.context?.mounted != true) continue;
+      final d = (n.rect.center - onde.center).distanceSquared;
+      if (d < melhor) {
+        melhor = d;
+        perto = n;
+      }
+    }
+    if (perto != null) FocusTraversalPolicy.defaultTraversalRequestFocusCallback(perto);
   }
 
   void _escolherDia(int d) {
@@ -300,8 +342,9 @@ class _TelaJogosState extends State<TelaJogos> {
         const SizedBox(width: Tokens.e12),
         IconButton(
           tooltip: tr('Dia anterior'),
-          onPressed: _dia > primeiroDia ? () => _escolherDia(_dia - 1) : null,
-          icon: const Icon(Icons.chevron_left_rounded),
+          // sempre ligados (desligados perdiam o foco): no primeiro/último dia não fazem nada
+          onPressed: () => _escolherDia(_dia - 1),
+          icon: Icon(Icons.chevron_left_rounded, color: _dia > primeiroDia ? null : Tokens.texto2.withValues(alpha: .4)),
         ),
         ConstrainedBox(
           constraints: const BoxConstraints(minWidth: 120),
@@ -310,8 +353,8 @@ class _TelaJogosState extends State<TelaJogos> {
         ),
         IconButton(
           tooltip: tr('Dia seguinte'),
-          onPressed: _dia < ultimoDia ? () => _escolherDia(_dia + 1) : null,
-          icon: const Icon(Icons.chevron_right_rounded),
+          onPressed: () => _escolherDia(_dia + 1),
+          icon: Icon(Icons.chevron_right_rounded, color: _dia < ultimoDia ? null : Tokens.texto2.withValues(alpha: .4)),
         ),
         if (_dia != 0) ...[
           const SizedBox(width: Tokens.e4),
@@ -419,8 +462,10 @@ class _TelaJogosState extends State<TelaJogos> {
             ]);
     }
 
-    final campoPesquisa = TextField(
+    // na TV, o foco não abre o teclado (só OK) e as setas saem do campo
+    final campoPesquisa = CampoTv(
       controller: _pesquisa,
+      focusNode: _focoPesquisa,
       textInputAction: TextInputAction.search,
       decoration: InputDecoration(
         isDense: true,
@@ -432,7 +477,10 @@ class _TelaJogosState extends State<TelaJogos> {
       ),
     );
 
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+    return Focus(
+      focusNode: _focoEcra,
+      includeSemantics: false,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Padding(
         padding: const EdgeInsets.fromLTRB(Tokens.e16, Tokens.e16, Tokens.e16, 0),
         child: CabecalhoSeccao(
@@ -443,7 +491,10 @@ class _TelaJogosState extends State<TelaJogos> {
             if (largo) SizedBox(width: 320, child: campoPesquisa),
             IconButton(
               tooltip: tr('Atualizar'),
-              onPressed: aCarregar ? null : () => unawaited(_atualizar()),
+              // sempre ligado (desligado perdia o foco do comando); a carregar não faz nada
+              onPressed: () {
+                if (!aCarregar) unawaited(_atualizar());
+              },
               icon: const Icon(Icons.refresh_rounded),
             ),
           ],
@@ -456,7 +507,8 @@ class _TelaJogosState extends State<TelaJogos> {
         child: _fila(doDia),
       ),
       Expanded(child: corpo),
-    ]);
+      ]),
+    );
   }
 }
 

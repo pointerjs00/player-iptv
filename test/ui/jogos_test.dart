@@ -86,6 +86,9 @@ void main() {
 
   testWidgets('pesquisa por equipa: parte do nome, sem acentos; sem resultados diz qual', (t) async {
     await montar(t);
+    // como no aparelho: tocar no campo começa a escrever (o foco sozinho não)
+    await t.tap(find.byType(TextField));
+    await t.pump();
     await t.enterText(find.byType(TextField), 'famalicao');
     await t.pump();
     expect(find.byType(LinhaJogo), findsOneWidget);
