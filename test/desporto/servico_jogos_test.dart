@@ -6,6 +6,24 @@ import 'package:player_iptv/desporto/cliente_desporto.dart';
 import 'package:player_iptv/desporto/modelo.dart';
 import 'package:player_iptv/desporto/preferencias_jogos.dart';
 import 'package:player_iptv/desporto/servico_jogos.dart';
+import 'package:flutter/foundation.dart';
+import 'package:player_iptv/dados/biblioteca.dart';
+import 'package:player_iptv/desporto/fontes/epg_listas.dart';
+import 'package:player_iptv/desporto/onde_ver.dart';
+import 'package:player_iptv/modelo/canal.dart';
+import 'package:player_iptv/modelo/conta.dart';
+
+class _Fontes extends ChangeNotifier implements FontesDosCanais {
+  _Fontes(this.porCanal);
+  final Map<String, List<FonteCanal>> porCanal;
+  int atualizacoes = 0;
+  @override
+  List<FonteCanal> fontes(String canalTv) => porCanal[canalTv] ?? const [];
+  @override
+  int get listasSemCache => 0;
+  @override
+  Future<void> atualizar() async => atualizacoes++;
+}
 
 /// O serviço que junta os jogos do FotMob com as grelhas, com um cliente HTTP falso que responde
 /// com as respostas gravadas de 27/11/2026.
@@ -14,9 +32,6 @@ void main() {
   final jogos27 = resposta('fotmob-matches-20261127.json');
   final guia = resposta('fotmob-tvguide-pt.json');
   final sporttv = resposta('sporttv-guia.html');
-  final meoSpt1 = resposta('meo-SPT1HD-2026-11-27.json');
-  final meoDazn2 = resposta('meo-DAZN2-2026-11-27.json');
-  const meoVazia = '{"Status":"OK","Result":[]}';
   final dia27 = DateTime(2026, 11, 27), dia28 = DateTime(2026, 11, 28);
 
   late Directory pasta;
@@ -31,10 +46,6 @@ void main() {
     if (u.host.contains('fotmob')) {
       if (u.path.endsWith('/tvguide')) return guia;
       return u.queryParameters['date'] == '20261127' ? jogos27 : '{"leagues":[]}';
-    }
-    if (u.host.contains('meo')) {
-      if (u.queryParameters['date'] != '2026-11-27') return meoVazia;
-      return switch (u.queryParameters['callLetter']) { 'SPT1HD' => meoSpt1, 'DAZN2' => meoDazn2, _ => meoVazia };
     }
     if (u.host.contains('sporttv')) return sporttv;
     throw StateError('pedido inesperado: ${u.host}');
@@ -53,12 +64,12 @@ void main() {
 
   JogoComCanais jogo(List<JogoComCanais> js, String casa) => js.singleWhere((j) => j.jogo.casa == casa);
 
-  test('com a MEO a dar erro, os jogos e os canais do FotMob aparecem e o estado diz que a MEO falhou', () async {
-    semRede = {'meogouser.apps.meo.pt'};
+  test('com a Sport TV a dar erro, os jogos e os canais do FotMob aparecem e o estado diz que a Sport TV falhou', () async {
+    semRede = {'www.sporttv.pt'};
     await servico.carregar(dia27);
     expect(servico.estado.carga, Carga.pronto);
-    expect(servico.estado.falhas, {FonteJogos.meo});
-    expect(nomeFonte(FonteJogos.meo), 'MEO');
+    expect(servico.estado.falhas, {FonteJogos.sportTv});
+    expect(nomeFonte(FonteJogos.sportTv), 'Sport TV');
     final js = servico.jogos(FiltroJogos(dia27, soComCanal: false));
     expect(js, isNotEmpty);
     final m = jogo(js, 'Marítimo');
@@ -122,6 +133,37 @@ void main() {
     }
   });
 
+  test('o guia das listas junta os canais que só as listas têm; se falhar, o estado diz', () async {
+    final prefs = await PreferenciasJogos.abrir(pasta);
+    final lista = Lista(id: '9', ordem: 9, conta: Conta('x', Tipo.xtream, 'http://x.invalido', utilizador: 'u', password: 'p'));
+    final fontes = _Fontes({'canal11': [FonteCanal(lista, const Canal(id: '511', nome: 'CANAL 11', grupo: 'PT'), canalTv: 'canal11')]});
+    var falhar = false;
+    Future<List<ProgramaEpg>> obterEpg(Conta c, Canal canal, DateTime d) async {
+      if (falhar) throw const SocketException('não respondeu');
+      return [
+        (inicio: DateTime.utc(2026, 11, 27, 19, 55), fim: DateTime.utc(2026, 11, 27, 22),
+            titulo: 'Futebol: Nottingham Forest x Chelsea - Premier League (Direto)'),
+      ];
+    }
+
+    Future<ServicoJogos> novo(Directory p) async => ServicoJogos(
+        ClienteDesporto(await ArmazemDesporto.abrir(p), obter: obter, agora: () => agora), prefs,
+        fontes: fontes, obterEpg: obterEpg);
+    final s = await novo(pasta);
+    await s.carregar(dia27);
+    expect(fontes.atualizacoes, 1, reason: 'o índice dos canais atualiza-se antes');
+    final forest = s.jogos(FiltroJogos(dia27, soComCanal: false)).singleWhere((j) => j.jogo.casa == 'Nottingham Forest');
+    expect(forest.canais.map((t) => (t.canal, t.confianca)), contains(('canal11', Confianca.provavel)));
+
+    falhar = true;
+    final outra = Directory.systemTemp.createTempSync('servico_jogos2');
+    addTearDown(() => outra.deleteSync(recursive: true));
+    final s2 = await novo(outra);
+    await s2.carregar(dia27);
+    expect(s2.estado.falhas, {FonteJogos.listas});
+    expect(s2.jogos(FiltroJogos(dia27, soComCanal: false)), isNotEmpty);
+  });
+
   test('mudar de dia e voltar não pede de novo o que está na cache', () async {
     await servico.carregar(dia27);
     await servico.carregar(dia28);
@@ -141,6 +183,6 @@ void main() {
     expect(pedidos.single.path, endsWith('/tvguide'));
     pedidos.clear();
     await movel.carregar(dia27, forcar: true);
-    expect(pedidos.map((u) => u.host).toSet(), containsAll(['www.fotmob.com', 'meogouser.apps.meo.pt', 'www.sporttv.pt']));
+    expect(pedidos.map((u) => u.host).toSet(), containsAll(['www.fotmob.com', 'www.sporttv.pt']));
   });
 }

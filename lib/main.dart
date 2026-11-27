@@ -124,9 +124,10 @@ Future<Jogos?> _abrirJogos(Directory dados, Biblioteca biblioteca) async {
     final preferencias = await PreferenciasJogos.abrir(pasta);
     final armazem = await ArmazemDesporto.abrir(Directory('${pasta.path}${sep}cache'));
     unawaited(armazem.arrumar(agora: DateTime.now().toUtc()));
+    final indice = IndiceCanais(biblioteca, pasta, preferencias);
     final servico = ServicoJogos(ClienteDesporto(armazem), preferencias,
-        emDadosMoveis: () => PoupancaDados.atual.emDadosMoveis());
-    return Jogos(preferencias, servico, IndiceCanais(biblioteca, pasta, preferencias));
+        emDadosMoveis: () => PoupancaDados.atual.emDadosMoveis(), fontes: indice);
+    return Jogos(preferencias, servico, indice);
   } catch (e) {
     debugPrint('jogos: não abriu (${e.runtimeType})');
     return null;

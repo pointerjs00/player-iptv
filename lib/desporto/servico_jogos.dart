@@ -1,5 +1,5 @@
-/// O serviço dos «Jogos»: pede os jogos (FotMob) e as grelhas (guia de TV do FotMob, MEO e
-/// Sport TV), casa-os e diz o estado de cada fonte. Uma fonte que falha não impede as outras.
+/// O serviço dos «Jogos»: pede os jogos (FotMob) e as grelhas (guia de TV do FotMob, Sport TV e o
+/// guia das próprias listas), casa-os e diz o estado de cada fonte. Uma fonte que falha não impede as outras.
 /// Em dados móveis, sem `forcar`, só se usa a cache e o guia do FotMob.
 library;
 
@@ -8,17 +8,19 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../modelo/canal.dart' show semAcentos;
+import '../idioma/idioma.dart';
 import 'casador.dart';
 import 'catalogo.dart';
 import 'cliente_desporto.dart';
 import 'fontes/fotmob.dart';
-import 'fontes/meo.dart';
+import 'fontes/epg_listas.dart';
 import 'fontes/sporttv.dart';
 import 'modelo.dart';
+import 'onde_ver.dart';
 import 'preferencias_jogos.dart';
 
 /// As fontes do serviço (para o estado dizer qual falhou).
-enum FonteJogos { fotmob, guiaFotmob, meo, sportTv }
+enum FonteJogos { fotmob, guiaFotmob, listas, sportTv }
 
 /// Um jogo com os canais onde dá (a confiança mais alta primeiro).
 class JogoComCanais {
@@ -84,35 +86,26 @@ class EstadoJogos {
   bool get velho => velhoDesde != null;
 }
 
-/// O nome de cada fonte para o estado («MEO indisponível»).
+/// O nome de cada fonte para o estado («Sport TV indisponível»).
 String nomeFonte(FonteJogos f) => switch (f) {
       FonteJogos.fotmob => 'FotMob',
       FonteJogos.guiaFotmob => 'FotMob',
-      FonteJogos.meo => 'MEO',
+      FonteJogos.listas => tr('Guia das listas'),
       FonteJogos.sportTv => 'Sport TV',
     };
 
 String _chaveDia(DateTime d) => diaTexto(d);
 
-/// Corre as tarefas com no máximo `n` ao mesmo tempo (a MEO são dezenas de pedidos: não se
-/// batem todos ao servidor de uma vez). Os resultados ficam pela ordem das tarefas.
-Future<List<T>> _poucosDeCada<T>(List<Future<T> Function()> tarefas, [int n = 4]) async {
-  final r = List<T?>.filled(tarefas.length, null);
-  var proxima = 0;
-  Future<void> trabalhador() async {
-    while (proxima < tarefas.length) {
-      final i = proxima++;
-      r[i] = await tarefas[i]();
-    }
-  }
-
-  await Future.wait([for (var k = 0; k < n; k++) trabalhador()]);
-  return r.cast<T>();
-}
-
 class ServicoJogos extends ChangeNotifier {
-  ServicoJogos(this.cliente, this.preferencias, {Future<bool> Function()? emDadosMoveis})
+  ServicoJogos(this.cliente, this.preferencias,
+      {Future<bool> Function()? emDadosMoveis, this.fontes, this.obterEpg = obterEpgDaLista})
       : _emDadosMoveis = emDadosMoveis ?? (() async => false);
+
+  /// Os canais das listas (para o guia das listas). null: sem essa fonte.
+  final FontesDosCanais? fontes;
+
+  /// Como se pede a grelha de um canal a uma lista (nos testes, um falso).
+  final ObterEpgCanal obterEpg;
 
   final ClienteDesporto cliente;
   final PreferenciasJogos preferencias;
@@ -148,30 +141,31 @@ class ServicoJogos extends ChangeNotifier {
       }
     }
 
-    final hoje = cliente.agora().toLocal();
-    final eHoje = hoje.year == dia.year && hoje.month == dia.month && hoje.day == dia.day;
-    // a MEO: o dia escolhido e, hoje, também amanhã (os jogos depois da meia-noite)
-    final diasMeo = [dia, if (eHoje) DateTime(dia.year, dia.month, dia.day + 1)];
-    final canaisMeo = [for (final c in catalogoCanais) if (c.meo != null) c];
-
     final jogosF = tentar(FonteJogos.fotmob, () => jogosFotmob(cliente, dia, preferencias.competicoes, soCache: soCache));
     // o guia do FotMob é um pedido pequeno para 7 dias: pede-se mesmo em dados móveis
     final guiaF = tentar(FonteJogos.guiaFotmob, () => guiaTvFotmob(cliente));
     final sportTvF = tentar(FonteJogos.sportTv, () => guiaSportTv(cliente, soCache: soCache));
-    final meoF = _poucosDeCada([
-      for (final d in diasMeo)
-        for (final c in canaisMeo) () => tentar(FonteJogos.meo, () => grelhaMeo(cliente, c, d, soCache: soCache)),
-    ]);
-
+    final fs = fontes;
+    final listasF = fs == null
+        ? Future<List<Emissao>?>.value(null)
+        : tentar(FonteJogos.listas, () async {
+            await fs.atualizar(); // o índice dos canais primeiro (só relê as listas que mudaram)
+            return grelhaDasListas(cliente, fs, dia, obter: obterEpg, soCache: soCache);
+          });
     final jogos = await jogosF ?? const <Jogo>[];
     final guia = await guiaF ?? const <(String, Emissao)>[];
     final emissoes = <Emissao>[
       ...?await sportTvF,
-      for (final g in await meoF) ...?g,
+      ...?await listasF,
     ];
     if (pedido != _pedido) return; // outro dia pedido entretanto
 
-    final transmissoes = casar(jogos, emissoes, ligadasPorId: guia);
+    final casadas = casar(jogos, emissoes, ligadasPorId: guia);
+    final ja = {for (final t in casadas) (t.jogoId, t.canal)};
+    final transmissoes = [
+      ...casadas,
+      for (final t in transmissoesConhecidas(jogos)) if (!ja.contains((t.jogoId, t.canal))) t,
+    ];
     final porJogo = <String, List<Transmissao>>{};
     for (final t in transmissoes) {
       porJogo.putIfAbsent(t.jogoId, () => []).add(t);

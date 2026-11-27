@@ -2021,5 +2021,7 @@ const textosIngles = <String, String>{
         '1 match',
     '{0} jogos':
         '{0} matches',
+    'Guia das listas':
+        'Lists guide',
   },
 };

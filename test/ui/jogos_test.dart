@@ -135,10 +135,10 @@ void main() {
     await montar(t,
         estado: EstadoJogos(
             carga: Carga.pronto,
-            falhas: const {FonteJogos.meo},
+            falhas: const {FonteJogos.sportTv},
             velhoDesde: DateTime.now().toUtc().subtract(const Duration(hours: 2))));
     expect(find.textContaining('Sem rede: a mostrar os dados de há 2 h'), findsOneWidget);
-    expect(find.textContaining('MEO indisponível'), findsOneWidget);
+    expect(find.textContaining('Sport TV indisponível'), findsOneWidget);
   });
 
   testWidgets('«Onde ver»: as fontes do canal; escolher a 2.ª abre-a e deixa a 1.ª para a troca', (t) async {

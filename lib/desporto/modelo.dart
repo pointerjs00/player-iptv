@@ -149,7 +149,7 @@ class Emissao {
   /// null = a fonte não diz.
   final bool? direto;
 
-  /// 'meo', 'sporttv', 'fotmob', 'epg'.
+  /// 'sporttv', 'fotmob', 'epg' (o guia das listas).
   final String origem;
 
   /// Da fonte, quando a dá à parte do título (Sport TV: «futebol», «LIGA PORTUGAL BETCLIC»).

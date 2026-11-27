@@ -47,9 +47,18 @@ bool _torneio(Jogo j, Emissao e, TituloEmissao t) {
 
 Confianca _confianca(Emissao e) => switch (e.origem) {
       'sporttv' || 'fotmob' => Confianca.confirmado,
-      'meo' => Confianca.provavel,
+      // o EPG das listas: a mesma grelha, mas sem a garantia da fonte oficial
+      'epg' => e.direto == true ? Confianca.provavel : Confianca.possivel,
       _ => Confianca.possivel,
     };
+
+/// O que se sabe sem grelha: os jogos em casa do Benfica na Liga Portugal dão na BTV (o Benfica
+/// tem os direitos dos jogos em casa).
+List<Transmissao> transmissoesConhecidas(List<Jogo> jogos) => [
+      for (final j in jogos)
+        if (j.competicaoId == 'liga-portugal' && !j.feminino && mesmaEquipa(j.casa, 'Benfica'))
+          Transmissao(jogoId: j.id, canal: 'btv', confianca: Confianca.provavel, origem: 'regra'),
+    ];
 
 /// As transmissões (uma por jogo e canal, com a confiança mais alta).
 List<Transmissao> casar(List<Jogo> jogos, List<Emissao> emissoes, {List<(String, Emissao)> ligadasPorId = const []}) {

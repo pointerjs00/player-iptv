@@ -8,7 +8,7 @@ void main() {
           {Desporto d = Desporto.futebol, bool feminino = false, String? torneio}) =>
       Jogo(id: id, desporto: d, competicaoId: 'x', casa: casa, fora: fora, inicio: inicio, feminino: feminino, torneio: torneio);
   Emissao emissao(String canal, String titulo, DateTime inicio,
-          {String origem = 'meo', bool? direto, Duration duracao = const Duration(hours: 2), String? modalidade}) =>
+          {String origem = 'epg', bool? direto, Duration duracao = const Duration(hours: 2), String? modalidade}) =>
       Emissao(canal: canal, inicio: inicio, fim: inicio.add(duracao), titulo: titulo, origem: origem, direto: direto,
           modalidade: modalidade);
 
@@ -25,9 +25,12 @@ void main() {
     expect(t.single.confianca, Confianca.confirmado);
   });
 
-  test('só a MEO: Provável; o EPG de uma lista: Possível', () {
+  test('o EPG de uma lista: Provável quando diz direto, senão Possível', () {
     final j = jogo('j', 'Marítimo', 'Nacional', h20);
-    expect(casar([j], [emissao('sporttv1', 'Marítimo x CD Nacional - Liga Portugal Betclic (Direto)', h20)]).single.confianca,
+    expect(
+        casar([j], [emissao('sporttv1', 'Marítimo x CD Nacional - Liga Portugal Betclic (Direto)', h20, origem: 'epg', direto: true)])
+            .single
+            .confianca,
         Confianca.provavel);
     expect(casar([j], [emissao('sporttv1', 'Marítimo x CD Nacional', h20, origem: 'epg')]).single.confianca,
         Confianca.possivel);
