@@ -132,16 +132,17 @@ class _Anel extends CustomPainter {
 
   /// O gradiente da volta inteira (rodado para a cauda ficar em `inicio`): transparente antes da
   /// cauda e depois da cabeça, para as pontas redondas não apanharem a cor da outra ponta.
-  static Shader _gradiente(Rect r, double inicio, double alfa) => SweepGradient(
+  /// `apagar`: quanto da volta, depois da cabeça, leva a desvanecer (o brilho apaga-se devagar,
+  /// sem uma aresta onde acaba).
+  static Shader _gradiente(Rect r, double inicio, double alfa, double apagar) => SweepGradient(
         colors: [
           Tokens.acento.withValues(alpha: 0),
           Tokens.acento.withValues(alpha: 0),
           Tokens.acento.withValues(alpha: .85 * alfa),
           _cabeca.withValues(alpha: alfa),
-          _cabeca.withValues(alpha: alfa),
           _cabeca.withValues(alpha: 0),
         ],
-        stops: const [0, .02, _fracao * .6, _fracao, _fracao + .015, _fracao + .02],
+        stops: [0, .02, _fracao * .6, _fracao, _fracao + apagar],
         transform: GradientRotation(inicio),
       ).createShader(r);
 
@@ -156,14 +157,19 @@ class _Anel extends CustomPainter {
           ..color = Tokens.vidroForte);
     final inicio = t * 2 * math.pi - math.pi / 2;
     const arco = 2 * math.pi * _fracao;
-    // brilho largo e suave, brilho junto ao arco e o arco nítido por cima
-    for (final (largura, desfoque, alfa) in [(traco * 3, 12.0, .35), (traco * 1.6, 5.0, .6), (traco, 0.0, 1.0)]) {
-      canvas.drawArc(r, inicio + .02 * 2 * math.pi, arco - .02 * 2 * math.pi, false,
+    // brilho largo e suave, brilho junto ao arco e o arco nítido por cima. O brilho vai além da
+    // cabeça e apaga-se aos poucos (cortado na cabeça, via-se a aresta onde acabava).
+    for (final (largura, desfoque, alfa, apagar) in [
+      (traco * 3, 12.0, .35, .1),
+      (traco * 1.6, 5.0, .6, .06),
+      (traco, 0.0, 1.0, .02),
+    ]) {
+      canvas.drawArc(r, inicio + .02 * 2 * math.pi, arco + (apagar - .02) * 2 * math.pi, false,
           Paint()
             ..style = PaintingStyle.stroke
             ..strokeWidth = largura
-            ..strokeCap = desfoque > 0 ? StrokeCap.butt : StrokeCap.round
-            ..shader = _gradiente(r, inicio, alfa)
+            ..strokeCap = StrokeCap.round
+            ..shader = _gradiente(r, inicio, alfa, apagar)
             ..maskFilter = desfoque > 0 ? MaskFilter.blur(BlurStyle.normal, desfoque) : null);
     }
     // o ponto de luz na cabeça
