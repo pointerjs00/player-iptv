@@ -168,3 +168,6 @@ Comportamento:
   publicada — releases v1.0.28 (6, latest) e partilha-v1.0.28 (3), com digest SHA-256; main e
   feature/redesenho em 938d318. **Próximo passo:** ensaio real com uma 1.0.29 (Android TV/telemóvel
   e Windows) a partir da 1.0.28 instalada.
+- 2026-11-27: os 7 Minor da revisão corrigidos (c4a1ade) e 1.0.29 publicada (v1.0.29 + partilha-v1.0.29,
+  com digest); main e feature/redesenho em 523ea8f. **Próximo passo:** o utilizador experimenta
+  «Procurar atualizações» a partir da 1.0.28 instalada (Android e Windows).
