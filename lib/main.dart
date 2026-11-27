@@ -104,10 +104,11 @@ Future<void> main(List<String> args) async {
       instalacaoNova: biblioteca.listas.isEmpty && area.listas.isEmpty);
   // os «Jogos» (não existem na edição de partilha)
   final jogos = edicaoPartilha ? null : await _abrirJogos(pasta, biblioteca);
-  // o aviso de nova versão (GitHub Releases): só na edição completa e fora dos dados móveis
-  final Future<NovaVersao?> Function()? novaVersao = edicaoPartilha
-      ? null
-      : () => novaVersaoPorAvisar(pasta, atual: versaoApp, emDadosMoveis: PoupancaDados.atual.emDadosMoveis);
+  // o aviso de nova versão (GitHub Releases), fora dos dados móveis: cada edição só das suas releases
+  Future<NovaVersao?> novaVersao() => novaVersaoPorAvisar(pasta,
+      atual: versaoApp,
+      emDadosMoveis: PoupancaDados.atual.emDadosMoveis,
+      prefixo: edicaoPartilha ? prefixoPartilha : prefixoCompleta);
   runApp(AppPlayerIptv(biblioteca: biblioteca, area: area, novidades: novidades, jogos: jogos, novaVersao: novaVersao));
 }
 

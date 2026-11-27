@@ -23,8 +23,8 @@ const historicoNovidades = <Novidades>[
     if (!edicaoPartilha) ...[
       'Cópia de segurança: leva também as preferências dos Jogos (equipas favoritas, competições seguidas e a ordem delas).',
       'Jogos: a Liga das Nações e a qualificação do Europeu já não mostram jogos femininos por engano.',
-      'Ao abrir, a app avisa quando há uma versão nova publicada.',
     ],
+    'Ao abrir, a app avisa quando há uma versão nova publicada.',
   ]),
   Novidades('1.0.25', '2026-11-27', [
     if (!edicaoPartilha) ...[

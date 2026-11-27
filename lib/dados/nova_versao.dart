@@ -1,6 +1,8 @@
-/// O aviso de nova versão: a última release publicada no GitHub (`pointerjs00/player-iptv`),
-/// comparada com a versão da app. Avisa-se uma vez por versão; sem rede, sem releases ou em dados
-/// móveis não se diz nada. Só na edição completa (o `main` decide).
+/// O aviso de nova versão: a release mais recente da edição da app publicada no GitHub
+/// (`pointerjs00/player-iptv`), comparada com a versão da app. Cada versão tem duas releases: a
+/// completa (`v1.0.26`, com os pacotes das duas edições) e a de partilha (`partilha-v1.0.26`, só
+/// com os dela). A edição de partilha só vê as suas: só é avisada delas e só aponta para elas.
+/// Avisa-se uma vez por versão; sem rede, sem releases ou em dados móveis não se diz nada.
 library;
 
 import 'dart:convert';
@@ -8,8 +10,11 @@ import 'dart:io';
 
 import '../rede/http.dart';
 
-/// A última release do repositório (a API devolve 404 enquanto não houver nenhuma).
-const enderecoUltimaRelease = 'https://api.github.com/repos/pointerjs00/player-iptv/releases/latest';
+/// As releases do repositório, as mais recentes primeiro.
+const enderecoReleases = 'https://api.github.com/repos/pointerjs00/player-iptv/releases?per_page=30';
+
+/// A etiqueta das releases de cada edição (seguida da versão).
+const prefixoCompleta = 'v', prefixoPartilha = 'partilha-v';
 
 /// O ficheiro com a última versão de que já se avisou.
 const ficheiroVersaoAvisada = 'nova_versao_avisada.txt';
@@ -24,15 +29,23 @@ class NovaVersao {
   final String pagina;
 }
 
-/// A release de `texto` (a resposta da API), ou null se não servir (rascunho, pré-versão, erro).
-NovaVersao? lerUltimaRelease(String texto) {
+/// A release mais recente com a etiqueta `prefixo` + versão em `texto` (a lista da API); rascunhos e
+/// pré-versões não contam. null se não houver nenhuma.
+NovaVersao? lerUltimaRelease(String texto, {required String prefixo}) {
   try {
     final j = jsonDecode(texto);
-    if (j is! Map || j['draft'] == true || j['prerelease'] == true) return null;
-    final tag = j['tag_name'], pagina = j['html_url'];
-    if (tag is! String || pagina is! String || tag.trim().isEmpty) return null;
-    final v = tag.trim();
-    return NovaVersao(v.startsWith('v') || v.startsWith('V') ? v.substring(1) : v, pagina);
+    if (j is! List) return null;
+    NovaVersao? melhor;
+    for (final r in j.whereType<Map>()) {
+      if (r['draft'] == true || r['prerelease'] == true) continue;
+      final tag = r['tag_name'], pagina = r['html_url'];
+      if (tag is! String || pagina is! String || !tag.startsWith(prefixo)) continue;
+      final v = tag.substring(prefixo.length);
+      // depois do prefixo, só a versão («1.0.26»): outra etiqueta qualquer não conta
+      if (!RegExp(r'^\d+(\.\d+)*$').hasMatch(v)) continue;
+      if (melhor == null || maisRecente(v, melhor.versao)) melhor = NovaVersao(v, pagina);
+    }
+    return melhor;
   } on FormatException {
     return null;
   }
@@ -63,11 +76,12 @@ Future<String> _obterDaRede(Uri uri) async => utf8.decode(await obterBytes(uri.t
 Future<NovaVersao?> novaVersaoPorAvisar(Directory pasta,
     {required String atual,
     Future<String> Function(Uri uri) obter = _obterDaRede,
-    Future<bool> Function()? emDadosMoveis}) async {
+    Future<bool> Function()? emDadosMoveis,
+    String prefixo = prefixoCompleta}) async {
   if (emDadosMoveis != null && await emDadosMoveis()) return null;
   final NovaVersao? v;
   try {
-    v = lerUltimaRelease(await obter(Uri.parse(enderecoUltimaRelease)));
+    v = lerUltimaRelease(await obter(Uri.parse(enderecoReleases)), prefixo: prefixo);
   } catch (_) {
     return null; // sem rede, ou o GitHub sem releases (404): não se diz nada
   }

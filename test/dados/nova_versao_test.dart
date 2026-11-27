@@ -20,15 +20,26 @@ void main() {
       '{"tag_name":"$tag","html_url":"https://github.com/pointerjs00/player-iptv/releases/tag/$tag",'
       '"draft":$rascunho,"prerelease":$previa}';
 
-  test('lê a versão (sem o «v») e a página da release; rascunhos e pré-versões não contam', () {
-    final r = lerUltimaRelease(release('v1.0.26'))!;
-    expect(r.versao, '1.0.26');
-    expect(r.pagina, 'https://github.com/pointerjs00/player-iptv/releases/tag/v1.0.26');
-    expect(lerUltimaRelease(release('1.0.27'))?.versao, '1.0.27');
-    expect(lerUltimaRelease(release('v1.0.26', rascunho: true)), isNull);
-    expect(lerUltimaRelease(release('v1.0.26', previa: true)), isNull);
-    expect(lerUltimaRelease('{"message":"Not Found"}'), isNull);
-    expect(lerUltimaRelease('<html>'), isNull);
+  String lista(List<String> rs) => '[${rs.join(',')}]';
+
+  test('cada edição lê só as suas releases (completa: «v…», partilha: «partilha-v…») e fica com a mais recente', () {
+    final todas = lista([
+      release('partilha-v1.0.27'),
+      release('v1.0.26'),
+      release('v1.0.28', previa: true),
+      release('v1.0.27', rascunho: true),
+      release('partilha-v1.0.26'),
+      release('v1.0.25'),
+    ]);
+    final c = lerUltimaRelease(todas, prefixo: prefixoCompleta)!;
+    expect(c.versao, '1.0.26', reason: 'rascunhos, pré-versões e as da partilha não contam');
+    expect(c.pagina, 'https://github.com/pointerjs00/player-iptv/releases/tag/v1.0.26');
+    final p = lerUltimaRelease(todas, prefixo: prefixoPartilha)!;
+    expect(p.versao, '1.0.27');
+    expect(p.pagina, endsWith('/tag/partilha-v1.0.27'));
+    expect(lerUltimaRelease(lista([release('partilha-v1.0.30')]), prefixo: prefixoCompleta), isNull);
+    expect(lerUltimaRelease('{"message":"Not Found"}', prefixo: prefixoCompleta), isNull);
+    expect(lerUltimaRelease('<html>', prefixo: prefixoCompleta), isNull);
   });
 
   test('compara as versões pelos números (1.0.10 é mais recente do que 1.0.9)', () {
@@ -42,17 +53,19 @@ void main() {
 
   test('avisa uma vez por versão nova; a mesma, sem rede, ou em dados móveis não avisa', () async {
     var pedidos = 0;
-    var texto = release('v1.0.26');
+    var texto = lista([release('v1.0.26')]);
     Future<String> obter(Uri u) async {
       pedidos++;
-      expect(u.toString(), enderecoUltimaRelease);
+      expect(u.toString(), enderecoReleases);
       return texto;
     }
 
     final v = await novaVersaoPorAvisar(pasta, atual: '1.0.25', obter: obter);
+    expect(await novaVersaoPorAvisar(pasta, atual: '1.0.25', obter: obter, prefixo: prefixoPartilha), isNull,
+        reason: 'a partilha não é avisada de uma versão completa');
     expect(v?.versao, '1.0.26');
     expect(await novaVersaoPorAvisar(pasta, atual: '1.0.25', obter: obter), isNull, reason: 'já avisada');
-    texto = release('v1.0.27');
+    texto = lista([release('v1.0.27')]);
     expect((await novaVersaoPorAvisar(pasta, atual: '1.0.25', obter: obter))?.versao, '1.0.27');
     expect(await novaVersaoPorAvisar(pasta, atual: '1.0.27', obter: obter), isNull, reason: 'é a que já tem');
     expect(await novaVersaoPorAvisar(pasta, atual: '1.0.25', obter: (_) async => throw const SocketException('x')),
