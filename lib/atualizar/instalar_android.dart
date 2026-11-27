@@ -11,8 +11,7 @@ class InstaladorAndroid {
   final MethodChannel _canal;
 
   /// Os processadores do aparelho, o preferido primeiro (Build.SUPPORTED_ABIS).
-  Future<List<String>> abis() async =>
-      ((await _canal.invokeListMethod<String>('abis')) ?? const <String>[]).toList();
+  Future<List<String>> abis() async => ((await _canal.invokeListMethod<String>('abis')) ?? const <String>[]).toList();
 
   /// A TVIntel já pode instalar pacotes?
   Future<bool> podeInstalar() async => (await _canal.invokeMethod<bool>('podeInstalar')) ?? false;

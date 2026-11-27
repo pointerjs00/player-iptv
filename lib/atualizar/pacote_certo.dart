@@ -11,8 +11,12 @@ const _sufixoAbi = {'arm64-v8a': '-android-arm64.apk', 'armeabi-v7a': '-android-
 
 /// O pacote para esta plataforma e edição; `abis` são as do aparelho, a preferida primeiro
 /// (Build.SUPPORTED_ABIS). null: a release não tem nenhum que sirva.
-Pacote? pacoteDaApp(List<Pacote> pacotes,
-    {required Plataforma plataforma, List<String> abis = const [], required bool partilha}) {
+Pacote? pacoteDaApp(
+  List<Pacote> pacotes, {
+  required Plataforma plataforma,
+  List<String> abis = const [],
+  required bool partilha,
+}) {
   bool daEdicao(Pacote p) => p.nome.contains('-partilha-') == partilha;
   Pacote? acabadoEm(String sufixo) {
     for (final p in pacotes) {

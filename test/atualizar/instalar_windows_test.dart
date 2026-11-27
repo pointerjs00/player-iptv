@@ -1,0 +1,82 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:archive/archive.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:player_iptv/atualizar/descarregar.dart';
+import 'package:player_iptv/atualizar/instalar_windows.dart';
+
+/// Atualizar no Windows: extrair o zip, o script que troca os ficheiros depois de a app fechar,
+/// e a pasta da app tem de ser gravável.
+void main() {
+  late Directory pasta;
+  setUp(() => pasta = Directory.systemTemp.createTempSync('instalar_windows'));
+  tearDown(() {
+    try {
+      pasta.deleteSync(recursive: true);
+    } on FileSystemException {/* Windows */}
+  });
+
+  File zipCom(Map<String, String> ficheiros) {
+    final a = Archive();
+    ficheiros.forEach((nome, texto) => a.addFile(ArchiveFile.bytes(nome, utf8.encode(texto))));
+    final f = File('${pasta.path}${Platform.pathSeparator}pacote.zip')..writeAsBytesSync(ZipEncoder().encode(a));
+    return f;
+  }
+
+  test('extrairZip devolve a pasta TVIntel com o exe', () async {
+    final zip = zipCom({'TVIntel/TVIntel.exe': 'exe', 'TVIntel/data/app.so': 'so'});
+    final destino = Directory('${pasta.path}${Platform.pathSeparator}extraido');
+    final app = await extrairZip(zip, destino);
+    expect(app.path, endsWith('TVIntel'));
+    expect(File('${app.path}${Platform.pathSeparator}TVIntel.exe').readAsStringSync(), 'exe');
+    expect(File('${app.path}${Platform.pathSeparator}data${Platform.pathSeparator}app.so').existsSync(), isTrue);
+  });
+
+  test('extrairZip sem TVIntel/TVIntel.exe: ErroPacote', () async {
+    final zip = zipCom({'outra/coisa.txt': 'x'});
+    await expectLater(
+        extrairZip(zip, Directory('${pasta.path}${Platform.pathSeparator}x')), throwsA(isA<ErroPacote>()));
+  });
+
+  test('o script espera a app fechar, copia, volta a abrir e aguenta caminhos com espaços e apóstrofos', () {
+    final s = scriptTroca(
+        pid: 4321,
+        origem: r"C:\Users\O'Neil\AppData\Local\Temp\TVIntel-atualizar\TVIntel",
+        destino: r"C:\Users\O'Neil\Ambiente de trabalho\TVIntel",
+        exe: r"C:\Users\O'Neil\Ambiente de trabalho\TVIntel\TVIntel.exe");
+    expect(s, contains('Wait-Process -Id 4321'));
+    expect(s, contains(r"'C:\Users\O''Neil\AppData\Local\Temp\TVIntel-atualizar\TVIntel'"), reason: "o ' duplicado");
+    expect(s, contains(r"'C:\Users\O''Neil\Ambiente de trabalho\TVIntel'"));
+    expect(s, contains('robocopy'));
+    expect(s, contains('Start-Process'));
+    expect(s, isNot(contains(r"O'Neil")), reason: "nenhum ' sozinho dentro das strings");
+    final copiar = s.indexOf('robocopy'), abrir = s.indexOf('Start-Process');
+    expect(s.indexOf('Wait-Process'), lessThan(copiar));
+    expect(copiar, lessThan(abrir));
+  });
+
+  test('pastaGravavel: true numa pasta temporária, false numa que não existe', () {
+    expect(pastaGravavel(pasta), isTrue);
+    expect(pasta.listSync(), isEmpty, reason: 'o ficheiro de teste é apagado');
+    expect(pastaGravavel(Directory('${pasta.path}${Platform.pathSeparator}nao-existe')), isFalse);
+  });
+
+  test('instalarWindows: extrai, escreve o script, lança-o (desligado da app) e fecha a app', () async {
+    final zip = zipCom({'TVIntel/TVIntel.exe': 'exe novo'});
+    final lancados = <(String, List<String>)>[];
+    var fechou = false;
+    await instalarWindows(zip,
+        temp: Directory('${pasta.path}${Platform.pathSeparator}tmp'),
+        exe: r'D:\Apps\TVIntel\TVIntel.exe',
+        pid: 99,
+        iniciar: (exe, args) async => lancados.add((exe, args)),
+        fechar: () async => fechou = true);
+    expect(lancados.single.$1, 'powershell');
+    final script = File(lancados.single.$2.last);
+    expect(script.existsSync(), isTrue);
+    expect(script.readAsStringSync(), contains(r"'D:\Apps\TVIntel'"));
+    expect(script.readAsStringSync(), contains('Wait-Process -Id 99'));
+    expect(fechou, isTrue);
+  });
+}

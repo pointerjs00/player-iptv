@@ -175,6 +175,48 @@ void main() {
     expect(find.textContaining('Apps › TVIntel › Instalar apps desconhecidas'), findsOneWidget);
   });
 
+  testWidgets('Windows: descarrega o zip, pergunta «Fechar e atualizar agora» e troca os ficheiros', (t) async {
+    final instalados = <String>[];
+    final a = atualizador(plataforma: Plataforma.windows);
+    final w = Atualizador(
+      procurar: a.procurar,
+      plataforma: Plataforma.windows,
+      partilha: false,
+      pasta: a.pasta,
+      descarregar: a.descarregar,
+      instalarWindows: (zip) async => instalados.add(zip.path),
+      pastaGravavel: () => true,
+    );
+    await abrir(t, (c) => atualizarApp(c, _nova, a: w));
+    expect(descarregados, ['TVIntel-1.0.29-windows.zip']);
+    download.complete(File('${Directory.systemTemp.path}/TVIntel-1.0.29-windows.zip'));
+    await t.pumpAndSettle();
+    expect(textosFocados(), 'Fechar e atualizar agora');
+    await t.sendKeyEvent(LogicalKeyboardKey.select);
+    await t.pumpAndSettle();
+    expect(instalados.single, endsWith('TVIntel-1.0.29-windows.zip'));
+  });
+
+  testWidgets('Windows numa pasta sem escrita: não descarrega e oferece a página', (t) async {
+    final a = atualizador(plataforma: Plataforma.windows);
+    final w = Atualizador(
+      procurar: a.procurar,
+      plataforma: Plataforma.windows,
+      partilha: false,
+      pasta: a.pasta,
+      descarregar: a.descarregar,
+      instalarWindows: (_) async {},
+      pastaGravavel: () => false,
+      abrirPagina: a.abrirPagina,
+    );
+    await abrir(t, (c) => atualizarApp(c, _nova, a: w));
+    expect(find.textContaining('Não é possível atualizar nesta pasta'), findsOneWidget);
+    expect(descarregados, isEmpty);
+    await t.tap(find.text('Abrir a página'));
+    await t.pumpAndSettle();
+    expect(paginas, [_nova.pagina]);
+  });
+
   group('Definições', () {
     late Directory pasta;
     setUp(() => pasta = Directory.systemTemp.createTempSync('def_atualizar'));

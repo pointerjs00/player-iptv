@@ -12,6 +12,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../atualizar/descarregar.dart';
 import '../../atualizar/instalar_android.dart';
+import '../../atualizar/instalar_windows.dart' as windows;
 import '../../atualizar/pacote_certo.dart';
 import '../../dados/nova_versao.dart';
 import '../../dados/novidades.dart';
@@ -60,6 +61,9 @@ class Atualizador {
     partilha: edicaoPartilha,
     pasta: () async => Directory('${(await getTemporaryDirectory()).path}${Platform.pathSeparator}atualizar'),
     abrirPagina: Platform.isWindows ? _abrirNoWindows : null,
+    // a app sai logo a seguir: o script só troca os ficheiros depois de ela fechar
+    instalarWindows: Platform.isWindows ? (zip) => windows.instalarWindows(zip, fechar: () async => exit(0)) : null,
+    pastaGravavel: Platform.isWindows ? () => windows.pastaGravavel(File(Platform.resolvedExecutable).parent) : null,
   );
 
   final Future<Procura> Function() procurar;

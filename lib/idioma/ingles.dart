@@ -1927,7 +1927,8 @@ const textosIngles = <String, String>{
     '{0} de {1} MB': '{0} of {1} MB',
     'Ver se há uma versão nova da app e instalá-la.': 'Check for a new version of the app and install it.',
     'Procurar atualizações': 'Check for updates',
-    'o pacote recebido é maior do que o publicado': 'the downloaded package is larger than the published one',
+    'o pacote do Windows não tem o TVIntel.exe': "the Windows package doesn't contain TVIntel.exe",
+    'o pacote recebido é maior do que o publicado':'the downloaded package is larger than the published one',
     'o pacote ficou incompleto ({0} de {1} bytes)': 'the package is incomplete ({0} of {1} bytes)',
     'o pacote recebido não é o publicado (SHA-256 diferente)':
         "the downloaded package isn't the published one (different SHA-256)",

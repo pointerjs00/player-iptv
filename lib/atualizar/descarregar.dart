@@ -34,10 +34,13 @@ class _Resumo implements Sink<Digest> {
 
 /// Descarrega `p` para `<pasta>/<p.nome>` (passando por `<p.nome>.parcial`). `progresso` recebe
 /// os bytes recebidos e o total (o da release).
-Future<File> descarregarPacote(Pacote p, Directory pasta,
-    {void Function(int recebidos, int total)? progresso,
-    Cancelamento? cancelamento,
-    AbrirDownload abrir = abrirDownloadHttp}) async {
+Future<File> descarregarPacote(
+  Pacote p,
+  Directory pasta, {
+  void Function(int recebidos, int total)? progresso,
+  Cancelamento? cancelamento,
+  AbrirDownload abrir = abrirDownloadHttp,
+}) async {
   cancelamento?.verificar();
   await pasta.create(recursive: true);
   final sep = Platform.pathSeparator;
@@ -74,10 +77,14 @@ Future<File> descarregarPacote(Pacote p, Directory pasta,
   } catch (_) {
     try {
       await escrita?.close();
-    } catch (_) {/* já fechado */}
+    } catch (_) {
+      /* já fechado */
+    }
     try {
       if (await parcial.exists()) await parcial.delete();
-    } on FileSystemException {/* fica para a limpeza seguinte */}
+    } on FileSystemException {
+      /* fica para a limpeza seguinte */
+    }
     rethrow;
   }
 }
@@ -95,12 +102,17 @@ Future<(Stream<List<int>>, int?)> abrirDownloadHttp(Uri uri, Cancelamento? cance
       throw ErroHttp(resposta.statusCode, uri.toString());
     }
     final total = resposta.contentLength >= 0 ? resposta.contentLength : null;
-    final corpo = resposta.timeout(const Duration(seconds: 30)).transform(
-        StreamTransformer<List<int>, List<int>>.fromHandlers(handleDone: (sink) {
-      deixar?.call();
-      cliente.close();
-      sink.close();
-    }));
+    final corpo = resposta
+        .timeout(const Duration(seconds: 30))
+        .transform(
+          StreamTransformer<List<int>, List<int>>.fromHandlers(
+            handleDone: (sink) {
+              deixar?.call();
+              cliente.close();
+              sink.close();
+            },
+          ),
+        );
     return (corpo, total);
   } catch (_) {
     deixar?.call();
