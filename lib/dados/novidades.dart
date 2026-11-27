@@ -19,6 +19,11 @@ class Novidades {
 /// Todas as versões, a mais recente primeiro. A primeira é a versão da app: ao mudar a versão no
 /// pubspec.yaml, junta-se aqui a entrada dela (um teste confirma que batem certo).
 const historicoNovidades = <Novidades>[
+  Novidades('1.0.28', '2026-11-27', [
+    'Definições › Sobre: «Procurar atualizações» vê se há uma versão nova e instala-a sem sair da app (no Android pelo instalador do sistema; no Windows a app fecha, troca os ficheiros e volta a abrir).',
+    'O aviso de versão nova ao abrir tem «Atualizar» (no comando, a tecla Menu).',
+    'O carregamento dos canais tem uma luz nova no anel.',
+  ]),
   Novidades('1.0.27', '2026-11-27', [
     if (!edicaoPartilha) ...[
       'Jogos na TV: entrar no ecrã com a seta para a direita vai para o primeiro jogo (e não para o botão «Competições»).',

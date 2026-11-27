@@ -1891,6 +1891,11 @@ const textosIngles = <String, String>{
         "Matches: the Nations League and the Euro qualifiers no longer show women's matches by mistake.",
     'Ao abrir, a app avisa quando há uma versão nova publicada.':
         "When it opens, the app tells you when a new version is out.",
+    'Definições › Sobre: «Procurar atualizações» vê se há uma versão nova e instala-a sem sair da app (no Android pelo instalador do sistema; no Windows a app fecha, troca os ficheiros e volta a abrir).':
+        "Settings › About: «Check for updates» looks for a new version and installs it without leaving the app (on Android through the system installer; on Windows the app closes, replaces its files and opens again).",
+    'O aviso de versão nova ao abrir tem «Atualizar» (no comando, a tecla Menu).':
+        "The new-version notice at startup has «Update» (on the remote, the Menu key).",
+    'O carregamento dos canais tem uma luz nova no anel.': 'The channel loading screen has a new glow on its ring.',
     'Jogos na TV: entrar no ecrã com a seta para a direita vai para o primeiro jogo (e não para o botão «Competições»).':
         "Matches on TV: entering the screen with the right arrow goes to the first match (not to the «Competitions» button).",
     'Jogos na TV: a seta para a direita chega ao detalhe do jogo, à direita (os canais e «▶ Ver»); a seta para a esquerda volta ao jogo.':
