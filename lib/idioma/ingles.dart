@@ -1885,6 +1885,8 @@ const textosIngles = <String, String>{
         'Where it is on',
     '1 fonte':
         '1 source',
+    'Hoje há jogo · {0}':
+        'Matches today · {0}',
     'A mover: {0}':
         'Moving: {0}',
     'Não segues nenhuma competição. Escolhe-as em Definições › Jogos.':

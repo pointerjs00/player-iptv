@@ -86,9 +86,9 @@ void main() {
   });
 
   group('Início com listas', () {
-    Future<List<(List<Canal>, int)>> abrir(WidgetTester t) async {
+    Future<List<(List<Canal>, int)>> abrir(WidgetTester t, {Widget? filaJogos}) async {
       final abertos = <(List<Canal>, int)>[];
-      await t.pumpWidget(_app(TelaInicio(biblioteca: bib, abrirCanal: (c, i) {
+      await t.pumpWidget(_app(TelaInicio(biblioteca: bib, filaJogos: filaJogos, abrirCanal: (c, i) {
         abertos.add((c, i));
         return null;
       })));
@@ -124,6 +124,14 @@ void main() {
       expect(find.text('A RTP 1'), findsOneWidget);
       expect(find.text('B Sport TV'), findsOneWidget);
       expect(find.text('Listas · 3'), findsOneWidget);
+    });
+
+    testWidgets('«Hoje há jogo» fica por cima das listas', (t) async {
+      tamanho(t);
+      await preparar(t);
+      await abrir(t, filaJogos: const Text('FILA DOS JOGOS'));
+      expect(find.text('FILA DOS JOGOS'), findsOneWidget);
+      expect(t.getRect(find.text('FILA DOS JOGOS')).top, lessThan(t.getRect(find.text('Listas · 3')).top));
     });
 
     testWidgets('sem favoritos não há a fila', (t) async {

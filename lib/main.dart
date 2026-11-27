@@ -33,6 +33,7 @@ import 'ui/design/revelar_topo.dart';
 import 'ui/gestor/tela_gestor.dart';
 import 'ui/inicio/tela_inicio.dart';
 import 'ui/jogos/tela_jogos.dart';
+import 'ui/jogos/fila_hoje.dart';
 import 'ui/player/player_canais.dart';
 import 'ui/player/tempo_visto.dart';
 import 'ui/poupanca_dados.dart';
@@ -116,6 +117,10 @@ class Jogos {
 
 Widget? _telaJogos(Jogos? j) =>
     j == null ? null : TelaJogos(servico: j.servico, fontes: j.indice, preferencias: j.preferencias);
+
+/// «Hoje há jogo» no Início (os jogos de hoje das equipas favoritas).
+Widget? _filaJogos(Jogos? j) =>
+    j == null ? null : FilaHojeHaJogo(servico: j.servico, fontes: j.indice, preferencias: j.preferencias);
 
 Future<Jogos?> _abrirJogos(Directory dados, Biblioteca biblioteca) async {
   try {
@@ -233,7 +238,11 @@ class _AppPlayerIptvState extends State<AppPlayerIptv> {
           tarefas: _tarefas,
           verificacao: _servico,
           pedidoGestor: _pedidoGestor,
-          verTv: TelaInicio(biblioteca: widget.biblioteca, area: widget.area, servico: _servicoPlayer),
+          verTv: TelaInicio(
+              biblioteca: widget.biblioteca,
+              area: widget.area,
+              servico: _servicoPlayer,
+              filaJogos: edicaoPartilha ? null : _filaJogos(widget.jogos)),
           // constante: na edição de partilha o compilador deita fora o ecrã e as fontes
           jogos: edicaoPartilha ? null : _telaJogos(widget.jogos),
           gestor: TelaGestor(biblioteca: widget.biblioteca, area: widget.area, servico: _servico, tarefas: _tarefas, pedido: _pedidoGestor),

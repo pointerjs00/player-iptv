@@ -39,7 +39,10 @@ import '../../edicao.dart';
 /// são da casca ([TelaPrincipal]).
 class TelaInicio extends StatefulWidget {
   const TelaInicio({super.key, required this.biblioteca, this.area, this.servico, this.abrirLista, this.abrirCanal,
-      this.estatisticas, this.guiaGuardado, this.agora});
+      this.estatisticas, this.guiaGuardado, this.agora, this.filaJogos});
+
+  /// «Hoje há jogo» (os jogos de hoje das equipas favoritas; null na edição de partilha).
+  final Widget? filaJogos;
 
   /// As listas do Player.
   final Biblioteca biblioteca;
@@ -547,6 +550,7 @@ class _TelaInicioState extends State<TelaInicio> {
               ));
           return CustomScrollView(slivers: [
             SliverToBoxAdapter(child: _continuar(tv)),
+            if (widget.filaJogos != null) SliverToBoxAdapter(child: widget.filaJogos!),
             SliverToBoxAdapter(child: _semana(tv)),
             SliverToBoxAdapter(child: _filaFavoritos(tv)),
             SliverToBoxAdapter(child: _titulo(tr('Listas · {0}', [todas.length]), tv)),
