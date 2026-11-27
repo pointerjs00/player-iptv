@@ -112,6 +112,17 @@ void main() {
     expect(m.abertas.single.map((f) => f.canalTv), ['sporttv1', 'sporttv1', 'sporttv2']);
   });
 
+  testWidgets('os jogos das equipas favoritas ficam em destaque', (t) async {
+    await montar(t);
+    m.prefs.equipasFavoritas = ['SL Benfica'];
+    await t.pump();
+    final destaque = {
+      for (final e in find.byType(LinhaJogo).evaluate()) (e.widget as LinhaJogo).item.jogo.casa: (e.widget as LinhaJogo).destaque,
+    };
+    expect(destaque['Benfica'], isTrue);
+    expect(destaque['Marítimo'], isFalse);
+  });
+
   testWidgets('a casca mostra «Jogos» na barra só quando recebe o ecrã', (t) async {
     await montar(t);
     await t.pumpWidget(appTeste(TelaPrincipal(

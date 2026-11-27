@@ -155,7 +155,11 @@ class LinhaJogo extends StatefulWidget {
     required this.aoDetalhe,
     this.focusNode,
     this.aoFocar,
+    this.destaque = false,
   });
+
+  /// Joga uma equipa favorita (o cartão fica em destaque).
+  final bool destaque;
 
   final JogoComCanais item;
 
@@ -258,6 +262,7 @@ class LinhaJogoState extends State<LinhaJogo> {
       child: CartaoModerno(
         focusNode: widget.focusNode,
         escalaFoco: 1.01,
+        destaque: widget.destaque,
         padding: EdgeInsets.symmetric(horizontal: Tokens.e16, vertical: tv ? 10 : Tokens.e12),
         onTap: _ok,
         onLongPress: _canais.isEmpty ? null : widget.aoVer,

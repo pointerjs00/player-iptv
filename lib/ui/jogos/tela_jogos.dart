@@ -4,6 +4,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../../desporto/catalogo.dart';
 import '../../desporto/modelo.dart';
+import '../../desporto/nomes.dart';
 import '../../desporto/onde_ver.dart';
 import '../../desporto/preferencias_jogos.dart';
 import '../../desporto/servico_jogos.dart';
@@ -227,6 +228,7 @@ class _TelaJogosState extends State<TelaJogos> {
         soDireto: _soDireto,
         soComCanal: !widget.preferencias.mostrarSemCanal));
     final largo = MediaQuery.sizeOf(context).width >= larguraColunaJogo;
+    final favoritas = widget.preferencias.equipasFavoritas;
     final estado = _estado();
     final aCarregar = s.estado.carga == Carga.aCarregar;
 
@@ -256,6 +258,7 @@ class _TelaJogosState extends State<TelaJogos> {
             aoVer: () => _ver(j),
             aoDetalhe: () => _detalhe(j),
             aoFocar: largo && _escolhido != j.jogo.id ? () => setState(() => _escolhido = j.jogo.id) : null,
+            destaque: favoritas.any((e) => mesmaEquipa(e, j.jogo.casa) || mesmaEquipa(e, j.jogo.fora)),
           );
         },
       );
