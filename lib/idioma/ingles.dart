@@ -1885,6 +1885,12 @@ const textosIngles = <String, String>{
         'Where it is on',
     '1 fonte':
         '1 source',
+    'Jogos: em «Filtros», «Ordenar» deixa ver os jogos numa só lista pela hora, em vez de por competição.':
+        "Matches: in «Filters», «Sort» shows the matches in a single list by time instead of by competition.",
+    'Jogos: em «Competições», escolher uma competição mostra todos os jogos dela, de ontem a daqui a 6 dias, por dia e pela hora.':
+        "Matches: in «Competitions», choosing a competition shows all its matches, from yesterday to 6 days ahead, by day and time.",
+    'Jogos: o ecrã «Competições» tem um botão para voltar.':
+        "Matches: the «Competitions» screen has a back button.",
     'Ordenar':
         'Sort',
     'Por competição':

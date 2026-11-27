@@ -19,6 +19,13 @@ class Novidades {
 /// Todas as versões, a mais recente primeiro. A primeira é a versão da app: ao mudar a versão no
 /// pubspec.yaml, junta-se aqui a entrada dela (um teste confirma que batem certo).
 const historicoNovidades = <Novidades>[
+  Novidades('1.0.25', '2026-11-27', [
+    if (!edicaoPartilha) ...[
+      'Jogos: em «Filtros», «Ordenar» deixa ver os jogos numa só lista pela hora, em vez de por competição.',
+      'Jogos: em «Competições», escolher uma competição mostra todos os jogos dela, de ontem a daqui a 6 dias, por dia e pela hora.',
+      'Jogos: o ecrã «Competições» tem um botão para voltar.',
+    ],
+  ]),
   Novidades('1.0.24', '2026-11-27', [
     if (!edicaoPartilha) ...[
       'Jogos: o ecrã «Competições» mostra as competições que segues e deixa mudar a ordem delas (com o comando: OK pega, ↑/↓ move, OK larga). Os blocos dos Jogos seguem essa ordem.',
