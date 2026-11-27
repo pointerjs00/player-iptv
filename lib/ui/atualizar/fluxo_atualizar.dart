@@ -48,6 +48,7 @@ class Atualizador {
     this.instalarWindows,
     this.pastaGravavel,
     this.abrirPagina,
+    this.limpar = limparPasta,
   });
 
   /// O da app: a edição e a plataforma em que corre.
@@ -81,6 +82,9 @@ class Atualizador {
   /// Windows: a pasta da app aceita os ficheiros novos? (null: não se sabe, tenta-se)
   final bool Function()? pastaGravavel;
 
+  /// Apaga os pacotes de atualizações anteriores da pasta (ver [limparPasta]).
+  final Future<void> Function(Directory pasta) limpar;
+
   /// Abre a página da release no browser; null onde não há como.
   final Future<bool> Function(String url)? abrirPagina;
 }
@@ -91,6 +95,15 @@ Future<bool> _abrirNoWindows(String url) async {
     return true;
   } on ProcessException {
     return false;
+  }
+}
+
+/// Ao abrir a app: apaga os pacotes de atualizações anteriores (já instalados).
+Future<void> limparAtualizacoesAntigas() async {
+  try {
+    await limparPasta(await Atualizador.daApp().pasta());
+  } catch (_) {
+    /* sem pasta temporária: nada a limpar */
   }
 }
 
@@ -161,6 +174,8 @@ Future<void> atualizarApp(BuildContext context, NovaVersao v, {Atualizador? a}) 
     return;
   }
   final pasta = await at.pasta();
+  // os pacotes de atualizações anteriores (o APK fica na cache depois de instalado)
+  await at.limpar(pasta);
   if (!context.mounted) return;
   final resultado = await showDialog<Object>(
     context: context,

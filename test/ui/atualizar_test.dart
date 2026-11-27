@@ -47,12 +47,19 @@ void main() {
   late List<Cancelamento?> cancelamentos;
   late List<String> paginas;
   late List<String> descarregados;
+  late Directory descargas;
 
   setUp(() {
     android = _AndroidFalso();
     cancelamentos = [];
     paginas = [];
     descarregados = [];
+    descargas = Directory.systemTemp.createTempSync('descargas');
+  });
+  tearDown(() {
+    try {
+      descargas.deleteSync(recursive: true);
+    } on FileSystemException {/* Windows */}
   });
 
   /// Cria o download pendente aqui (dentro do teste: um Completer do setUp fica fora do tempo
@@ -63,7 +70,13 @@ void main() {
         procurar: () async => procura,
         plataforma: plataforma,
         partilha: false,
-        pasta: () async => Directory.systemTemp,
+        pasta: () async => descargas,
+        // síncrono: a I/O de disco a sério não acaba no tempo simulado dos testes de widgets
+        limpar: (d) async {
+          for (final e in d.listSync()) {
+            e.deleteSync(recursive: true);
+          }
+        },
         android: android,
         descarregar: (p, pasta, {progresso, cancelamento}) {
           descarregados.add(p.nome);
@@ -118,6 +131,16 @@ void main() {
     await t.pumpAndSettle();
     expect(find.text('A descarregar a versão 1.0.29'), findsNothing);
     expect(android.instalados.single, endsWith('TVIntel-1.0.29-android-arm64.apk'));
+  });
+
+  testWidgets('antes de descarregar apaga os pacotes de atualizações anteriores', (t) async {
+    final velho = File('${descargas.path}${Platform.pathSeparator}TVIntel-1.0.27-android-arm64.apk')
+      ..writeAsStringSync('velho');
+    await abrir(t, (c) => atualizarApp(c, _nova, a: atualizador()));
+    expect(descarregados, ['TVIntel-1.0.29-android-arm64.apk']);
+    expect(velho.existsSync(), isFalse);
+    download.completeError(Cancelado());
+    await t.pumpAndSettle();
   });
 
   testWidgets('«Cancelar» a meio do download: cancela e não instala', (t) async {
@@ -184,6 +207,7 @@ void main() {
       partilha: false,
       pasta: a.pasta,
       descarregar: a.descarregar,
+      limpar: a.limpar,
       instalarWindows: (zip) async => instalados.add(zip.path),
       pastaGravavel: () => true,
     );
@@ -205,6 +229,7 @@ void main() {
       partilha: false,
       pasta: a.pasta,
       descarregar: a.descarregar,
+      limpar: a.limpar,
       instalarWindows: (_) async {},
       pastaGravavel: () => false,
       abrirPagina: a.abrirPagina,

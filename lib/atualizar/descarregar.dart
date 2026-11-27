@@ -74,7 +74,7 @@ Future<File> descarregarPacote(
     }
     if (await destino.exists()) await destino.delete();
     return await parcial.rename(destino.path);
-  } catch (_) {
+  } catch (e) {
     try {
       await escrita?.close();
     } catch (_) {
@@ -85,38 +85,71 @@ Future<File> descarregarPacote(
     } on FileSystemException {
       /* fica para a limpeza seguinte */
     }
+    // cancelado: a ligação fechada à força dá um erro de rede, mas foi o utilizador que parou
+    if (cancelamento?.cancelado ?? false) throw Cancelado();
     rethrow;
   }
 }
 
 /// O download a sério: um cliente próprio (o do GitHub redireciona para outro servidor), sem
-/// limite de tamanho e com 30 s no máximo sem receber nada.
+/// limite de tamanho e com 30 s no máximo sem receber nada. Cancelar acaba logo com o corpo em
+/// [Cancelado] (o `abort` do pedido já não faz nada depois de chegar a resposta, e uma ligação
+/// parada só daria erro passados 30 s) e fecha a ligação.
 Future<(Stream<List<int>>, int?)> abrirDownloadHttp(Uri uri, Cancelamento? cancelamento) async {
   final cliente = HttpClient(context: contextoSeguro())..connectionTimeout = const Duration(seconds: 30);
-  final pedido = await cliente.getUrl(uri).timeout(const Duration(seconds: 30));
-  pedido.headers.set(HttpHeaders.userAgentHeader, 'TVIntel');
-  final deixar = cancelamento?.ouvir(() => pedido.abort(Cancelado()));
+  final corpo = StreamController<List<int>>();
+  StreamSubscription<List<int>>? leitura;
+  var arrumado = false;
+  void Function()? deixar;
+  void arrumar() {
+    if (arrumado) return;
+    arrumado = true;
+    deixar?.call();
+    unawaited(leitura?.cancel());
+    cliente.close(force: true);
+  }
+
+  void acabar([Object? erro]) {
+    if (!corpo.isClosed) {
+      if (erro != null) corpo.addError(erro);
+      unawaited(corpo.close());
+    }
+    arrumar();
+  }
+
+  deixar = cancelamento?.ouvir(() => acabar(Cancelado()));
   try {
+    final pedido = await cliente.getUrl(uri).timeout(const Duration(seconds: 30));
+    pedido.headers.set(HttpHeaders.userAgentHeader, 'TVIntel');
     final resposta = await pedido.close().timeout(const Duration(seconds: 30));
+    cancelamento?.verificar();
     if (resposta.statusCode >= 400) {
       throw ErroHttp(resposta.statusCode, uri.toString());
     }
     final total = resposta.contentLength >= 0 ? resposta.contentLength : null;
-    final corpo = resposta
-        .timeout(const Duration(seconds: 30))
-        .transform(
-          StreamTransformer<List<int>, List<int>>.fromHandlers(
-            handleDone: (sink) {
-              deixar?.call();
-              cliente.close();
-              sink.close();
-            },
-          ),
-        );
-    return (corpo, total);
+    leitura = resposta.timeout(const Duration(seconds: 30)).listen(corpo.add, onError: acabar, onDone: acabar);
+    // quem lê deixou de ler (o ciclo parou a meio): fecha-se a ligação
+    corpo.onCancel = arrumar;
+    return (corpo.stream, total);
   } catch (_) {
-    deixar?.call();
-    cliente.close(force: true);
+    arrumar();
+    cancelamento?.verificar();
     rethrow;
+  }
+}
+
+/// Apaga o que está em `pasta` (os pacotes de atualizações anteriores). Nunca falha.
+Future<void> limparPasta(Directory pasta) async {
+  try {
+    if (!await pasta.exists()) return;
+    await for (final e in pasta.list()) {
+      try {
+        await e.delete(recursive: true);
+      } on FileSystemException {
+        /* em uso: fica para a próxima */
+      }
+    }
+  } on FileSystemException {
+    /* sem acesso: nada a fazer */
   }
 }

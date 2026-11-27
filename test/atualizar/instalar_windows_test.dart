@@ -56,6 +56,26 @@ void main() {
     expect(copiar, lessThan(abrir));
   });
 
+  test('o script espera por todos os processos da pasta da app (a janela do player é outro) e não copia se ficarem abertos', () {
+    final s = scriptTroca(pid: 1, origem: r'C:\t\extraido\TVIntel', destino: r'D:\Apps\TVIntel', exe: r'D:\Apps\TVIntel\TVIntel.exe');
+    expect(s, contains('Get-Process'));
+    expect(s, contains('StartsWith('), reason: 'os processos cujo executável está dentro da pasta da app');
+    final esperar = s.indexOf('Get-Process'), copiar = s.indexOf(r'robocopy $origem $destino');
+    expect(esperar, lessThan(copiar));
+    expect(s.substring(esperar, copiar), contains('exit'), reason: 'ainda abertos: sai sem copiar nada');
+  });
+
+  test('o script guarda a versão anterior antes de copiar e repõe-na se a cópia falhar', () {
+    final s = scriptTroca(pid: 1, origem: r'C:\t\extraido\TVIntel', destino: r'D:\Apps\TVIntel', exe: r'D:\Apps\TVIntel\TVIntel.exe');
+    final guardar = s.indexOf(r'robocopy $destino $anterior');
+    final copiar = s.indexOf(r'robocopy $origem $destino');
+    final repor = s.indexOf(r'robocopy $anterior $destino');
+    expect(guardar, greaterThan(0));
+    expect(guardar, lessThan(copiar));
+    expect(copiar, lessThan(repor));
+    expect(s.lastIndexOf('Start-Process'), greaterThan(repor), reason: 'abre a app no fim, reposta ou nova');
+  });
+
   test('pastaGravavel: true numa pasta temporária, false numa que não existe', () {
     expect(pastaGravavel(pasta), isTrue);
     expect(pasta.listSync(), isEmpty, reason: 'o ficheiro de teste é apagado');

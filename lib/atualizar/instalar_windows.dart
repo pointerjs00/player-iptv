@@ -39,21 +39,39 @@ Future<Directory> extrairZip(File zip, Directory destino) async {
 
 String _aspas(String s) => "'${s.replaceAll("'", "''")}'";
 
-/// O script que espera o processo `pid` terminar, copia `origem` para `destino` e abre `exe`.
-/// Se a cópia falhar (robocopy ≥ 8), a app abre na mesma e a pasta temporária fica (com o registo).
+/// O script da troca:
+/// 1. espera que a app (`pid`) feche e, depois, todos os processos que correm da pasta dela (a
+///    janela do player é outro processo do mesmo exe e fecha uns segundos depois); se algum
+///    continuar aberto ao fim de 60 s, sai sem tocar em nada;
+/// 2. guarda a versão atual em `anterior` (ao lado de `origem`); se não conseguir, abre a app
+///    como está e sai;
+/// 3. copia a versão nova; se a cópia falhar (robocopy ≥ 8), repõe a anterior — ficheiros novos e
+///    velhos misturados não arrancam;
+/// 4. abre a app (nova, ou a anterior reposta) e apaga as pastas temporárias se correu bem.
+/// O registo fica em `atualizar.log`, ao lado de `origem`.
 String scriptTroca({required int pid, required String origem, required String destino, required String exe}) =>
     '''
 \$ErrorActionPreference = 'SilentlyContinue'
-Wait-Process -Id $pid -Timeout 60
-Start-Sleep -Milliseconds 500
 \$origem = ${_aspas(origem)}
 \$destino = ${_aspas(destino)}
 \$exe = ${_aspas(exe)}
-\$registo = Join-Path (Split-Path -Parent \$origem) 'atualizar.log'
-robocopy \$origem \$destino /E /R:10 /W:1 /NFL /NDL /NJH /NP | Out-File -FilePath \$registo -Encoding utf8
+\$pasta = Split-Path -Parent \$origem
+\$anterior = Join-Path \$pasta 'anterior'
+\$registo = Join-Path \$pasta 'atualizar.log'
+\$prefixo = \$destino.TrimEnd('\\') + '\\'
+function Abertos { @(Get-Process | Where-Object { \$_.Path -and \$_.Path.StartsWith(\$prefixo, [StringComparison]::OrdinalIgnoreCase) }) }
+Wait-Process -Id $pid -Timeout 60
+\$fim = (Get-Date).AddSeconds(60)
+while ((Abertos).Count -gt 0 -and (Get-Date) -lt \$fim) { Start-Sleep -Milliseconds 500 }
+if ((Abertos).Count -gt 0) { 'A app continua aberta: nada foi copiado.' | Out-File -FilePath \$registo -Encoding utf8; exit }
+Start-Sleep -Milliseconds 500
+robocopy \$destino \$anterior /MIR /R:3 /W:1 /NFL /NDL /NJH /NP | Out-File -FilePath \$registo -Encoding utf8
+if (\$LASTEXITCODE -ge 8) { 'Sem cópia da versão atual: nada foi trocado.' | Out-File -FilePath \$registo -Append -Encoding utf8; Start-Process -FilePath \$exe -WorkingDirectory \$destino; exit }
+robocopy \$origem \$destino /E /R:10 /W:1 /NFL /NDL /NJH /NP | Out-File -FilePath \$registo -Append -Encoding utf8
 \$codigo = \$LASTEXITCODE
+if (\$codigo -ge 8) { robocopy \$anterior \$destino /E /R:30 /W:1 /NFL /NDL /NJH /NP | Out-File -FilePath \$registo -Append -Encoding utf8 }
 Start-Process -FilePath \$exe -WorkingDirectory \$destino
-if (\$codigo -lt 8) { Remove-Item -LiteralPath \$origem -Recurse -Force }
+if (\$codigo -lt 8) { Remove-Item -LiteralPath \$origem -Recurse -Force; Remove-Item -LiteralPath \$anterior -Recurse -Force }
 ''';
 
 /// Prepara a troca e fecha a app: extrai `zip` para `<temp>/extraido`, escreve `<temp>/atualizar.ps1`,

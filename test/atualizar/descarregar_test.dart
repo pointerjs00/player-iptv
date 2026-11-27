@@ -70,6 +70,43 @@ void main() {
     expect(naPasta(), isEmpty);
   });
 
+  test('download a sério que pára a meio: «Cancelar» interrompe logo e dá Cancelado (não um erro)', () async {
+    final servidor = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => servidor.close(force: true));
+    servidor.listen((r) async {
+      r.response.bufferOutput = false;
+      r.response.contentLength = 1000;
+      r.response.add(List.filled(100, 1));
+      await r.response.flush(); // e depois não manda mais nada
+    });
+    final c = Cancelamento();
+    final p = Pacote('TVIntel-1.0.28-windows.zip', 'http://127.0.0.1:${servidor.port}/p.zip', 1000, null);
+    final a = descarregarPacote(p, pasta, cancelamento: c);
+    Timer(const Duration(milliseconds: 500), c.cancelar); // parado a meio: o utilizador cancela
+    await expectLater(a.timeout(const Duration(seconds: 5)), throwsA(isA<Cancelado>()));
+    expect(naPasta(), isEmpty);
+  });
+
+  test('cancelar antes de a ligação abrir também dá Cancelado', () async {
+    final servidor = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => servidor.close(force: true));
+    servidor.listen((_) {}); // nunca responde
+    final c = Cancelamento();
+    final p = Pacote('x.zip', 'http://127.0.0.1:${servidor.port}/p.zip', 10, null);
+    final a = descarregarPacote(p, pasta, cancelamento: c);
+    Timer(const Duration(milliseconds: 200), c.cancelar);
+    await expectLater(a.timeout(const Duration(seconds: 5)), throwsA(isA<Cancelado>()));
+  });
+
+  test('limparPasta apaga os pacotes antigos (e não falha sem a pasta)', () async {
+    File('${pasta.path}${Platform.pathSeparator}TVIntel-1.0.27-android-arm64.apk').writeAsStringSync('velho');
+    Directory('${pasta.path}${Platform.pathSeparator}sub').createSync();
+    await limparPasta(pasta);
+    expect(pasta.existsSync(), isTrue);
+    expect(naPasta(), isEmpty);
+    await limparPasta(Directory('${pasta.path}${Platform.pathSeparator}nao-existe'));
+  });
+
   test('a ligação cai a meio: relança e o parcial apagado', () async {
     final s = Stream<List<int>>.fromIterable(pedacos.take(2)).followedBy(const SocketException('caiu'));
     await expectLater(descarregarPacote(pacote(), pasta, abrir: abrirCom(s)), throwsA(isA<SocketException>()));

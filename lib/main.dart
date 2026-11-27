@@ -28,6 +28,7 @@ import 'tarefas/servico_tarefas.dart';
 import 'ui/definicoes/tela_definicoes.dart';
 import 'ui/design/componentes.dart';
 import 'ui/design/ecra.dart';
+import 'ui/atualizar/fluxo_atualizar.dart';
 import 'ui/design/escala_interface.dart';
 import 'ui/design/mensagens.dart';
 import 'ui/design/revelar_topo.dart';
@@ -109,6 +110,7 @@ Future<void> main(List<String> args) async {
       atual: versaoApp,
       emDadosMoveis: PoupancaDados.atual.emDadosMoveis,
       prefixo: edicaoPartilha ? prefixoPartilha : prefixoCompleta);
+  unawaited(limparAtualizacoesAntigas());
   runApp(AppPlayerIptv(biblioteca: biblioteca, area: area, novidades: novidades, jogos: jogos, novaVersao: novaVersao));
 }
 
