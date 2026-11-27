@@ -137,7 +137,9 @@ void main() {
 
     await focarPesquisa(t);
     await teclaDpad(t, LogicalKeyboardKey.arrowRight);
-    expect(textosFocados(), 'Atualizar', reason: 'DIREITA vai ao botão ao lado');
+    expect(textosFocados(), 'Competições', reason: 'DIREITA vai ao botão ao lado');
+    await teclaDpad(t, LogicalKeyboardKey.arrowRight);
+    expect(textosFocados(), 'Atualizar');
 
     await focarPesquisa(t);
     await teclaDpad(t, LogicalKeyboardKey.select);

@@ -174,7 +174,7 @@ class _TelaCompeticoesState extends State<TelaCompeticoes> {
             buildDefaultDragHandles: false,
             padding: const EdgeInsets.fromLTRB(Tokens.e16, 0, Tokens.e16, Tokens.e16),
             itemCount: comps.length,
-            onReorder: (de, para) => _mover(comps[de].id, para > de ? para - 1 : para),
+            onReorderItem: (de, para) => _mover(comps[de].id, para),
             itemBuilder: (_, i) => _linha(comps[i], i),
           );
     return PopScope(

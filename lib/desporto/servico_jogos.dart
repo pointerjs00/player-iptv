@@ -52,9 +52,7 @@ String _simples(String s) => semAcentos(s.toLowerCase()).trim();
 /// Os jogos de uma competição (um bloco no ecrã).
 typedef GrupoJogos = ({Competicao competicao, List<JogoComCanais> jogos});
 
-/// Os jogos por competição, pela ordem do catálogo (a Liga Portugal primeiro); dentro de cada
-/// uma, pela hora.
-/// As competições em `ordem` (a escolhida no ecrã «Competições») vêm primeiro, por essa ordem; as
+/// Os jogos por competição; dentro de cada uma, pela hora. As competições em `ordem` (a escolhida no ecrã «Competições») vêm primeiro, por essa ordem; as
 /// outras depois, pela ordem do catálogo.
 List<GrupoJogos> agruparPorCompeticao(List<JogoComCanais> jogos, {List<String> ordem = const []}) {
   final n = ordem.length;

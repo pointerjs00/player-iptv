@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:player_iptv/desporto/servico_jogos.dart';
 import 'package:player_iptv/ui/jogos/linha_jogo.dart';
+import 'package:player_iptv/ui/jogos/tela_competicoes.dart';
 import 'package:player_iptv/ui/jogos/tela_jogos.dart';
 import 'package:player_iptv/dados/area_gestor.dart';
 import 'package:player_iptv/dados/biblioteca.dart';
@@ -38,6 +39,21 @@ void main() {
     expect(find.text('Onde dá'), findsOneWidget);
     expect(find.text('Marítimo'), findsNWidgets(2), reason: 'na linha e na coluna');
     expect(m.servico.cargas, isEmpty, reason: 'o dia já estava carregado');
+  });
+
+  testWidgets('«Competições» abre as seguidas; a ordem escolhida lá muda a ordem dos blocos', (t) async {
+    await montar(t);
+    await t.tap(find.byTooltip('Competições'));
+    await t.pumpAndSettle();
+    expect(find.byType(TelaCompeticoes), findsOneWidget);
+    // como se tivesse reordenado: a Eredivisie para o topo
+    m.prefs.moverCompeticao('eredivisie', 0);
+    await t.pump();
+    await t.binding.handlePopRoute();
+    await t.pumpAndSettle();
+    expect(find.byType(TelaCompeticoes), findsNothing);
+    final blocos = [for (final e in find.byType(CabecalhoCompeticao).evaluate()) (e.widget as CabecalhoCompeticao).grupo.competicao.nome];
+    expect(blocos, ['Eredivisie', 'Liga Portugal Betclic', 'Premier League']);
   });
 
   Future<void> abrirFiltros(WidgetTester t) async {

@@ -17,6 +17,7 @@ import '../poupanca_dados.dart';
 import 'folha_onde_ver.dart';
 import 'linha_jogo.dart';
 import 'painel_jogo.dart';
+import 'tela_competicoes.dart';
 
 /// Abre as fontes no player (nos testes, um falso).
 typedef AbrirFontesJogo = Future<void> Function(BuildContext context, List<FonteCanal> fontes,
@@ -191,6 +192,11 @@ class _TelaJogosState extends State<TelaJogos> {
         await mostrarOndeVer(context, canalTv: canalTv, fontes: widget.fontes, preferencias: widget.preferencias);
     if (escolha != null && mounted) await _abrir(escolha);
   }
+
+  /// As competições seguidas, para mudar a ordem dos blocos (os Jogos ouvem as preferências).
+  void _abrirCompeticoes() => Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) => Scaffold(body: SafeArea(child: TelaCompeticoes(preferencias: widget.preferencias))),
+      ));
 
   void _ver(JogoComCanais j) => unawaited(_abrir(fontesDoJogo(j, widget.fontes, widget.preferencias)));
 
@@ -514,6 +520,11 @@ class _TelaJogosState extends State<TelaJogos> {
           subtitulo: estado ?? (aCarregar ? tr('A atualizar…') : tr('Onde dá o jogo e ver com um toque')),
           acoes: [
             if (largo) SizedBox(width: 320, child: campoPesquisa),
+            IconButton(
+              tooltip: tr('Competições'),
+              onPressed: _abrirCompeticoes,
+              icon: const Icon(Icons.emoji_events_outlined),
+            ),
             IconButton(
               tooltip: tr('Atualizar'),
               // sempre ligado (desligado perdia o foco do comando); a carregar não faz nada
