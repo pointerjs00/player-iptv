@@ -51,9 +51,9 @@ class _TelaCompeticoesState extends State<TelaCompeticoes> {
   }
 
   void _alternarModo() => setState(() {
-        _reordenar = !_reordenar;
-        _pegada = null;
-      });
+    _reordenar = !_reordenar;
+    _pegada = null;
+  });
 
   /// Voltar: larga a pegada; sem nenhuma, sai do modo. Devolve false se não havia nada a fazer.
   bool _recuar() {
@@ -92,13 +92,14 @@ class _TelaCompeticoesState extends State<TelaCompeticoes> {
 
   Widget _logo(Competicao c) {
     final semLogo = Icon(
-        switch (c.desporto) {
-          Desporto.futebol => Icons.sports_soccer_rounded,
-          Desporto.tenis => Icons.sports_tennis_rounded,
-          Desporto.basquetebol => Icons.sports_basketball_rounded,
-        },
-        size: 22,
-        color: Tokens.texto2);
+      switch (c.desporto) {
+        Desporto.futebol => Icons.sports_soccer_rounded,
+        Desporto.tenis => Icons.sports_tennis_rounded,
+        Desporto.basquetebol => Icons.sports_basketball_rounded,
+      },
+      size: 22,
+      color: Tokens.texto2,
+    );
     final f = c.fotmob;
     return SizedBox(
       width: 28,
@@ -132,28 +133,36 @@ class _TelaCompeticoesState extends State<TelaCompeticoes> {
             onTap: () {
               if (_reordenar) setState(() => _pegada = pegada ? null : c.id);
             },
-            child: Row(children: [
-              _logo(c),
-              const SizedBox(width: Tokens.e12),
-              Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-                  Text(c.nome,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Tokens.texto)),
-                  Text(nomeDesporto(c.desporto), style: const TextStyle(fontSize: 12.5, color: Tokens.texto2)),
-                ]),
-              ),
-              if (pegada) const Icon(Icons.swap_vert_rounded, color: Tokens.anelFoco),
-              if (_reordenar)
-                ReorderableDragStartListener(
-                  index: i,
-                  child: const Padding(
-                    padding: EdgeInsets.all(Tokens.e8),
-                    child: Icon(Icons.drag_handle_rounded, color: Tokens.texto2),
+            child: Row(
+              children: [
+                _logo(c),
+                const SizedBox(width: Tokens.e12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        c.nome,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Tokens.texto),
+                      ),
+                      Text(nomeDesporto(c.desporto), style: const TextStyle(fontSize: 12.5, color: Tokens.texto2)),
+                    ],
                   ),
                 ),
-            ]),
+                if (pegada) const Icon(Icons.swap_vert_rounded, color: Tokens.anelFoco),
+                if (_reordenar)
+                  ReorderableDragStartListener(
+                    index: i,
+                    child: const Padding(
+                      padding: EdgeInsets.all(Tokens.e8),
+                      child: Icon(Icons.drag_handle_rounded, color: Tokens.texto2),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),
@@ -168,8 +177,11 @@ class _TelaCompeticoesState extends State<TelaCompeticoes> {
         ? Center(
             child: Padding(
               padding: const EdgeInsets.all(Tokens.e24),
-              child: Text(tr('Não segues nenhuma competição. Escolhe-as em Definições › Jogos.'),
-                  textAlign: TextAlign.center, style: const TextStyle(fontSize: 15, color: Tokens.texto2)),
+              child: Text(
+                tr('Não segues nenhuma competição. Escolhe-as em Definições › Jogos.'),
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 15, color: Tokens.texto2),
+              ),
             ),
           )
         : ReorderableListView.builder(
@@ -185,29 +197,54 @@ class _TelaCompeticoesState extends State<TelaCompeticoes> {
       onPopInvokedWithResult: (fechou, _) {
         if (!fechou) _recuar();
       },
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(Tokens.e16, Tokens.e16, Tokens.e16, 0),
-          child: CabecalhoSeccao(
-            icone: Icons.emoji_events_outlined,
-            titulo: tr('Competições'),
-            subtitulo: _reordenar
-                ? tr('OK pega e larga, ↑/↓ movem; ou arrasta pela pega')
-                : tr('A ordem dos blocos nos Jogos'),
-            acoes: [
-              if (comps.length > 1)
-                _reordenar
-                    ? FilledButton.icon(
-                        onPressed: _alternarModo, icon: const Icon(Icons.check_rounded), label: Text(tr('Concluído')))
-                    : OutlinedButton.icon(
-                        onPressed: _alternarModo,
-                        icon: const Icon(Icons.swap_vert_rounded),
-                        label: Text(tr('Reordenar'))),
-            ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(Tokens.e8, Tokens.e16, Tokens.e16, 0),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // sem barra de cima: no rato e no Windows não havia como voltar. Passa pelo PopScope
+                // (a reordenar, primeiro larga ou sai do modo, como o Voltar do sistema)
+                if (Navigator.of(context).canPop())
+                  Padding(
+                    padding: const EdgeInsets.only(right: Tokens.e4),
+                    child: IconButton(
+                      tooltip: tr('Voltar'),
+                      onPressed: () => Navigator.of(context).maybePop(),
+                      icon: const Icon(Icons.arrow_back_rounded),
+                    ),
+                  ),
+                Expanded(
+                  child: CabecalhoSeccao(
+                    icone: Icons.emoji_events_outlined,
+                    titulo: tr('Competições'),
+                    subtitulo: _reordenar
+                        ? tr('OK pega e larga, ↑/↓ movem; ou arrasta pela pega')
+                        : tr('A ordem dos blocos nos Jogos'),
+                    acoes: [
+                      if (comps.length > 1)
+                        _reordenar
+                            ? FilledButton.icon(
+                                onPressed: _alternarModo,
+                                icon: const Icon(Icons.check_rounded),
+                                label: Text(tr('Concluído')),
+                              )
+                            : OutlinedButton.icon(
+                                onPressed: _alternarModo,
+                                icon: const Icon(Icons.swap_vert_rounded),
+                                label: Text(tr('Reordenar')),
+                              ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-        Expanded(child: corpo),
-      ]),
+          Expanded(child: corpo),
+        ],
+      ),
     );
   }
 }

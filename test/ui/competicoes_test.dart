@@ -111,6 +111,27 @@ void main() {
     expect(textosFocados(), contains('Liga Portugal Betclic'));
   });
 
+  testWidgets('o botão «Voltar» fecha o ecrã; a reordenar, primeiro sai do modo', (t) async {
+    await montarTv(t);
+    await t.tap(find.text('Reordenar'));
+    await t.pump();
+    await t.tap(find.byTooltip('Voltar'));
+    await t.pumpAndSettle();
+    expect(find.byType(TelaCompeticoes), findsOneWidget, reason: 'só saiu do modo');
+    expect(find.text('Reordenar'), findsOneWidget);
+    await t.tap(find.byTooltip('Voltar'));
+    await t.pumpAndSettle();
+    expect(find.byType(TelaCompeticoes), findsNothing);
+  });
+
+  testWidgets('na TV, CIMA na primeira competição chega ao «Voltar»', (t) async {
+    await montarTv(t);
+    expect(textosFocados(), contains('Liga Portugal Betclic'));
+    await teclaDpad(t, LogicalKeyboardKey.arrowUp);
+    await teclaDpad(t, LogicalKeyboardKey.arrowLeft);
+    expect(textosFocados(), 'Voltar');
+  });
+
   testWidgets('sem competições seguidas, diz onde as escolher', (t) async {
     await montarTv(t);
     prefs.competicoes = {};
