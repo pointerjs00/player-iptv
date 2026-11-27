@@ -1849,5 +1849,115 @@ const textosIngles = <String, String>{
         'None of the {0} sources worked',
     '{0} não respondeu na lista {1}; a tentar a lista {2}…':
         '{0} did not respond on list {1}; trying list {2}…',
+    'Onde ver: {0}':
+        'Where to watch: {0}',
+    '{0} fontes · OK abre, e se falhar passa à seguinte':
+        '{0} sources · OK opens, and if it fails moves to the next',
+    'Nenhuma das tuas listas tem este canal':
+        'None of your lists has this channel',
+    '{0} listas ainda sem canais guardados':
+        '{0} lists still without saved channels',
+    'Funcionou da última vez':
+        'Worked last time',
+    'Este não é o canal':
+        'This is not the channel',
+    'Confirmado':
+        'Confirmed',
+    'Provável':
+        'Likely',
+    'Possível':
+        'Possible',
+    'Jornada {0}':
+        'Matchday {0}',
+    '● AO VIVO':
+        '● LIVE',
+    'Intervalo':
+        'Half-time',
+    'Terminado':
+        'Finished',
+    'Adiado':
+        'Postponed',
+    'Cancelado':
+        'Cancelled',
+    'Ainda sem canal anunciado':
+        'No channel announced yet',
+    'Onde dá':
+        'Where it is on',
+    '{0} fontes':
+        '{0} sources',
+    'Nenhuma das tuas listas tem os canais deste jogo':
+        "None of your lists has this match's channels",
+    'Ontem':
+        'Yesterday',
+    'Hoje':
+        'Today',
+    'Amanhã':
+        'Tomorrow',
+    '{0} indisponível':
+        '{0} unavailable',
+    '{0} min':
+        '{0} min',
+    '{0} h':
+        '{0} h',
+    'Sem rede: a mostrar os dados de há {0}':
+        'No network: showing data from {0} ago',
+    'Mostrar jogos sem canal':
+        'Show matches without a channel',
+    'Futebol':
+        'Football',
+    'Ténis':
+        'Tennis',
+    'Basquetebol':
+        'Basketball',
+    'Sem dados dos jogos deste dia':
+        'No match data for this day',
+    'Nenhum jogo das tuas competições neste dia':
+        'No matches from your competitions on this day',
+    'Nenhum jogo com estes filtros':
+        'No matches with these filters',
+    'Jogos':
+        'Matches',
+    'A atualizar…':
+        'Updating…',
+    'Onde dá o jogo e ver com um toque':
+        'Where the match is on, and watch it in one click',
+    'Atualizar':
+        'Update',
+    'Ligas':
+        'Leagues',
+    'Taças':
+        'Cups',
+    'Competições europeias':
+        'European competitions',
+    'Seleções':
+        'National teams',
+    'Circuitos de ténis':
+        'Tennis tours',
+    'Também os jogos que ainda não têm canal anunciado.':
+        'Also the matches that have no channel announced yet.',
+    'Qualidade preferida':
+        'Preferred quality',
+    'Entre fontes igualmente fiáveis, experimenta primeiro esta.':
+        'Among equally reliable sources, try this one first.',
+    'Equipas favoritas':
+        'Favourite teams',
+    'Ficam em destaque nos jogos.':
+        'They are highlighted in the matches.',
+    'Nome da equipa':
+        'Team name',
+    'Adicionar':
+        'Add',
+    'Tirar':
+        'Remove',
+    'As competições que aparecem nos Jogos.':
+        'The competitions shown in Matches.',
+    'Associações de canais':
+        'Channel associations',
+    'Os canais que marcou à mão no «Onde ver» («Este não é o canal»).':
+        'The channels you marked by hand in “Where to watch” (“This is not the channel”).',
+    'Associações apagadas':
+        'Associations cleared',
+    'Atualizar os jogos e as grelhas dos canais? São várias dezenas de pedidos pequenos.':
+        'Update the matches and the channel schedules? It takes several dozen small requests.',
   },
 };

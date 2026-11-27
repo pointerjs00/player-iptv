@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:material_ui/material_ui.dart';
@@ -11,7 +12,13 @@ import 'dados/licencas.dart';
 import 'dados/novidades.dart';
 import 'dados/pasta_dados.dart';
 import 'dados/preferencias.dart';
+import 'desporto/armazem_desporto.dart';
+import 'desporto/cliente_desporto.dart';
+import 'desporto/indice_canais.dart';
+import 'desporto/preferencias_jogos.dart';
+import 'desporto/servico_jogos.dart';
 import 'direto/sessao_direto.dart';
+import 'edicao.dart';
 import 'janelas/janela_player.dart';
 import 'marca.dart';
 import 'modelo/canal.dart';
@@ -25,8 +32,10 @@ import 'ui/design/mensagens.dart';
 import 'ui/design/revelar_topo.dart';
 import 'ui/gestor/tela_gestor.dart';
 import 'ui/inicio/tela_inicio.dart';
+import 'ui/jogos/tela_jogos.dart';
 import 'ui/player/player_canais.dart';
 import 'ui/player/tempo_visto.dart';
+import 'ui/poupanca_dados.dart';
 import 'ui/principal/tela_principal.dart';
 import 'ui/realce_foco.dart';
 import 'ui/tema.dart';
@@ -91,7 +100,34 @@ Future<void> main(List<String> args) async {
   // as novidades: uma vez depois de cada atualização (numa instalação nova, não)
   final novidades = await novidadesPorVer(pasta,
       instalacaoNova: biblioteca.listas.isEmpty && area.listas.isEmpty);
-  runApp(AppPlayerIptv(biblioteca: biblioteca, area: area, novidades: novidades));
+  // os «Jogos» (não existem na edição de partilha)
+  final jogos = edicaoPartilha ? null : await _abrirJogos(pasta, biblioteca);
+  runApp(AppPlayerIptv(biblioteca: biblioteca, area: area, novidades: novidades, jogos: jogos));
+}
+
+/// O que o ecrã «Jogos» usa: as preferências e o índice em `<dados>/desporto`, a cache das fontes
+/// em `<dados>/desporto/cache` (a arrumação da cache apaga o que não reconhece).
+class Jogos {
+  const Jogos(this.preferencias, this.servico, this.indice);
+  final PreferenciasJogos preferencias;
+  final ServicoJogos servico;
+  final IndiceCanais indice;
+}
+
+Future<Jogos?> _abrirJogos(Directory dados, Biblioteca biblioteca) async {
+  try {
+    final sep = Platform.pathSeparator;
+    final pasta = await Directory('${dados.path}${sep}desporto').create(recursive: true);
+    final preferencias = await PreferenciasJogos.abrir(pasta);
+    final armazem = await ArmazemDesporto.abrir(Directory('${pasta.path}${sep}cache'));
+    unawaited(armazem.arrumar(agora: DateTime.now().toUtc()));
+    final servico = ServicoJogos(ClienteDesporto(armazem), preferencias,
+        emDadosMoveis: () => PoupancaDados.atual.emDadosMoveis());
+    return Jogos(preferencias, servico, IndiceCanais(biblioteca, pasta, preferencias));
+  } catch (e) {
+    debugPrint('jogos: não abriu (${e.runtimeType})');
+    return null;
+  }
 }
 
 /// Fica aberto enquanto a app corre (é o bloqueio da instância).
@@ -125,9 +161,12 @@ class _Aviso extends StatelessWidget {
 final _locales = [for (final i in Idioma.values) i.locale];
 
 class AppPlayerIptv extends StatefulWidget {
-  const AppPlayerIptv({super.key, required this.biblioteca, required this.area, this.novidades = false});
+  const AppPlayerIptv({super.key, required this.biblioteca, required this.area, this.novidades = false, this.jogos});
   final Biblioteca biblioteca;
   final AreaGestor area;
+
+  /// null: sem a secção «Jogos».
+  final Jogos? jogos;
 
   /// Mostrar as novidades desta versão ao abrir (a primeira vez depois de atualizar).
   final bool novidades;
@@ -191,9 +230,18 @@ class _AppPlayerIptvState extends State<AppPlayerIptv> {
           verificacao: _servico,
           pedidoGestor: _pedidoGestor,
           verTv: TelaInicio(biblioteca: widget.biblioteca, area: widget.area, servico: _servicoPlayer),
+          jogos: switch (widget.jogos) {
+            final j? when !edicaoPartilha =>
+              TelaJogos(servico: j.servico, fontes: j.indice, preferencias: j.preferencias),
+            _ => null,
+          },
           gestor: TelaGestor(biblioteca: widget.biblioteca, area: widget.area, servico: _servico, tarefas: _tarefas, pedido: _pedidoGestor),
           definicoes: TelaDefinicoes(
-              biblioteca: widget.biblioteca, area: widget.area, preferencias: Preferencias.atual, servico: _servico),
+              biblioteca: widget.biblioteca,
+              area: widget.area,
+              preferencias: Preferencias.atual,
+              servico: _servico,
+              jogos: edicaoPartilha ? null : widget.jogos?.preferencias),
         ),
       );
 }

@@ -21,6 +21,9 @@ enum AcaoDados {
 
   /// Verificar listas: cada uma descarrega os canais e testa alguns.
   verificacao,
+
+  /// Atualizar os jogos e as grelhas dos canais (dezenas de pedidos pequenos).
+  jogos,
 }
 
 /// Como está a ligação: por dados móveis e/ou numa rede limitada (a cobrar por MB).
@@ -73,6 +76,14 @@ class PoupancaDados {
     return sim;
   }
 
+  /// Está em dados móveis ou numa rede limitada, com a opção ligada? (Os «Jogos» só usam a
+  /// cache, sem perguntar.)
+  Future<bool> emDadosMoveis() async {
+    if (!_ativa()) return false;
+    final l = await _ligacao();
+    return l.movel || l.limitada;
+  }
+
   Future<bool?> _perguntar(BuildContext context, AcaoDados acao, EstadoLigacao l, int quantas) {
     final (pergunta, botao) = switch (acao) {
       AcaoDados.guia => (
@@ -88,6 +99,10 @@ class PoupancaDados {
               ? tr('Verificar a lista? Descarrega os canais dela e testa alguns: pode gastar vários MB.')
               : tr('Verificar {0} listas? Cada uma descarrega os canais e testa alguns: pode gastar muitos MB.', [quantas]),
           tr('Verificar'),
+        ),
+      AcaoDados.jogos => (
+          tr('Atualizar os jogos e as grelhas dos canais? São várias dezenas de pedidos pequenos.'),
+          tr('Atualizar'),
         ),
     };
     return showDialog<bool>(

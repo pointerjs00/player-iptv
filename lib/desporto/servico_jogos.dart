@@ -164,6 +164,14 @@ class ServicoJogos extends ChangeNotifier {
             j,
       ];
 
+  /// Para os testes do ecrã: os jogos de um dia sem passar pelas fontes.
+  @visibleForTesting
+  void definir(DateTime dia, List<JogoComCanais> jogos, {EstadoJogos estado = const EstadoJogos(carga: Carga.pronto)}) {
+    _porDia[_chaveDia(dia)] = jogos;
+    _estado = estado;
+    notifyListeners();
+  }
+
   /// O dia já foi carregado (há o que mostrar, mesmo antes de uma nova carga acabar).
   bool temDia(DateTime dia) => _porDia.containsKey(_chaveDia(dia));
 }

@@ -1,6 +1,8 @@
 /// As fontes de um canal nas listas e a ordem em que se mostram e experimentam (spec §8).
 library;
 
+import 'package:flutter/foundation.dart' show Listenable;
+
 import '../dados/biblioteca.dart';
 import '../modelo/canal.dart';
 import '../ui/design/estado_lista.dart' show EstadoLista, estadoDe;
@@ -19,6 +21,18 @@ class FonteCanal {
 
   /// O canal português de que é fonte (para guardar «funcionou da última vez»).
   final String? canalTv;
+}
+
+/// De onde o ecrã «Jogos» tira as fontes de cada canal (o [IndiceCanais]; nos testes, um falso).
+abstract interface class FontesDosCanais implements Listenable {
+  /// As fontes do canal `canalTv` em todas as listas (sem ordem).
+  List<FonteCanal> fontes(String canalTv);
+
+  /// Listas que ainda não têm canais em cache (não entram no «Onde ver»).
+  int get listasSemCache;
+
+  /// Relê as listas cuja cache de canais mudou.
+  Future<void> atualizar();
 }
 
 int _estado(Lista l) => switch (estadoDe(l)) {

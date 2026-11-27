@@ -9,6 +9,7 @@ import '../../idioma/idioma.dart';
 /// O nome e o ícone de cada secção (a barra lateral e a NavigationBar do telemóvel).
 const rotulosSeccoes = {
   Seccao.verTv: ('Ver TV', Icons.live_tv_rounded),
+  Seccao.jogos: ('Jogos', Icons.sports_soccer_rounded),
   Seccao.gestor: ('Gestor', Icons.inventory_2_outlined),
   Seccao.definicoes: ('Definições', Icons.settings_outlined),
 };
@@ -17,7 +18,11 @@ const rotulosSeccoes = {
 /// secção, o ícone com um rótulo curto por baixo; a secção à vista fica num cartão branco. As
 /// setas dentro da barra e a passagem para o conteúdo tratam-se em [TelaPrincipal].
 class BarraSeccoes extends StatelessWidget {
-  const BarraSeccoes({super.key, required this.atual, required this.aoEscolher, this.focos});
+  const BarraSeccoes({super.key, required this.atual, required this.aoEscolher, this.focos,
+      this.seccoes = const [Seccao.verTv, Seccao.gestor, Seccao.definicoes]});
+
+  /// As secções à vista, pela ordem.
+  final List<Seccao> seccoes;
 
   /// A largura da barra.
   static const largura = 112.0;
@@ -28,7 +33,7 @@ class BarraSeccoes extends StatelessWidget {
   /// OK (ou toque) numa secção.
   final ValueChanged<Seccao> aoEscolher;
 
-  /// O foco de cada secção (pela ordem de [Seccao.values]).
+  /// O foco de cada secção (indexado por [Seccao.index]).
   final List<FocusNode>? focos;
 
   @override
@@ -42,7 +47,7 @@ class BarraSeccoes extends StatelessWidget {
             children: [
               const Center(child: MarcaApp()),
               const SizedBox(height: 28),
-              for (final s in Seccao.values)
+              for (final s in seccoes)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 10),
                   child: _ItemSeccao(

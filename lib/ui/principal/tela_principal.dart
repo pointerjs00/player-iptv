@@ -13,8 +13,8 @@ import '../gestor/tela_gestor.dart';
 import 'barra_seccoes.dart';
 import '../../idioma/idioma.dart';
 
-/// As três secções fixas da app.
-enum Seccao { verTv, gestor, definicoes }
+/// As secções da app (Jogos só quando a casca o recebe: não existe na edição de partilha).
+enum Seccao { verTv, jogos, gestor, definicoes }
 
 /// Um foco que alcança-se com as setas mas que não conta como "primeiro controlo" de uma secção
 /// (o foco ao entrar nela vai para o conteúdo, não para o indicador de atividade no canto).
@@ -46,13 +46,16 @@ class SeccaoAtual extends InheritedWidget {
 /// Ver TV (Android) pede "Carregue outra vez em Voltar para sair".
 class TelaPrincipal extends StatefulWidget {
   const TelaPrincipal({super.key, required this.verTv, required this.gestor, required this.definicoes,
-      this.inicial = Seccao.verTv, this.sair = SystemNavigator.pop, this.tarefas, this.verificacao, this.pedidoGestor,
+      this.jogos, this.inicial = Seccao.verTv, this.sair = SystemNavigator.pop, this.tarefas, this.verificacao, this.pedidoGestor,
       this.novidades = false});
 
   /// Mostra as novidades desta versão ao abrir (a primeira vez depois de atualizar).
   final bool novidades;
 
   final Widget verTv;
+
+  /// O ecrã «Jogos» (null: a secção não aparece).
+  final Widget? jogos;
   final Widget gestor;
   final Widget definicoes;
 
@@ -95,11 +98,15 @@ class TelaPrincipal extends StatefulWidget {
 class _TelaPrincipalState extends State<TelaPrincipal> {
   late Seccao _atual = widget.inicial;
 
+  /// As secções à vista, pela ordem da barra.
+  List<Seccao> get _seccoes => [for (final s in Seccao.values) if (s != Seccao.jogos || widget.jogos != null) s];
+
   /// O conteúdo de cada secção (não recebe o foco: serve para saber onde ele está).
   final _focosSeccao = [
     for (final s in Seccao.values)
       FocusNode(debugLabel: 'Secção ${s.name}', canRequestFocus: false, skipTraversal: true),
   ];
+  // (um foco por valor de Seccao, à vista ou não; indexados por Seccao.index)
 
   /// O foco de cada secção na barra lateral.
   final _focosBarra = [for (final s in Seccao.values) FocusNode(debugLabel: 'Barra ${s.name}')];
@@ -314,14 +321,15 @@ class _TelaPrincipalState extends State<TelaPrincipal> {
   /// Na barra: CIMA/BAIXO só entre as secções, ESQUERDA fica, DIREITA vai ao conteúdo.
   KeyEventResult _teclaBarra(KeyEvent e) {
     if (e is KeyUpEvent) return KeyEventResult.ignored;
-    final i = _focosBarra.indexWhere((f) => f.hasPrimaryFocus);
+    final seccoes = _seccoes;
+    final i = seccoes.indexWhere((s) => _focosBarra[s.index].hasPrimaryFocus);
     if (i < 0) return KeyEventResult.ignored;
     switch (e.logicalKey) {
       case LogicalKeyboardKey.arrowUp:
-        if (i > 0) _focosBarra[i - 1].requestFocus();
+        if (i > 0) _focosBarra[seccoes[i - 1].index].requestFocus();
         return KeyEventResult.handled;
       case LogicalKeyboardKey.arrowDown:
-        if (i < _focosBarra.length - 1) _focosBarra[i + 1].requestFocus();
+        if (i < seccoes.length - 1) _focosBarra[seccoes[i + 1].index].requestFocus();
         return KeyEventResult.handled;
       case LogicalKeyboardKey.arrowLeft:
         return KeyEventResult.handled;
@@ -350,21 +358,27 @@ class _TelaPrincipalState extends State<TelaPrincipal> {
   @override
   Widget build(BuildContext context) {
     final largo = _largo(context);
-    final seccoes = [widget.verTv, widget.gestor, widget.definicoes];
+    final ecras = {
+      Seccao.verTv: widget.verTv,
+      if (widget.jogos != null) Seccao.jogos: widget.jogos!,
+      Seccao.gestor: widget.gestor,
+      Seccao.definicoes: widget.definicoes,
+    };
+    final seccoes = _seccoes;
     final conteudo = Focus(
       canRequestFocus: false,
       skipTraversal: true,
       includeSemantics: false,
       onKeyEvent: (_, e) => _teclaConteudo(context, e),
       child: IndexedStack(
-        index: _atual.index,
+        index: seccoes.indexOf(_atual).clamp(0, seccoes.length - 1),
         sizing: StackFit.expand,
         children: [
-          for (final s in Seccao.values)
+          for (final s in seccoes)
             Focus(
                 focusNode: _focosSeccao[s.index],
                 includeSemantics: false,
-                child: _SeccaoDoEcra(seccao: s, child: seccoes[s.index])),
+                child: _SeccaoDoEcra(seccao: s, child: ecras[s]!)),
         ],
       ),
     );
@@ -384,6 +398,7 @@ class _TelaPrincipalState extends State<TelaPrincipal> {
   }
 
   Widget _casca(BuildContext context, bool largo, Widget conteudo) {
+    final seccoes = _seccoes;
     return PopScope(
         // Voltar: fora de Ver TV vai para Ver TV; em Ver TV (Android) pede confirmação
         canPop: _atual == Seccao.verTv && !_confirmarSaida,
@@ -401,6 +416,7 @@ class _TelaPrincipalState extends State<TelaPrincipal> {
                       includeSemantics: false,
                       onKeyEvent: (_, e) => _teclaBarra(e),
                       child: BarraSeccoes(
+                        seccoes: seccoes,
                         atual: _atual,
                         focos: _focosBarra,
                         aoEscolher: (s) => _mudar(s, focar: false),
@@ -413,10 +429,10 @@ class _TelaPrincipalState extends State<TelaPrincipal> {
           bottomNavigationBar: largo
               ? null
               : NavigationBar(
-                  selectedIndex: _atual.index,
-                  onDestinationSelected: (i) => _mudar(Seccao.values[i], focar: false),
+                  selectedIndex: seccoes.indexOf(_atual).clamp(0, seccoes.length - 1),
+                  onDestinationSelected: (i) => _mudar(seccoes[i], focar: false),
                   destinations: [
-                    for (final s in Seccao.values)
+                    for (final s in seccoes)
                       NavigationDestination(icon: Icon(rotulosSeccoes[s]!.$2), label: tr(rotulosSeccoes[s]!.$1)),
                   ],
                 ),

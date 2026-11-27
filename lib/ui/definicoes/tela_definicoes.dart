@@ -12,6 +12,7 @@ import '../../dados/estatisticas.dart';
 import '../../dados/guardar_ficheiro.dart';
 import '../../dados/novidades.dart';
 import '../../dados/preferencias.dart';
+import '../../desporto/preferencias_jogos.dart';
 import '../../marca.dart';
 import '../../rede/http.dart';
 import '../../verificar/canais_teste.dart';
@@ -24,6 +25,7 @@ import '../player/configuracao_mpv.dart';
 import '../novidades.dart';
 import '../principal/tela_principal.dart';
 import 'linha_opcao.dart';
+import 'secao_jogos.dart';
 import '../verificar/dialogos_gestor.dart' show confirmar;
 import 'seletor_numero.dart';
 import '../realce_foco.dart';
@@ -49,6 +51,7 @@ enum _Categoria {
   imagemSom('Imagem e som', Icons.tune_rounded),
   verificacao('Verificação', Icons.timer_outlined),
   ligacao('Ligação', Icons.wifi_rounded),
+  jogos('Jogos', Icons.sports_soccer_rounded),
   copia('Cópia de segurança', Icons.cloud_download_outlined),
   // em português diz também "Language", para quem procura o inglês
   idioma('Idioma · Language', Icons.translate_rounded),
@@ -81,7 +84,11 @@ class TelaDefinicoes extends StatefulWidget {
     this.escolherCopia,
     this.guardarCopia,
     this.android,
+    this.jogos,
   });
+
+  /// As preferências dos «Jogos» (null: sem a secção, como na edição de partilha).
+  final PreferenciasJogos? jogos;
 
   final Biblioteca biblioteca;
   final AreaGestor area;
@@ -123,6 +130,9 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
   VoidCallback? _tirarVoltar;
 
   Preferencias get _p => widget.preferencias;
+
+  /// As categorias à vista («Jogos» só com as preferências dele).
+  List<_Categoria> get _categorias => [for (final c in _Categoria.values) if (c != _Categoria.jogos || widget.jogos != null) c];
   bool get _android => widget.android ?? Platform.isAndroid;
 
   @override
@@ -516,6 +526,9 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
                 ),
               ])),
         ];
+      case _Categoria.jogos:
+        final j = widget.jogos;
+        return [if (j != null) SecaoJogos(preferencias: j)];
       case _Categoria.copia:
         return [
           _opcao(tr('Exportar e importar'),
@@ -636,7 +649,7 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
         onKeyEvent: _teclaCategorias,
         child: ListView(
           padding: const EdgeInsets.all(Tokens.e16),
-          children: [for (final c in _Categoria.values) _linhaCategoria(c, largo: largo)],
+          children: [for (final c in _categorias) _linhaCategoria(c, largo: largo)],
         ),
       );
 

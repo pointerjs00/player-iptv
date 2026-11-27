@@ -42,7 +42,7 @@ Map<String, List<(int, int, double)>> _reconhecer(List<(String, String)> nomes) 
   return r;
 }
 
-class IndiceCanais extends ChangeNotifier {
+class IndiceCanais extends ChangeNotifier implements FontesDosCanais {
   IndiceCanais(this.biblioteca, Directory pasta, this.preferencias)
       : _ficheiro = File('${pasta.path}${Platform.pathSeparator}indice.json');
 
@@ -52,12 +52,14 @@ class IndiceCanais extends ChangeNotifier {
   Map<String, _IndiceLista>? _porLista;
 
   /// Listas que ainda não têm canais em cache (não entram no «Onde ver»).
+  @override
   int get listasSemCache => _semCache;
   int _semCache = 0;
 
   Future<void>? _aAtualizar;
 
   /// Relê as listas cuja cache de canais mudou (só uma atualização de cada vez).
+  @override
   Future<void> atualizar() => _aAtualizar ??= _atualizar().whenComplete(() => _aAtualizar = null);
 
   Future<void> _atualizar() async {
@@ -133,6 +135,7 @@ class IndiceCanais extends ChangeNotifier {
 
   /// As fontes do canal `canalTv` em todas as listas (sem ordem; ver [ordenarFontes]), com as
   /// associações manuais aplicadas.
+  @override
   List<FonteCanal> fontes(String canalTv) {
     final indice = _porLista ?? const {};
     final r = <FonteCanal>[];
