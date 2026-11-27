@@ -53,8 +53,8 @@ class FontesFalsas extends ChangeNotifier implements FontesDosCanais {
 Lista listaJogos(String id) => Lista(
     id: id, ordem: int.parse(id), conta: Conta('c$id', Tipo.m3u, 'http://lista$id.invalido/l.m3u'), nomeProprio: 'Lista $id');
 
-FonteCanal fonteJogos(String lista, String canalTv, String nome) =>
-    FonteCanal(listaJogos(lista), Canal(id: '$canalTv-$lista', nome: nome, grupo: 'PT'), canalTv: canalTv);
+FonteCanal fonteJogos(String lista, String canalTv, String nome, {String logo = ''}) =>
+    FonteCanal(listaJogos(lista), Canal(id: '$canalTv-$lista', nome: nome, grupo: 'PT', logo: logo), canalTv: canalTv);
 
 Transmissao transmissao(String jogo, String canal, [Confianca c = Confianca.confirmado]) =>
     Transmissao(jogoId: jogo, canal: canal, confianca: c, origem: 'teste');

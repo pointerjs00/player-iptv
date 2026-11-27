@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:player_iptv/desporto/servico_jogos.dart';
+import 'package:player_iptv/ui/conteudo/painel_canal.dart' show LogoCanal;
 import 'package:player_iptv/ui/jogos/linha_jogo.dart';
 import 'package:player_iptv/ui/jogos/tela_competicoes.dart';
 import 'package:player_iptv/ui/jogos/tela_jogos.dart';
@@ -74,6 +75,22 @@ void main() {
         body: SeccaoAtual(seccao: Seccao.verTv, irPara: (_) {}, child: m.tela()))));
     await t.pump(const Duration(seconds: 61));
     expect(m.servico.aoVivo, hasLength(3), reason: 'com o ecrã escondido não pede');
+  });
+
+  testWidgets('o detalhe mostra o logótipo de cada canal, tirado das listas (as iniciais sem ele)', (t) async {
+    await montar(t,
+        fontes: FontesFalsas({
+          'sporttv1': [
+            fonteJogos('1', 'sporttv1', 'PT: SPORT TV 1'),
+            fonteJogos('2', 'sporttv1', 'SPORT TV 1 FHD', logo: 'http://logos.invalido/stv1.png'),
+          ],
+          'sporttv2': [fonteJogos('2', 'sporttv2', 'SPORT TV 2 FHD')],
+        }));
+    final logos = {
+      for (final e in find.byType(LogoCanal).evaluate()) (e.widget as LogoCanal).nome: (e.widget as LogoCanal).url,
+    };
+    expect(logos['Sport TV 1'], 'http://logos.invalido/stv1.png', reason: 'o primeiro logótipo das fontes');
+    expect(logos['Sport TV 2'], '', reason: 'sem logótipo nas listas: as iniciais');
   });
 
   Future<void> abrirFiltros(WidgetTester t) async {

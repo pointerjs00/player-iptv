@@ -69,3 +69,12 @@ List<FonteCanal> ordenarFontes(List<FonteCanal> fontes, {UltimaFonte? ultima, Qu
 
 /// A lista não funciona (mostra-se esbatida no fim).
 bool fonteNaoFunciona(FonteCanal f) => estadoDe(f.lista) == EstadoLista.naoFunciona;
+
+/// O logótipo de um canal do catálogo: o primeiro que as listas trazem para ele ('' sem nenhum).
+/// A MEO tem os logótipos, mas recusa a app (ver a memória do projeto): ficam os das listas.
+String logoDoCanal(String canalTv, FontesDosCanais fontes) {
+  for (final f in fontes.fontes(canalTv)) {
+    if (f.canal.logo.isNotEmpty) return f.canal.logo;
+  }
+  return '';
+}
