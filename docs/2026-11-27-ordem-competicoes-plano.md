@@ -27,7 +27,7 @@
 
 ---
 
-### Tarefa 1: a ordem nas preferências e nos blocos dos Jogos
+### Task 1: a ordem nas preferências e nos blocos dos Jogos
 
 **Ficheiros:**
 - Modificar: `lib/desporto/preferencias_jogos.dart`, `lib/desporto/servico_jogos.dart:57-72`,
@@ -56,7 +56,7 @@
 - [ ] Correr: `flutter test test/desporto test/ui/jogos_test.dart` → passam.
 - [ ] Commit `feat(jogos): a ordem das competições nas preferências e nos blocos`.
 
-### Tarefa 2: o ecrã «Competições» com o modo «Reordenar»
+### Task 2: o ecrã «Competições» com o modo «Reordenar»
 
 **Ficheiros:**
 - Criar: `lib/ui/jogos/tela_competicoes.dart`
@@ -87,7 +87,7 @@ Comportamento:
 - [ ] Correr `flutter test test/ui/competicoes_test.dart` → passam.
 - [ ] Commit `feat(jogos): ecrã das competições seguidas com «Reordenar»`.
 
-### Tarefa 3: o botão «Competições» nos Jogos
+### Task 3: o botão «Competições» nos Jogos
 
 **Ficheiros:** modificar `lib/ui/jogos/tela_jogos.dart`; testes em `test/ui/jogos_test.dart` e
 `test/ui/jogos_dpad_test.dart`.
