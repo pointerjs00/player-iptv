@@ -19,15 +19,67 @@ const prefixoCompleta = 'v', prefixoPartilha = 'partilha-v';
 /// O ficheiro com a última versão de que já se avisou.
 const ficheiroVersaoAvisada = 'nova_versao_avisada.txt';
 
+/// Um ficheiro da release (um APK ou o zip do Windows).
+class Pacote {
+  const Pacote(this.nome, this.url, this.tamanho, this.sha256);
+
+  /// «TVIntel-1.0.28-android-arm64.apk».
+  final String nome;
+
+  /// O endereço do download (`browser_download_url`).
+  final String url;
+
+  /// Em bytes.
+  final int tamanho;
+
+  /// O SHA-256 em hexadecimal (o `digest` do GitHub sem o «sha256:»); null se não vier.
+  final String? sha256;
+}
+
 class NovaVersao {
-  const NovaVersao(this.versao, this.pagina);
+  const NovaVersao(this.versao, this.pagina, {this.pacotes = const []});
 
   /// «1.0.26» (a etiqueta da release sem o «v»).
   final String versao;
 
   /// A página da release no GitHub (onde estão os pacotes).
   final String pagina;
+
+  /// Os ficheiros da release.
+  final List<Pacote> pacotes;
 }
+
+/// O resultado da procura manual (o botão nas Definições).
+sealed class Procura {
+  const Procura();
+}
+
+/// A app já está na versão mais recente desta edição.
+class EmDia extends Procura {
+  const EmDia(this.versao);
+  final String versao;
+}
+
+/// Há uma versão mais recente.
+class HaNova extends Procura {
+  const HaNova(this.v);
+  final NovaVersao v;
+}
+
+/// Sem rede, ou o GitHub não respondeu com releases desta edição.
+class SemResposta extends Procura {
+  const SemResposta();
+}
+
+List<Pacote> _pacotes(Object? assets) => [
+      if (assets is List)
+        for (final a in assets.whereType<Map>())
+          if (a['name'] is String && a['browser_download_url'] is String && a['size'] is int)
+            Pacote(a['name'] as String, a['browser_download_url'] as String, a['size'] as int,
+                a['digest'] is String && (a['digest'] as String).startsWith('sha256:')
+                    ? (a['digest'] as String).substring(7)
+                    : null),
+    ];
 
 /// A release mais recente com a etiqueta `prefixo` + versão em `texto` (a lista da API); rascunhos e
 /// pré-versões não contam. null se não houver nenhuma.
@@ -43,7 +95,7 @@ NovaVersao? lerUltimaRelease(String texto, {required String prefixo}) {
       final v = tag.substring(prefixo.length);
       // depois do prefixo, só a versão («1.0.26»): outra etiqueta qualquer não conta
       if (!RegExp(r'^\d+(\.\d+)*$').hasMatch(v)) continue;
-      if (melhor == null || maisRecente(v, melhor.versao)) melhor = NovaVersao(v, pagina);
+      if (melhor == null || maisRecente(v, melhor.versao)) melhor = NovaVersao(v, pagina, pacotes: _pacotes(r['assets']));
     }
     return melhor;
   } on FormatException {
@@ -70,6 +122,20 @@ bool maisRecente(String nova, String atual) {
 
 Future<String> _obterDaRede(Uri uri) async => utf8.decode(await obterBytes(uri.toString(),
     headers: const {'User-Agent': 'TVIntel', 'Accept': 'application/vnd.github+json'}, maxBytes: 1024 * 1024));
+
+/// A procura manual: ao contrário do aviso, não olha para a versão já avisada nem para os dados
+/// móveis (quem carrega no botão quer saber).
+Future<Procura> procurarVersao(
+    {required String atual, String prefixo = prefixoCompleta, Future<String> Function(Uri uri) obter = _obterDaRede}) async {
+  final NovaVersao? v;
+  try {
+    v = lerUltimaRelease(await obter(Uri.parse(enderecoReleases)), prefixo: prefixo);
+  } catch (_) {
+    return const SemResposta();
+  }
+  if (v == null) return const SemResposta();
+  return maisRecente(v.versao, atual) ? HaNova(v) : EmDia(atual);
+}
 
 /// A versão nova de que ainda não se avisou (null: nenhuma, sem rede ou em dados móveis). Fica
 /// logo marcada como avisada.

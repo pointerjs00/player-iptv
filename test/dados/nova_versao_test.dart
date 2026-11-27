@@ -75,6 +75,43 @@ void main() {
     expect(pedidos, antes, reason: 'em dados móveis nem pede');
   });
 
+  test('a release traz os pacotes: nome, endereço, tamanho e SHA-256 (quando o GitHub o dá)', () {
+    const texto = '[{"tag_name":"v1.0.28","html_url":"https://github.com/x/y/releases/tag/v1.0.28",'
+        '"draft":false,"prerelease":false,"assets":['
+        '{"name":"TVIntel-1.0.28-android-arm64.apk","size":58215542,'
+        '"browser_download_url":"https://github.com/x/y/releases/download/v1.0.28/TVIntel-1.0.28-android-arm64.apk",'
+        '"digest":"sha256:ab12cd"},'
+        '{"name":"TVIntel-1.0.28-windows.zip","size":72191988,'
+        '"browser_download_url":"https://github.com/x/y/releases/download/v1.0.28/TVIntel-1.0.28-windows.zip"},'
+        '{"name":"sem-endereco.apk","size":1}'
+        ']}]';
+    final v = lerUltimaRelease(texto, prefixo: prefixoCompleta)!;
+    expect(v.pacotes.map((p) => p.nome), ['TVIntel-1.0.28-android-arm64.apk', 'TVIntel-1.0.28-windows.zip'],
+        reason: 'um asset sem endereço não conta');
+    final apk = v.pacotes.first;
+    expect(apk.url, 'https://github.com/x/y/releases/download/v1.0.28/TVIntel-1.0.28-android-arm64.apk');
+    expect(apk.tamanho, 58215542);
+    expect(apk.sha256, 'ab12cd');
+    expect(v.pacotes.last.sha256, isNull);
+    expect(lerUltimaRelease(lista([release('v1.0.26')]), prefixo: prefixoCompleta)!.pacotes, isEmpty);
+  });
+
+  test('a procura manual: há nova, em dia, ou sem resposta (sem olhar para a versão já avisada)', () async {
+    Future<String> obter(Uri _) async => lista([release('v1.0.29'), release('partilha-v1.0.28')]);
+    final nova = await procurarVersao(atual: '1.0.28', obter: obter);
+    expect(nova, isA<HaNova>());
+    expect((nova as HaNova).v.versao, '1.0.29');
+    expect(await novaVersaoPorAvisar(pasta, atual: '1.0.28', obter: obter), isNotNull);
+    expect(await procurarVersao(atual: '1.0.28', obter: obter), isA<HaNova>(), reason: 'mesmo já avisada');
+    final emDia = await procurarVersao(atual: '1.0.28', obter: obter, prefixo: prefixoPartilha);
+    expect((emDia as EmDia).versao, '1.0.28');
+    expect(await procurarVersao(atual: '1.0.29', obter: obter), isA<EmDia>());
+    expect(await procurarVersao(atual: '1.0.28', obter: (_) async => throw const SocketException('x')),
+        isA<SemResposta>());
+    expect(await procurarVersao(atual: '1.0.28', obter: (_) async => '[]'), isA<SemResposta>(),
+        reason: 'sem nenhuma release desta edição não se sabe');
+  });
+
   testWidgets('a casca mostra o aviso quando há versão nova', (t) async {
     await t.pumpWidget(MaterialApp(
       theme: temaApp(),
