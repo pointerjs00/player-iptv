@@ -30,7 +30,11 @@ Competicao? _competicao(Map<String, dynamic> liga, Set<String> seguidas) {
 }
 
 /// Tira os caracteres de direção do texto e a aspa curva do minuto.
-String _limpar(String s) => s.replaceAll(RegExp('[‎‏‪-‮⁦-⁩]'), '').replaceAll('’', "'").trim();
+/// Os caracteres de direção do texto (U+200E, U+200F, U+202A–U+202E, U+2066–U+2069).
+final _invisiveis = RegExp('[${String.fromCharCodes([0x200e, 0x200f])}${String.fromCharCode(0x202a)}-'
+    '${String.fromCharCode(0x202e)}${String.fromCharCode(0x2066)}-${String.fromCharCode(0x2069)}]');
+
+String _limpar(String s) => s.replaceAll(_invisiveis, '').replaceAll(String.fromCharCode(0x2019), "'").trim();
 
 DateTime? _utc(Object? s) => s is String ? DateTime.tryParse(s)?.toUtc() : null;
 
