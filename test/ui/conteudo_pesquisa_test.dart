@@ -66,6 +66,17 @@ void main() {
     } on FileSystemException {/* Windows */}
   });
 
+  /// Espera (em tempo real, até 20 s) que `pronto` seja verdade. Ler 100 mil canais do disco
+  /// demora bem mais com todos os testes em paralelo do que sozinho: um tempo fixo falhava.
+  Future<void> esperar(WidgetTester t, bool Function() pronto) async {
+    for (var i = 0; i < 200 && !pronto(); i++) {
+      await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 100)));
+      await t.pump();
+    }
+  }
+
+  bool comCanais() => find.descendant(of: _canais, matching: find.byType(ListTile)).evaluate().isNotEmpty;
+
   /// A lista aberta por cima de um ecrã "base" (para o Voltar ter para onde ir).
   Future<Lista> abrir(WidgetTester t,
       {ConteudoLista? conteudo, double largura = 960, double altura = 540, List<String> favoritos = const []}) async {
@@ -85,6 +96,7 @@ void main() {
       await t.pump();
       await Future<void>.delayed(const Duration(milliseconds: 300));
     });
+    await esperar(t, () => find.byType(EsqueletoBrilho).evaluate().isEmpty && find.byType(CarregadorCanais).evaluate().isEmpty);
     await t.pumpAndSettle();
     return l;
   }
@@ -530,6 +542,7 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 300));
     });
     await t.pump();
+    await esperar(t, comCanais);
     // o primeiro frame com canais já tem a lista (ordenada ou ainda pela ordem original)
     expect(find.descendant(of: _canais, matching: find.byType(ListTile)), findsWidgets);
     // a ordem é feita num isolate: espera-se por ela (com todos os testes em paralelo pode
@@ -567,6 +580,7 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 300));
     });
     await t.pump();
+    await esperar(t, comCanais);
     expect(find.byKey(const Key('coluna-detalhes')), findsOneWidget);
     expect(find.text('A ordenar…'), findsOneWidget);
     expect(find.text('1 de 100000'), findsOneWidget);
