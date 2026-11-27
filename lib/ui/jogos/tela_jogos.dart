@@ -251,7 +251,7 @@ class _TelaJogosState extends State<TelaJogos> {
           }
 
           final desportos = {for (final j in doDia) j.jogo.desporto};
-          final grupos = agruparPorCompeticao(doDia);
+          final grupos = agruparPorCompeticao(doDia, ordem: widget.preferencias.ordemCompeticoes);
           Widget titulo(String t) => Padding(
                 padding: const EdgeInsets.only(top: Tokens.e16, bottom: Tokens.e8),
                 child: Text(t, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
@@ -440,7 +440,7 @@ class _TelaJogosState extends State<TelaJogos> {
         corpo = _vazio(tr('Nenhum jogo com estes filtros'), acao: tr('Limpar filtros'), aoAcao: _limparFiltros);
       }
     } else {
-      final grupos = agruparPorCompeticao(jogos);
+      final grupos = agruparPorCompeticao(jogos, ordem: widget.preferencias.ordemCompeticoes);
       final itens = <Object>[for (final g in grupos) ...[g, ...g.jogos]];
       final emOrdem = [for (final g in grupos) ...g.jogos];
       final escolhido = emOrdem.firstWhere((j) => j.jogo.id == _escolhido, orElse: () => emOrdem.first);

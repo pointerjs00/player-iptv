@@ -34,6 +34,10 @@ class PreferenciasJogos extends ChangeNotifier {
 
   Set<String> _competicoes = {for (final c in catalogoCompeticoes) if (c.seguidaPorOmissao) c.id};
   List<String> _equipas = [];
+
+  /// A ordem escolhida no ecrã «Competições» (ids; pode ter competições que deixaram de ser
+  /// seguidas, para voltarem ao mesmo sítio). Vazia: a ordem do catálogo.
+  List<String> _ordem = [];
   Qualidade _qualidade = Qualidade.fhd;
   /// Por omissão vêem-se todos os jogos (os que ainda não têm canal também).
   bool _mostrarSemCanal = true;
@@ -54,6 +58,8 @@ class PreferenciasJogos extends ChangeNotifier {
     if (j is! Map) return;
     final comp = j['competicoes'];
     if (comp is List) _competicoes = {for (final c in comp) if (c is String && competicaoPorId(c) != null) c};
+    final ordem = j['ordem'];
+    if (ordem is List) _ordem = [for (final c in ordem) if (c is String && competicaoPorId(c) != null) c];
     final eq = j['equipas'];
     if (eq is List) _equipas = [for (final e in eq) if (e is String && e.trim().isNotEmpty) e];
     final q = j['qualidade'];
@@ -83,6 +89,7 @@ class PreferenciasJogos extends ChangeNotifier {
 
   Map<String, Object?> _mapa() => {
         'competicoes': _competicoes.toList(),
+        'ordem': _ordem,
         'equipas': _equipas,
         'qualidade': _qualidade.name,
         'mostrarSemCanal': _mostrarSemCanal,
@@ -119,7 +126,33 @@ class PreferenciasJogos extends ChangeNotifier {
 
   void alternarCompeticao(String id) {
     _competicoes.contains(id) ? _competicoes.remove(id) : _competicoes.add(id);
+    // começar a seguir uma que nunca teve lugar na ordem escolhida: vai para o fim
+    if (_competicoes.contains(id) && _ordem.isNotEmpty && !_ordem.contains(id)) _ordem.add(id);
     _mudou();
+  }
+
+  /// As competições seguidas pela ordem escolhida; as que não têm lugar nela vão para o fim, pela
+  /// ordem do catálogo.
+  List<String> get ordemCompeticoes => [
+        for (final id in _ordem)
+          if (_competicoes.contains(id)) id,
+        for (final c in catalogoCompeticoes)
+          if (_competicoes.contains(c.id) && !_ordem.contains(c.id)) c.id,
+      ];
+
+  /// Guarda a ordem das seguidas `ids`; as não seguidas que já tinham lugar ficam depois delas.
+  set ordemCompeticoes(List<String> ids) {
+    final novas = [for (final id in ids) if (competicaoPorId(id) != null) id];
+    _ordem = [...novas, for (final id in _ordem) if (!novas.contains(id)) id];
+    _mudou();
+  }
+
+  /// Põe a competição `id` na posição `novaPosicao` de [ordemCompeticoes] (limitada à lista).
+  void moverCompeticao(String id, int novaPosicao) {
+    final lista = ordemCompeticoes;
+    if (!lista.remove(id)) return;
+    lista.insert(novaPosicao.clamp(0, lista.length), id);
+    ordemCompeticoes = lista;
   }
 
   List<String> get equipasFavoritas => List.unmodifiable(_equipas);

@@ -54,14 +54,19 @@ typedef GrupoJogos = ({Competicao competicao, List<JogoComCanais> jogos});
 
 /// Os jogos por competição, pela ordem do catálogo (a Liga Portugal primeiro); dentro de cada
 /// uma, pela hora.
-List<GrupoJogos> agruparPorCompeticao(List<JogoComCanais> jogos) {
-  final ordem = {for (final (i, c) in catalogoCompeticoes.indexed) c.id: i};
+/// As competições em `ordem` (a escolhida no ecrã «Competições») vêm primeiro, por essa ordem; as
+/// outras depois, pela ordem do catálogo.
+List<GrupoJogos> agruparPorCompeticao(List<JogoComCanais> jogos, {List<String> ordem = const []}) {
+  final n = ordem.length;
+  final escolhida = {for (final (i, id) in ordem.indexed) id: i};
+  final catalogo = {for (final (i, c) in catalogoCompeticoes.indexed) c.id: n + i};
+  final posicao = {...catalogo, ...escolhida};
   final porComp = <String, List<JogoComCanais>>{};
   for (final j in jogos) {
     porComp.putIfAbsent(j.jogo.competicaoId, () => []).add(j);
   }
   final ids = porComp.keys.where((id) => competicaoPorId(id) != null).toList()
-    ..sort((a, b) => ordem[a]!.compareTo(ordem[b]!));
+    ..sort((a, b) => posicao[a]!.compareTo(posicao[b]!));
   return [
     for (final id in ids)
       (
