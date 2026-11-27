@@ -1,7 +1,10 @@
 /// Windows: o player corre numa janela própria — o mesmo .exe lançado com `--player <porta>`.
 /// A janela principal abre um socket em 127.0.0.1 e manda-lhe linhas JSON:
 ///   principal → player: {"tipo":"abrir","lista":"001X","canais":[...],"i":3}
+///   (modo «Jogo», as fontes de um canal em várias listas: também "listas" e "listaIds", um por
+///   canal, e "troca": true)
 ///   player → principal: {"tipo":"fonte","pedido":7,"i":4}
+///   player → principal: {"tipo":"funcionou","i":4} (modo «Jogo»: a fonte que deu imagem)
 ///   principal → player: {"tipo":"fonte","pedido":7,"url":"…","headers":{…}} ou {"…","erro":"…"}
 /// O player, lançado com um token aleatório numa variável de ambiente, tem de mandar
 /// primeiro {"tipo":"ola","token":"…"} (em 2 s); depois disso a principal deixa de aceitar
@@ -19,6 +22,7 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 
 import '../dados/biblioteca.dart';
+import '../desporto/onde_ver.dart';
 import '../modelo/canal.dart';
 import '../protocolos/protocolo.dart';
 import '../rede/http.dart';
@@ -49,25 +53,53 @@ class JanelaPlayer {
 
   ServerSocket? _servidor;
   Socket? _ligacao;
-  Lista? _lista;
+  /// A lista de cada canal: a mesma para todos ([mostrar]) ou uma por fonte ([mostrarFontes]).
+  Lista Function(int i)? _listaDe;
   List<Canal> _canais = const [];
   Map<String, dynamic>? _pendente;
   void Function(Canal canal)? _aoVer;
+  void Function(int i)? _aoFuncionar;
+
+  static Map<String, dynamic> _canal(Canal c) =>
+      {'id': c.id, 'nome': c.nome, 'grupo': c.grupo, if (c.numero != null) 'num': c.numero, if (c.logo.isNotEmpty) 'logo': c.logo};
 
   /// Mostra `canais[i]` na janela do player (abre-a se não estiver aberta).
   /// `aoVer` é chamado com cada canal que o player pede para abrir (o primeiro e os do zapping).
   Future<void> mostrar(Lista lista, List<Canal> canais, int i,
-      {void Function(String motivo)? aoFalhar, void Function(Canal canal)? aoVer}) async {
-    _lista = lista;
+      {void Function(String motivo)? aoFalhar, void Function(Canal canal)? aoVer}) {
+    _listaDe = (_) => lista;
     _canais = canais;
     _aoVer = aoVer;
-    final msg = {
+    _aoFuncionar = null;
+    return _mostrar({
       'tipo': 'abrir', 'lista': lista.nomeMostrado, 'listaId': lista.id, 'i': i,
-      'canais': [
-        for (final c in canais)
-          {'id': c.id, 'nome': c.nome, 'grupo': c.grupo, if (c.numero != null) 'num': c.numero, if (c.logo.isNotEmpty) 'logo': c.logo},
-      ],
-    };
+      'canais': [for (final c in canais) _canal(c)],
+    }, aoFalhar);
+  }
+
+  /// Modo «Jogo»: as fontes de um canal, cada uma da sua lista (o link pede-se com a conta dela).
+  /// A janela do player começa pela 1.ª e, com `trocaAutomatica`, passa à seguinte se falhar.
+  Future<void> mostrarFontes(List<FonteCanal> fontes,
+      {bool trocaAutomatica = true,
+      void Function(String motivo)? aoFalhar,
+      void Function(FonteCanal fonte)? aoFuncionar,
+      void Function(FonteCanal fonte)? aoVer}) {
+    final copia = List<FonteCanal>.of(fontes);
+    _listaDe = (i) => copia[i].lista;
+    _canais = [for (final f in copia) f.canal];
+    _aoVer = aoVer == null ? null : (c) => aoVer(copia[_canais.indexOf(c)]);
+    _aoFuncionar = aoFuncionar == null ? null : (i) => aoFuncionar(copia[i]);
+    final primeira = copia.first.lista;
+    return _mostrar({
+      'tipo': 'abrir', 'lista': primeira.nomeMostrado, 'listaId': primeira.id, 'i': 0,
+      'canais': [for (final f in copia) _canal(f.canal)],
+      'listas': [for (final f in copia) f.lista.nomeMostrado],
+      'listaIds': [for (final f in copia) f.lista.id],
+      'troca': trocaAutomatica,
+    }, aoFalhar);
+  }
+
+  Future<void> _mostrar(Map<String, dynamic> msg, void Function(String motivo)? aoFalhar) async {
     if (_ligacao != null) {
       _enviar(msg);
       return;
@@ -178,10 +210,14 @@ class JanelaPlayer {
     } catch (_) {
       return;
     }
-    if (m['tipo'] != 'fonte') return;
     final i = m['i'] as int? ?? -1;
-    final lista = _lista;
-    if (lista == null || i < 0 || i >= _canais.length) {
+    if (m['tipo'] == 'funcionou') {
+      if (i >= 0 && i < _canais.length) _aoFuncionar?.call(i);
+      return;
+    }
+    if (m['tipo'] != 'fonte') return;
+    final lista = i >= 0 && i < _canais.length ? _listaDe?.call(i) : null;
+    if (lista == null) {
       _enviar({'tipo': 'fonte', 'pedido': m['pedido'], 'erro': 'canal desconhecido'});
       return;
     }
@@ -225,6 +261,19 @@ StreamTransformer<List<int>, String> linhasAte(int max) {
   });
 }
 
+/// Um canal que a principal mandou abrir: o nome e o id da lista, os canais e o índice. No modo
+/// «Jogo» (as fontes de um canal), `listas` e `listaIds` têm a lista de cada canal e `troca` diz
+/// se uma fonte que falha passa à seguinte.
+typedef Abertura = ({
+  String lista,
+  List<Canal> canais,
+  int i,
+  String listaId,
+  List<String>? listas,
+  List<String>? listaIds,
+  bool troca,
+});
+
 /// Lado da janela do player.
 class LigacaoPrincipal {
   LigacaoPrincipal._(this._sock);
@@ -238,8 +287,7 @@ class LigacaoPrincipal {
   /// janela do player ter lido as preferências e montado a app; um broadcast deitava-a fora
   /// (ninguém a escutar ainda) e a janela ficava para sempre na rodinha. Assim fica guardada
   /// até a app a escutar (só a app a escuta, uma vez).
-  /// (nome da lista, canais, índice, id da lista).
-  final aberturas = StreamController<(String, List<Canal>, int, String)>();
+  final aberturas = StreamController<Abertura>();
 
   /// `aoFechar`: a principal fechou (por omissão a janela do player fecha-se também).
   static Future<LigacaoPrincipal> ligar(int porta, {String token = '', void Function()? aoFechar}) async {
@@ -265,7 +313,16 @@ class LigacaoPrincipal {
           Canal(id: '${c['id']}', nome: '${c['nome']}', grupo: '${c['grupo']}', numero: numeroCanal(c['num']),
               logo: '${c['logo'] ?? ''}'),
       ];
-      aberturas.add(('${m['lista']}', canais, m['i'] as int, '${m['listaId'] ?? ''}'));
+      List<String>? textos(Object? v) => v is List && v.length == canais.length ? [for (final x in v) '$x'] : null;
+      aberturas.add((
+        lista: '${m['lista']}',
+        canais: canais,
+        i: m['i'] as int,
+        listaId: '${m['listaId'] ?? ''}',
+        listas: textos(m['listas']),
+        listaIds: textos(m['listaIds']),
+        troca: m['troca'] == true,
+      ));
     } else if (m['tipo'] == 'fonte') {
       final p = _pedidos.remove(m['pedido']);
       if (p == null) return;
@@ -277,6 +334,9 @@ class LigacaoPrincipal {
       }
     }
   }
+
+  /// Modo «Jogo»: a fonte `i` deu imagem (a principal guarda «funcionou da última vez»).
+  void funcionou(int i) => _sock.write('${jsonEncode({'tipo': 'funcionou', 'i': i})}\n');
 
   Future<FonteVideo> fonte(int i) {
     final id = _proximo++;

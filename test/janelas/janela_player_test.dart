@@ -81,8 +81,8 @@ void main() {
       if (!fechada.isCompleted) fechada.complete();
     });
     final abertura = await l.aberturas.stream.first.timeout(const Duration(seconds: 5));
-    expect(abertura.$2.single.nome, 'RTP 1');
-    expect(abertura.$2.single.numero, 101, reason: 'o número do portal chega à janela do player');
+    expect(abertura.canais.single.nome, 'RTP 1');
+    expect(abertura.canais.single.numero, 101, reason: 'o número do portal chega à janela do player');
     expect((await l.fonte(0)).url, _link);
 
     // depois de o player entrar, a principal deixa de aceitar ligações
@@ -108,12 +108,12 @@ void main() {
     final aberturas = StreamIterator(l.aberturas.stream);
     expect(await aberturas.moveNext().timeout(const Duration(seconds: 5), onTimeout: () => false), isTrue,
         reason: 'sem a abertura a janela do player fica para sempre na rodinha');
-    expect(aberturas.current.$2.single.nome, 'RTP 1');
+    expect(aberturas.current.canais.single.nome, 'RTP 1');
 
     // as seguintes (trocar de canal na principal) continuam a chegar
     await janela.mostrar(_lista, const [Canal(id: '2', nome: 'SIC', grupo: 'g')], 0);
     expect(await aberturas.moveNext().timeout(const Duration(seconds: 5), onTimeout: () => false), isTrue);
-    expect(aberturas.current.$2.single.nome, 'SIC');
+    expect(aberturas.current.canais.single.nome, 'SIC');
     await aberturas.cancel();
   });
 

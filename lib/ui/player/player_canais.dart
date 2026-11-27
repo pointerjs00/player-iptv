@@ -91,7 +91,8 @@ class PlayerCanais extends StatefulWidget {
   const PlayerCanais({super.key, required this.canais, required this.indice, required this.resolver,
       required this.nomeLista, required this.aoSair, this.alternarEcraInteiro, this.aoMudarCanal,
       this.criarMotor = criarMotorMpv, this.criarMotorExo = novoMotorExo, this.criarSessao,
-      @visibleForTesting this.plataforma, @visibleForTesting this.agora, this.aoTempoVisto});
+      @visibleForTesting this.plataforma, @visibleForTesting this.agora, this.aoTempoVisto,
+      this.listaDe, this.trocaAutomatica = false, this.aoFuncionar});
 
   final List<Canal> canais;
   final int indice;
@@ -126,6 +127,18 @@ class PlayerCanais extends StatefulWidget {
   /// O tempo visto de um canal (as estatísticas): chamado a cada [PlayerCanaisState.passoTempo]
   /// de reprodução a sério (o vídeo a tocar, sem estar a carregar, à vista e sem erro).
   final void Function(Canal canal, Duration tempo)? aoTempoVisto;
+
+  /// O nome da lista de cada canal, quando os canais vêm de várias listas (as fontes de um jogo).
+  /// null: todos são de [nomeLista].
+  final String Function(Canal canal)? listaDe;
+
+  /// Modo «Jogo»: os canais são fontes do mesmo canal em listas diferentes. Uma fonte que falha
+  /// (erro do protocolo, do motor ou sem imagem no prazo) passa sozinha à seguinte que ainda não
+  /// se tentou; ao fim de todas, o cartão de erro.
+  final bool trocaAutomatica;
+
+  /// O canal `i` deu imagem (para guardar «funcionou da última vez»).
+  final ValueChanged<int>? aoFuncionar;
 
   @override
   State<PlayerCanais> createState() => PlayerCanaisState();
@@ -277,7 +290,18 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   late List<Canal> _canais = widget.canais;
   late int _i = widget.indice;
   late final _historico = HistoricoCanais(widget.indice);
-  String? _erro;
+  String? _erroAtual;
+
+  /// O erro do canal à vista (null: sem erro). No modo «Jogo» um erro agenda a troca de fonte.
+  String? get _erro => _erroAtual;
+  set _erro(String? v) {
+    _erroAtual = v;
+    if (v != null && widget.trocaAutomatica) _agendarTroca();
+  }
+
+  /// As fontes que já falharam nesta ronda (cada uma tenta-se uma vez).
+  final _falhadas = <int>{};
+
   bool _aAbrir = true;
   int _pedido = 0;
 
@@ -369,6 +393,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
         _avisarMpv = false;
         mostrarMensagem(context, avisoMotorMpv);
       }
+      if (!retomou) widget.aoFuncionar?.call(_i);
       _vigiarImagem(_pedido);
       _verEntrelacamento(_pedido);
       _vigiarLink(_pedido);
@@ -570,7 +595,45 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   }
 
   /// A chave do canal para lembrar, nesta sessão, que precisa do modo "Compatível".
-  String _chave(Canal c) => '${widget.nomeLista}|${c.id}';
+  String _chave(Canal c) => '${_listaDe(c)}|${c.id}';
+
+  String _listaDe(Canal c) => widget.listaDe?.call(c) ?? widget.nomeLista;
+
+  /// Modo «Jogo»: depois deste erro (no fim da tarefa, quando o estado já está assente), passa à
+  /// fonte seguinte que ainda não falhou, ou mostra que nenhuma funcionou.
+  void _agendarTroca() {
+    final pedido = _pedido, i = _i;
+    scheduleMicrotask(() {
+      if (!mounted || pedido != _pedido || i != _i || _erroAtual == null) return;
+      _trocarFonte(i);
+    });
+  }
+
+  void _trocarFonte(int i) {
+    _falhadas.add(i);
+    int? seguinte;
+    for (var d = 1; d < _canais.length; d++) {
+      final j = (i + d) % _canais.length;
+      if (!_falhadas.contains(j)) {
+        seguinte = j;
+        break;
+      }
+    }
+    if (seguinte == null) {
+      // sem o setter: este erro já não troca
+      setState(() => _erroAtual = tr('Nenhuma das {0} fontes funcionou', [_canais.length]));
+      return;
+    }
+    mostrarMensagem(context, tr('{0} não respondeu na lista {1}; a tentar a lista {2}…',
+        [_canais[i].nome, _listaDe(_canais[i]), _listaDe(_canais[seguinte])]));
+    _irPara(seguinte);
+  }
+
+  /// «Tentar de novo» no cartão: no modo «Jogo» começa outra ronda por todas as fontes.
+  void _tentarDeNovo() {
+    _falhadas.clear();
+    _abrir();
+  }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -652,6 +715,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   void trocar(List<Canal> canais, int i) {
     _canais = canais;
     _i = i;
+    _falhadas.clear();
     _historico.novaLista(i);
     _abrir();
   }
@@ -2085,7 +2149,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
         estado: EstadoControlos(
           numero: numeroMostrado(_canais, _i),
           canal: canal.nome,
-          subtitulo: subtituloCanal(lista: widget.nomeLista, grupo: canal.grupo),
+          subtitulo: subtituloCanal(lista: _listaDe(canal), grupo: canal.grupo),
           aTocar: _aTocar,
           velocidade: _velocidade,
           erro: _erro != null,
@@ -2167,7 +2231,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
           if (_erro != null)
             CartaoErroCanal(
               texto: '${canal.nome}: $_erro',
-              aoTentar: _abrir,
+              aoTentar: _tentarDeNovo,
               aoCompativel: _abrirCompativel,
               aoAnterior: _historico.anterior != null ? () => _agir(AcaoPlayer.alternarCanal) : null,
               aoVoltar: _sair,

@@ -212,6 +212,10 @@ class _AppJanelaPlayerState extends State<AppJanelaPlayer> {
   List<Canal> _canais = const [];
   int _i = 0;
 
+  /// Modo «Jogo»: a lista de cada canal (as fontes) e a troca automática.
+  List<String>? _listas;
+  bool _troca = false;
+
   /// O tempo visto (as estatísticas), pela lista aberta.
   void Function(Canal, Duration)? _tempoVisto;
 
@@ -239,15 +243,30 @@ class _AppJanelaPlayerState extends State<AppJanelaPlayer> {
       await Preferencias.atual.recarregar();
       if (!mounted) return;
       setState(() {
-        _lista = a.$1;
-        _canais = a.$2;
-        _i = a.$3;
-        _tempoVisto = contadorDeTempo(a.$4, a.$1);
+        _lista = a.lista;
+        _canais = a.canais;
+        _i = a.i;
+        _listas = a.listas;
+        _troca = a.troca;
+        _tempoVisto = _contadorPara(a);
       });
       _janela
-        ?..title = '${a.$2[a.$3].nome} — ${a.$1}'
+        ?..title = '${a.canais[a.i].nome} — ${a.listas?[a.i] ?? a.lista}'
         ..focus();
     });
+  }
+
+  /// O tempo visto vai para a lista do canal que tocou (no modo «Jogo», a de cada fonte).
+  void Function(Canal, Duration) _contadorPara(Abertura a) {
+    final nomes = a.listas, ids = a.listaIds;
+    if (nomes == null || ids == null) return contadorDeTempo(a.listaId, a.lista);
+    final canais = a.canais;
+    final porLista = <String, void Function(Canal, Duration)>{};
+    return (c, d) {
+      final i = canais.indexOf(c);
+      if (i < 0) return;
+      (porLista[ids[i]] ??= contadorDeTempo(ids[i], nomes[i]))(c, d);
+    };
   }
 
   void _ecraInteiro() {
@@ -272,6 +291,9 @@ class _AppJanelaPlayerState extends State<AppJanelaPlayer> {
                   canais: _canais,
                   indice: _i,
                   nomeLista: _lista,
+                  listaDe: _listas == null ? null : (c) => _listas![_canais.indexOf(c)],
+                  trocaAutomatica: _troca,
+                  aoFuncionar: _troca ? widget.ligacao.funcionou : null,
                   resolver: (c, {continuar = false}) => widget.ligacao.fonte(_canais.indexOf(c)),
                   aoSair: () async {
                     await guardarTempoVisto();

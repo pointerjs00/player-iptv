@@ -1845,5 +1845,9 @@ const textosIngles = <String, String>{
         'searching the messages',
     'Nenhuma mensagem publicada {0}.':
         'No message published {0}.',
+    'Nenhuma das {0} fontes funcionou':
+        'None of the {0} sources worked',
+    '{0} não respondeu na lista {1}; a tentar a lista {2}…':
+        '{0} did not respond on list {1}; trying list {2}…',
   },
 };
