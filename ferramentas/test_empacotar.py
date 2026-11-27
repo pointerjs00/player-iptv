@@ -147,6 +147,32 @@ class NomesApk(unittest.TestCase):
                 empacotar.copiar_apks(Path(t), Path(t) / "d")
 
 
+class AssinaturaApk(unittest.TestCase):
+    SAIDA = (
+        "Verifies\nVerified using v2 scheme (APK Signature Scheme v2): true\n"
+        "Signer #1 certificate DN: C=US, O=Android, CN=Android Debug\n"
+        "Signer #1 certificate SHA-256 digest: 11f1a4d81fac41df88f55633b426a7d0f5954fb8a684214f23e603abf4daca9e\n"
+    )
+
+    def test_le_a_impressao_digital_da_saida_do_apksigner(self):
+        self.assertEqual(
+            empacotar.impressao_da_saida(self.SAIDA),
+            "11f1a4d81fac41df88f55633b426a7d0f5954fb8a684214f23e603abf4daca9e",
+        )
+        self.assertIsNone(empacotar.impressao_da_saida("DOES NOT VERIFY"))
+
+    def test_a_chave_de_sempre_passa(self):
+        empacotar.verificar_assinatura(Path("x.apk"), ler=lambda _: empacotar.SHA256_ASSINATURA)
+
+    def test_outra_chave_recusa(self):
+        with self.assertRaises(SystemExit) as e:
+            empacotar.verificar_assinatura(Path("TVIntel-android-arm64.apk"), ler=lambda _: "00" * 32)
+        self.assertIn("assinado com outra chave", str(e.exception))
+
+    def test_sem_apksigner_avisa_e_segue(self):
+        empacotar.verificar_assinatura(Path("x.apk"), ler=lambda _: None)
+
+
 class ZipWindows(unittest.TestCase):
     def test_raiz_playeriptv(self):
         with tempfile.TemporaryDirectory() as t:

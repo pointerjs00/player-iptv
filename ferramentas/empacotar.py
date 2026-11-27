@@ -229,11 +229,56 @@ def _flutter() -> str:
     return shutil.which("flutter") or "flutter"
 
 
+# A chave com que todas as versões do APK foram assinadas (a cópia está em
+# Documentos/TVIntel-chave-assinatura). Com outra, quem tem a app não consegue atualizar.
+SHA256_ASSINATURA = "11f1a4d81fac41df88f55633b426a7d0f5954fb8a684214f23e603abf4daca9e"
+
+
+def impressao_da_saida(saida: str) -> str | None:
+    """O SHA-256 do 1.º certificado na saída do `apksigner verify --print-certs` (None sem ele)."""
+    m = re.search(r"Signer #1 certificate SHA-256 digest: ([0-9a-f]{64})", saida)
+    return m.group(1) if m else None
+
+
+def _apksigner() -> str | None:
+    """O apksigner mais recente do SDK do Android (None se não houver)."""
+    sdk = os.environ.get("ANDROID_HOME") or os.environ.get("ANDROID_SDK_ROOT") or str(
+        Path(os.environ.get("LOCALAPPDATA", "")) / "Android" / "Sdk")
+    nome = "apksigner.bat" if os.name == "nt" else "apksigner"
+    achados = sorted(Path(sdk).glob(f"build-tools/*/{nome}"))
+    return str(achados[-1]) if achados else None
+
+
+def _impressao_apk(apk: Path) -> str | None:
+    exe = _apksigner()
+    if exe is None:
+        return None
+    r = subprocess.run([exe, "verify", "--print-certs", str(apk)], capture_output=True, text=True,
+                       encoding="utf-8", errors="replace")
+    return impressao_da_saida((r.stdout or "") + (r.stderr or ""))
+
+
+def verificar_assinatura(apk: Path, ler=_impressao_apk) -> None:
+    """Recusa um APK assinado com outra chave que não a de sempre; sem o apksigner, só avisa."""
+    h = ler(apk)
+    if h is None:
+        print(f"AVISO: não foi possível ler a assinatura de {Path(apk).name} (apksigner em falta?).")
+        return
+    if h != SHA256_ASSINATURA:
+        raise SystemExit(
+            f"Empacotamento recusado: {Path(apk).name} foi assinado com outra chave ({h[:16]}…). "
+            "Quem tem a app não conseguiria atualizar: ver android/key.properties."
+        )
+
+
 def construir_android(dist: Path) -> list[Path]:
     r = subprocess.run([_flutter(), "build", "apk", "--release", "--split-per-abi", *DEFINES], cwd=RAIZ)
     if r.returncode != 0:
         raise SystemExit("Falhou 'flutter build apk'.")
-    return copiar_apks(RAIZ / PASTA_APK, dist)
+    apks = copiar_apks(RAIZ / PASTA_APK, dist)
+    for apk in apks:
+        verificar_assinatura(apk)
+    return apks
 
 
 def construir_windows(dist: Path) -> Path | None:

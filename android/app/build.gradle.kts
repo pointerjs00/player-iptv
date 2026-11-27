@@ -1,7 +1,16 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+}
+
+// A chave da TVIntel (android/key.properties, fora do git): a mesma com que todas as versões foram
+// assinadas. Sem o ficheiro, a de depuração deste computador (que é a mesma, aqui).
+val chaveTvintel = Properties().apply {
+    val f = rootProject.file("key.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
 }
 
 android {
@@ -29,11 +38,21 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        create("tvintel") {
+            if (!chaveTvintel.isEmpty) {
+                storeFile = file(chaveTvintel.getProperty("storeFile"))
+                storePassword = chaveTvintel.getProperty("storePassword")
+                keyAlias = chaveTvintel.getProperty("keyAlias")
+                keyPassword = chaveTvintel.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // a assinatura não pode mudar entre versões: com outra chave, quem tem a app não atualiza
+            signingConfig = signingConfigs.getByName(if (chaveTvintel.isEmpty) "debug" else "tvintel")
         }
     }
 }
