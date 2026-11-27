@@ -71,7 +71,11 @@ class ControlosPlayer extends StatefulWidget {
     this.ajusteToque,
     this.volume,
     this.passoVolume = 5,
+    this.aoOutrasFontes,
   });
+
+  /// Modo «Jogo»: abre as outras fontes do mesmo canal (null = sem o botão).
+  final VoidCallback? aoOutrasFontes;
 
   /// O volume na barra (o do player, 0–100, e o silêncio); null = sem ele.
   final ({double valor, bool silencio, ValueChanged<double> aoMudar, ValueChanged<bool> aoSilencio})? volume;
@@ -523,6 +527,15 @@ class ControlosPlayerState extends State<ControlosPlayer> {
       style: estiloIcone,
       onPressed: _abrirPainel,
     );
+    final outras = widget.aoOutrasFontes == null
+        ? null
+        : IconButton(
+            icon: Icon(Icons.alt_route_rounded, size: icone),
+            tooltip: tr('Outras fontes'),
+            color: Tokens.texto,
+            style: estiloIcone,
+            onPressed: widget.aoOutrasFontes,
+          );
     final voltarAoDireto = emDireto
         ? null
         : Tooltip(
@@ -587,6 +600,7 @@ class ControlosPlayerState extends State<ControlosPlayer> {
               if (alternar != null) ...[_Vidro(child: alternar), const SizedBox(width: Tokens.e8)],
               _Vidro(circulo: false, child: velocidade),
               const SizedBox(width: Tokens.e8),
+              if (outras != null) ...[_Vidro(child: outras), const SizedBox(width: Tokens.e8)],
               _Vidro(child: definicoes),
             ],
             if (widget.comEcraInteiro)
@@ -678,6 +692,7 @@ class ControlosPlayerState extends State<ControlosPlayer> {
                         ?volume,
                         velocidade,
                         ?voltarAoDireto,
+                        ?outras,
                         definicoes,
                       ],
                     ),

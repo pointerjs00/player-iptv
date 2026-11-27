@@ -1885,6 +1885,10 @@ const textosIngles = <String, String>{
         'Where it is on',
     '1 fonte':
         '1 source',
+    'Outras fontes':
+        'Other sources',
+    'falhou':
+        'failed',
     'Hoje há jogo · {0}':
         'Matches today · {0}',
     'A mover: {0}':

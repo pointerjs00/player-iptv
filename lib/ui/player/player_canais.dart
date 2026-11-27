@@ -629,6 +629,31 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     _irPara(seguinte);
   }
 
+  /// «Outras fontes»: as fontes do canal (o nome e a lista), a que toca marcada; a escolhida abre
+  /// sem sair do player (e volta a poder ser tentada se tinha falhado).
+  Future<void> _escolherFonte() async {
+    final j = await showDialog<int>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: Text(tr('Outras fontes')),
+        children: [
+          for (var k = 0; k < _canais.length; k++)
+            ListTile(
+              autofocus: k == _i,
+              selected: k == _i,
+              leading: Icon(k == _i ? Icons.play_arrow_rounded : Icons.live_tv_rounded),
+              title: Text(_listaDe(_canais[k])),
+              subtitle: Text(_falhadas.contains(k) ? '${_canais[k].nome} · ${tr('falhou')}' : _canais[k].nome),
+              onTap: () => Navigator.of(ctx).pop(k),
+            ),
+        ],
+      ),
+    );
+    if (j == null || j == _i || !mounted) return;
+    _falhadas.remove(j);
+    _irPara(j);
+  }
+
   /// «Tentar de novo» no cartão: no modo «Jogo» começa outra ronda por todas as fontes.
   void _tentarDeNovo() {
     _falhadas.clear();
@@ -2179,6 +2204,8 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
         aoAgir: _agir,
         aoMudarVelocidade: _mudarVelocidade,
         definicoes: _definicoes,
+        // modo «Jogo» (fontes de várias listas): escolher outra sem sair
+        aoOutrasFontes: widget.listaDe != null && _canais.length > 1 ? _escolherFonte : null,
         comEcraInteiro: widget.alternarEcraInteiro != null,
         ajusteToque: _ajuste,
         child: Stack(fit: StackFit.expand, children: [

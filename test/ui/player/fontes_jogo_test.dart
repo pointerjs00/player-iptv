@@ -37,7 +37,13 @@ const _fontes = [
 ];
 const _listas = ['Lista A', 'Lista B', 'Lista C'];
 
-typedef _Montado = ({MotorFalso motor, _Mensagens mensagens, List<int> pedidos, List<int> funcionou});
+typedef _Montado = ({
+  MotorFalso motor,
+  _Mensagens mensagens,
+  List<int> pedidos,
+  List<int> funcionou,
+  List<(String, Duration)> vistos,
+});
 
 Future<_Montado> _montar(WidgetTester t,
     {required Future<FonteVideo> Function(int i) resolver, bool trocaAutomatica = true}) async {
@@ -48,6 +54,7 @@ Future<_Montado> _montar(WidgetTester t,
   final mensagens = _Mensagens();
   final pedidos = <int>[];
   final funcionou = <int>[];
+  final vistos = <(String, Duration)>[];
   await t.pumpWidget(MaterialApp(
     theme: temaApp(),
     home: MensagensHost(
@@ -60,6 +67,7 @@ Future<_Montado> _montar(WidgetTester t,
           listaDe: (c) => _listas[_fontes.indexOf(c)],
           trocaAutomatica: trocaAutomatica,
           aoFuncionar: funcionou.add,
+          aoTempoVisto: (c, d) => vistos.add((c.id, d)),
           aoSair: () {},
           resolver: (c, {continuar = false}) {
             final i = _fontes.indexOf(c);
@@ -73,7 +81,7 @@ Future<_Montado> _montar(WidgetTester t,
   ));
   await t.pump();
   await t.pump();
-  return (motor: motor, mensagens: mensagens, pedidos: pedidos, funcionou: funcionou);
+  return (motor: motor, mensagens: mensagens, pedidos: pedidos, funcionou: funcionou, vistos: vistos);
 }
 
 Future<void> _abrirComImagem(WidgetTester t, MotorFalso m) async {
@@ -149,6 +157,54 @@ void main() {
     expect(m.pedidos, [0]);
     expect(find.byType(CartaoErroCanal), findsOneWidget);
     expect(m.mensagens.textos, isEmpty);
+    await _sair(t);
+  });
+
+  testWidgets('«Outras fontes»: escolhe outra lista sem sair, e o tempo visto passa para ela', (t) async {
+    final m = await _montar(t, resolver: _ok);
+    await _abrirComImagem(t, m.motor);
+    await t.pump(PlayerCanaisState.passoTempo);
+    expect(m.vistos.last.$1, '11');
+    await t.tapAt(const Offset(40, 1000)); // toque no vídeo: mostra a barra
+    await t.pumpAndSettle();
+    await t.tap(find.byTooltip('Outras fontes'));
+    await t.pumpAndSettle();
+    expect(find.text('Lista A'), findsWidgets, reason: 'a atual também está na lista');
+    await t.tap(find.text('Lista C'));
+    await t.pump();
+    await t.pump();
+    await t.pump(const Duration(milliseconds: 300)); // o diálogo fecha
+    expect(m.pedidos.last, 2, reason: 'pedidos: ${m.pedidos}');
+    expect(m.motor.aberturas.last.url, 'http://exemplo.invalido/2.ts');
+    await _abrirComImagem(t, m.motor);
+    await t.pump(PlayerCanaisState.passoTempo);
+    expect(m.vistos.last.$1, '33', reason: 'o tempo visto segue, agora na fonte nova');
+    await _sair(t);
+  });
+
+  testWidgets('fora do modo «Jogo» (uma lista) não há «Outras fontes»', (t) async {
+    t.view.physicalSize = const Size(1920, 1080);
+    t.view.devicePixelRatio = 1;
+    addTearDown(t.view.reset);
+    final motor = MotorFalso();
+    await t.pumpWidget(MaterialApp(
+      theme: temaApp(),
+      home: Scaffold(
+        body: PlayerCanais(
+          canais: _fontes,
+          indice: 0,
+          nomeLista: 'Lista A',
+          aoSair: () {},
+          resolver: (c, {continuar = false}) => _ok(0),
+          criarMotor: (ModoDescodificacao modo, bool hardware) => motor,
+        ),
+      ),
+    ));
+    await t.pump();
+    await t.tapAt(const Offset(40, 1000));
+    await t.pumpAndSettle();
+    expect(find.byTooltip('Definições'), findsOneWidget);
+    expect(find.byTooltip('Outras fontes'), findsNothing);
     await _sair(t);
   });
 
