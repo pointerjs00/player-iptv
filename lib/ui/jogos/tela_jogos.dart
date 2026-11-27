@@ -317,53 +317,78 @@ class _TelaJogosState extends State<TelaJogos> {
         }),
       );
 
-  /// A fila de cima: «Filtros», «Ao vivo» e o dia com as setas (como no Sofascore).
-  Widget _fila(List<JogoComCanais> doDia) {
+  /// A fila de cima: «Filtros», «Ao vivo» e o dia com as setas (como no Sofascore). No ecrã
+  /// estreito (telemóvel), o dia tem uma fila só para ele, por cima dos filtros: no fim da fila
+  /// que desliza ficava escondido.
+  Widget _fila(List<JogoComCanais> doDia, {required bool largo}) {
     final n = _filtrosAtivos;
     final aoVivo = doDia.where((j) => j.jogo.aDecorrer).length;
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(children: [
-        FilterChip(
-          avatar: const Icon(Icons.tune_rounded, size: 18),
-          showCheckmark: false,
-          label: Text(n == 0 ? tr('Filtros') : tr('Filtros ({0})', [n])),
-          selected: n > 0,
-          onSelected: (_) => unawaited(_abrirFiltros(doDia)),
-        ),
-        const SizedBox(width: Tokens.e8),
-        FilterChip(
-          avatar: Icon(Icons.circle, size: 10, color: _soDireto ? null : Tokens.mau),
-          showCheckmark: false,
-          label: Text(aoVivo == 0 ? tr('Ao vivo') : tr('Ao vivo ({0})', [aoVivo])),
-          selected: _soDireto,
-          onSelected: (_) => setState(() => _soDireto = !_soDireto),
-        ),
-        const SizedBox(width: Tokens.e12),
-        IconButton(
-          tooltip: tr('Dia anterior'),
-          // sempre ligados (desligados perdiam o foco): no primeiro/último dia não fazem nada
-          onPressed: () => _escolherDia(_dia - 1),
-          icon: Icon(Icons.chevron_left_rounded, color: _dia > primeiroDia ? null : Tokens.texto2.withValues(alpha: .4)),
-        ),
-        ConstrainedBox(
-          constraints: const BoxConstraints(minWidth: 120),
-          child: Text(_nomeDia(_dia),
-              textAlign: TextAlign.center, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-        ),
-        IconButton(
-          tooltip: tr('Dia seguinte'),
-          onPressed: () => _escolherDia(_dia + 1),
-          icon: Icon(Icons.chevron_right_rounded, color: _dia < ultimoDia ? null : Tokens.texto2.withValues(alpha: .4)),
-        ),
-        if (_dia != 0) ...[
-          const SizedBox(width: Tokens.e4),
-          ActionChip(
+    final filtros = <Widget>[
+      FilterChip(
+        avatar: const Icon(Icons.tune_rounded, size: 18),
+        showCheckmark: false,
+        label: Text(n == 0 ? tr('Filtros') : tr('Filtros ({0})', [n])),
+        selected: n > 0,
+        onSelected: (_) => unawaited(_abrirFiltros(doDia)),
+      ),
+      const SizedBox(width: Tokens.e8),
+      FilterChip(
+        avatar: Icon(Icons.circle, size: 10, color: _soDireto ? null : Tokens.mau),
+        showCheckmark: false,
+        label: Text(aoVivo == 0 ? tr('Ao vivo') : tr('Ao vivo ({0})', [aoVivo])),
+        selected: _soDireto,
+        onSelected: (_) => setState(() => _soDireto = !_soDireto),
+      ),
+    ];
+    final apagada = Tokens.texto2.withValues(alpha: .4);
+    // sempre ligados (desligados perdiam o foco): no primeiro/último dia não fazem nada
+    final anterior = IconButton(
+      tooltip: tr('Dia anterior'),
+      onPressed: () => _escolherDia(_dia - 1),
+      icon: Icon(Icons.chevron_left_rounded, color: _dia > primeiroDia ? null : apagada),
+    );
+    final seguinte = IconButton(
+      tooltip: tr('Dia seguinte'),
+      onPressed: () => _escolherDia(_dia + 1),
+      icon: Icon(Icons.chevron_right_rounded, color: _dia < ultimoDia ? null : apagada),
+    );
+    const estiloDia = TextStyle(fontSize: 15, fontWeight: FontWeight.w700);
+    final hoje = _dia == 0
+        ? null
+        : ActionChip(
             avatar: const Icon(Icons.today_rounded, size: 18),
             label: Text(tr('Hoje')),
             onPressed: () => _escolherDia(0),
+          );
+    if (!largo) {
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+        Row(children: [
+          anterior,
+          Expanded(
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(_nomeDia(_dia), maxLines: 1, textAlign: TextAlign.center, style: estiloDia),
+            ),
           ),
-        ],
+          seguinte,
+          if (hoje != null) ...[const SizedBox(width: Tokens.e4), hoje],
+        ]),
+        const SizedBox(height: Tokens.e4),
+        SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: filtros)),
+      ]);
+    }
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(children: [
+        ...filtros,
+        const SizedBox(width: Tokens.e12),
+        anterior,
+        ConstrainedBox(
+          constraints: const BoxConstraints(minWidth: 120),
+          child: Text(_nomeDia(_dia), textAlign: TextAlign.center, style: estiloDia),
+        ),
+        seguinte,
+        if (hoje != null) ...[const SizedBox(width: Tokens.e4), hoje],
       ]),
     );
   }
@@ -504,7 +529,7 @@ class _TelaJogosState extends State<TelaJogos> {
         Padding(padding: const EdgeInsets.fromLTRB(Tokens.e16, 0, Tokens.e16, Tokens.e8), child: campoPesquisa),
       Padding(
         padding: const EdgeInsets.fromLTRB(Tokens.e16, 0, Tokens.e16, Tokens.e8),
-        child: _fila(doDia),
+        child: _fila(doDia, largo: largo),
       ),
       Expanded(child: corpo),
       ]),

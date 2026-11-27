@@ -46,7 +46,7 @@ class PainelJogo extends StatelessWidget {
         for (final t in item.canais)
           _LinhaCanal(
             nome: nomeCanalTv(t.canal),
-            confianca: '${nomeConfianca(t.confianca)} · ${tr('{0} fontes', [fontes.fontes(t.canal).length])}',
+            confianca: '${nomeConfianca(t.confianca)} · ${_fontes(fontes.fontes(t.canal).length)}',
             icone: iconeConfianca(t.confianca),
             focavel: focavel,
             aoTocar: () => aoOndeVer(t.canal),
@@ -68,6 +68,8 @@ class PainelJogo extends StatelessWidget {
     ]);
   }
 }
+
+String _fontes(int n) => n == 1 ? tr('1 fonte') : tr('{0} fontes', [n]);
 
 class _LinhaCanal extends StatelessWidget {
   const _LinhaCanal({required this.nome, required this.confianca, required this.icone, required this.focavel,

@@ -1883,6 +1883,8 @@ const textosIngles = <String, String>{
         'No channel announced yet',
     'Onde dá':
         'Where it is on',
+    '1 fonte':
+        '1 source',
     '{0} fontes':
         '{0} sources',
     'Nenhuma das tuas listas tem os canais deste jogo':

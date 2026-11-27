@@ -1,3 +1,4 @@
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:player_iptv/ui/jogos/linha_jogo.dart';
@@ -35,6 +36,29 @@ void main() {
     expect(find.byType(TextField), findsOneWidget, reason: 'a pesquisa por equipa por cima');
     final fila = find.ancestor(of: find.widgetWithText(FilterChip, 'Filtros'), matching: find.byType(Scrollable)).first;
     expect(t.widget<Scrollable>(fila).axisDirection, AxisDirection.right);
+  });
+
+  noTelemovel('o dia e as setas veem-se inteiros, numa fila por cima dos filtros', (t, ecra) async {
+    await montar(t);
+    for (final f in [find.byTooltip('Dia anterior'), find.text('Hoje, 27 nov'), find.byTooltip('Dia seguinte')]) {
+      final r = t.getRect(f);
+      expect(r.left >= 0 && r.right <= ecra.width, isTrue, reason: '$f à vista ($r)');
+    }
+    expect(t.getRect(find.text('Hoje, 27 nov')).bottom,
+        lessThanOrEqualTo(t.getRect(find.widgetWithText(FilterChip, 'Filtros')).top));
+    await t.tap(find.byTooltip('Dia seguinte'));
+    await t.pump();
+    expect(find.widgetWithText(ActionChip, 'Hoje'), findsOneWidget);
+    expect(t.getRect(find.widgetWithText(ActionChip, 'Hoje')).right, lessThanOrEqualTo(ecra.width));
+  });
+
+  noTelemovel('«● AO VIVO» cabe na coluna da hora', (t, ecra) async {
+    await montar(t);
+    final hora = find.ancestor(of: find.text('● AO VIVO'), matching: find.byType(HoraJogo));
+    final texto = t.getRect(find.text('● AO VIVO'));
+    expect(texto.right, lessThanOrEqualTo(t.getRect(hora).right + .5));
+    final p = t.renderObject<RenderParagraph>(find.text('● AO VIVO'));
+    expect(p.getMaxIntrinsicWidth(double.infinity), lessThanOrEqualTo(p.size.width + .5), reason: 'não é cortado');
   });
 
   noTelemovel('tocar num jogo abre o detalhe, com os canais e «Ver»', (t, ecra) async {

@@ -59,7 +59,12 @@ class HoraJogo extends StatelessWidget {
   Widget build(BuildContext context) {
     final tam = grande ? 22.0 : (ecraTv(context) ? 17.0 : 15.0);
     final pequeno = TextStyle(fontSize: tam * .62, fontWeight: FontWeight.w700, color: Tokens.texto2);
-    Widget linha(String t, TextStyle s) => Text(t, maxLines: 1, softWrap: false, overflow: TextOverflow.fade, style: s);
+    // numa só linha e encolhe se não cabe (a letra grande do telemóvel cortava «● AO VIVO»)
+    Widget linha(String t, TextStyle s) => FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Text(t, maxLines: 1, softWrap: false, style: s),
+        );
     final hora = TextStyle(fontFamily: Tokens.letraTitulos, fontSize: tam, fontWeight: FontWeight.w700, color: Tokens.texto);
     return switch (jogo.estado) {
       EstadoJogo.aoVivo || EstadoJogo.intervalo => Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
