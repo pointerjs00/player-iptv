@@ -1885,6 +1885,22 @@ const textosIngles = <String, String>{
         'Where it is on',
     '1 fonte':
         '1 source',
+    'Jogos: o ecrã «Competições» mostra as competições que segues e deixa mudar a ordem delas (com o comando: OK pega, ↑/↓ move, OK larga). Os blocos dos Jogos seguem essa ordem.':
+        "Matches: the «Competitions» screen shows the competitions you follow and lets you change their order (with the remote: OK picks up, ↑/↓ moves, OK drops). The Matches blocks follow that order.",
+    'Jogos: ténis (ATP e WTA) e basquetebol (NBA e Liga Betclic), com os canais onde dão.':
+        "Matches: tennis (ATP and WTA) and basketball (NBA and Liga Betclic), with the channels showing them.",
+    'Jogos: os resultados dos jogos a decorrer atualizam-se sozinhos a cada minuto, com o ecrã aberto (não em dados móveis).':
+        "Matches: the scores of live matches update by themselves every minute while the screen is open (not on mobile data).",
+    'Início: a fila «Hoje há jogo» com os jogos de hoje das tuas equipas favoritas; OK abre logo o jogo.':
+        "Home: the «Matches today» row with today's matches of your favourite teams; OK opens the match straight away.",
+    'Durante um jogo, «Outras fontes» no player deixa escolher outra lista sem sair.':
+        "During a match, «Other sources» in the player lets you pick another list without leaving.",
+    'Jogos: o detalhe mostra o logótipo de cada canal (das tuas listas).':
+        "Matches: the details show each channel's logo (from your lists).",
+    'Jogos na TV: a pesquisa por equipa já não abre o teclado sozinha e as setas saem do campo; os botões de cima não perdem o foco.':
+        "Matches on TV: the team search no longer opens the keyboard by itself and the arrows leave the field; the buttons at the top no longer lose focus.",
+    'Jogos no telemóvel: o dia tem uma fila só para ele e «AO VIVO» já não se corta.':
+        "Matches on phones: the day has a row of its own and «LIVE» is no longer cut off.",
     'Outras fontes':
         'Other sources',
     'falhou':

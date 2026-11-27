@@ -7,7 +7,8 @@ import '../idioma/idioma.dart';
 
 /// Depois de atualizar: as novidades desta versão, com "Ver todas" (o histórico) e "Fechar".
 Future<void> mostrarNovidadesDaVersao(BuildContext context) async {
-  final n = historicoNovidades.first;
+  final n = novidadesDoAviso();
+  if (n == null) return;
   final todas = await showDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
@@ -51,7 +52,7 @@ class TelaNovidades extends StatelessWidget {
             child: ListView(
               padding: const EdgeInsets.all(Tokens.e16),
               children: [
-                for (final (i, n) in historicoNovidades.indexed) _Versao(n, autofocus: i == 0),
+                for (final (i, n) in versoesComNovidades().indexed) _Versao(n, autofocus: i == 0),
               ],
             ),
           ),

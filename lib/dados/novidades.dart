@@ -19,6 +19,18 @@ class Novidades {
 /// Todas as versões, a mais recente primeiro. A primeira é a versão da app: ao mudar a versão no
 /// pubspec.yaml, junta-se aqui a entrada dela (um teste confirma que batem certo).
 const historicoNovidades = <Novidades>[
+  Novidades('1.0.24', '2026-11-27', [
+    if (!edicaoPartilha) ...[
+      'Jogos: o ecrã «Competições» mostra as competições que segues e deixa mudar a ordem delas (com o comando: OK pega, ↑/↓ move, OK larga). Os blocos dos Jogos seguem essa ordem.',
+      'Jogos: ténis (ATP e WTA) e basquetebol (NBA e Liga Betclic), com os canais onde dão.',
+      'Jogos: os resultados dos jogos a decorrer atualizam-se sozinhos a cada minuto, com o ecrã aberto (não em dados móveis).',
+      'Início: a fila «Hoje há jogo» com os jogos de hoje das tuas equipas favoritas; OK abre logo o jogo.',
+      'Durante um jogo, «Outras fontes» no player deixa escolher outra lista sem sair.',
+      'Jogos: o detalhe mostra o logótipo de cada canal (das tuas listas).',
+      'Jogos na TV: a pesquisa por equipa já não abre o teclado sozinha e as setas saem do campo; os botões de cima não perdem o foco.',
+      'Jogos no telemóvel: o dia tem uma fila só para ele e «AO VIVO» já não se corta.',
+    ],
+  ]),
   Novidades('1.0.23', '2026-11-27', [
     if (!edicaoPartilha) ...[
       'Novo ecrã «Jogos»: os jogos das tuas competições (Liga Portugal, Champions, as grandes ligas e '
@@ -156,6 +168,16 @@ String dataNovidades(Novidades n) {
 }
 
 String get versaoApp => historicoNovidades.first.versao;
+
+/// As versões com alguma novidade nesta edição (na de partilha, uma versão só com novidades dos
+/// Jogos fica vazia).
+List<Novidades> versoesComNovidades([List<Novidades> h = historicoNovidades]) => [
+      for (final n in h)
+        if (n.itens.isNotEmpty) n,
+    ];
+
+/// O aviso depois de atualizar: as novidades da versão da app, ou null se nesta edição não tem nenhuma.
+Novidades? novidadesDoAviso([List<Novidades> h = historicoNovidades]) => h.first.itens.isEmpty ? null : h.first;
 
 /// O ficheiro com a última versão cujas novidades se mostraram.
 const ficheiroNovidadesVistas = 'novidades_vistas.txt';

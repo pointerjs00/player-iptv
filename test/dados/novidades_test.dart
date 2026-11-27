@@ -26,6 +26,16 @@ void main() {
     }
   });
 
+  test('uma versão sem novidades nesta edição (a de partilha sem os Jogos) não aparece nem abre o aviso', () {
+    const h = [
+      Novidades('1.0.24', '2026-11-27', []),
+      Novidades('1.0.23', '2026-11-27', ['x']),
+    ];
+    expect(versoesComNovidades(h).map((n) => n.versao), ['1.0.23']);
+    expect(novidadesDoAviso(h), isNull);
+    expect(novidadesDoAviso(historicoNovidades)?.versao, versaoApp);
+  });
+
   test('cada versão tem a data de lançamento (aaaa-mm-dd), da mais recente para a mais antiga', () {
     DateTime? antes;
     for (final n in historicoNovidades) {
