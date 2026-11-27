@@ -4,9 +4,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:player_iptv/dados/area_gestor.dart';
 import 'package:player_iptv/dados/biblioteca.dart';
+import 'package:player_iptv/dados/preferencias.dart';
+import 'package:player_iptv/desporto/preferencias_jogos.dart';
 import 'package:player_iptv/edicao.dart';
 import 'package:player_iptv/idioma/ingles.dart';
 import 'package:player_iptv/tarefas/servico_tarefas.dart';
+import 'package:player_iptv/ui/definicoes/tela_definicoes.dart';
 import 'package:player_iptv/ui/design/componentes.dart';
 import 'package:player_iptv/ui/gestor/indicador_atividade.dart';
 import 'package:player_iptv/ui/gestor/tela_gestor.dart';
@@ -74,5 +77,27 @@ void main() {
     test('as traduções da importação automática não estão no pacote', () {
       expect(textosIngles.keys.where((k) => k.contains('stbstalker') || k.contains('Telegram')), isEmpty);
     }, skip: soNaPartilha);
+
+    testWidgets('não há «Jogos» nas Definições, mesmo com as preferências dos jogos', (t) async {
+      t.view.physicalSize = const Size(1200, 1800);
+      t.view.devicePixelRatio = 1;
+      addTearDown(t.view.reset);
+      late Biblioteca bib;
+      late AreaGestor area;
+      late Preferencias prefs;
+      late PreferenciasJogos jogos;
+      await t.runAsync(() async {
+        bib = await Biblioteca.abrir(pasta);
+        area = await AreaGestor.abrir(pasta);
+        prefs = await Preferencias.abrir(pasta);
+        jogos = await PreferenciasJogos.abrir(pasta);
+      });
+      await t.pumpWidget(MaterialApp(
+          theme: temaApp(),
+          home: Scaffold(body: TelaDefinicoes(biblioteca: bib, area: area, preferencias: prefs, jogos: jogos))));
+      await t.pump();
+      expect(find.text('Ligação'), findsOneWidget);
+      expect(find.text('Jogos'), findsNothing);
+    }, skip: soNaPartilha != null);
   });
 }

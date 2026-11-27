@@ -2,6 +2,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:player_iptv/desporto/servico_jogos.dart';
 import 'package:player_iptv/ui/jogos/linha_jogo.dart';
+import 'package:player_iptv/dados/area_gestor.dart';
+import 'package:player_iptv/dados/biblioteca.dart';
+import 'package:player_iptv/dados/preferencias.dart';
+import 'package:player_iptv/ui/definicoes/secao_jogos.dart';
+import 'package:player_iptv/ui/definicoes/tela_definicoes.dart';
 import 'package:player_iptv/ui/principal/tela_principal.dart';
 
 import 'ajuda_dpad.dart';
@@ -121,6 +126,25 @@ void main() {
     };
     expect(destaque['Benfica'], isTrue);
     expect(destaque['Marítimo'], isFalse);
+  });
+
+  testWidgets('Definições › Jogos: as competições e a qualidade preferida', (t) async {
+    await montar(t);
+    final (bib, area, prefs) = (await t.runAsync(() async =>
+        (await Biblioteca.abrir(m.pasta), await AreaGestor.abrir(m.pasta), await Preferencias.abrir(m.pasta))))!;
+    await t.pumpWidget(appTeste(Scaffold(
+        body: TelaDefinicoes(biblioteca: bib, area: area, preferencias: prefs, jogos: m.prefs))));
+    await t.pump();
+    await t.tap(find.text('Jogos'));
+    await t.pumpAndSettle();
+    expect(find.byType(SecaoJogos), findsOneWidget);
+    expect(m.prefs.competicoes, contains('liga-portugal'));
+    await t.tap(find.widgetWithText(FilterChip, 'Liga Portugal Betclic'));
+    await t.pump();
+    expect(m.prefs.competicoes, isNot(contains('liga-portugal')));
+    await t.tap(find.widgetWithText(ChoiceChip, '4K'));
+    await t.pump();
+    expect(m.prefs.qualidade.name, 'uhd');
   });
 
   testWidgets('a casca mostra «Jogos» na barra só quando recebe o ecrã', (t) async {

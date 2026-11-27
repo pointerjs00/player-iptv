@@ -19,6 +19,16 @@ class Novidades {
 /// Todas as versões, a mais recente primeiro. A primeira é a versão da app: ao mudar a versão no
 /// pubspec.yaml, junta-se aqui a entrada dela (um teste confirma que batem certo).
 const historicoNovidades = <Novidades>[
+  Novidades('1.0.23', '2026-11-27', [
+    if (!edicaoPartilha) ...[
+      'Novo ecrã «Jogos»: os jogos das tuas competições (Liga Portugal, Champions, as grandes ligas e '
+          'as seleções) e os canais portugueses onde dão, com a hora, o resultado ao vivo e o filtro por dia.',
+      '«Onde ver»: para cada canal, as fontes em todas as tuas listas, pela probabilidade de funcionar. '
+          '«▶ Ver» abre a melhor e, se não der imagem, passa sozinho à seguinte.',
+      'Definições › Jogos: as competições a seguir, as equipas favoritas (ficam em destaque) e a qualidade '
+          'preferida.',
+    ],
+  ]),
   Novidades('1.0.22', '2026-11-26', [
     'Ver TV: menos texto cortado. Nos cartões das listas o tipo vai ao lado do servidor e as contagens aparecem inteiras; o «Continuar a ver» é mais largo e os favoritos mostram o nome do canal em até 2 linhas.',
   ]),

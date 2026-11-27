@@ -1959,5 +1959,11 @@ const textosIngles = <String, String>{
         'Associations cleared',
     'Atualizar os jogos e as grelhas dos canais? São várias dezenas de pedidos pequenos.':
         'Update the matches and the channel schedules? It takes several dozen small requests.',
+    'Novo ecrã «Jogos»: os jogos das tuas competições (Liga Portugal, Champions, as grandes ligas e as seleções) e os canais portugueses onde dão, com a hora, o resultado ao vivo e o filtro por dia.':
+        'New “Matches” screen: the matches from your competitions (Liga Portugal, Champions League, the big leagues and national teams) and the Portuguese channels showing them, with the time, the live score and a filter by day.',
+    '«Onde ver»: para cada canal, as fontes em todas as tuas listas, pela probabilidade de funcionar. «▶ Ver» abre a melhor e, se não der imagem, passa sozinho à seguinte.':
+        '“Where to watch”: for each channel, the sources in all your lists, by how likely they are to work. “▶ Watch” opens the best one and, if it shows no picture, moves to the next on its own.',
+    'Definições › Jogos: as competições a seguir, as equipas favoritas (ficam em destaque) e a qualidade preferida.':
+        'Settings › Matches: the competitions to follow, favourite teams (highlighted) and the preferred quality.',
   },
 };

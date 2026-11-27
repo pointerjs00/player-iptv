@@ -12,6 +12,7 @@ import '../../dados/estatisticas.dart';
 import '../../dados/guardar_ficheiro.dart';
 import '../../dados/novidades.dart';
 import '../../dados/preferencias.dart';
+import '../../edicao.dart';
 import '../../desporto/preferencias_jogos.dart';
 import '../../marca.dart';
 import '../../rede/http.dart';
@@ -132,7 +133,7 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
   Preferencias get _p => widget.preferencias;
 
   /// As categorias à vista («Jogos» só com as preferências dele).
-  List<_Categoria> get _categorias => [for (final c in _Categoria.values) if (c != _Categoria.jogos || widget.jogos != null) c];
+  List<_Categoria> get _categorias => [for (final c in _Categoria.values) if (c != _Categoria.jogos || (!edicaoPartilha && widget.jogos != null)) c];
   bool get _android => widget.android ?? Platform.isAndroid;
 
   @override
@@ -528,7 +529,7 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
         ];
       case _Categoria.jogos:
         final j = widget.jogos;
-        return [if (j != null) SecaoJogos(preferencias: j)];
+        return [if (!edicaoPartilha && j != null) SecaoJogos(preferencias: j)];
       case _Categoria.copia:
         return [
           _opcao(tr('Exportar e importar'),
