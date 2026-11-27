@@ -47,3 +47,6 @@ Decisões do utilizador (27/11):
   se apagaram).
 - Plano concluído. Por fazer pelo utilizador: guardar a 2.ª cópia da chave; publicar as releases no
   GitHub (etiqueta `v<versão>`); `git push` quando quiser.
+- 27/11: 1.0.26 publicada. Push do `main` e do `feature/redesenho` (17be9bc). Duas releases: `v1.0.26`
+  (completa, a mais recente, 6 pacotes) e `partilha-v1.0.26` (3 pacotes da partilha). A app procura só as
+  da sua edição (prefixo `v` / `partilha-v`). Nas próximas versões: as duas releases, com estas etiquetas.
