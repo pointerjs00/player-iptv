@@ -1885,6 +1885,12 @@ const textosIngles = <String, String>{
         'Where it is on',
     '1 fonte':
         '1 source',
+    'Cópia de segurança: leva também as preferências dos Jogos (equipas favoritas, competições seguidas e a ordem delas).':
+        "Backup: it now also keeps the Matches preferences (favourite teams, followed competitions and their order).",
+    'Jogos: a Liga das Nações e a qualificação do Europeu já não mostram jogos femininos por engano.':
+        "Matches: the Nations League and the Euro qualifiers no longer show women's matches by mistake.",
+    'Ao abrir, a app avisa quando há uma versão nova publicada.':
+        "When it opens, the app tells you when a new version is out.",
     'Há uma versão nova da app: {0}. Descarrega em {1}':
         'A new version of the app is out: {0}. Download it from {1}',
     'Jogos: em «Filtros», «Ordenar» deixa ver os jogos numa só lista pela hora, em vez de por competição.':

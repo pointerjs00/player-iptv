@@ -19,6 +19,13 @@ class Novidades {
 /// Todas as versões, a mais recente primeiro. A primeira é a versão da app: ao mudar a versão no
 /// pubspec.yaml, junta-se aqui a entrada dela (um teste confirma que batem certo).
 const historicoNovidades = <Novidades>[
+  Novidades('1.0.26', '2026-11-27', [
+    if (!edicaoPartilha) ...[
+      'Cópia de segurança: leva também as preferências dos Jogos (equipas favoritas, competições seguidas e a ordem delas).',
+      'Jogos: a Liga das Nações e a qualificação do Europeu já não mostram jogos femininos por engano.',
+      'Ao abrir, a app avisa quando há uma versão nova publicada.',
+    ],
+  ]),
   Novidades('1.0.25', '2026-11-27', [
     if (!edicaoPartilha) ...[
       'Jogos: em «Filtros», «Ordenar» deixa ver os jogos numa só lista pela hora, em vez de por competição.',
