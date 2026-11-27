@@ -400,6 +400,11 @@ void main() {
     await t.runAsync(() => Future<void>.delayed(const Duration(seconds: 2))); // os nomes indexados
     await t.pump();
     await escrever(t, 'desp');
+    // a indexação corre noutro isolate: com a máquina carregada (o conjunto todo) pode passar dos 2 s
+    for (var i = 0; i < 60 && find.text('Canais · 10000').evaluate().isEmpty; i++) {
+      await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 250)));
+      await t.pump();
+    }
     expect(find.text('Canais · 10000'), findsOneWidget);
     // continua virtualizada: só se constroem as linhas à vista
     final lista = t.widget<ListView>(_canais);

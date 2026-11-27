@@ -35,4 +35,7 @@ Decisões do utilizador (27/11):
   Os padrões por nome apanhavam as competições femininas (Liga das Nações e qualificação do Europeu):
   passaram aos ids reais (Taça do Rei 9942; Liga das Nações 9807/9808/9809; Europeu 10607; Mundial
   10195/10199). O recorte de teste tinha uma Taça do Rei inventada (999001) → 9942.
-- Próximo: tarefa 4 (`ferramentas/verificar.py` e o `empacotar.py` a corrê-lo).
+- Tarefa 4 feita: `ferramentas/verificar.py` (análise, testes das ferramentas, testes da partilha,
+  testes) e o `empacotar.py` corre-o antes de compilar (uma vez no `--tudo`; `--sem-verificar` salta).
+  O teste dos 100 mil canais espera pela indexação em vez de 2 s fixos (falhava com a máquina carregada).
+- Próximo: tarefa 5 (aviso de nova versão pelas GitHub Releases de pointerjs00/player-iptv).

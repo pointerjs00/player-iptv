@@ -10,6 +10,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import empacotar
 
 
+# nos testes, o main nunca corre a verificação a sério (o Flutter): cada teste que a quer vê-la
+# troca-a por uma sua
+_VERIFICACOES = []
+
+
+def setUpModule():
+    empacotar.verificar_app = lambda: _VERIFICACOES.append(True)
+
+
 def _licencas_windows(p: Path) -> None:
     (p / "licencas-libmpv" / "licencas").mkdir(parents=True)
     (p / "licencas-libmpv" / "AVISOS-LICENCAS.txt").write_text("x")
@@ -145,6 +154,38 @@ class NomesApk(unittest.TestCase):
         with tempfile.TemporaryDirectory() as t:
             with self.assertRaises(SystemExit):
                 empacotar.copiar_apks(Path(t), Path(t) / "d")
+
+
+class VerificarAntes(unittest.TestCase):
+    def _correr(self, argv):
+        ordem = []
+        orig = (empacotar.RAIZ, empacotar.construir_android, empacotar.construir_windows, empacotar.testar_partilha,
+                empacotar.verificar_app)
+        with tempfile.TemporaryDirectory() as t:
+            empacotar.RAIZ = Path(t)
+            empacotar.construir_android = lambda d: ordem.append("android") or []
+            empacotar.construir_windows = lambda d: ordem.append("windows") and None
+            empacotar.testar_partilha = lambda: None
+            empacotar.verificar_app = lambda: ordem.append("verificar")
+            try:
+                empacotar.main(argv)
+            finally:
+                (empacotar.RAIZ, empacotar.construir_android, empacotar.construir_windows, empacotar.testar_partilha,
+                 empacotar.verificar_app) = orig
+                empacotar.DEFINES.clear()
+        return ordem
+
+    def test_verifica_antes_de_compilar(self):
+        self.assertEqual(self._correr(["--so-android"]), ["verificar", "android"])
+
+    def test_sem_verificar_salta(self):
+        self.assertEqual(self._correr(["--so-android", "--sem-verificar"]), ["android"])
+
+    def test_tudo_verifica_uma_so_vez(self):
+        ordem = self._correr(["--tudo", "--so-android"])
+        self.assertEqual(ordem.count("verificar"), 1)
+        self.assertEqual(ordem[0], "verificar")
+        self.assertEqual(ordem.count("android"), 2, msg="as duas edições")
 
 
 class AssinaturaApk(unittest.TestCase):
