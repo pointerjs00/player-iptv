@@ -41,6 +41,9 @@ class PreferenciasJogos extends ChangeNotifier {
   Qualidade _qualidade = Qualidade.fhd;
   /// Por omissão vêem-se todos os jogos (os que ainda não têm canal também).
   bool _mostrarSemCanal = true;
+
+  /// Os Jogos numa só lista pela hora (em vez de por competição).
+  bool _ordenarPorHora = false;
   final _ultimas = <String, UltimaFonte>{};
 
   /// listaId → canalId → associação.
@@ -66,6 +69,7 @@ class PreferenciasJogos extends ChangeNotifier {
     final q = j['qualidade'];
     if (q is String) _qualidade = Qualidade.values.firstWhere((x) => x.name == q, orElse: () => _qualidade);
     if (j['mostrarSemCanal'] is bool) _mostrarSemCanal = j['mostrarSemCanal'] as bool;
+    if (j['ordenarPorHora'] is bool) _ordenarPorHora = j['ordenarPorHora'] as bool;
     final u = j['ultimas'];
     if (u is Map) {
       for (final e in u.entries) {
@@ -94,6 +98,7 @@ class PreferenciasJogos extends ChangeNotifier {
         'equipas': _equipas,
         'qualidade': _qualidade.name,
         'mostrarSemCanal': _mostrarSemCanal,
+        'ordenarPorHora': _ordenarPorHora,
         'ultimas': {
           for (final e in _ultimas.entries)
             e.key: {'lista': e.value.listaId, 'canal': e.value.canalId, 'data': e.value.data.toIso8601String()},
@@ -165,6 +170,12 @@ class PreferenciasJogos extends ChangeNotifier {
   Qualidade get qualidade => _qualidade;
   set qualidade(Qualidade v) {
     _qualidade = v;
+    _mudou();
+  }
+
+  bool get ordenarPorHora => _ordenarPorHora;
+  set ordenarPorHora(bool v) {
+    _ordenarPorHora = v;
     _mudou();
   }
 

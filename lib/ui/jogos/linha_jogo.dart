@@ -163,7 +163,11 @@ class LinhaJogo extends StatefulWidget {
     this.aoFocar,
     this.destaque = false,
     this.mostrarCompeticao = true,
+    this.autofocus = false,
   });
+
+  /// O foco começa nesta linha (o primeiro jogo de um ecrã).
+  final bool autofocus;
 
   /// O nome da competição na legenda (não, quando os jogos estão agrupados por ela).
   final bool mostrarCompeticao;
@@ -271,6 +275,7 @@ class LinhaJogoState extends State<LinhaJogo> {
       },
       child: CartaoModerno(
         focusNode: widget.focusNode,
+        autofocus: widget.autofocus,
         escalaFoco: 1.01,
         destaque: widget.destaque,
         padding: EdgeInsets.symmetric(horizontal: Tokens.e16, vertical: tv ? 10 : Tokens.e12),

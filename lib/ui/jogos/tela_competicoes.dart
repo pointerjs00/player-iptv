@@ -13,8 +13,11 @@ import 'tela_jogos.dart' show nomeDesporto;
 /// (ver docs/2026-11-27-ordem-competicoes-design.md). Com o comando, OK pega numa competição,
 /// CIMA/BAIXO movem-na e OK (ou Voltar) larga-a; com toque ou rato, arrasta-se pela pega.
 class TelaCompeticoes extends StatefulWidget {
-  const TelaCompeticoes({super.key, required this.preferencias});
+  const TelaCompeticoes({super.key, required this.preferencias, this.aoAbrir});
   final PreferenciasJogos preferencias;
+
+  /// Fora do modo «Reordenar», OK numa competição abre os jogos dela de todos os dias (null = nada).
+  final ValueChanged<String>? aoAbrir;
 
   @override
   State<TelaCompeticoes> createState() => _TelaCompeticoesState();
@@ -129,9 +132,13 @@ class _TelaCompeticoesState extends State<TelaCompeticoes> {
             escalaFoco: 1.01,
             destaque: pegada,
             padding: const EdgeInsets.symmetric(horizontal: Tokens.e16, vertical: Tokens.e12),
-            // fora do modo, OK não faz nada (as linhas recebem o foco só para se ver a lista)
+            // fora do modo, OK abre os jogos da competição de todos os dias
             onTap: () {
-              if (_reordenar) setState(() => _pegada = pegada ? null : c.id);
+              if (_reordenar) {
+                setState(() => _pegada = pegada ? null : c.id);
+              } else {
+                widget.aoAbrir?.call(c.id);
+              }
             },
             child: Row(
               children: [
@@ -153,6 +160,7 @@ class _TelaCompeticoesState extends State<TelaCompeticoes> {
                   ),
                 ),
                 if (pegada) const Icon(Icons.swap_vert_rounded, color: Tokens.anelFoco),
+                if (!_reordenar && widget.aoAbrir != null) const Icon(Icons.chevron_right_rounded, color: Tokens.texto2),
                 if (_reordenar)
                   ReorderableDragStartListener(
                     index: i,

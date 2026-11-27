@@ -61,6 +61,16 @@ void main() {
     expect(p.getMaxIntrinsicWidth(double.infinity), lessThanOrEqualTo(p.size.width + .5), reason: 'não é cortado');
   });
 
+  noTelemovel('os jogos de uma competição (de «Competições») não transbordam', (t, ecra) async {
+    await montar(t);
+    await t.tap(find.byTooltip('Competições'));
+    await t.pumpAndSettle();
+    await t.tap(find.text('Liga Portugal Betclic'));
+    await t.pumpAndSettle();
+    expect(find.text('Hoje, 27 nov'), findsOneWidget);
+    expect(find.byType(LinhaJogo), findsWidgets);
+  });
+
   noTelemovel('tocar num jogo abre o detalhe, com os canais e «Ver»', (t, ecra) async {
     await montar(t);
     await t.tap(find.text('Benfica'));

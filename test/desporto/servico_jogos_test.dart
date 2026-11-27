@@ -99,6 +99,19 @@ void main() {
     expect(pedidos, isEmpty);
   });
 
+  test('vários dias: carrega só os que faltam, e os jogos de uma competição vêm de todos, pela hora', () async {
+    await servico.carregar(dia27);
+    pedidos.clear();
+    await servico.carregarDias([dia27, dia28]);
+    expect(servico.temDia(dia28), isTrue);
+    expect(pedidos.where((u) => u.host.contains('fotmob') && u.path.endsWith('/matches')).map((u) => u.queryParameters['date']),
+        ['20261128'], reason: 'o dia 27 já estava');
+    final js = servico.jogosDaCompeticao('liga-portugal', [dia27, dia28], soComCanal: false);
+    expect(js.map((j) => j.jogo.casa), ['Marítimo', 'Moreirense']);
+    expect(servico.jogosDaCompeticao('liga-portugal', [dia28], soComCanal: false), isEmpty,
+        reason: 'só os dias pedidos');
+  });
+
   test('fase 2: a NBA (ESPN) e a Liga Betclic (FPB) entram nos jogos do dia', () async {
     await servico.carregar(dia28);
     final js28 = servico.jogos(FiltroJogos(dia28, soComCanal: false));

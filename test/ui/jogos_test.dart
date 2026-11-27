@@ -3,7 +3,9 @@ import 'package:material_ui/material_ui.dart';
 import 'package:player_iptv/desporto/servico_jogos.dart';
 import 'package:player_iptv/ui/conteudo/painel_canal.dart' show LogoCanal;
 import 'package:player_iptv/ui/jogos/linha_jogo.dart';
+import 'package:player_iptv/desporto/modelo.dart';
 import 'package:player_iptv/ui/jogos/tela_competicoes.dart';
+import 'package:player_iptv/ui/jogos/tela_jogos_competicao.dart';
 import 'package:player_iptv/ui/jogos/tela_jogos.dart';
 import 'package:player_iptv/dados/area_gestor.dart';
 import 'package:player_iptv/dados/biblioteca.dart';
@@ -91,6 +93,47 @@ void main() {
     };
     expect(logos['Sport TV 1'], 'http://logos.invalido/stv1.png', reason: 'o primeiro logótipo das fontes');
     expect(logos['Sport TV 2'], '', reason: 'sem logótipo nas listas: as iniciais');
+  });
+
+  testWidgets('«Ordenar: Por hora» nos Filtros: uma só lista pela hora, com a competição em cada jogo', (t) async {
+    await montar(t);
+    await t.tap(find.widgetWithIcon(FilterChip, Icons.tune_rounded));
+    await t.pumpAndSettle();
+    await t.tap(find.widgetWithText(ChoiceChip, 'Por hora'));
+    await t.pumpAndSettle();
+    await t.tap(find.widgetWithText(FilledButton, 'Fechar'));
+    await t.pumpAndSettle();
+    expect(m.prefs.ordenarPorHora, isTrue);
+    expect(find.byType(CabecalhoCompeticao), findsNothing);
+    final casas = [for (final e in find.byType(LinhaJogo).evaluate()) (e.widget as LinhaJogo).item.jogo.casa];
+    expect(casas, ['Marítimo', 'Benfica', 'Feyenoord', 'Moreirense', 'Arsenal', 'Braga', 'Gil Vicente', 'Famalicão']);
+    expect(find.byType(LinhaJogo).evaluate().every((e) => (e.widget as LinhaJogo).mostrarCompeticao), isTrue);
+  });
+
+  testWidgets('em «Competições», tocar numa abre todos os jogos dela, de todos os dias, por dia', (t) async {
+    await montar(t);
+    m.servico.definir(DateTime(2026, 11, 28), [
+      JogoComCanais(
+          Jogo(id: 'fotmob:99', desporto: Desporto.futebol, competicaoId: 'premier-league', casa: 'Chelsea',
+              fora: 'Liverpool', inicio: DateTime.utc(2026, 11, 28, 17, 30)),
+          [transmissao('fotmob:99', 'sporttv2')]),
+    ]);
+    await t.tap(find.byTooltip('Competições'));
+    await t.pumpAndSettle();
+    await t.tap(find.text('Premier League'));
+    await t.pumpAndSettle();
+    expect(find.byType(TelaJogosCompeticao), findsOneWidget);
+    expect(find.text('Hoje, 27 nov'), findsOneWidget);
+    expect(find.text('Amanhã, 28 nov'), findsOneWidget);
+    final casas = [for (final e in find.byType(LinhaJogo).evaluate()) (e.widget as LinhaJogo).item.jogo.casa];
+    expect(casas, ['Arsenal', 'Chelsea']);
+    expect(t.getRect(find.text('Hoje, 27 nov')).top, lessThan(t.getRect(find.text('Amanhã, 28 nov')).top));
+    // os dias que faltavam pedem-se (de ontem a daqui a 6 dias)
+    expect(m.servico.cargas, containsAll([DateTime(2026, 11, 26), DateTime(2026, 12, 3)]));
+    await t.tap(find.byTooltip('Voltar'));
+    await t.pumpAndSettle();
+    expect(find.byType(TelaJogosCompeticao), findsNothing);
+    expect(find.byType(TelaCompeticoes), findsOneWidget);
   });
 
   Future<void> abrirFiltros(WidgetTester t) async {

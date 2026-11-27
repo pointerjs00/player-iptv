@@ -227,6 +227,24 @@ class ServicoJogos extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Carrega, um a um, os `dias` que ainda não foram carregados (o ecrã de uma competição).
+  Future<void> carregarDias(Iterable<DateTime> dias) async {
+    for (final d in dias) {
+      if (!temDia(d)) await carregar(d);
+    }
+  }
+
+  /// Os jogos da competição `id` em todos os `dias` já carregados, pela hora (sem repetidos: o
+  /// FotMob pode pôr o mesmo jogo em dois dias).
+  List<JogoComCanais> jogosDaCompeticao(String id, Iterable<DateTime> dias, {bool soComCanal = true}) {
+    final vistos = <String>{};
+    return [
+      for (final d in dias)
+        for (final j in _porDia[_chaveDia(d)] ?? const <JogoComCanais>[])
+          if (j.jogo.competicaoId == id && (!soComCanal || j.canais.isNotEmpty) && vistos.add(j.jogo.id)) j,
+    ]..sort((a, b) => a.jogo.inicio.compareTo(b.jogo.inicio));
+  }
+
   /// Os jogos do dia do filtro (os da última carga desse dia), pela hora.
   List<JogoComCanais> jogos(FiltroJogos f) {
     final q = _simples(f.equipa);

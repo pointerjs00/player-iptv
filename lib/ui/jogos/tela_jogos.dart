@@ -19,6 +19,7 @@ import 'folha_onde_ver.dart';
 import 'linha_jogo.dart';
 import 'painel_jogo.dart';
 import 'tela_competicoes.dart';
+import 'tela_jogos_competicao.dart';
 
 /// Abre as fontes no player (nos testes, um falso).
 typedef AbrirFontesJogo = Future<void> Function(BuildContext context, List<FonteCanal> fontes,
@@ -32,6 +33,22 @@ const larguraColunaJogo = 900.0;
 
 /// Os dias que se podem escolher, a partir de hoje (o guia de TV do FotMob dá 7 dias).
 const primeiroDia = -1, ultimoDia = 6;
+
+/// «Hoje, 27 nov», «Seg, 30 nov»: o dia `d` (em dias a partir de `hoje`).
+String nomeDiaJogos(DateTime hoje, int d) {
+  final dia = DateTime(hoje.year, hoje.month, hoje.day + d);
+  final nome = switch (d) {
+    -1 => tr('Ontem'),
+    0 => tr('Hoje'),
+    1 => tr('Amanhã'),
+    _ => [tr('Seg'), tr('Ter'), tr('Qua'), tr('Qui'), tr('Sex'), tr('Sáb'), tr('Dom')][dia.weekday - 1],
+  };
+  final mes = [
+    tr('jan'), tr('fev'), tr('mar'), tr('abr'), tr('mai'), tr('jun'),
+    tr('jul'), tr('ago'), tr('set'), tr('out'), tr('nov'), tr('dez'),
+  ][dia.month - 1];
+  return '$nome, ${dia.day} $mes';
+}
 
 String nomeDesporto(Desporto d) => switch (d) {
       Desporto.futebol => tr('Futebol'),
@@ -229,7 +246,25 @@ class _TelaJogosState extends State<TelaJogos> with WidgetsBindingObserver {
 
   /// As competições seguidas, para mudar a ordem dos blocos (os Jogos ouvem as preferências).
   void _abrirCompeticoes() => Navigator.of(context).push(MaterialPageRoute<void>(
-        builder: (_) => Scaffold(body: SafeArea(child: TelaCompeticoes(preferencias: widget.preferencias))),
+        builder: (_) => Scaffold(
+            body: SafeArea(child: TelaCompeticoes(preferencias: widget.preferencias, aoAbrir: _abrirCompeticao))),
+      ));
+
+  /// Todos os jogos de uma competição, de todos os dias (de «Competições»).
+  void _abrirCompeticao(String id) => Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) => Scaffold(
+          body: SafeArea(
+            child: TelaJogosCompeticao(
+              competicaoId: id,
+              servico: widget.servico,
+              preferencias: widget.preferencias,
+              agora: widget.agora,
+              aoOndeVer: _ondeVer,
+              aoVer: _ver,
+              aoDetalhe: _detalhe,
+            ),
+          ),
+        ),
       ));
 
   void _ver(JogoComCanais j) => unawaited(_abrir(fontesDoJogo(j, widget.fontes, widget.preferencias)));
@@ -251,21 +286,7 @@ class _TelaJogosState extends State<TelaJogos> with WidgetsBindingObserver {
     ));
   }
 
-  /// «Hoje, 27 nov», «Seg, 30 nov».
-  String _nomeDia(int d) {
-    final dia = DateTime(_hoje.year, _hoje.month, _hoje.day + d);
-    final nome = switch (d) {
-      -1 => tr('Ontem'),
-      0 => tr('Hoje'),
-      1 => tr('Amanhã'),
-      _ => [tr('Seg'), tr('Ter'), tr('Qua'), tr('Qui'), tr('Sex'), tr('Sáb'), tr('Dom')][dia.weekday - 1],
-    };
-    final mes = [
-      tr('jan'), tr('fev'), tr('mar'), tr('abr'), tr('mai'), tr('jun'),
-      tr('jul'), tr('ago'), tr('set'), tr('out'), tr('nov'), tr('dez'),
-    ][dia.month - 1];
-    return '$nome, ${dia.day} $mes';
-  }
+  String _nomeDia(int d) => nomeDiaJogos(_hoje, d);
 
   String? _estado() {
     final e = widget.servico.estado;
@@ -313,6 +334,19 @@ class _TelaJogosState extends State<TelaJogos> with WidgetsBindingObserver {
                     value: _soComCanal,
                     onChanged: (v) => aplicar(() => widget.preferencias.mostrarSemCanal = !v),
                   ),
+                  titulo(tr('Ordenar')),
+                  Wrap(spacing: Tokens.e8, runSpacing: Tokens.e8, children: [
+                    ChoiceChip(
+                      label: Text(tr('Por competição')),
+                      selected: !widget.preferencias.ordenarPorHora,
+                      onSelected: (_) => aplicar(() => widget.preferencias.ordenarPorHora = false),
+                    ),
+                    ChoiceChip(
+                      label: Text(tr('Por hora')),
+                      selected: widget.preferencias.ordenarPorHora,
+                      onSelected: (_) => aplicar(() => widget.preferencias.ordenarPorHora = true),
+                    ),
+                  ]),
                   if (desportos.length > 1) ...[
                     titulo(tr('Desporto')),
                     Wrap(spacing: Tokens.e8, runSpacing: Tokens.e8, children: [
@@ -480,9 +514,11 @@ class _TelaJogosState extends State<TelaJogos> with WidgetsBindingObserver {
         corpo = _vazio(tr('Nenhum jogo com estes filtros'), acao: tr('Limpar filtros'), aoAcao: _limparFiltros);
       }
     } else {
-      final grupos = agruparPorCompeticao(jogos, ordem: widget.preferencias.ordemCompeticoes);
-      final itens = <Object>[for (final g in grupos) ...[g, ...g.jogos]];
-      final emOrdem = [for (final g in grupos) ...g.jogos];
+      final porHora = widget.preferencias.ordenarPorHora;
+      final grupos = porHora ? const <GrupoJogos>[] : agruparPorCompeticao(jogos, ordem: widget.preferencias.ordemCompeticoes);
+      // por hora: uma só lista (o serviço já os dá pela hora), com a competição em cada jogo
+      final itens = <Object>[if (porHora) ...jogos else for (final g in grupos) ...[g, ...g.jogos]];
+      final emOrdem = porHora ? jogos : [for (final g in grupos) ...g.jogos];
       final escolhido = emOrdem.firstWhere((j) => j.jogo.id == _escolhido, orElse: () => emOrdem.first);
       final lista = ListView.builder(
         padding: const EdgeInsets.fromLTRB(Tokens.e16, 0, Tokens.e16, Tokens.e16),
@@ -494,7 +530,7 @@ class _TelaJogosState extends State<TelaJogos> with WidgetsBindingObserver {
               child: LinhaJogo(
                 key: ValueKey(j.jogo.id),
                 item: j,
-                mostrarCompeticao: false,
+                mostrarCompeticao: porHora,
                 aoOndeVer: _ondeVer,
                 aoVer: () => _ver(j),
                 aoDetalhe: () => _detalhe(j),

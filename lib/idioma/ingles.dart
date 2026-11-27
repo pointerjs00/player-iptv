@@ -1885,6 +1885,16 @@ const textosIngles = <String, String>{
         'Where it is on',
     '1 fonte':
         '1 source',
+    'Ordenar':
+        'Sort',
+    'Por competição':
+        'By competition',
+    'Por hora':
+        'By time',
+    'Nenhum jogo desta competição nestes dias':
+        'No matches of this competition on these days',
+    'Todos os jogos, por dia e pela hora':
+        'All matches, by day and time',
     'Jogos: o ecrã «Competições» mostra as competições que segues e deixa mudar a ordem delas (com o comando: OK pega, ↑/↓ move, OK larga). Os blocos dos Jogos seguem essa ordem.':
         "Matches: the «Competitions» screen shows the competitions you follow and lets you change their order (with the remote: OK picks up, ↑/↓ moves, OK drops). The Matches blocks follow that order.",
     'Jogos: ténis (ATP e WTA) e basquetebol (NBA e Liga Betclic), com os canais onde dão.':

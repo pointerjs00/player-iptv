@@ -80,6 +80,14 @@ void main() {
     expect(p.ordemCompeticoes, ['premier-league', 'champions', 'liga-portugal']);
   });
 
+  test('ordenar por hora: desligado por omissão, e grava-se', () async {
+    final p = await PreferenciasJogos.abrir(pasta);
+    expect(p.ordenarPorHora, isFalse);
+    p.ordenarPorHora = true;
+    await p.guardar();
+    expect((await PreferenciasJogos.abrir(pasta)).ordenarPorHora, isTrue);
+  });
+
   test('os blocos dos Jogos seguem a ordem dada; as outras depois, pela do catálogo', () {
     final grupos = agruparPorCompeticao(jogosTeste(), ordem: ['eredivisie', 'premier-league']);
     expect([for (final g in grupos) g.competicao.id], ['eredivisie', 'premier-league', 'liga-portugal']);
