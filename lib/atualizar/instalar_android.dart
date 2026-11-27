@@ -19,6 +19,10 @@ class InstaladorAndroid {
   /// Abre o ecrã do Android onde se autoriza; false se esse ecrã não existir neste aparelho.
   Future<bool> pedirAutorizacao() async => (await _canal.invokeMethod<bool>('pedirAutorizacao')) ?? false;
 
+  /// Abre `url` no browser; false se não houver nenhum (Android TV).
+  Future<bool> abrirPagina(String url) async =>
+      (await _canal.invokeMethod<bool>('abrirPagina', {'url': url})) ?? false;
+
   /// Abre o instalador do sistema com `apk` (tem de estar na pasta `atualizar` da cache).
   Future<void> instalar(File apk) => _canal.invokeMethod<void>('instalar', {'caminho': apk.path});
 }

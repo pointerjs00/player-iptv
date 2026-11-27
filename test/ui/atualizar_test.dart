@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:player_iptv/atualizar/descarregar.dart';
 import 'package:player_iptv/atualizar/instalar_android.dart';
 import 'package:player_iptv/atualizar/pacote_certo.dart';
 import 'package:player_iptv/dados/area_gestor.dart';
@@ -19,11 +20,22 @@ import 'package:player_iptv/ui/tema.dart';
 import 'ajuda_dpad.dart';
 
 class _AndroidFalso implements InstaladorAndroid {
-  bool pode = true, ecraExiste = true;
+  bool pode = true, ecraExiste = true, canalFalha = false, browser = true;
   final instalados = <String>[];
+  final abertas = <String>[];
   var pedidos = 0;
   @override
-  Future<List<String>> abis() async => ['arm64-v8a', 'armeabi-v7a'];
+  Future<List<String>> abis() async {
+    if (canalFalha) throw PlatformException(code: 'erro', message: 'o canal falhou');
+    return ['arm64-v8a', 'armeabi-v7a'];
+  }
+
+  @override
+  Future<bool> abrirPagina(String url) async {
+    abertas.add(url);
+    return browser;
+  }
+
   @override
   Future<bool> podeInstalar() async => pode;
   @override
@@ -48,12 +60,14 @@ void main() {
   late List<String> paginas;
   late List<String> descarregados;
   late Directory descargas;
+  var paginaAbre = true;
 
   setUp(() {
     android = _AndroidFalso();
     cancelamentos = [];
     paginas = [];
     descarregados = [];
+    paginaAbre = true;
     descargas = Directory.systemTemp.createTempSync('descargas');
   });
   tearDown(() {
@@ -89,7 +103,7 @@ void main() {
         },
         abrirPagina: (url) async {
           paginas.add(url);
-          return true;
+          return paginaAbre;
         },
       );
   }
@@ -240,6 +254,83 @@ void main() {
     await t.tap(find.text('Abrir a página'));
     await t.pumpAndSettle();
     expect(paginas, [_nova.pagina]);
+  });
+
+  testWidgets('Esc fecha o «A procurar…» (sem esperar pela resposta)', (t) async {
+    final nunca = Completer<Procura>();
+    final a = atualizador();
+    final lento = Atualizador(procurar: () => nunca.future, plataforma: a.plataforma, partilha: false, pasta: a.pasta);
+    // sem pumpAndSettle enquanto o círculo roda (nunca assenta)
+    ecraTvTeste(t);
+    await t.pumpWidget(MaterialApp(
+      theme: temaApp(),
+      home: Builder(
+        builder: (c) => Scaffold(
+            body: Center(
+                child: FilledButton(onPressed: () => procurarAtualizacoes(c, a: lento), child: const Text('Ir')))),
+      ),
+    ));
+    await t.tap(find.text('Ir'));
+    await t.pump();
+    await t.pump(const Duration(milliseconds: 300));
+    expect(find.text('A procurar uma versão nova…'), findsOneWidget);
+    await t.sendKeyEvent(LogicalKeyboardKey.escape);
+    await t.pumpAndSettle();
+    expect(find.text('A procurar uma versão nova…'), findsNothing);
+    nunca.complete(const EmDia('1.0.28'));
+    await t.pumpAndSettle();
+    expect(find.textContaining('Estás na versão mais recente'), findsNothing, reason: 'já se desistiu');
+  });
+
+  testWidgets('o canal do Android falha: diz que não foi possível, em vez de não fazer nada', (t) async {
+    android.canalFalha = true;
+    await abrir(t, (c) => atualizarApp(c, _nova, a: atualizador()));
+    expect(find.textContaining('Não foi possível atualizar'), findsOneWidget);
+    expect(descarregados, isEmpty);
+  });
+
+  testWidgets('a página não abre (TV sem browser): mostra o endereço', (t) async {
+    paginaAbre = false;
+    const semApk = NovaVersao('1.0.29', 'https://github.com/x/y/releases/tag/v1.0.29', pacotes: [_zip]);
+    await abrir(t, (c) => atualizarApp(c, semApk, a: atualizador()));
+    await t.tap(find.text('Abrir a página'));
+    await t.pumpAndSettle();
+    expect(find.textContaining('github.com/x/y/releases/tag/v1.0.29'), findsOneWidget);
+  });
+
+  testWidgets('sem espaço no disco: diz isso (não a exceção crua)', (t) async {
+    await abrir(t, (c) => atualizarApp(c, _nova, a: atualizador()));
+    download.completeError(
+        const FileSystemException('Write failed', 'pacote.parcial', OSError('There is not enough space on the disk', 112)));
+    await t.pumpAndSettle();
+    expect(find.textContaining('não foi possível gravar o pacote no disco'), findsOneWidget);
+    expect(find.textContaining('FileSystemException'), findsNothing);
+  });
+
+  testWidgets('Windows: enquanto prepara a troca mostra «A preparar a atualização…»', (t) async {
+    final preparar = Completer<void>();
+    final a = atualizador(plataforma: Plataforma.windows);
+    final w = Atualizador(
+      procurar: a.procurar,
+      plataforma: Plataforma.windows,
+      partilha: false,
+      pasta: a.pasta,
+      descarregar: a.descarregar,
+      limpar: a.limpar,
+      instalarWindows: (_) => preparar.future,
+      pastaGravavel: () => true,
+    );
+    await abrir(t, (c) => atualizarApp(c, _nova, a: w));
+    download.complete(File('${Directory.systemTemp.path}/TVIntel-1.0.29-windows.zip'));
+    await t.pumpAndSettle();
+    await t.sendKeyEvent(LogicalKeyboardKey.select); // «Fechar e atualizar agora»
+    await t.pump();
+    await t.pump();
+    expect(find.text('A preparar a atualização…'), findsOneWidget);
+    preparar.completeError(ErroPacote('o Windows não deixou correr o script'));
+    await t.pumpAndSettle();
+    expect(find.text('A preparar a atualização…'), findsNothing);
+    expect(find.textContaining('o Windows não deixou correr o script'), findsOneWidget);
   });
 
   group('Definições', () {

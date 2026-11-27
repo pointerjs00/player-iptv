@@ -39,6 +39,14 @@ void main() {
     expect(await i.pedirAutorizacao(), isTrue);
   });
 
+  test('abrirPagina passa o endereço; false quando não há browser (TV)', () async {
+    respostas['abrirPagina'] = false;
+    expect(await i.abrirPagina('https://github.com/x'), isFalse);
+    expect(chamadas.last.arguments, {'url': 'https://github.com/x'});
+    respostas['abrirPagina'] = true;
+    expect(await i.abrirPagina('https://github.com/x'), isTrue);
+  });
+
   test('instalar passa o caminho do APK', () async {
     await i.instalar(File('/data/cache/atualizar/TVIntel-1.0.28-android-arm64.apk'));
     expect(chamadas.single.method, 'instalar');

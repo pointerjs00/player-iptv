@@ -6,6 +6,7 @@ library;
 
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:archive/archive_io.dart';
 
@@ -28,7 +29,9 @@ bool pastaGravavel(Directory d) {
 Future<Directory> extrairZip(File zip, Directory destino) async {
   if (await destino.exists()) await destino.delete(recursive: true);
   await destino.create(recursive: true);
-  await extractFileToDisk(zip.path, destino.path);
+  // noutro isolate: descomprimir uns 70 MB no principal congelava a janela uns segundos
+  final (de, para) = (zip.path, destino.path);
+  await Isolate.run(() => extractFileToDisk(de, para));
   final sep = Platform.pathSeparator;
   final app = Directory('${destino.path}${sep}TVIntel');
   if (!await File('${app.path}${sep}TVIntel.exe').exists()) {
@@ -47,18 +50,30 @@ String _aspas(String s) => "'${s.replaceAll("'", "''")}'";
 ///    como está e sai;
 /// 3. copia a versão nova; se a cópia falhar (robocopy ≥ 8), repõe a anterior — ficheiros novos e
 ///    velhos misturados não arrancam;
-/// 4. abre a app (nova, ou a anterior reposta) e apaga as pastas temporárias se correu bem.
-/// O registo fica em `atualizar.log`, ao lado de `origem`.
-String scriptTroca({required int pid, required String origem, required String destino, required String exe}) =>
-    '''
+/// 4. abre a app (nova, ou a anterior reposta); se correu bem, apaga a pasta temporária e o
+///    próprio script.
+/// O registo fica em `atualizar.log`, ao lado de `origem` (só fica se algo falhar). Com `marca`,
+/// a primeira coisa que faz é criar esse ficheiro (a app só fecha depois de o ver).
+String scriptTroca({
+  required int pid,
+  required String origem,
+  required String destino,
+  required String exe,
+  String? marca,
+}) {
+  final semBarra = destino.replaceAll(RegExp(r'\\+$'), '');
+  // «E:\» passado ao robocopy fica "E:\" e a barra escapa a aspa: «E:\.» é a mesma pasta
+  final paraRobocopy = destino.endsWith('\\') ? '$destino.' : destino;
+  return '''
 \$ErrorActionPreference = 'SilentlyContinue'
+${marca == null ? '' : "Set-Content -LiteralPath ${_aspas(marca)} -Value 'ok'"}
 \$origem = ${_aspas(origem)}
-\$destino = ${_aspas(destino)}
+\$destino = ${_aspas(paraRobocopy)}
 \$exe = ${_aspas(exe)}
 \$pasta = Split-Path -Parent \$origem
 \$anterior = Join-Path \$pasta 'anterior'
 \$registo = Join-Path \$pasta 'atualizar.log'
-\$prefixo = \$destino.TrimEnd('\\') + '\\'
+\$prefixo = ${_aspas('$semBarra\\')}
 function Abertos { @(Get-Process | Where-Object { \$_.Path -and \$_.Path.StartsWith(\$prefixo, [StringComparison]::OrdinalIgnoreCase) }) }
 Wait-Process -Id $pid -Timeout 60
 \$fim = (Get-Date).AddSeconds(60)
@@ -71,17 +86,21 @@ robocopy \$origem \$destino /E /R:10 /W:1 /NFL /NDL /NJH /NP | Out-File -FilePat
 \$codigo = \$LASTEXITCODE
 if (\$codigo -ge 8) { robocopy \$anterior \$destino /E /R:30 /W:1 /NFL /NDL /NJH /NP | Out-File -FilePath \$registo -Append -Encoding utf8 }
 Start-Process -FilePath \$exe -WorkingDirectory \$destino
-if (\$codigo -lt 8) { Remove-Item -LiteralPath \$origem -Recurse -Force; Remove-Item -LiteralPath \$anterior -Recurse -Force }
+if (\$codigo -lt 8) { Remove-Item -LiteralPath \$pasta -Recurse -Force; Remove-Item -LiteralPath \$PSCommandPath -Force }
 ''';
+}
 
 /// Prepara a troca e fecha a app: extrai `zip` para `<temp>/extraido`, escreve `<temp>/atualizar.ps1`,
-/// lança-o desligado da app e chama `fechar`.
+/// lança-o desligado da app e, quando ele marca que arrancou (`<temp>/iniciado`), chama `fechar`.
+/// Se a marca não aparecer em `esperaMarca` (antivírus, AppLocker), lança [ErroPacote] e a app
+/// continua aberta como estava.
 Future<void> instalarWindows(
   File zip, {
   required Future<void> Function() fechar,
   Directory? temp,
   String? exe,
   int? pid,
+  Duration esperaMarca = const Duration(seconds: 10),
   Future<void> Function(String executavel, List<String> argumentos)? iniciar,
 }) async {
   final sep = Platform.pathSeparator;
@@ -94,6 +113,8 @@ Future<void> instalarWindows(
     /* fica na cache */
   }
   final executavel = exe ?? Platform.resolvedExecutable;
+  final marca = File('${pasta.path}${sep}iniciado');
+  if (await marca.exists()) await marca.delete();
   final script = File('${pasta.path}${sep}atualizar.ps1');
   // com BOM: o PowerShell 5.1 lê um UTF-8 sem BOM como ANSI (os acentos dos caminhos estragavam-se)
   await script.writeAsBytes([
@@ -101,7 +122,13 @@ Future<void> instalarWindows(
     0xBB,
     0xBF,
     ...utf8.encode(
-      scriptTroca(pid: pid ?? _pidAtual(), origem: app.path, destino: File(executavel).parent.path, exe: executavel),
+      scriptTroca(
+        pid: pid ?? _pidAtual(),
+        origem: app.path,
+        destino: File(executavel).parent.path,
+        exe: executavel,
+        marca: marca.path,
+      ),
     ),
   ]);
   await (iniciar ?? _iniciar)('powershell', [
@@ -113,6 +140,14 @@ Future<void> instalarWindows(
     '-File',
     script.path,
   ]);
+  // só se fecha a app quando o script já está a correr (senão ficava fechada e sem atualizar)
+  final fim = DateTime.now().add(esperaMarca);
+  while (!await marca.exists()) {
+    if (DateTime.now().isAfter(fim)) {
+      throw ErroPacote(tr('o Windows não deixou correr a atualização (antivírus?). A app continua como estava.'));
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+  }
   await fechar();
 }
 

@@ -76,6 +76,42 @@ void main() {
     expect(s.lastIndexOf('Start-Process'), greaterThan(repor), reason: 'abre a app no fim, reposta ou nova');
   });
 
+  test('app na raiz de uma unidade (E:\\): o robocopy recebe «E:\\.» (com «E:\\» lia a aspa como escapada)', () {
+    final s = scriptTroca(pid: 1, origem: r'C:\t\extraido\TVIntel', destino: r'E:\', exe: r'E:\TVIntel.exe');
+    expect(s, contains(r"$destino = 'E:\.'"));
+    expect(s, contains(r"$prefixo = 'E:\'"), reason: 'os processos da unidade, para esperar por eles');
+  });
+
+  test('o script marca logo que arrancou (a app só fecha depois de o ver)', () {
+    final s = scriptTroca(
+        pid: 1, origem: r'C:\t\extraido\TVIntel', destino: r'D:\Apps\TVIntel', exe: r'D:\Apps\TVIntel\TVIntel.exe', marca: r'C:\t\iniciado');
+    final marcar = s.indexOf(r"'C:\t\iniciado'");
+    expect(marcar, greaterThan(0));
+    expect(marcar, lessThan(s.indexOf('Wait-Process')));
+  });
+
+  test('correu bem: o script apaga a pasta temporária e a si próprio (o registo fica só se falhar)', () {
+    final s = scriptTroca(pid: 1, origem: r'C:\t\extraido\TVIntel', destino: r'D:\Apps\TVIntel', exe: r'D:\Apps\TVIntel\TVIntel.exe');
+    final fim = s.substring(s.lastIndexOf('Start-Process'));
+    expect(fim, contains(r'Remove-Item -LiteralPath $pasta -Recurse -Force'));
+    expect(fim, contains(r'$PSCommandPath'));
+  });
+
+  test('instalarWindows: se o script não arrancar (antivírus), não fecha a app e dá erro', () async {
+    final zip = zipCom({'TVIntel/TVIntel.exe': 'exe novo'});
+    var fechou = false;
+    await expectLater(
+        instalarWindows(zip,
+            temp: Directory('${pasta.path}${Platform.pathSeparator}tmp'),
+            exe: r'D:\Apps\TVIntel\TVIntel.exe',
+            pid: 99,
+            esperaMarca: const Duration(milliseconds: 300),
+            iniciar: (exe, args) async {}, // nunca corre
+            fechar: () async => fechou = true),
+        throwsA(isA<ErroPacote>()));
+    expect(fechou, isFalse);
+  });
+
   test('pastaGravavel: true numa pasta temporária, false numa que não existe', () {
     expect(pastaGravavel(pasta), isTrue);
     expect(pasta.listSync(), isEmpty, reason: 'o ficheiro de teste é apagado');
@@ -90,7 +126,11 @@ void main() {
         temp: Directory('${pasta.path}${Platform.pathSeparator}tmp'),
         exe: r'D:\Apps\TVIntel\TVIntel.exe',
         pid: 99,
-        iniciar: (exe, args) async => lancados.add((exe, args)),
+        iniciar: (exe, args) async {
+          lancados.add((exe, args));
+          // o script arranca: a primeira coisa que faz é a marca
+          File('${pasta.path}${Platform.pathSeparator}tmp${Platform.pathSeparator}iniciado').writeAsStringSync('ok');
+        },
         fechar: () async => fechou = true);
     expect(lancados.single.$1, 'powershell');
     final script = File(lancados.single.$2.last);

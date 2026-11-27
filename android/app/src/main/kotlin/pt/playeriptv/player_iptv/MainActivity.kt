@@ -200,6 +200,16 @@ class MainActivity : FlutterActivity() {
                         }
                     }
                 }
+                "abrirPagina" -> {
+                    val url = call.argument<String>("url")
+                    try {
+                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                        result.success(true)
+                    } catch (e: Exception) {
+                        // Android TV sem browser: a app mostra o endereço
+                        result.success(false)
+                    }
+                }
                 "instalar" -> {
                     val caminho = call.argument<String>("caminho")
                     if (caminho == null) {

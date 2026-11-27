@@ -61,7 +61,11 @@ class Atualizador {
         : Plataforma.outra,
     partilha: edicaoPartilha,
     pasta: () async => Directory('${(await getTemporaryDirectory()).path}${Platform.pathSeparator}atualizar'),
-    abrirPagina: Platform.isWindows ? _abrirNoWindows : null,
+    abrirPagina: Platform.isWindows
+        ? _abrirNoWindows
+        : Platform.isAndroid
+        ? const InstaladorAndroid().abrirPagina
+        : null,
     // a app sai logo a seguir: o script só troca os ficheiros depois de ela fechar
     instalarWindows: Platform.isWindows ? (zip) => windows.instalarWindows(zip, fechar: () async => exit(0)) : null,
     pastaGravavel: Platform.isWindows ? () => windows.pastaGravavel(File(Platform.resolvedExecutable).parent) : null,
@@ -151,6 +155,22 @@ Future<void> procurarAtualizacoes(BuildContext context, {Atualizador? a}) async 
 /// Descarrega e instala a versão `v` (o pacote desta plataforma e edição).
 Future<void> atualizarApp(BuildContext context, NovaVersao v, {Atualizador? a}) async {
   final at = a ?? Atualizador.daApp();
+  try {
+    await _atualizar(context, at, v);
+  } catch (e) {
+    // o canal do Android ou a pasta temporária falharam: diz-se, em vez de não fazer nada
+    if (context.mounted) {
+      await _aviso(
+        context,
+        Icons.error_outline_rounded,
+        tr('Atualizações'),
+        tr('Não foi possível atualizar: {0}', [_motivo(e)]),
+      );
+    }
+  }
+}
+
+Future<void> _atualizar(BuildContext context, Atualizador at, NovaVersao v) async {
   final abis = at.plataforma == Plataforma.android ? await at.android.abis() : const <String>[];
   final pacote = pacoteDaApp(v.pacotes, plataforma: at.plataforma, abis: abis, partilha: at.partilha);
   if (!context.mounted) return;
@@ -232,10 +252,21 @@ Future<void> _instalar(BuildContext context, Atualizador at, NovaVersao v, File 
           ],
         ),
       );
-      if (sim != true) return;
+      if (sim != true || !context.mounted) return;
+      // extrair e lançar a troca leva uns segundos: diz-se que se está a preparar
+      final nav = Navigator.of(context);
+      unawaited(
+        showDialog<void>(
+          context: context,
+          barrierDismissible: false,
+          builder: (_) => PopScope(canPop: false, child: _Espera(tr('A preparar a atualização…'))),
+        ),
+      );
       try {
         await instalar(f);
+        nav.pop();
       } catch (e) {
+        nav.pop();
         if (context.mounted) {
           await _aviso(
             context,
@@ -297,7 +328,16 @@ Future<void> _semAtualizar(BuildContext context, Atualizador at, NovaVersao v, S
       ],
     ),
   );
-  if (sim == true) await abrir?.call(v.pagina);
+  if (sim != true || abrir == null) return;
+  if (!await abrir(v.pagina) && context.mounted) {
+    // sem browser (Android TV): o endereço, para abrir noutro aparelho
+    await _aviso(
+      context,
+      Icons.open_in_browser_rounded,
+      tr('Atualizações'),
+      tr('Abre esta página num browser: {0}', [v.pagina]),
+    );
+  }
 }
 
 Future<void> _aviso(BuildContext context, IconData icone, String titulo, String texto) => showDialog<void>(
@@ -312,7 +352,10 @@ Future<void> _aviso(BuildContext context, IconData icone, String titulo, String 
 
 String _motivo(Object e) => switch (e) {
   ErroPacote(:final mensagem) => mensagem,
-  SocketException() || HttpException() => tr('sem ligação à internet'),
+  SocketException() => tr('sem ligação à internet'),
+  HttpException() => tr('a ligação ao servidor falhou'),
+  FileSystemException() => tr('não foi possível gravar o pacote no disco (sem espaço?)'),
+  PlatformException(:final message, :final code) => message ?? code,
   TimeoutException() => tr('o servidor demorou demasiado a responder'),
   ErroHttp(:final status) => tr('o servidor respondeu {0}', [status]),
   _ => '$e',
@@ -341,6 +384,26 @@ class _AProcurarState extends State<_AProcurar> {
     );
   }
 
+  void _desistir() {
+    if (mounted) Navigator.pop(context);
+  }
+
+  // Esc/Voltar do comando desistem (o diálogo não se fecha sozinho, por isso o Flutter não trata o Esc)
+  @override
+  Widget build(BuildContext context) => CallbackShortcuts(
+    bindings: {
+      const SingleActivator(LogicalKeyboardKey.escape): _desistir,
+      const SingleActivator(LogicalKeyboardKey.goBack): _desistir,
+    },
+    child: Focus(autofocus: true, child: _Espera(tr('A procurar uma versão nova…'))),
+  );
+}
+
+/// Um diálogo de espera: o círculo a rodar e o texto.
+class _Espera extends StatelessWidget {
+  const _Espera(this.texto);
+  final String texto;
+
   @override
   Widget build(BuildContext context) => AlertDialog(
     content: Row(
@@ -348,7 +411,7 @@ class _AProcurarState extends State<_AProcurar> {
       children: [
         const SizedBox.square(dimension: 24, child: CircularProgressIndicator(strokeWidth: 3)),
         const SizedBox(width: Tokens.e16),
-        Text(tr('A procurar uma versão nova…')),
+        Flexible(child: Text(texto)),
       ],
     ),
   );

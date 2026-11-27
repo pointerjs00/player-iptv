@@ -1932,7 +1932,17 @@ const textosIngles = <String, String>{
     '{0} de {1} MB': '{0} of {1} MB',
     'Ver se há uma versão nova da app e instalá-la.': 'Check for a new version of the app and install it.',
     'Procurar atualizações': 'Check for updates',
-    'o pacote do Windows não tem o TVIntel.exe': "the Windows package doesn't contain TVIntel.exe",
+    'o Windows não deixou correr a atualização (antivírus?). A app continua como estava.':
+        "Windows didn't let the update run (antivirus?). The app stays as it was.",
+    'A preparar a atualização…': 'Preparing the update…',
+    'Atualizar no Windows: a janela não congela enquanto prepara; se o antivírus não deixar a troca correr, a app avisa e fica aberta; o registo e os ficheiros temporários são apagados no fim.':
+        "Updating on Windows: the window no longer freezes while preparing; if the antivirus blocks the swap, the app says so and stays open; the log and temporary files are removed at the end.",
+    'Atualizar: Voltar fecha o «A procurar…»; quando não há pacote para o aparelho, «Abrir a página» abre o browser no telemóvel (na TV mostra o endereço); mensagens de erro mais claras (sem espaço no disco, ligação ao servidor).':
+        "Updating: Back closes «Checking…»; when there's no package for the device, «Open the page» opens the browser on the phone (on TV it shows the address); clearer error messages (disk full, server connection).",
+    'Abre esta página num browser: {0}': 'Open this page in a browser: {0}',
+    'a ligação ao servidor falhou': 'the connection to the server failed',
+    'não foi possível gravar o pacote no disco (sem espaço?)': "couldn't save the package to disk (out of space?)",
+    'o pacote do Windows não tem o TVIntel.exe':"the Windows package doesn't contain TVIntel.exe",
     'o pacote recebido é maior do que o publicado':'the downloaded package is larger than the published one',
     'o pacote ficou incompleto ({0} de {1} bytes)': 'the package is incomplete ({0} of {1} bytes)',
     'o pacote recebido não é o publicado (SHA-256 diferente)':
