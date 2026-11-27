@@ -19,6 +19,9 @@ class Novidades {
 /// Todas as versões, a mais recente primeiro. A primeira é a versão da app: ao mudar a versão no
 /// pubspec.yaml, junta-se aqui a entrada dela (um teste confirma que batem certo).
 const historicoNovidades = <Novidades>[
+  Novidades('1.0.31', '2026-11-27', [
+    'Sem mudanças na app: esta versão serve para confirmar que a atualização dentro da app funciona (no Windows, a partir da 1.0.30).',
+  ]),
   Novidades('1.0.30', '2026-11-27', [
     'Atualizar no Windows: a troca dos ficheiros volta a correr — na 1.0.28 e na 1.0.29 a app fechava (ou avisava) sem atualizar. Quem tem uma dessas versões no Windows instala esta à mão, uma vez; daí em diante atualiza dentro da app.',
     'Definições › Sobre e licenças: o texto de cada opção já não fica espremido numa coluna estreita ao lado do botão.',
