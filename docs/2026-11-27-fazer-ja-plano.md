@@ -42,4 +42,8 @@ Decisões do utilizador (27/11):
   (`nova_versao_avisada.txt`), com a versão e o endereço das releases. Só na edição completa e fora dos
   dados móveis. O repositório é público mas ainda não tem releases (404 = sem aviso). Para funcionar, as
   releases têm de ter a etiqueta `v1.0.26` (ou `1.0.26`) e não ser rascunho nem pré-versão.
-- Próximo: tarefa 6 (avançar o `main` para o `feature/redesenho` no worktree `player-iptv-dist`).
+- Tarefa 6 feita: o `main` avançou (avanço rápido, sem push) até ao `feature/redesenho`, este commit
+  incluído. O `feature/v2` (`5b20e20`) já estava coberto pelo `d065999`; os branches antigos ficam (não
+  se apagaram).
+- Plano concluído. Por fazer pelo utilizador: guardar a 2.ª cópia da chave; publicar as releases no
+  GitHub (etiqueta `v<versão>`); `git push` quando quiser.
