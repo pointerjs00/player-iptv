@@ -125,6 +125,22 @@ void main() {
     }
   });
 
+  testWidgets('Sobre e licenças: os botões levam só a largura deles e o texto fica com o resto', (t) async {
+    await abrir(t);
+    await categoria(t, 'Sobre e licenças');
+    for (final (texto, botao) in [
+      ('O player usa o mpv e o ffmpeg (GPLv3).', 'Ver licenças'),
+      ('Ver se há uma versão nova da app e instalá-la.', 'Procurar atualizações'),
+    ]) {
+      final linha = find.ancestor(of: find.text(texto), matching: find.byType(LinhaOpcao));
+      final larguraLinha = t.getSize(linha).width;
+      final larguraBotao = t.getSize(find.ancestor(of: find.text(botao), matching: find.byType(OutlinedButton))).width;
+      final larguraTexto = t.getSize(find.ancestor(of: find.text(texto), matching: find.byType(TextoOpcao))).width;
+      // antes: um Align à volta do botão ocupava 75 % da linha e o texto partia-se em 3 ou 4 linhas
+      expect(larguraTexto, greaterThan(larguraLinha - larguraBotao - 80), reason: botao);
+    }
+  });
+
   testWidgets('Sobre e licenças: "Ver novidades" abre o histórico e Voltar fecha-o', (t) async {
     await abrir(t);
     await categoria(t, 'Sobre e licenças');

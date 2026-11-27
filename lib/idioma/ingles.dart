@@ -1935,6 +1935,8 @@ const textosIngles = <String, String>{
     'o Windows não deixou correr a atualização (antivírus?). A app continua como estava.':
         "Windows didn't let the update run (antivirus?). The app stays as it was.",
     'A preparar a atualização…': 'Preparing the update…',
+    'Definições › Sobre e licenças: o texto de cada opção já não fica espremido numa coluna estreita ao lado do botão.':
+        "Settings › About and licences: each option's text is no longer squeezed into a narrow column next to the button.",
     'Atualizar no Windows: a troca dos ficheiros volta a correr — na 1.0.28 e na 1.0.29 a app fechava (ou avisava) sem atualizar. Quem tem uma dessas versões no Windows instala esta à mão, uma vez; daí em diante atualiza dentro da app.':
         "Updating on Windows: the file swap runs again — in 1.0.28 and 1.0.29 the app closed (or warned) without updating. If you have one of those versions on Windows, install this one by hand, once; from then on it updates inside the app.",
     'Atualizar no Windows: a janela não congela enquanto prepara; se o antivírus não deixar a troca correr, a app avisa e fica aberta; o registo e os ficheiros temporários são apagados no fim.':

@@ -451,11 +451,11 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
               (v) => _p.contarTempo = v),
           _opcao(tr('Apagar as estatísticas'), tr('Esquece todo o tempo de visualização guardado.'),
               controlo: OutlinedButton.icon(
-                key: const Key('apagar-estatisticas'),
-                onPressed: _apagarEstatisticas,
-                icon: const Icon(Icons.delete_outline_rounded),
-                label: Text(tr('Apagar')),
-              )),
+                  key: const Key('apagar-estatisticas'),
+                  onPressed: _apagarEstatisticas,
+                  icon: const Icon(Icons.delete_outline_rounded),
+                  label: Text(tr('Apagar')),
+                )),
         ];
       case _Categoria.verificacao:
         return [
@@ -569,31 +569,22 @@ class _TelaDefinicoesState extends State<TelaDefinicoes> {
       case _Categoria.sobre:
         return [
           _opcao(tr('Novidades'), tr('O que mudou em cada versão. Esta é a {0}.', [versaoApp]),
-              controlo: Align(
-                alignment: Alignment.centerLeft,
-                child: OutlinedButton.icon(
-                  onPressed: () => abrirNovidades(context),
-                  icon: const Icon(Icons.new_releases_outlined),
-                  label: Text(tr('Ver novidades')),
-                ),
+              controlo: OutlinedButton.icon(
+                onPressed: () => abrirNovidades(context),
+                icon: const Icon(Icons.new_releases_outlined),
+                label: Text(tr('Ver novidades')),
               )),
           _opcao(tr('Atualizações'), tr('Ver se há uma versão nova da app e instalá-la.'),
-              controlo: Align(
-                alignment: Alignment.centerLeft,
-                child: OutlinedButton.icon(
-                  onPressed: () => procurarAtualizacoes(context, a: widget.atualizador),
-                  icon: const Icon(Icons.system_update_rounded),
-                  label: Text(tr('Procurar atualizações')),
-                ),
+              controlo: OutlinedButton.icon(
+                onPressed: () => procurarAtualizacoes(context, a: widget.atualizador),
+                icon: const Icon(Icons.system_update_rounded),
+                label: Text(tr('Procurar atualizações')),
               )),
           _opcao(tr('Licenças'), tr('O player usa o mpv e o ffmpeg (GPLv3).'),
-              controlo: Align(
-                alignment: Alignment.centerLeft,
-                child: OutlinedButton.icon(
-                  onPressed: () => showLicensePage(context: context, applicationName: nomeApp),
-                  icon: const Icon(Icons.description_outlined),
-                  label: Text(tr('Ver licenças')),
-                ),
+              controlo: OutlinedButton.icon(
+                onPressed: () => showLicensePage(context: context, applicationName: nomeApp),
+                icon: const Icon(Icons.description_outlined),
+                label: Text(tr('Ver licenças')),
               )),
         ];
     }
