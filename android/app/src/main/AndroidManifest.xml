@@ -3,6 +3,8 @@
     <!-- saber se a ligação é por dados móveis (Definições › Ligação › Poupar dados móveis) -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <!-- Definições > Procurar atualizações: abrir o instalador do Android com o APK da versão nova -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
     <!-- so Android 9 e anterior: guardar em Transferencias; no 10+ usa o MediaStore sem permissao -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28"/>
     <!-- Android TV / Fire TV: sem ecrã tátil e com o comando -->
@@ -46,6 +48,16 @@
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- O APK da versão nova (na cache, pasta atualizar/) entregue ao instalador do Android -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.atualizar"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/caminhos_atualizar" />
+        </provider>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

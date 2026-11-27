@@ -3,6 +3,7 @@ package pt.playeriptv.player_iptv
 import android.net.NetworkCapabilities
 import android.net.ConnectivityManager
 import android.Manifest
+import android.content.ActivityNotFoundException
 import android.content.BroadcastReceiver
 import android.content.ContentValues
 import android.content.Context
@@ -10,6 +11,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.media.AudioManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
@@ -18,6 +20,7 @@ import android.provider.MediaStore
 import android.provider.Settings
 import android.view.Display
 import android.view.WindowManager
+import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.android.RenderMode
 import io.flutter.embedding.android.TransparencyMode
@@ -170,6 +173,50 @@ class MainActivity : FlutterActivity() {
                             if (v < 0) WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE else v.toFloat().coerceIn(0.01f, 1f)
                     }
                     result.success(true)
+                }
+                else -> result.notImplemented()
+            }
+        }
+        // Atualizar a app: os processadores do aparelho, a autorização para instalar e o instalador
+        // do sistema com o APK descarregado (na cache, pasta atualizar/, ver caminhos_atualizar.xml)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "player_iptv/atualizar").setMethodCallHandler { call, result ->
+            when (call.method) {
+                "abis" -> result.success(Build.SUPPORTED_ABIS.toList())
+                "podeInstalar" -> result.success(
+                    Build.VERSION.SDK_INT < Build.VERSION_CODES.O || packageManager.canRequestPackageInstalls()
+                )
+                "pedirAutorizacao" -> {
+                    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+                        result.success(true)
+                    } else {
+                        try {
+                            startActivity(
+                                Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName"))
+                            )
+                            result.success(true)
+                        } catch (e: ActivityNotFoundException) {
+                            // algumas TVs não têm este ecrã: a app explica onde se autoriza
+                            result.success(false)
+                        }
+                    }
+                }
+                "instalar" -> {
+                    val caminho = call.argument<String>("caminho")
+                    if (caminho == null) {
+                        result.error("argumentos", "falta o caminho", null)
+                        return@setMethodCallHandler
+                    }
+                    try {
+                        val uri = FileProvider.getUriForFile(this, "$packageName.atualizar", File(caminho))
+                        val intent = Intent(Intent.ACTION_VIEW).apply {
+                            setDataAndType(uri, "application/vnd.android.package-archive")
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        startActivity(intent)
+                        result.success(null)
+                    } catch (e: Exception) {
+                        result.error("instalar", e.message, null)
+                    }
                 }
                 else -> result.notImplemented()
             }
