@@ -5,6 +5,9 @@ import 'package:player_iptv/desporto/servico_jogos.dart';
 import 'package:player_iptv/ui/design/escala_interface.dart';
 import 'package:player_iptv/ui/jogos/folha_onde_ver.dart';
 import 'package:player_iptv/ui/jogos/linha_jogo.dart';
+import 'package:player_iptv/ui/jogos/painel_jogo.dart';
+import 'package:player_iptv/ui/principal/barra_seccoes.dart';
+import 'package:player_iptv/ui/principal/tela_principal.dart';
 import 'package:player_iptv/ui/realce_foco.dart';
 import 'package:player_iptv/ui/tema.dart';
 
@@ -74,8 +77,6 @@ void main() {
     await teclaDpad(t, LogicalKeyboardKey.arrowRight);
     expect(linha('Marítimo').etiqueta, 1);
     expect(textosFocados(), contains('Marítimo'), reason: 'o foco fica na linha');
-    await teclaDpad(t, LogicalKeyboardKey.arrowRight);
-    expect(linha('Marítimo').etiqueta, 1, reason: 'não passa da última');
     await t.sendKeyEvent(LogicalKeyboardKey.select);
     await t.pumpAndSettle();
     expect(find.byType(FolhaOndeVer), findsOneWidget);
@@ -87,6 +88,39 @@ void main() {
     expect(linha('Marítimo').etiqueta, 1, reason: 'a etiqueta escolhida mantém-se');
     await teclaDpad(t, LogicalKeyboardKey.arrowLeft);
     expect(linha('Marítimo').etiqueta, 0);
+  });
+
+  bool focoNoPainel() =>
+      FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<PainelJogo>() != null;
+
+  testWidgets('DIREITA na última etiqueta vai ao painel do jogo; ESQUERDA volta a esse jogo', (t) async {
+    await montar(t);
+    await irParaPrimeiro(t);
+    await teclaDpad(t, LogicalKeyboardKey.arrowDown); // Benfica (um só canal)
+    expect(textosFocados(), contains('Benfica'));
+    await teclaDpad(t, LogicalKeyboardKey.arrowRight);
+    expect(focoNoPainel(), isTrue, reason: 'foco em: ${textosFocados()}');
+    expect(textosFocados(), contains('BTV'), reason: 'o canal do jogo escolhido');
+    await teclaDpad(t, LogicalKeyboardKey.arrowDown);
+    expect(textosFocados(), 'Ver');
+    await t.sendKeyEvent(LogicalKeyboardKey.select);
+    await t.pumpAndSettle();
+    expect(m.abertas.single.map((f) => f.canalTv), ['btv']);
+    await teclaDpad(t, LogicalKeyboardKey.arrowLeft);
+    expect(textosFocados(), contains('Benfica'), reason: 'volta ao jogo do painel');
+    expect(focoNoPainel(), isFalse);
+
+    // com duas etiquetas, a 1.ª DIREITA escolhe a 2.ª e só a seguinte vai ao painel
+    await teclaDpad(t, LogicalKeyboardKey.arrowUp);
+    expect(textosFocados(), contains('Marítimo'));
+    await teclaDpad(t, LogicalKeyboardKey.arrowRight);
+    expect(linha('Marítimo').etiqueta, 1);
+    expect(focoNoPainel(), isFalse);
+    await teclaDpad(t, LogicalKeyboardKey.arrowRight);
+    expect(focoNoPainel(), isTrue, reason: 'foco em: ${textosFocados()}');
+    await teclaDpad(t, LogicalKeyboardKey.arrowLeft);
+    expect(textosFocados(), contains('Marítimo'));
+    expect(linha('Marítimo').etiqueta, 1, reason: 'a etiqueta escolhida mantém-se');
   });
 
   testWidgets('no «Onde ver», OK na primeira fonte abre-a no player', (t) async {
@@ -199,6 +233,30 @@ void main() {
     await teclaDpad(t, LogicalKeyboardKey.select);
     expect(find.text('Marítimo'), findsWidgets);
     comFoco();
+  });
+
+  testWidgets('da barra das secções, DIREITA em «Jogos» vai para o primeiro jogo (não para o cabeçalho)', (t) async {
+    ecraTvTeste(t);
+    m = (await t.runAsync(prepararJogos))!;
+    await t.pumpWidget(MaterialApp(
+      theme: temaApp(),
+      builder: (_, c) => TemaConformeRealce(child: EscalaInterface(escala: escalaCompacto, child: c!)),
+      home: TelaPrincipal(
+        verTv: const Scaffold(body: Text('VER TV')),
+        jogos: Scaffold(body: m.tela()),
+        gestor: const Scaffold(body: Text('GESTOR')),
+        definicoes: const Scaffold(body: Text('DEFINIÇÕES')),
+        inicial: Seccao.jogos,
+        sair: () {},
+      ),
+    ));
+    await t.pump();
+    final barra = find.byType(BarraSeccoes);
+    Focus.of(t.element(find.descendant(of: barra, matching: find.text('Jogos')))).requestFocus();
+    await t.pump();
+    expect(textosFocados(), 'Jogos');
+    await teclaDpad(t, LogicalKeyboardKey.arrowRight);
+    expect(textosFocados(), contains('Marítimo'));
   });
 
   testWidgets('o jogo com o foco sai da lista (dados novos): o foco passa a outro jogo', (t) async {

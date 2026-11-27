@@ -20,7 +20,31 @@ enum Seccao { verTv, jogos, gestor, definicoes }
 /// Um foco que alcança-se com as setas mas que não conta como "primeiro controlo" de uma secção
 /// (o foco ao entrar nela vai para o conteúdo, não para o indicador de atividade no canto).
 class FocoForaDaEntrada extends FocusNode {
-  FocoForaDaEntrada({super.debugLabel});
+  FocoForaDaEntrada({super.debugLabel, super.canRequestFocus, super.skipTraversal});
+}
+
+/// Um bloco (o cabeçalho de um ecrã, os filtros) cujos controlos alcançam-se com as setas mas
+/// não contam como "primeiro controlo" da secção: entrar nela vai para o conteúdo (o 1.º jogo).
+/// Se não houver mais nada, vão eles.
+class ForaDaEntrada extends StatefulWidget {
+  const ForaDaEntrada({super.key, required this.child});
+  final Widget child;
+
+  @override
+  State<ForaDaEntrada> createState() => _ForaDaEntradaState();
+}
+
+class _ForaDaEntradaState extends State<ForaDaEntrada> {
+  final _foco = FocoForaDaEntrada(debugLabel: 'Fora da entrada', canRequestFocus: false, skipTraversal: true);
+
+  @override
+  void dispose() {
+    _foco.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Focus(focusNode: _foco, includeSemantics: false, child: widget.child);
 }
 
 /// A secção à vista e como mudar de secção (para os ecrãs dentro de [TelaPrincipal]).
@@ -262,22 +286,32 @@ class _TelaPrincipalState extends State<TelaPrincipal> {
   bool _vivo(FocusNode n, Seccao s) =>
       n.context?.mounted == true && n.canRequestFocus && n.ancestors.contains(_focosSeccao[s.index]);
 
-  /// O controlo mais acima (e mais à esquerda) à vista na secção.
+  /// O controlo mais acima (e mais à esquerda) à vista na secção, fora dos [ForaDaEntrada]; só
+  /// sem nenhum, o mais acima dos que estão neles.
   FocusNode? _primeiroDe(Seccao s) {
     final seccao = _focosSeccao[s.index];
     final caixa = seccao.context?.findRenderObject();
     if (caixa is! RenderBox || !caixa.hasSize) return null;
     final area = caixa.localToGlobal(Offset.zero) & caixa.size;
-    FocusNode? melhor;
-    for (final n in seccao.traversalDescendants) {
-      if (!n.canRequestFocus || n.skipTraversal || n.context == null || n is FocusScopeNode || n is FocoForaDaEntrada) continue;
-      final r = n.rect;
-      // só os que estão à vista (o que já saiu de cima não conta)
-      if (!area.contains(r.center)) continue;
-      final m = melhor?.rect;
-      if (m == null || r.top < m.top - 4 || ((r.top - m.top).abs() <= 4 && r.left < m.left)) melhor = n;
+    FocusNode? melhor, melhorFora;
+    bool antes(FocusNode n, FocusNode? m) {
+      if (m == null) return true;
+      final r = n.rect, o = m.rect;
+      return r.top < o.top - 4 || ((r.top - o.top).abs() <= 4 && r.left < o.left);
     }
-    return melhor;
+
+    for (final n in seccao.traversalDescendants) {
+      if (!n.canRequestFocus || n.skipTraversal || n.context == null || n is FocusScopeNode) continue;
+      // só os que estão à vista (o que já saiu de cima não conta)
+      if (!area.contains(n.rect.center)) continue;
+      if (n is FocoForaDaEntrada) continue;
+      if (n.ancestors.any((a) => a is FocoForaDaEntrada)) {
+        if (antes(n, melhorFora)) melhorFora = n;
+      } else if (antes(n, melhor)) {
+        melhor = n;
+      }
+    }
+    return melhor ?? melhorFora;
   }
 
   /// O foco no conteúdo da secção à vista: onde estava, ou no primeiro controlo.

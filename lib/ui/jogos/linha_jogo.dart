@@ -199,16 +199,16 @@ class LinhaJogoState extends State<LinhaJogo> {
 
   List<Transmissao> get _canais => widget.item.canais;
 
-  /// ESQUERDA na 1.ª etiqueta segue (vai à barra das secções); DIREITA fica sempre na linha (à
-  /// direita só há a coluna do jogo, que não recebe o foco).
+  /// ESQUERDA na 1.ª etiqueta segue (vai à barra das secções); DIREITA na última também segue
+  /// (vai à coluna do jogo, à direita, nos ecrãs largos).
   KeyEventResult _tecla(FocusNode _, KeyEvent e) {
     if (e is KeyUpEvent) return KeyEventResult.ignored;
     if (e.logicalKey == LogicalKeyboardKey.arrowLeft && _etiqueta > 0) {
       setState(() => _etiqueta--);
       return KeyEventResult.handled;
     }
-    if (e.logicalKey == LogicalKeyboardKey.arrowRight) {
-      if (_etiqueta < _canais.length - 1) setState(() => _etiqueta++);
+    if (e.logicalKey == LogicalKeyboardKey.arrowRight && _etiqueta < _canais.length - 1) {
+      setState(() => _etiqueta++);
       return KeyEventResult.handled;
     }
     return KeyEventResult.ignored;

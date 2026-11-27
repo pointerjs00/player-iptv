@@ -7,8 +7,8 @@ import '../conteudo/painel_canal.dart' show LogoCanal;
 import '../design/design.dart';
 import 'linha_jogo.dart';
 
-/// O detalhe de um jogo: a coluna à direita (ecrãs largos, só para ver: o foco fica na lista) e a
-/// página do telemóvel (`focavel`: os canais e o «▶ Ver» recebem o foco).
+/// O detalhe de um jogo: a coluna à direita dos ecrãs largos e a página do telemóvel. Com
+/// `focavel`, os canais e o «▶ Ver» recebem o foco.
 class PainelJogo extends StatelessWidget {
   const PainelJogo({
     super.key,

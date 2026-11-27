@@ -1,5 +1,6 @@
 ﻿import 'dart:async';
 
+import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../desporto/fontes/fotmob.dart' show logoCompeticaoFotmob;
@@ -14,7 +15,7 @@ import '../design/design.dart';
 import '../design/mensagens.dart';
 import '../player/abrir_canal.dart';
 import '../poupanca_dados.dart';
-import '../principal/tela_principal.dart' show Seccao, SeccaoAtual;
+import '../principal/tela_principal.dart' show ForaDaEntrada, Seccao, SeccaoAtual;
 import 'folha_onde_ver.dart';
 import 'linha_jogo.dart';
 import 'painel_jogo.dart';
@@ -96,6 +97,7 @@ class _TelaJogosState extends State<TelaJogos> with WidgetsBindingObserver {
 
   /// O ecrã todo (não recebe o foco: serve para saber se o foco está cá dentro).
   final _focoEcra = FocusNode(debugLabel: 'Jogos', canRequestFocus: false, skipTraversal: true);
+  final _focoPainel = FocusNode(debugLabel: 'Painel do jogo', canRequestFocus: false, skipTraversal: true);
 
   /// Onde estava o último controlo com o foco no ecrã (null: o foco foi para fora).
   Rect? _ondeEstava;
@@ -164,6 +166,7 @@ class _TelaJogosState extends State<TelaJogos> with WidgetsBindingObserver {
     _pesquisa.dispose();
     _focoPesquisa.dispose();
     _focoEcra.dispose();
+    _focoPainel.dispose();
     super.dispose();
   }
 
@@ -199,6 +202,33 @@ class _TelaJogosState extends State<TelaJogos> with WidgetsBindingObserver {
       }
     }
     if (perto != null) FocusTraversalPolicy.defaultTraversalRequestFocusCallback(perto);
+  }
+
+  /// DIREITA num jogo (que já não muda de etiqueta): o 1.º controlo do painel à direita. A procura
+  /// pelas setas ia ao controlo mais perto, que no 1.º jogo é o «Competições» do cabeçalho.
+  KeyEventResult _teclaLista(KeyEvent e) {
+    if (e is KeyUpEvent || e.logicalKey != LogicalKeyboardKey.arrowRight) return KeyEventResult.ignored;
+    for (final n in _focoPainel.traversalDescendants) {
+      if (n.canRequestFocus && !n.skipTraversal && n is! FocusScopeNode) {
+        n.requestFocus();
+        return KeyEventResult.handled;
+      }
+    }
+    return KeyEventResult.handled; // sem nada no painel, fica no jogo
+  }
+
+  /// ESQUERDA no painel do jogo: volta à linha desse jogo (e não à que estiver ao lado).
+  KeyEventResult _teclaPainel(KeyEvent e, String jogo) {
+    if (e is KeyUpEvent || e.logicalKey != LogicalKeyboardKey.arrowLeft) return KeyEventResult.ignored;
+    for (final n in _focoEcra.traversalDescendants) {
+      // na linha, só o cartão recebe o foco
+      final linha = n.context?.findAncestorWidgetOfExactType<LinhaJogo>();
+      if (linha != null && linha.item.jogo.id == jogo && n.canRequestFocus && !n.skipTraversal) {
+        n.requestFocus();
+        return KeyEventResult.handled;
+      }
+    }
+    return KeyEventResult.ignored;
   }
 
   void _escolherDia(int d) {
@@ -544,17 +574,32 @@ class _TelaJogosState extends State<TelaJogos> with WidgetsBindingObserver {
       corpo = !largo
           ? lista
           : Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              Expanded(child: lista),
+              Expanded(
+                child: Focus(
+                  canRequestFocus: false,
+                  skipTraversal: true,
+                  includeSemantics: false,
+                  onKeyEvent: (_, e) => _teclaLista(e),
+                  child: lista,
+                ),
+              ),
               SizedBox(
                 width: 340,
-                child: SuperficieVidro(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(Tokens.e16),
-                    child: PainelJogo(
-                      item: escolhido,
-                      fontes: widget.fontes,
-                      aoOndeVer: _ondeVer,
-                      aoVer: () => _ver(escolhido),
+                // DIREITA na última etiqueta de um jogo chega aqui; ESQUERDA volta a esse jogo
+                child: Focus(
+                  focusNode: _focoPainel,
+                  includeSemantics: false,
+                  onKeyEvent: (_, e) => _teclaPainel(e, escolhido.jogo.id),
+                  child: SuperficieVidro(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(Tokens.e16),
+                      child: PainelJogo(
+                        item: escolhido,
+                        fontes: widget.fontes,
+                        aoOndeVer: _ondeVer,
+                        aoVer: () => _ver(escolhido),
+                        focavel: true,
+                      ),
                     ),
                   ),
                 ),
@@ -582,6 +627,9 @@ class _TelaJogosState extends State<TelaJogos> with WidgetsBindingObserver {
       focusNode: _focoEcra,
       includeSemantics: false,
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      // entrar no ecrã (DIREITA na barra das secções) vai para o 1.º jogo, não para estes
+      ForaDaEntrada(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Padding(
         padding: const EdgeInsets.fromLTRB(Tokens.e16, Tokens.e16, Tokens.e16, 0),
         child: CabecalhoSeccao(
@@ -611,6 +659,8 @@ class _TelaJogosState extends State<TelaJogos> with WidgetsBindingObserver {
       Padding(
         padding: const EdgeInsets.fromLTRB(Tokens.e16, 0, Tokens.e16, Tokens.e8),
         child: _fila(doDia, largo: largo),
+      ),
+        ]),
       ),
       Expanded(child: corpo),
       ]),
