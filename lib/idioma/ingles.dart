@@ -1891,6 +1891,10 @@ const textosIngles = <String, String>{
         "Matches: the Nations League and the Euro qualifiers no longer show women's matches by mistake.",
     'Ao abrir, a app avisa quando há uma versão nova publicada.':
         "When it opens, the app tells you when a new version is out.",
+    'Jogos na TV: entrar no ecrã com a seta para a direita vai para o primeiro jogo (e não para o botão «Competições»).':
+        "Matches on TV: entering the screen with the right arrow goes to the first match (not to the «Competitions» button).",
+    'Jogos na TV: a seta para a direita chega ao detalhe do jogo, à direita (os canais e «▶ Ver»); a seta para a esquerda volta ao jogo.':
+        "Matches on TV: the right arrow reaches the match details on the right (the channels and «▶ Watch»); the left arrow goes back to the match.",
     'Há uma versão nova da app: {0}. Descarrega em {1}':
         'A new version of the app is out: {0}. Download it from {1}',
     'Jogos: em «Filtros», «Ordenar» deixa ver os jogos numa só lista pela hora, em vez de por competição.':

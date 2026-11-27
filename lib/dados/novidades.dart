@@ -19,6 +19,12 @@ class Novidades {
 /// Todas as versões, a mais recente primeiro. A primeira é a versão da app: ao mudar a versão no
 /// pubspec.yaml, junta-se aqui a entrada dela (um teste confirma que batem certo).
 const historicoNovidades = <Novidades>[
+  Novidades('1.0.27', '2026-11-27', [
+    if (!edicaoPartilha) ...[
+      'Jogos na TV: entrar no ecrã com a seta para a direita vai para o primeiro jogo (e não para o botão «Competições»).',
+      'Jogos na TV: a seta para a direita chega ao detalhe do jogo, à direita (os canais e «▶ Ver»); a seta para a esquerda volta ao jogo.',
+    ],
+  ]),
   Novidades('1.0.26', '2026-11-27', [
     if (!edicaoPartilha) ...[
       'Cópia de segurança: leva também as preferências dos Jogos (equipas favoritas, competições seguidas e a ordem delas).',
