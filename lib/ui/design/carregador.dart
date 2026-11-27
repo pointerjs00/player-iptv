@@ -117,10 +117,33 @@ class _CarregadorCanaisState extends State<CarregadorCanais> with SingleTickerPr
   }
 }
 
-/// O anel: a pista de vidro e um arco em gradiente índigo→violeta (com brilho) a rodar.
+/// A cor da cabeça do arco: o acento mais claro (a ponta é a parte mais luminosa).
+const _cabeca = Color(0xFF9CC3FF);
+
+/// O anel: a pista de vidro e um arco tipo cometa a rodar — a cauda desvanece até transparente,
+/// o corpo no acento e a cabeça clara com um ponto de luz; o brilho tem duas camadas (uma larga e
+/// suave, outra junto ao arco).
 class _Anel extends CustomPainter {
   const _Anel(this.t);
   final double t;
+
+  /// A fração da volta que o arco ocupa.
+  static const _fracao = .7;
+
+  /// O gradiente da volta inteira (rodado para a cauda ficar em `inicio`): transparente antes da
+  /// cauda e depois da cabeça, para as pontas redondas não apanharem a cor da outra ponta.
+  static Shader _gradiente(Rect r, double inicio, double alfa) => SweepGradient(
+        colors: [
+          Tokens.acento.withValues(alpha: 0),
+          Tokens.acento.withValues(alpha: 0),
+          Tokens.acento.withValues(alpha: .85 * alfa),
+          _cabeca.withValues(alpha: alfa),
+          _cabeca.withValues(alpha: alfa),
+          _cabeca.withValues(alpha: 0),
+        ],
+        stops: const [0, .02, _fracao * .6, _fracao, _fracao + .015, _fracao + .02],
+        transform: GradientRotation(inicio),
+      ).createShader(r);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -132,24 +155,25 @@ class _Anel extends CustomPainter {
           ..strokeWidth = traco
           ..color = Tokens.vidroForte);
     final inicio = t * 2 * math.pi - math.pi / 2;
-    const arco = math.pi * 1.4;
-    final gradiente = SweepGradient(
-      startAngle: 0,
-      endAngle: arco,
-      colors: const [Color(0x006C7BFF), Tokens.acento, Tokens.acento2],
-      stops: const [0, .45, 1],
-      transform: GradientRotation(inicio),
-    ).createShader(r);
-    // o brilho por baixo e o arco nítido por cima
-    for (final (largura, desfoque) in [(traco * 2.2, 8.0), (traco, 0.0)]) {
-      canvas.drawArc(r, inicio, arco, false,
+    const arco = 2 * math.pi * _fracao;
+    // brilho largo e suave, brilho junto ao arco e o arco nítido por cima
+    for (final (largura, desfoque, alfa) in [(traco * 3, 12.0, .35), (traco * 1.6, 5.0, .6), (traco, 0.0, 1.0)]) {
+      canvas.drawArc(r, inicio + .02 * 2 * math.pi, arco - .02 * 2 * math.pi, false,
           Paint()
             ..style = PaintingStyle.stroke
             ..strokeWidth = largura
-            ..strokeCap = StrokeCap.round
-            ..shader = gradiente
+            ..strokeCap = desfoque > 0 ? StrokeCap.butt : StrokeCap.round
+            ..shader = _gradiente(r, inicio, alfa)
             ..maskFilter = desfoque > 0 ? MaskFilter.blur(BlurStyle.normal, desfoque) : null);
     }
+    // o ponto de luz na cabeça
+    final fim = inicio + arco;
+    final ponto = r.center + Offset(math.cos(fim), math.sin(fim)) * (r.width / 2);
+    canvas.drawCircle(ponto, traco * 1.6,
+        Paint()
+          ..color = Tokens.acento.withValues(alpha: .55)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 7));
+    canvas.drawCircle(ponto, traco * .55, Paint()..color = Colors.white.withValues(alpha: .95));
   }
 
   @override
