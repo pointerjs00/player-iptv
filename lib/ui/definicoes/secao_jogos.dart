@@ -5,6 +5,7 @@ import '../../desporto/modelo.dart';
 import '../../desporto/preferencias_jogos.dart';
 import '../../idioma/idioma.dart';
 import '../design/design.dart';
+import '../campo_tv.dart';
 import '../design/mensagens.dart';
 import '../jogos/folha_onde_ver.dart' show nomeQualidade;
 import 'linha_opcao.dart';
@@ -91,9 +92,11 @@ class _SecaoJogosState extends State<SecaoJogos> {
         controlo: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             Expanded(
-              child: TextField(
+              // na TV, o foco não abre o teclado (só OK) e Voltar fecha-o sem tirar o foco do campo
+              child: CampoTv(
                 controller: _equipa,
                 decoration: InputDecoration(hintText: tr('Nome da equipa')),
+                textInputAction: TextInputAction.done,
                 onSubmitted: (_) => _adicionarEquipa(),
               ),
             ),
