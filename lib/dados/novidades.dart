@@ -19,6 +19,12 @@ class Novidades {
 /// Todas as versões, a mais recente primeiro. A primeira é a versão da app: ao mudar a versão no
 /// pubspec.yaml, junta-se aqui a entrada dela (um teste confirma que batem certo).
 const historicoNovidades = <Novidades>[
+  Novidades('1.0.32', '2026-11-28', [
+    'Na TV, em Definições › Jogos, o campo «Nome da equipa» só abre o teclado com OK; Voltar fecha-o sem tirar o foco do campo.',
+    'Player: «Outras fontes» tem um design novo (a fonte que está a tocar e as que falharam marcadas) e fica com o foco — as setas já não mudam o canal por baixo dela.',
+    'Player: a barra mostra o programa a dar (com o progresso) e o seguinte, quando a lista tem programação.',
+    'Jogos: o filtro «Ao vivo» ligado vê-se bem (vermelho, com um visto).',
+  ]),
   Novidades('1.0.31', '2026-11-27', [
     'Sem mudanças na app: esta versão serve para confirmar que a atualização dentro da app funciona (no Windows, a partir da 1.0.30).',
   ]),

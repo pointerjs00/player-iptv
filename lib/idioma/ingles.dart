@@ -1935,6 +1935,14 @@ const textosIngles = <String, String>{
     'o Windows não deixou correr a atualização (antivírus?). A app continua como estava.':
         "Windows didn't let the update run (antivirus?). The app stays as it was.",
     'A preparar a atualização…': 'Preparing the update…',
+    'Na TV, em Definições › Jogos, o campo «Nome da equipa» só abre o teclado com OK; Voltar fecha-o sem tirar o foco do campo.':
+        "On TV, in Settings › Games, the «Team name» field only opens the keyboard with OK; Back closes it without moving the focus away.",
+    'Player: «Outras fontes» tem um design novo (a fonte que está a tocar e as que falharam marcadas) e fica com o foco — as setas já não mudam o canal por baixo dela.':
+        "Player: «Other sources» has a new design (the source playing and the ones that failed are marked) and keeps the focus — the arrows no longer change the channel underneath it.",
+    'Player: a barra mostra o programa a dar (com o progresso) e o seguinte, quando a lista tem programação.':
+        "Player: the bar shows the programme on now (with its progress) and the next one, when the list has a guide.",
+    'Jogos: o filtro «Ao vivo» ligado vê-se bem (vermelho, com um visto).':
+        "Games: the «Live» filter stands out when it's on (red, with a tick).",
     '{0} fontes deste canal · OK muda sem sair do player':
         '{0} sources for this channel · OK switches without leaving the player',
     'A ver': 'Watching',
