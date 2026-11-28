@@ -66,10 +66,10 @@ void main() {
     } on FileSystemException {/* Windows */}
   });
 
-  /// Espera (em tempo real, até 20 s) que `pronto` seja verdade. Ler 100 mil canais do disco
+  /// Espera (em tempo real, até 60 s) que `pronto` seja verdade. Ler 100 mil canais do disco
   /// demora bem mais com todos os testes em paralelo do que sozinho: um tempo fixo falhava.
   Future<void> esperar(WidgetTester t, bool Function() pronto) async {
-    for (var i = 0; i < 200 && !pronto(); i++) {
+    for (var i = 0; i < 600 && !pronto(); i++) {
       await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 100)));
       await t.pump();
     }
