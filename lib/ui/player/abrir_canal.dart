@@ -7,6 +7,7 @@ import 'package:material_ui/material_ui.dart';
 import '../../dados/biblioteca.dart';
 import '../../desporto/onde_ver.dart';
 import '../../direto/sessao_direto.dart';
+import '../../guia/programa.dart';
 import '../../janelas/janela_player.dart';
 import '../../modelo/canal.dart';
 import '../../modelo/conta.dart';
@@ -17,14 +18,15 @@ import '../design/mensagens.dart';
 
 /// Abre o canal: no Windows numa janela separada; no Android em ecrã inteiro. No Android
 /// devolve, ao sair do player, o índice do canal que estava a tocar (pode ter mudado).
-/// `aoVer` é chamado com cada canal que o player abre (o primeiro e os do zapping).
+/// `aoVer` é chamado com cada canal que o player abre (o primeiro e os do zapping); com
+/// `programasDe` (o guia da lista), a barra do player mostra o programa a dar e o seguinte.
 Future<int?> abrirCanal(BuildContext context, Lista lista, List<Canal> canais, int i,
-    {ValueChanged<Canal>? aoVer}) async {
+    {ValueChanged<Canal>? aoVer, ProgramasDoCanal? programasDe}) async {
   if (Platform.isWindows) {
     final dizer = mensageiroDe(context);
     void avisar(String m) => dizer(m);
     try {
-      await JanelaPlayer.instancia.mostrar(lista, canais, i, aoFalhar: avisar, aoVer: aoVer);
+      await JanelaPlayer.instancia.mostrar(lista, canais, i, aoFalhar: avisar, aoVer: aoVer, programasDe: programasDe);
     } on ErroLista catch (e) {
       avisar(e.mensagem);
     }
@@ -50,6 +52,7 @@ Future<int?> abrirCanal(BuildContext context, Lista lista, List<Canal> canais, i
       // o direto gravado (2 GB na cache da app); a preferência vem depois
       criarSessao: criarSessaoDireto,
       aoTempoVisto: tempoVisto,
+      programasDe: programasDe,
     ),
   );
   return atual.value;

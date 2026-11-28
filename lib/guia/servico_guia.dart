@@ -192,6 +192,13 @@ class ServicoGuia extends ChangeNotifier {
   /// O programa a dar e o seguinte de um canal.
   (Programa?, Programa?) agoraESeguinteDe(Canal c) => agoraESeguinte(programas(c), agora());
 
+  /// Para a barra do player ([ProgramasDoCanal]): pede o guia só deste canal se ainda não houver
+  /// nada para ele e devolve o programa a dar e o seguinte.
+  Future<(Programa?, Programa?)> programasAgora(Canal c) async {
+    await pedirCanal(c);
+    return agoraESeguinteDe(c);
+  }
+
   /// A pedir o guia só deste canal.
   bool aPedir(Canal c) => _aPedir.contains(c.id);
 

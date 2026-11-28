@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../../guia/programa.dart';
+import '../conteudo/painel_canal.dart' show horaCurta, intervaloPrograma;
 import '../design/componentes.dart';
 import '../design/ecra.dart';
 import '../design/movimento.dart';
@@ -26,7 +28,7 @@ String subtituloCanal({required String lista, required String grupo}) =>
 /// O que a barra mostra do canal a tocar.
 class EstadoControlos {
   const EstadoControlos({this.numero, required this.canal, required this.subtitulo, this.aTocar = true,
-      this.velocidade = 1.0, this.erro = false, this.podeAlternar = false});
+      this.velocidade = 1.0, this.erro = false, this.podeAlternar = false, this.programa, this.seguinte});
 
   /// O número do canal (em grande, antes do nome); null = sem número.
   final int? numero;
@@ -42,6 +44,10 @@ class EstadoControlos {
 
   /// Há um canal visto antes deste (o botão "Canal visto antes" aparece).
   final bool podeAlternar;
+
+  /// O programa a dar e o seguinte (do guia da lista); null = não se sabe.
+  final Programa? programa;
+  final Programa? seguinte;
 }
 
 /// A barra de controlos e o painel de definições por cima do vídeo (`child`), e as teclas do
@@ -650,6 +656,11 @@ class ControlosPlayerState extends State<ControlosPlayer> {
                                     color: Tokens.texto2,
                                     fontFeatures: const [FontFeature.tabularFigures()])),
                           ),
+                        if (e.programa != null || e.seguinte != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: Tokens.e8),
+                            child: _Programacao(atual: e.programa, seguinte: e.seguinte),
+                          ),
                       ]),
                     ),
                     if (!alto) ...[const SizedBox(width: Tokens.e16), indicador],
@@ -749,6 +760,74 @@ class _Titulo extends StatelessWidget {
               fontFeatures: const [FontFeature.tabularFigures()])),
       const SizedBox(width: Tokens.e16),
       Flexible(child: nomeESubtitulo),
+    ]);
+  }
+}
+
+/// O programa a dar (com o progresso) e o seguinte, por baixo do nome do canal.
+class _Programacao extends StatelessWidget {
+  const _Programacao({required this.atual, required this.seguinte});
+  final Programa? atual;
+  final Programa? seguinte;
+
+  @override
+  Widget build(BuildContext context) {
+    final tv = ecraTv(context);
+    final agora = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    final horas = TextStyle(fontSize: tv ? 15 : 12.5, color: Tokens.texto2, fontFeatures: const [FontFeature.tabularFigures()]);
+    Widget rotulo(String texto, Color cor) => Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          decoration: BoxDecoration(
+            color: cor.withValues(alpha: .18),
+            borderRadius: BorderRadius.circular(Tokens.raioPilula),
+          ),
+          child: Text(texto,
+              style: TextStyle(fontSize: tv ? 12 : 10.5, fontWeight: FontWeight.w800, letterSpacing: .8, color: cor)),
+        );
+    final atual = this.atual, seguinte = this.seguinte;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+      if (atual != null) ...[
+        Row(children: [
+          rotulo(tr('AGORA'), Tokens.anelFoco),
+          const SizedBox(width: Tokens.e8),
+          Flexible(
+            child: Text(atual.titulo,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: tv ? 18 : 15, fontWeight: FontWeight.w600, color: Tokens.texto)),
+          ),
+          const SizedBox(width: Tokens.e8),
+          Text(intervaloPrograma(atual), style: horas),
+        ]),
+        const SizedBox(height: 6),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(Tokens.raioPilula),
+            child: LinearProgressIndicator(
+              value: atual.progresso(agora),
+              minHeight: 3,
+              backgroundColor: Tokens.vidroForte,
+              color: Tokens.acento,
+            ),
+          ),
+        ),
+      ],
+      if (seguinte != null) ...[
+        if (atual != null) const SizedBox(height: 6),
+        Row(children: [
+          rotulo(tr('A SEGUIR'), Tokens.texto2),
+          const SizedBox(width: Tokens.e8),
+          Text(horaCurta(seguinte.inicio), style: horas),
+          const SizedBox(width: Tokens.e8),
+          Flexible(
+            child: Text(seguinte.titulo,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: tv ? 16 : 13.5, color: Tokens.texto2)),
+          ),
+        ]),
+      ],
     ]);
   }
 }

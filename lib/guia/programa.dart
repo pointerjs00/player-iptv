@@ -86,6 +86,9 @@ List<Programa> semSobrepostos(List<Programa> ps) {
   return r;
 }
 
+/// O programa a dar e o seguinte de um canal, pedidos a quem tem o guia (o player usa-o na barra).
+typedef ProgramasDoCanal = Future<(Programa?, Programa?)> Function(Canal canal);
+
 /// O programa a dar e o seguinte, entre os de um canal (`agora` em segundos).
 (Programa?, Programa?) agoraESeguinte(List<Programa> todos, int agora) {
   final ps = semSobrepostos(todos);

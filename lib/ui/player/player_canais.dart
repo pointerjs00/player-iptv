@@ -6,6 +6,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../dados/preferencias.dart';
+import '../../guia/programa.dart';
 import '../../direto/sessao_direto.dart';
 import '../../modelo/canal.dart';
 import '../../protocolos/protocolo.dart';
@@ -86,6 +87,9 @@ String get avisoMotorMpv => tr('Este canal abriu com o motor mpv');
 /// A nota das opções que só existem no mpv, com o ExoPlayer.
 String get soNoMpv => tr('só no motor mpv');
 
+/// De quanto em quanto tempo a barra volta a pedir o programa do canal.
+const passoProgramas = Duration(seconds: 30);
+
 /// O player: toca o canal `indice` de `canais`, com a barra de controlos e o painel de
 /// definições ([ControlosPlayer]). As preferências ([Preferencias.atual]) aplicam-se a cada canal.
 class PlayerCanais extends StatefulWidget {
@@ -93,7 +97,7 @@ class PlayerCanais extends StatefulWidget {
       required this.nomeLista, required this.aoSair, this.alternarEcraInteiro, this.aoMudarCanal,
       this.criarMotor = criarMotorMpv, this.criarMotorExo = novoMotorExo, this.criarSessao,
       @visibleForTesting this.plataforma, @visibleForTesting this.agora, this.aoTempoVisto,
-      this.listaDe, this.trocaAutomatica = false, this.aoFuncionar});
+      this.listaDe, this.trocaAutomatica = false, this.aoFuncionar, this.programasDe});
 
   final List<Canal> canais;
   final int indice;
@@ -140,6 +144,10 @@ class PlayerCanais extends StatefulWidget {
 
   /// O canal `i` deu imagem (para guardar «funcionou da última vez»).
   final ValueChanged<int>? aoFuncionar;
+
+  /// O programa a dar e o seguinte de um canal (o guia da lista), para a barra; null = sem guia.
+  /// Pede-se ao mudar de canal e a cada [passoProgramas] (o programa acaba).
+  final ProgramasDoCanal? programasDe;
 
   @override
   State<PlayerCanais> createState() => PlayerCanaisState();
@@ -410,11 +418,32 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
     },
   );
 
+  Timer? _relogioProgramas;
+
+  /// O canal de que são os programas à vista (outro canal: pedem-se os dele).
+  Canal? _canalProgramas;
+  (Programa?, Programa?) _programas = (null, null);
+
+  /// Pede o programa do canal a tocar; uma resposta de outro canal (mudou entretanto) não conta.
+  void _lerProgramas() {
+    final ler = widget.programasDe;
+    if (ler == null || !mounted) return;
+    final c = _canais[_i];
+    if (!identical(c, _canalProgramas)) {
+      _canalProgramas = c;
+      _programas = (null, null); // o do canal anterior não fica
+    }
+    ler(c).then((r) {
+      if (mounted && identical(_canalProgramas, c)) setState(() => _programas = r);
+    }, onError: (Object _) {});
+  }
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     if (widget.aoTempoVisto != null) _relogioTempo = Timer.periodic(passoTempo, (_) => _contarTempo());
+    if (widget.programasDe != null) _relogioProgramas = Timer.periodic(passoProgramas, (_) => _lerProgramas());
     // telemóvel: as barras do volume mostram o do sistema e acompanham-no
     _ajuste?.addListener(_aoMudarAjuste);
     if (_android && FiltroDesentrelacamento.suportado) {
@@ -2080,6 +2109,7 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   @override
   void dispose() {
     _relogioTempo?.cancel();
+    _relogioProgramas?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _continuar.reiniciar(); // nenhuma reabertura marcada depois de sair
     _vigiaLink?.cancel();
@@ -2156,6 +2186,11 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
           child: video);
     }
     video = _ultima.envolver(video);
+    if (widget.programasDe != null && !identical(canal, _canalProgramas)) {
+      _canalProgramas = canal;
+      _programas = (null, null);
+      WidgetsBinding.instance.addPostFrameCallback((_) => _lerProgramas());
+    }
 
     return ColoredBox(
       // o vídeo do ExoPlayer está por baixo da interface: nada opaco por cima dele (as barras são a
@@ -2171,6 +2206,8 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
           velocidade: _velocidade,
           erro: _erro != null,
           podeAlternar: _historico.anterior != null,
+          programa: _programas.$1,
+          seguinte: _programas.$2,
         ),
         aoNumero: _irParaNumero,
         volume: (

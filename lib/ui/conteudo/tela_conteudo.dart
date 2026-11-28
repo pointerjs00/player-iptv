@@ -838,7 +838,7 @@ class _TelaConteudoState extends State<TelaConteudo> {
     _registarVisto(canais[i]);
     final volta = widget.abrir != null
         ? await widget.abrir!(canais, i)
-        : await abrirCanal(context, widget.lista, canais, i, aoVer: _registarVisto);
+        : await abrirCanal(context, widget.lista, canais, i, aoVer: _registarVisto, programasDe: _guia?.programasAgora);
     if (volta == null || volta < 0 || volta >= canais.length) return;
     _registarVisto(canais[volta]);
     if (!mounted) return;

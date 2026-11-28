@@ -366,6 +366,8 @@ class _AppJanelaPlayerState extends State<AppJanelaPlayer> {
                   trocaAutomatica: _troca,
                   aoFuncionar: _troca ? widget.ligacao.funcionou : null,
                   resolver: (c, {continuar = false}) => widget.ligacao.fonte(_canais.indexOf(c)),
+                  // o guia está na janela principal: pede-se o programa por cada canal
+                  programasDe: (c) => widget.ligacao.programas(_canais.indexOf(c)),
                   aoSair: () async {
                     await guardarTempoVisto();
                     exit(0);

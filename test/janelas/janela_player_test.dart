@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:player_iptv/dados/biblioteca.dart';
+import 'package:player_iptv/guia/programa.dart';
 import 'package:player_iptv/janelas/janela_player.dart';
 import 'package:player_iptv/modelo/canal.dart';
 import 'package:player_iptv/modelo/conta.dart';
@@ -97,6 +98,25 @@ void main() {
       // recusada: é o esperado
     }
     expect(fechada.isCompleted, isFalse, reason: 'o player verdadeiro não pode ser desligado');
+    expect((await l.fonte(0)).url, _link);
+  });
+
+  test('a janela do player pede o programa a dar e o seguinte à principal (o guia está lá)', () async {
+    final l = await LigacaoPrincipal.ligar(porta!, token: token!, aoFechar: () {});
+    await l.aberturas.stream.first.timeout(const Duration(seconds: 5));
+    // sem guia: nada
+    expect(await l.programas(0), (null, null));
+    final pedidos = <String>[];
+    await janela.mostrar(_lista, _canais, 0, programasDe: (c) async {
+      pedidos.add(c.nome);
+      return (const Programa(100, 200, 'Telejornal', 'As notícias'), const Programa(200, 300, 'Prós e Contras'));
+    });
+    final (atual, seguinte) = await l.programas(0);
+    expect(atual, const Programa(100, 200, 'Telejornal', 'As notícias'));
+    expect(seguinte, const Programa(200, 300, 'Prós e Contras'));
+    expect(pedidos, ['RTP 1']);
+    // um índice que não existe: nada (e a ligação continua)
+    expect(await l.programas(7), (null, null));
     expect((await l.fonte(0)).url, _link);
   });
 

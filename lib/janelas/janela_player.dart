@@ -6,6 +6,8 @@
 ///   player → principal: {"tipo":"fonte","pedido":7,"i":4}
 ///   player → principal: {"tipo":"funcionou","i":4} (modo «Jogo»: a fonte que deu imagem)
 ///   principal → player: {"tipo":"fonte","pedido":7,"url":"…","headers":{…}} ou {"…","erro":"…"}
+///   player → principal: {"tipo":"programas","pedido":8,"i":4} (o programa a dar e o seguinte)
+///   principal → player: {"tipo":"programas","pedido":8,"atual":[…]|null,"seguinte":[…]|null}
 /// O player, lançado com um token aleatório numa variável de ambiente, tem de mandar
 /// primeiro {"tipo":"ola","token":"…"} (em 2 s); depois disso a principal deixa de aceitar
 /// ligações até o player fechar. Outro processo da máquina não consegue pedir links.
@@ -23,6 +25,7 @@ import 'package:flutter/foundation.dart';
 
 import '../dados/biblioteca.dart';
 import '../desporto/onde_ver.dart';
+import '../guia/programa.dart';
 import '../modelo/canal.dart';
 import '../protocolos/protocolo.dart';
 import '../rede/http.dart';
@@ -60,17 +63,21 @@ class JanelaPlayer {
   void Function(Canal canal)? _aoVer;
   void Function(int i)? _aoFuncionar;
 
+  /// O guia dos canais abertos ([mostrar]); null = sem guia (o modo «Jogo» não o tem).
+  ProgramasDoCanal? _programasDe;
+
   static Map<String, dynamic> _canal(Canal c) =>
       {'id': c.id, 'nome': c.nome, 'grupo': c.grupo, if (c.numero != null) 'num': c.numero, if (c.logo.isNotEmpty) 'logo': c.logo};
 
   /// Mostra `canais[i]` na janela do player (abre-a se não estiver aberta).
   /// `aoVer` é chamado com cada canal que o player pede para abrir (o primeiro e os do zapping).
   Future<void> mostrar(Lista lista, List<Canal> canais, int i,
-      {void Function(String motivo)? aoFalhar, void Function(Canal canal)? aoVer}) {
+      {void Function(String motivo)? aoFalhar, void Function(Canal canal)? aoVer, ProgramasDoCanal? programasDe}) {
     _listaDe = (_) => lista;
     _canais = canais;
     _aoVer = aoVer;
     _aoFuncionar = null;
+    _programasDe = programasDe;
     return _mostrar({
       'tipo': 'abrir', 'lista': lista.nomeMostrado, 'listaId': lista.id, 'i': i,
       'canais': [for (final c in canais) _canal(c)],
@@ -89,6 +96,7 @@ class JanelaPlayer {
     _canais = [for (final f in copia) f.canal];
     _aoVer = aoVer == null ? null : (c) => aoVer(copia[_canais.indexOf(c)]);
     _aoFuncionar = aoFuncionar == null ? null : (i) => aoFuncionar(copia[i]);
+    _programasDe = null;
     final primeira = copia.first.lista;
     return _mostrar({
       'tipo': 'abrir', 'lista': primeira.nomeMostrado, 'listaId': primeira.id, 'i': 0,
@@ -215,6 +223,17 @@ class JanelaPlayer {
       if (i >= 0 && i < _canais.length) _aoFuncionar?.call(i);
       return;
     }
+    if (m['tipo'] == 'programas') {
+      final ler = _programasDe;
+      (Programa?, Programa?) r = (null, null);
+      if (ler != null && i >= 0 && i < _canais.length) {
+        try {
+          r = await ler(_canais[i]);
+        } catch (_) {/* sem guia */}
+      }
+      _enviar({'tipo': 'programas', 'pedido': m['pedido'], 'atual': r.$1?.paraLista(), 'seguinte': r.$2?.paraLista()});
+      return;
+    }
     if (m['tipo'] != 'fonte') return;
     final lista = i >= 0 && i < _canais.length ? _listaDe?.call(i) : null;
     if (lista == null) {
@@ -280,6 +299,7 @@ class LigacaoPrincipal {
 
   final Socket _sock;
   final _pedidos = <int, Completer<FonteVideo>>{};
+  final _pedidosProgramas = <int, Completer<(Programa?, Programa?)>>{};
   int _proximo = 0;
 
   /// Recebe {"lista", "canais", "i"} sempre que a principal manda um canal.
@@ -323,6 +343,8 @@ class LigacaoPrincipal {
         listaIds: textos(m['listaIds']),
         troca: m['troca'] == true,
       ));
+    } else if (m['tipo'] == 'programas') {
+      _pedidosProgramas.remove(m['pedido'])?.complete((Programa.deLista(m['atual']), Programa.deLista(m['seguinte'])));
     } else if (m['tipo'] == 'fonte') {
       final p = _pedidos.remove(m['pedido']);
       if (p == null) return;
@@ -337,6 +359,18 @@ class LigacaoPrincipal {
 
   /// Modo «Jogo»: a fonte `i` deu imagem (a principal guarda «funcionou da última vez»).
   void funcionou(int i) => _sock.write('${jsonEncode({'tipo': 'funcionou', 'i': i})}\n');
+
+  /// O programa a dar e o seguinte do canal `i` (o guia está na principal); (null, null) se não
+  /// houver ou se a principal não responder em 10 s.
+  Future<(Programa?, Programa?)> programas(int i) {
+    final id = _proximo++;
+    final c = _pedidosProgramas[id] = Completer<(Programa?, Programa?)>();
+    _sock.write('${jsonEncode({'tipo': 'programas', 'pedido': id, 'i': i})}\n');
+    return c.future.timeout(const Duration(seconds: 10), onTimeout: () {
+      _pedidosProgramas.remove(id);
+      return (null, null);
+    });
+  }
 
   Future<FonteVideo> fonte(int i) {
     final id = _proximo++;

@@ -127,6 +127,22 @@ void main() {
     s.dispose();
   });
 
+  test('para o player: pede o guia do canal se faltar e devolve o programa a dar e o seguinte', () async {
+    final f = FonteFalsa(canalDa: (c) => [
+          const Programa(agora - 60, agora + 60, 'Só deste'),
+          const Programa(agora + 60, agora + 120, 'Depois'),
+        ]);
+    final s = servico(f, comArmazem: false);
+    await s.usarCanais([rtp, sic]);
+    final (atual, seguinte) = await s.programasAgora(sic);
+    expect(atual!.titulo, 'Só deste');
+    expect(seguinte!.titulo, 'Depois');
+    await s.programasAgora(sic);
+    expect(f.pedidosCanal, ['2'], reason: 'o que já se tem não se volta a pedir');
+    s.dispose();
+    expect(await s.programasAgora(rtp), (null, null), reason: 'fechado (saiu-se da lista): não pede nada');
+  });
+
   test('uma falha do canal espera 10 minutos antes de voltar a pedir', () async {
     var t = agora;
     final f = FonteFalsa();
