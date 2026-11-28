@@ -161,9 +161,17 @@ void main() {
   testWidgets('«Ao vivo» e as competições nos Filtros', (t) async {
     await montar(t);
     expect(find.widgetWithText(FilterChip, 'Ao vivo (1)'), findsOneWidget);
-    await t.tap(find.widgetWithText(FilterChip, 'Ao vivo (1)'));
+    final chip = find.widgetWithText(FilterChip, 'Ao vivo (1)');
+    expect(find.descendant(of: chip, matching: find.byIcon(Icons.check_rounded)), findsNothing);
+    await t.tap(chip);
     await t.pump();
     expect(find.byType(LinhaJogo), findsOneWidget);
+    // ligado vê-se bem: fundo vermelho cheio, texto branco e um visto (antes era um azul ténue)
+    final ligado = t.widget<FilterChip>(chip);
+    expect(ligado.selectedColor?.a, 1.0);
+    expect(ligado.selectedColor!.r, greaterThan(ligado.selectedColor!.b * 2));
+    expect(ligado.labelStyle?.color, Colors.white);
+    expect(find.descendant(of: chip, matching: find.byIcon(Icons.check_rounded)), findsOneWidget);
     await t.tap(find.widgetWithText(FilterChip, 'Ao vivo (1)'));
     await t.pump();
     await abrirFiltros(t);

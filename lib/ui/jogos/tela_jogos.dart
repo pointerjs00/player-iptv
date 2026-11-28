@@ -57,6 +57,11 @@ String nomeDesporto(Desporto d) => switch (d) {
       Desporto.basquetebol => tr('Basquetebol'),
     };
 
+/// O ponto do «Ao vivo» (o vermelho do [PontoDireto]) e o fundo dele ligado (o branco lê-se
+/// com contraste ≥ 4,5).
+const _vermelhoDireto = Color(0xFFFF4D61);
+const _fundoAoVivo = Color(0xFFC81E3A);
+
 /// «Jogos»: os jogos das competições seguidas, por competição, os canais onde dão e, em cada canal,
 /// as fontes de todas as listas (ver docs/2026-11-27-jogos-design.md §10).
 class TelaJogos extends StatefulWidget {
@@ -436,10 +441,16 @@ class _TelaJogosState extends State<TelaJogos> with WidgetsBindingObserver {
         onSelected: (_) => unawaited(_abrirFiltros(doDia)),
       ),
       const SizedBox(width: Tokens.e8),
+      // ligado tem de se ver de longe (na TV): vermelho cheio, texto branco e um visto; desligado,
+      // só o ponto vermelho do direto
       FilterChip(
-        avatar: Icon(Icons.circle, size: 10, color: _soDireto ? null : Tokens.mau),
+        avatar: _soDireto
+            ? const Icon(Icons.check_rounded, size: 18, color: Colors.white)
+            : const Icon(Icons.circle, size: 10, color: _vermelhoDireto),
         showCheckmark: false,
         label: Text(aoVivo == 0 ? tr('Ao vivo') : tr('Ao vivo ({0})', [aoVivo])),
+        selectedColor: _fundoAoVivo,
+        labelStyle: _soDireto ? const TextStyle(color: Colors.white, fontWeight: FontWeight.w800) : null,
         selected: _soDireto,
         onSelected: (_) => setState(() => _soDireto = !_soDireto),
       ),
