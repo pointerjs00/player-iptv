@@ -325,6 +325,34 @@ void main() {
     expect(FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<Tooltip>(), isNull);
   });
 
+  testWidgets('com um diálogo por cima («Outras fontes»), a barra não se esconde nem tira o foco ao diálogo',
+      (t) async {
+    final e = await _montar(t);
+    await _tecla(t, LogicalKeyboardKey.select);
+    unawaited(showDialog<void>(
+      context: _chave.currentContext!,
+      builder: (_) => SimpleDialog(children: [
+        ListTile(autofocus: true, title: const Text('Fonte A'), onTap: () {}),
+        ListTile(title: const Text('Fonte B'), onTap: () {}),
+      ]),
+    ));
+    await t.pumpAndSettle();
+    await t.pump(const Duration(seconds: 8)); // mais do que os 5 s da barra
+    await t.pumpAndSettle();
+    final foco = FocusManager.instance.primaryFocus?.context;
+    expect(foco?.findAncestorWidgetOfExactType<SimpleDialog>(), isNotNull, reason: 'o foco continua no diálogo');
+    await _tecla(t, LogicalKeyboardKey.arrowDown);
+    await _tecla(t, LogicalKeyboardKey.arrowUp);
+    expect(e.acoes, isNot(contains(AcaoPlayer.canalSeguinte)));
+    expect(e.acoes, isNot(contains(AcaoPlayer.canalAnterior)));
+    // fechado o diálogo, a barra volta a esconder-se sozinha
+    await t.sendKeyEvent(LogicalKeyboardKey.escape);
+    await t.pumpAndSettle();
+    await t.pump(const Duration(seconds: 6));
+    await t.pumpAndSettle();
+    expect(_barraVisivel(t), isFalse);
+  });
+
   testWidgets('o rato a mexer mostra a barra', (t) async {
     await _montar(t);
     final rato = await t.createGesture(kind: PointerDeviceKind.mouse);

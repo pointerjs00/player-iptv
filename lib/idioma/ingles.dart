@@ -1935,6 +1935,9 @@ const textosIngles = <String, String>{
     'o Windows não deixou correr a atualização (antivírus?). A app continua como estava.':
         "Windows didn't let the update run (antivirus?). The app stays as it was.",
     'A preparar a atualização…': 'Preparing the update…',
+    '{0} fontes deste canal · OK muda sem sair do player':
+        '{0} sources for this channel · OK switches without leaving the player',
+    'A ver': 'Watching',
     'Sem mudanças na app: esta versão serve para confirmar que a atualização dentro da app funciona (no Windows, a partir da 1.0.30).':
         'No changes to the app: this version is for confirming that updating inside the app works (on Windows, from 1.0.30).',
     'Definições › Sobre e licenças: o texto de cada opção já não fica espremido numa coluna estreita ao lado do botão.':

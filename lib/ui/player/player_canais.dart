@@ -21,6 +21,7 @@ import 'configuracao_mpv.dart';
 import 'continuar_direto.dart';
 import 'controlo_desentrelacamento.dart';
 import 'controlos_player.dart';
+import 'folha_outras_fontes.dart';
 import 'desentrelacamento.dart';
 import 'diagnostico.dart';
 import 'estatisticas.dart';
@@ -632,22 +633,13 @@ class PlayerCanaisState extends State<PlayerCanais> with WidgetsBindingObserver 
   /// «Outras fontes»: as fontes do canal (o nome e a lista), a que toca marcada; a escolhida abre
   /// sem sair do player (e volta a poder ser tentada se tinha falhado).
   Future<void> _escolherFonte() async {
-    final j = await showDialog<int>(
-      context: context,
-      builder: (ctx) => SimpleDialog(
-        title: Text(tr('Outras fontes')),
-        children: [
-          for (var k = 0; k < _canais.length; k++)
-            ListTile(
-              autofocus: k == _i,
-              selected: k == _i,
-              leading: Icon(k == _i ? Icons.play_arrow_rounded : Icons.live_tv_rounded),
-              title: Text(_listaDe(_canais[k])),
-              subtitle: Text(_falhadas.contains(k) ? '${_canais[k].nome} · ${tr('falhou')}' : _canais[k].nome),
-              onTap: () => Navigator.of(ctx).pop(k),
-            ),
-        ],
-      ),
+    final j = await mostrarOutrasFontes(
+      context,
+      [
+        for (var k = 0; k < _canais.length; k++)
+          (lista: _listaDe(_canais[k]), canal: _canais[k].nome, falhou: _falhadas.contains(k)),
+      ],
+      atual: _i,
     );
     if (j == null || j == _i || !mounted) return;
     _falhadas.remove(j);

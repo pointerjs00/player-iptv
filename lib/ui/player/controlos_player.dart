@@ -206,7 +206,14 @@ class ControlosPlayerState extends State<ControlosPlayer> {
     _esconder?.cancel();
     if (_m.vista != VistaPlayer.controlos) return;
     _esconder = Timer(widget.esconderApos, () {
-      if (mounted && _m.vista == VistaPlayer.controlos) _executar(_m.voltar());
+      if (!mounted || _m.vista != VistaPlayer.controlos) return;
+      // um diálogo por cima («Outras fontes»): esconder pedia o foco para o player, tirava-o ao
+      // diálogo e as setas passavam a mudar de canal por baixo dele; volta a contar
+      if (!(ModalRoute.of(context)?.isCurrent ?? true)) {
+        _agendar();
+        return;
+      }
+      _executar(_m.voltar());
     });
   }
 
